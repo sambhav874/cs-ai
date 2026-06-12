@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  frontend:
+    image: extractor-frontend
+    build:
+      context: ./apps/frontend
+      target: dev
+      dockerfile: Dockerfile
+    volumes:
+      - ./apps/frontend:/app
+      - /app/node_modules
+      - /app/.next
+      - ./shared:/app/shared
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./apps/frontend/.env
+    depends_on:
+      - backend
+    networks:
+      - frontend-net
+
+  backend:
+    image: contract-rag-system
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+      args:
+        USE_GPU: ${USE_GPU:-false}  # Pass USE_GPU as a build argument
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    env_file:
+      - ./apps/backend/.env
+    networks:
+      - frontend-net
+      - backend-net
+    volumes:
+      - ./shared:/app/shared
+      - ./shared/contracts:/app/shared/contracts
+      - ./shared/cleaned_contracts:/app/shared/cleaned_contracts
+      - ./shared/final_extracted_data:/app/shared/final_extracted_data
+      - ./shared/contract_summaries:/app/shared/contract_summaries
+      - ./shared/model_cache:/app/shared/model_cache
+    restart: unless-stopped
+
+volumes:
+  shared:
+
+networks:
+  frontend-net:
+    driver: bridge
+  backend-net:
+    driver: bridge
+    internal: true

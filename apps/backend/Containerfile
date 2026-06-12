@@ -1,0 +1,66 @@
+# Use Python base image
+FROM python:3.11-slim
+
+ARG ENVIRONMENT=dev
+ARG USE_PDF=false
+ARG USE_ML=false
+ARG USE_FAISS=false
+
+ENV ENVIRONMENT=${ENVIRONMENT}
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Set working directory
+WORKDIR /app/backend
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry and update PATH
+RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH="/root/.local/bin:$PATH"
+RUN poetry config virtualenvs.create true
+
+# Copy only the files needed for installing dependencies
+COPY apps/backend/pyproject.toml apps/backend/poetry.lock ./
+
+# Determine which extras to install
+RUN set -ex \
+    && EXTRAS="" \
+    && if [ "$USE_PDF" = "true" ]; then EXTRAS="$EXTRAS pdf"; fi \
+    && if [ "$USE_ML" = "true" ]; then EXTRAS="$EXTRAS ml"; fi \
+    && if [ "$USE_FAISS" = "true" ]; then EXTRAS="$EXTRAS faiss"; fi \
+    && if [ -z "$EXTRAS" ]; then \
+        poetry install --no-root --no-cache; \
+    else \
+        poetry install --no-root --no-cache --extras "${EXTRAS}"; \
+    fi \
+    && poetry cache clear --all pypi -n \
+    && rm -rf /root/.cache/pypoetry/artifacts /root/.cache/pypoetry/cache
+
+# GPU support configuration (optional)
+ARG USE_GPU=false
+RUN if [ "$USE_GPU" = "true" ]; then \
+    apt-get update && apt-get install -y --no-install-recommends \
+    nvidia-cuda-toolkit \
+    && rm -rf /var/lib/apt/lists/* \
+    && poetry run pip install --no-cache-dir faiss-gpu; \
+    fi
+
+# Copy the application code
+COPY apps/backend/ ./
+
+# Copy environment files
+COPY apps/backend/.env* ./
+
+# Set up entrypoint script
+COPY apps/backend/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8000
+ENTRYPOINT ["/entrypoint.sh"]

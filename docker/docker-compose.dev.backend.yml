@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  backend:
+    image: fastapi-backend:dev
+    container_name: backend-dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/backend:/app/backend
+      - ./shared/contracts:/shared/contracts
+      - ./shared/cleaned_contracts:/shared/cleaned_contracts
+      - ./shared/final_extracted_data:/shared/final_extracted_data
+      - ./shared/contract_summaries:/shared/contract_summaries
+      - ./shared/dynamic_questions:/shared/dynamic_questions
+      - ./shared/model_cache:/shared/model_cache
+    env_file:
+      - ./apps/backend/.env.dev
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    networks:
+      - backend-network
+
+networks:
+  backend-network:
+    driver: bridge

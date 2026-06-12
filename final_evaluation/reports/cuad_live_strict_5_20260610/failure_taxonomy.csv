@@ -1,0 +1,8 @@
+count,example_case_id,failure_mode
+423,cuad-0011-metlife-inc-remarketing-agreement-f63e27b47b72:rag:absence_not_found_b:d25aa71c58,api_or_runner_error
+253,cuad-0011-metlife-inc-remarketing-agreement-f63e27b47b72:pac1:vault_retrieval:27122798bb,missing_citation
+75,cuad-0011-metlife-inc-remarketing-agreement-f63e27b47b72:tools:table_review:99e531dcce,approval_request_missing
+55,cuad-0011-metlife-inc-remarketing-agreement-f63e27b47b72:rag:absence_not_found_b:d25aa71c58,unsupported_answer_discipline_failed
+50,cuad-0011-metlife-inc-remarketing-agreement-f63e27b47b72:pac1:boundary_enforcement:91ef4c7fa5,expected_refusal_missing
+13,cuad-0011-metlife-inc-remarketing-agreement-f63e27b47b72:pac1:approval_gate:2b79362f9f,approval_gate_failed
+1,cuad-0011-metlife-inc-remarketing-agreement-f63e27b47b72:rag:obligation_extraction:9cf8a8d32d,invalid_or_unsupported_citation

@@ -1,0 +1,45 @@
+# SECURITY: These files contain secrets and must NEVER be baked into Docker images.
+# All secrets must be injected at runtime via Azure Key Vault, K8s Secrets, or platform env vars.
+.env
+.env.*
+.env.local
+.env.development
+.env.staging
+.env.production
+.env.test
+
+# Development artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+coverage.xml
+.mypy_cache/
+.eggs/
+
+# Logs and debug files
+*.log
+contract_rag.log
+contract_summarizer.log
+context_debug.txt
+document_loading_debug.txt
+usage.txt
+prompt.txt
+comparison.json
+
+# Local model cache (large, not needed in image)
+model_cache/
+final_extracted_data/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test files
+test_api_errors.py

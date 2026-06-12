@@ -1,0 +1,6 @@
+count,example_case_id,failure_mode
+3,cuad-0011-metlife-inc-remarketing-agreement-f63e27b47b72:tools:security_denial:46c2993f2e,expected_refusal_missing
+3,cuad-0011-metlife-inc-remarketing-agreement-f63e27b47b72:tools:kpi:5bab6db9e4,invalid_or_unsupported_citation
+3,cuad-0011-metlife-inc-remarketing-agreement-f63e27b47b72:rag:clause_presence:1020188777,missing_citation
+2,cuad-0011-metlife-inc-remarketing-agreement-f63e27b47b72:rag:absence_not_found_a:b9018772bc,unsupported_answer_discipline_failed
+1,cuad-0040-cytodyninc-20200109-10-q-ex-10-5-11941634-ex-10-5-license-ag-abc8e9538636:tools:table_review:439c2eb6f1,approval_request_missing

@@ -1,0 +1,32 @@
+
+            backendImage: contractlens.azurecr.io/fastapi-backend:latest
+            frontendImage: contractlens.azurecr.io/nextjs-frontend:latest
+            
+            imagePullSecrets:
+            - name: acr-secret
+            
+            service:
+              enabled: true
+              type: ClusterIP
+              frontendPort: 80
+              backendPort: 8000
+
+            ingress:
+              enabled: true
+              className: "nginx"
+              hosts:
+                - host: contractsense.ai
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                    - path: /api
+                      pathType: Prefix
+                - host: www.contractsense.ai
+                  paths:
+                    - path: /
+                      pathType: Prefix
+              tls:
+                - secretName: contractsense-tls
+                  hosts:
+                    - contractsense.ai
+                    - www.contractsense.ai

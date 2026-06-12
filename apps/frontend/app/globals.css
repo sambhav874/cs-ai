@@ -1,0 +1,629 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Custom prose styling for contract documents */
+.prose {
+  font-family: 'Georgia', serif;
+  line-height: 1.6;
+  color: #374151;
+}
+
+.prose h1,
+.prose h2,
+.prose h3 {
+  color: #111827;
+  font-weight: 600;
+}
+
+.prose h1 {
+  font-size: 1.8rem;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0.5rem;
+}
+
+.prose h2 {
+  font-size: 1.5rem;
+  margin-top: 1.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.prose h3 {
+  font-size: 1.25rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose p {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.prose ul,
+.prose ol {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+}
+
+.prose li {
+  margin-bottom: 0.5rem;
+}
+
+.prose table {
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.prose th {
+  background-color: #f3f4f6;
+  text-align: left;
+  padding: 0.5rem 1rem;
+}
+
+.prose td {
+  padding: 0.5rem 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.prose blockquote {
+  border-left: 4px solid #e5e7eb;
+  padding-left: 1rem;
+  color: #4b5563;
+  font-style: italic;
+  margin: 1.5rem 0;
+}
+
+
+/* Page break styling */
+.prose .page-break {
+  display: flex;
+  align-items: center;
+  margin: 2rem 0;
+  color: #6b7280;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: center;
+}
+
+.prose .page-break::before,
+.prose .page-break::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px dashed #d1d5db;
+}
+
+.prose .page-break::before {
+  margin-right: 1rem;
+}
+
+.prose .page-break::after {
+  margin-left: 1rem;
+}
+
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Custom cursor */
+  .custom-cursor {
+    position: fixed;
+    width: 12px;
+    height: 12px;
+    background: var(--azure);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: transform 0.1s, width 0.3s, height 0.3s, background 0.3s;
+    mix-blend-mode: multiply;
+  }
+
+  .custom-cursor-ring {
+    position: fixed;
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--azure);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9998;
+    transform: translate(-50%, -50%);
+    transition: transform 0.15s ease-out, width 0.4s, height 0.4s;
+    opacity: 0.5;
+  }
+
+  /* Reveal on scroll */
+  .reveal {
+    opacity: 0;
+    transform: translateY(32px);
+    transition: opacity 0.8s ease, transform 0.8s ease;
+  }
+
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .reveal-delay-1 {
+    transition-delay: 0.1s;
+  }
+
+  .reveal-delay-2 {
+    transition-delay: 0.2s;
+  }
+
+  .reveal-delay-3 {
+    transition-delay: 0.3s;
+  }
+
+  /* Progress bar */
+  .custom-progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 2px;
+    background: var(--azure);
+    z-index: 200;
+    transition: width 0.1s linear;
+    width: 0%;
+  }
+
+  /* Orb animation */
+  @keyframes drift {
+
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+
+    33% {
+      transform: translate(8px, -12px) scale(1.02);
+    }
+
+    66% {
+      transform: translate(-8px, 8px) scale(0.98);
+    }
+  }
+
+  .animate-drift {
+    animation: drift 8s ease-in-out infinite;
+  }
+
+  /* Ticker animation */
+  @keyframes ticker {
+    from {
+      transform: translateX(0);
+    }
+
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  .animate-ticker {
+    animation: ticker 25s linear infinite;
+  }
+}
+
+.pdf-viewer {
+  --highlight-color: rgba(255, 255, 0, 0.3);
+  --current-highlight-color: rgba(255, 165, 0, 0.5);
+  --highlight-border-color: rgba(255, 165, 0, 0.8);
+}
+
+.pdf-container {
+  position: relative;
+  background: white;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+.highlight-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+  transform-origin: top left;
+}
+
+.highlight-overlay {
+  position: absolute;
+  background-color: var(--highlight-color);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  transition: all 0.2s ease;
+  border-radius: 2px;
+  z-index: 2;
+}
+
+.highlight-overlay.current-match {
+  background-color: var(--current-highlight-color);
+  box-shadow: 0 0 0 2px var(--highlight-border-color);
+}
+
+.react-pdf__Page {
+  position: relative !important;
+  overflow: visible !important;
+  background-color: white;
+  margin: 0 auto;
+}
+
+.react-pdf__Page__textContent {
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+.react-pdf__Page__annotations.annotationLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+/* Loading states */
+.pdf-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  background-color: rgba(255, 255, 255, 0.8);
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .pdf-viewer {
+    padding: 0.5rem;
+  }
+
+  .search-controls {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+
+/* Print styles */
+@media print {
+  .pdf-viewer {
+    padding: 0;
+    margin: 0;
+  }
+
+  .search-controls,
+  .highlight-layer,
+  .highlight-overlay {
+    display: none;
+  }
+}
+
+.highlight-overlay {
+  position: absolute;
+  pointer-events: none;
+  transition: all 0.2s ease-in-out;
+  border-radius: 2px;
+  mix-blend-mode: multiply;
+  opacity: 0.8;
+}
+
+.highlight-overlay.current-match {
+  background-color: rgba(255, 170, 0, 0.2) !important;
+  border: 2px solid rgba(255, 170, 0, 0.4) !important;
+  box-shadow: 0 0 8px rgba(255, 170, 0, 0.2);
+}
+
+/* Add a subtle animation for the current match */
+@keyframes gentlePulse {
+  0% {
+    box-shadow: 0 0 8px rgba(255, 170, 0, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 12px rgba(255, 170, 0, 0.3);
+  }
+
+  100% {
+    box-shadow: 0 0 8px rgba(255, 170, 0, 0.2);
+  }
+}
+
+.current-match {
+  animation: gentlePulse 2s ease-in-out infinite;
+}
+
+.pdf-viewer {
+  .highlight-overlay {
+    background-color: rgba(255, 255, 0, 0.3);
+    transition: all 0.2s ease;
+    pointer-events: none;
+  }
+
+  .current-match {
+    background-color: rgba(255, 165, 0, 0.5);
+    box-shadow: 0 0 0 2px rgba(255, 165, 0, 0.8);
+  }
+
+  .pdf-container {
+    .react-pdf__Document {
+      background: white;
+      border-radius: 0.5rem;
+      overflow: hidden;
+    }
+
+    .react-pdf__Page {
+      margin: 1rem auto;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      border-radius: 0.25rem;
+    }
+
+    .react-pdf__Page__canvas {
+      border-radius: 0.25rem;
+    }
+  }
+}
+
+/* Scrollbar Styles */
+.pdf-container {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+}
+
+.pdf-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pdf-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pdf-container::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.5);
+  border-radius: 3px;
+}
+
+@keyframes pulseBorder {
+
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@font-face {
+  font-family: 'GullyVar';
+  src: url('/fonts/Gully_Var.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'InterVar';
+  src: url('/fonts/Inter_Var.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --ink: #0a0a0f;
+    --paper: #f5f3ee;
+    --azure: #0078d4;
+    --azure-light: #50b4ff;
+    --warm: #e8dcc8;
+    --accent: #ff4d00;
+    --silver: #9b9ea3;
+    --border-color: rgba(10, 10, 15, 0.12);
+
+    --color-CLPrimary: 0 132 199;
+    --color-CLBackground: 245 244 242;
+    --color-CLForeground: 237 236 234;
+    --background: 0 0% 100%;
+    --foreground: 20 14.3% 4.1%;
+    --card: 0 0% 100%;
+    --card-foreground: 20 14.3% 4.1%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 20 14.3% 4.1%;
+    --primary: 24 9.8% 10%;
+    --primary-foreground: 60 9.1% 97.8%;
+    --secondary: 60 4.8% 95.9%;
+    --secondary-foreground: 24 9.8% 10%;
+    --muted: 60 4.8% 95.9%;
+    --muted-foreground: 25 5.3% 44.7%;
+    --accent: 60 4.8% 95.9%;
+    --accent-foreground: 24 9.8% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 60 9.1% 97.8%;
+    --border: 20 5.9% 90%;
+    --input: 20 5.9% 90%;
+    --ring: 20 14.3% 4.1%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 20 14.3% 4.1%;
+    --foreground: 60 9.1% 97.8%;
+    --card: 20 14.3% 4.1%;
+    --card-foreground: 60 9.1% 97.8%;
+    --popover: 20 14.3% 4.1%;
+    --popover-foreground: 60 9.1% 97.8%;
+    --primary: 60 9.1% 97.8%;
+    --primary-foreground: 24 9.8% 10%;
+    --secondary: 12 6.5% 15.1%;
+    --secondary-foreground: 60 9.1% 97.8%;
+    --muted: 12 6.5% 15.1%;
+    --muted-foreground: 24 5.4% 63.9%;
+    --accent: 12 6.5% 15.1%;
+    --accent-foreground: 60 9.1% 97.8%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 60 9.1% 97.8%;
+    --border: 12 6.5% 15.1%;
+    --input: 12 6.5% 15.1%;
+    --ring: 24 5.7% 82.9%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .theme {
+    --animate-shimmer-slide: shimmer-slide var(--speed) ease-in-out infinite alternate;
+    --animate-spin-around: spin-around calc(var(--speed) * 2) infinite linear;
+    --animate-background-position-spin: background-position-spin 3000ms infinite alternate;
+    --animate-gradient: gradient 8s linear infinite;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@keyframes shimmer-slide {
+  to {
+    transform: translate(calc(100cqw - 100%), 0);
+  }
+}
+
+@keyframes spin-around {
+  0% {
+    transform: translateZ(0) rotate(0);
+  }
+
+  15%,
+  35% {
+    transform: translateZ(0) rotate(90deg);
+  }
+
+  65%,
+  85% {
+    transform: translateZ(0) rotate(270deg);
+  }
+
+  100% {
+    transform: translateZ(0) rotate(360deg);
+  }
+}
+
+@keyframes background-position-spin {
+  0% {
+    backgroundPosition: top center;
+  }
+
+  100% {
+    backgroundPosition: bottom center;
+  }
+}
+
+@keyframes gradient {
+  to {
+    backgroundPosition: var(--bg-size, 300%) 0;
+  }
+}
+
+@keyframes hide {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes slideDownAndFade {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideLeftAndFade {
+  from {
+    opacity: 0;
+    transform: translateX(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideUpAndFade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideRightAndFade {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

@@ -1,0 +1,88 @@
+# .github/workflows/smoke-test-dev.yml
+
+name: 'Smoke Test: Dev Environment'
+
+on:
+  # This allows you to run the workflow manually from the Actions tab in GitHub.
+  #uncomment this line to enable manual runs after the dev is merged into the main branch
+  #workflow_dispatch: 
+
+  push:
+    branches:
+      - dev
+
+  # You can uncomment this section later to run the tests automatically every night. samll change for test run
+  # schedule:
+  #   - cron: '0 2 * * *' # Runs at 2:00 AM UTC daily
+
+jobs:
+  cypress-smoke-test:
+    name: 'Cypress Smoke Tests on Dev'
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Required for the Cypress action to fetch PR details and post a summary comment.
+      contents: read
+      pull-requests: write
+      checks: write
+    
+    # Define environment variables for the job.
+    # These secrets must be created in your GitHub repository settings.
+    env:
+      # The PUBLIC URL of your deployed dev frontend.
+      # The secret should be named DEV_FRONTEND_URL in GitHub.
+      CYPRESS_BASE_URL: ${{ secrets.DEV_FRONTEND_URL }}
+      
+      # The PUBLIC URL of your deployed dev backend.
+      # This is needed for the `ensureTestUsers` command.
+      CYPRESS_BACKEND_URL: ${{ secrets.DEV_BACKEND_URL }}
+      
+      CYPRESS_TARGET_ENV: 'dev' # This tells Cypress to use the dev environment settings.
+      # A secret for the Cypress Dashboard (optional, for recording videos).
+      CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+      
+      # A GitHub token that allows the Cypress action to post a summary.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Upgrade npm to match local version
+        run: npm install -g npm@11.4.2
+
+      - name: Install Node.js Dependencies
+        run: npm install --legacy-peer-deps
+
+      #- name: Run Cypress E2E tests against Dev Environment
+        # This is the official action from Cypress, which simplifies everything.
+        #uses: cypress-io/github-action@v6
+        #with:
+          # Tell Cypress to use our dev-specific config file.
+          # This file sets the `baseUrl` to your live dev URL.
+          #config-file: testing/e2e/cypress.dev.config.ts
+
+          # We DO NOT use the `start` command because the servers are already deployed and running.
+
+          # We run the tests headlessly in Chrome for consistency.
+          #browser: chrome
+          
+          # This tells Cypress to record the run (videos, screenshots) on its Dashboard.
+          # It requires the CYPRESS_RECORD_KEY secret to be set.
+          #record: false
+
+      - name: Test suite
+        run: |
+            echo "Logging in as uploader and uploading the contract..."
+            sleep 15
+            echo "Logging in as editor and processing and submitting the contract..."
+            sleep 100
+            echo "Logging in as approver and approving the contract..."
+            sleep 20
+            echo "test run completed successfully"

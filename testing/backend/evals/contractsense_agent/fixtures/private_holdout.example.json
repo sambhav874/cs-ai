@@ -1,0 +1,6 @@
+{
+  "name": "ContractSense Agent Private Holdout Example",
+  "version": "1.0.0",
+  "description": "Example shape only. Real private holdout cases must not be committed before release scoring.",
+  "cases": []
+}

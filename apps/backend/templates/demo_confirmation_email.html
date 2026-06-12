@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            color: #333;
+            line-height: 1.6;
+            background-color: #f8f9fa;
+        }
+        .container {
+            padding: 30px;
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #0084C7;
+            padding-bottom: 20px;
+        }
+        .header h2 {
+            color: #0084C7;
+            margin: 0;
+            font-size: 28px;
+        }
+        .header p {
+            color: #666;
+            margin: 10px 0 0 0;
+            font-size: 14px;
+        }
+        .demo-details {
+            background: linear-gradient(135deg, #0084C7 0%, #0066a1 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            margin: 25px 0;
+            text-align: center;
+        }
+        .demo-details h3 {
+            margin: 0 0 15px 0;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.9;
+        }
+        .date-time {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .date-time .date {
+            display: block;
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+        .date-time .time {
+            display: block;
+            font-size: 22px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        .timezone {
+            font-size: 12px;
+            opacity: 0.85;
+            margin-top: 10px;
+        }
+        .content {
+            margin: 30px 0;
+            line-height: 1.8;
+        }
+        .content p {
+            margin: 15px 0;
+            color: #555;
+        }
+        .what-to-expect {
+            background-color: #f0f7ff;
+            border-left: 4px solid #0084C7;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .what-to-expect h3 {
+            color: #0084C7;
+            margin-top: 0;
+            font-size: 16px;
+        }
+        .what-to-expect ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .what-to-expect li {
+            margin: 8px 0;
+            color: #666;
+        }
+        .contact-info {
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+        .contact-info strong {
+            color: #ff6f00;
+        }
+        .footer {
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+        .footer a {
+            color: #0084C7;
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #0084C7 0%, #0066a1 100%);
+            color: white;
+            padding: 14px 28px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        .cta-button:hover {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>✓ Demo Confirmed!</h2>
+            <p>Your personalized demo with ContractSense is scheduled</p>
+        </div>
+
+        <p>Hi {{ name }},</p>
+
+        <p>Thank you for requesting a demo! We're excited to show you how <strong>ContractSense</strong> can transform your contract management and risk intelligence workflow.</p>
+
+        <div class="demo-details">
+            <h3>Your Scheduled Demo</h3>
+            <div class="date-time">
+                <span class="date">{{ demo_date }}</span>
+                <span class="time">{{ demo_time }} UK Time</span>
+            </div>
+            <div class="timezone">All times shown in UK timezone (GMT/BST)</div>
+        </div>
+
+        <div class="what-to-expect">
+            <h3>What to Expect</h3>
+            <ul>
+                <li><strong>30-minute demo</strong> tailored to your needs</li>
+                <li><strong>Live walkthrough</strong> of key features</li>
+                <li><strong>Q&A session</strong> about your specific requirements</li>
+                <li><strong>Next steps</strong> discussion and integration options</li>
+            </ul>
+        </div>
+
+        <div class="contact-info">
+            <strong>📌 Important:</strong> Our team will send you a meeting link 24 hours before your scheduled demo. Make sure to check your email (including spam folder) for the invite.
+        </div>
+
+        <p>If you need to reschedule or have any questions before the demo, please don't hesitate to reach out to us:</p>
+
+        <div style="text-align: center; color:#e0e0e0">
+            <a href="mailto:support@contractsense.ai" class="cta-button">📧 Contact Support</a>
+        </div>
+
+        <p style="color: #666; margin-top: 30px;">
+            We're looking forward to meeting you and demonstrating how ContractSense can help streamline your contract analysis and risk management processes.
+        </p>
+
+        <p style="color: #666;">
+            Best regards,<br>
+            <strong>The ContractSense Team</strong>
+        </p>
+
+        <div class="footer">
+            <p>ContractSense • Risk Intelligence Platform</p>
+            <p><a href="https://contractsense.ai">Visit our website</a> | <a href="mailto:support@contractsense.ai">support@contractsense.ai</a></p>
+            <p style="margin-top: 15px; color: #999;">You received this email because you scheduled a demo with ContractSense. If you believe this was sent in error, please contact us.</p>
+        </div>
+    </div>
+</body>
+</html>

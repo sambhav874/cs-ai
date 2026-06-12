@@ -1,0 +1,647 @@
+"""Vector-store helper functions and manager used by the contract-agent facade."""
+
+from __future__ import annotations
+
+import os
+import re
+import time
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import pinecone
+from pinecone import ServerlessSpec
+from pymongo.operations import SearchIndexModel
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_openai import OpenAIEmbeddings
+from langchain_pinecone import PineconeVectorStore
+from langchain_mongodb import MongoDBAtlasVectorSearch
+from langchain_voyageai import VoyageAIEmbeddings
+
+from core.config import settings
+from core.database import client as shared_mongo_client
+from utils.secure_logger import log_exception
+from utils.text_cleanup import clean_text_encoding
+
+from .schemas import TextSegment
+from .segmentation import DocumentSegmenter
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class VectorStoreSnapshot:
+    backend: Optional[str]
+    namespace: Optional[str]
+    count: int
+    embedding_backend: Optional[str] = None
+
+
+def current_vector_snapshot(owner: Any) -> VectorStoreSnapshot:
+    return VectorStoreSnapshot(
+        backend=getattr(owner, "current_vector_backend", None),
+        namespace=getattr(owner, "current_namespace", None),
+        count=int(getattr(owner, "current_vector_count", 0) or 0),
+        embedding_backend=getattr(owner, "embedding_backend", None),
+    )
+
+
+def namespace_search_kwargs(owner: Any, *, namespace: Optional[str], k: int) -> Dict[str, Any]:
+    search_kwargs: Dict[str, Any] = {"k": k}
+    if namespace and getattr(owner, "use_mongodb_vector", False):
+        search_kwargs["pre_filter"] = {"namespace": {"$eq": namespace}}
+    if namespace and getattr(owner, "use_pinecone", False):
+        search_kwargs["namespace"] = namespace
+    return search_kwargs
+
+
+def default_vector_namespace(contract_name: str, contract_id: Optional[str] = None) -> str:
+    if contract_id:
+        safe_contract_id = re.sub(r"[^a-zA-Z0-9-]", "-", contract_id)
+        return f"contract-{safe_contract_id}"
+    safe_contract_name = re.sub(r"[^a-zA-Z0-9-]", "-", contract_name)
+    return f"{safe_contract_name}-{int(time.time())}"
+
+
+def embedding_dimension(embedding_backend: Optional[str]) -> int:
+    backend = embedding_backend or ""
+    if backend in {"mongodb_voyage", "voyageai"}:
+        return 1024
+    if backend == "openai":
+        model_name = (settings.openai_embedding_model or "").lower()
+        if "3-large" in model_name:
+            return 3072
+        return getattr(settings, "openai_embed_dim", 1536)
+
+    model_name = (settings.embeddings_model_name or "").lower()
+    if "e5-large" in model_name or "gte-large" in model_name:
+        return 1024
+    if "minilm" in model_name:
+        return 384
+    return 768
+
+
+def prepare_segments_for_document(
+    segments: List[TextSegment],
+    *,
+    contract_id: str,
+    contract_name: str,
+    token_counter: Callable[[str], int],
+) -> List[TextSegment]:
+    prepared_segments: List[TextSegment] = []
+    id_map = {
+        segment.id: segment.id if segment.id.startswith(f"{contract_id}:") else f"{contract_id}:{segment.id}"
+        for segment in segments
+    }
+    for segment in segments:
+        segment.text = clean_text_encoding(segment.text)
+        segment.contract_id = contract_id
+        segment.contract_name = contract_name
+        segment.id = id_map.get(segment.id, segment.id)
+        if segment.parent_id:
+            segment.parent_id = id_map.get(segment.parent_id, segment.parent_id)
+        if segment.parent_chunk_id:
+            segment.parent_chunk_id = id_map.get(segment.parent_chunk_id, segment.parent_chunk_id)
+        segment.child_chunk_ids = [
+            id_map.get(child_id, child_id)
+            for child_id in (segment.child_chunk_ids or [])
+        ]
+        if segment.page_start is None:
+            segment.page_start = segment.page_number
+        if segment.page_end is None:
+            segment.page_end = segment.page_start
+        if segment.char_start is None:
+            segment.char_start = segment.start_index
+        if segment.char_end is None:
+            segment.char_end = segment.end_index
+        if not segment.chunk_level:
+            segment.chunk_level = segment.type
+        if not segment.token_count:
+            segment.token_count = token_counter(segment.text)
+        prepared_segments.append(segment)
+    return prepared_segments
+
+
+def embedding_text_for_segment(segment: TextSegment, segment_text: str) -> str:
+    context_parts = [
+        f"Document: {segment.contract_name}" if segment.contract_name else "",
+        f"Section: {segment.section_path}" if segment.section_path else "",
+        f"Chunk level: {segment.chunk_level or segment.type}",
+        f"Tags: {', '.join(segment.section_tags)}" if segment.section_tags else "",
+        f"Values: {', '.join(segment.value_types)}" if segment.value_types else "",
+        f"Cross references: {', '.join(segment.cross_refs[:5])}" if segment.cross_refs else "",
+    ]
+    context = " | ".join(part for part in context_parts if part)
+    return f"{context}\n{segment_text}" if context else segment_text
+
+
+def segments_to_index_documents(
+    segments: List[TextSegment],
+    *,
+    contract_name: str,
+    contract_id: str,
+    project_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    source: str = "mongodb:index.content",
+) -> List[Document]:
+    documents: List[Document] = []
+    for segment in segments:
+        segment_text = clean_text_encoding(segment.text)
+        if segment.type == "sentence" or len(segment_text.strip()) < 40:
+            continue
+        documents.append(
+            Document(
+                page_content=embedding_text_for_segment(segment, segment_text),
+                metadata={
+                    "source": source,
+                    "contract_name": contract_name,
+                    "contract_id": contract_id,
+                    "document_id": contract_id,
+                    "project_id": project_id,
+                    "user_id": user_id,
+                    "segment_id": segment.id,
+                    "segment_type": segment.type,
+                    "chunk_schema_version": segment.chunk_schema_version,
+                    "chunk_level": segment.chunk_level or segment.type,
+                    "section_path": segment.section_path,
+                    "section_tags": segment.section_tags,
+                    "page_number": segment.page_number,
+                    "page_start": segment.page_start,
+                    "page_end": segment.page_end,
+                    "char_start": segment.char_start,
+                    "char_end": segment.char_end,
+                    "parent_chunk_id": segment.parent_chunk_id or segment.parent_id,
+                    "child_chunk_ids": segment.child_chunk_ids,
+                    "token_count": segment.token_count,
+                    "entities": segment.entities,
+                    "cross_refs": segment.cross_refs,
+                    "obligation_parties": segment.obligation_parties,
+                    "referenced_documents": segment.referenced_documents,
+                    "value_types": segment.value_types,
+                    "is_pdf": False,
+                },
+            )
+        )
+    return documents
+
+
+def documents_for_vector_store(documents: List[Document], text_splitter: Any) -> List[Document]:
+    if any((doc.metadata or {}).get("chunk_schema_version") for doc in documents):
+        return list(documents)
+    return text_splitter.split_documents(documents)
+
+
+class VectorStoreManager:
+    """Manager to load documents, initialize embeddings, and manage MongoDB/Pinecone vector databases."""
+
+    def __init__(self, ai_provider: str = "groq"):
+        self.ai_provider = ai_provider.lower()
+        self.hf_token = getattr(settings, "huggingface_token", None)
+
+        self.groq_api_key = settings.groq_api_key
+        self.gemini_api_key = settings.gemini_api_key
+        self.openai_api_key = settings.openai_api_key
+        self.anthropic_api_key = getattr(settings, "anthropic_api_key", None)
+
+        self.pinecone_api_key = settings.pinecone_api_key
+        self.pinecone_index_name = settings.pinecone_index_name
+        self.voyageai_api_key = settings.voyageai_api_key
+        self.use_voyageai = bool(self.voyageai_api_key)
+        self.mongodb_voyage_api_key = settings.mongodb_voyage_api_key
+        self.use_mongodb_voyage = bool(self.mongodb_voyage_api_key)
+        self.use_mongodb_vector = settings.use_mongodb_vector and bool(settings.mongodb_uri)
+        self.use_pinecone = (not self.use_mongodb_vector) and bool(self.pinecone_api_key)
+
+        self.mongo_client = None
+        self.mongo_collection = None
+        self.embeddings = None
+        self.embedding_backend = None
+
+        self.current_vector_backend = None
+        self.current_namespace = None
+        self.current_vector_count = 0
+
+        self.segmenter = DocumentSegmenter()
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
+            length_function=len
+        )
+
+        self._initialize_embeddings()
+        if self.use_mongodb_vector:
+            self._initialize_mongodb_vector_search()
+        else:
+            self._initialize_pinecone()
+
+    def _initialize_embeddings(self):
+        logger.info("Initializing embeddings...")
+
+        if self.use_mongodb_voyage:
+            import voyageai as _voyageai_module
+            try:
+                _voyageai_module.api_base = settings.mongodb_voyage_api_base
+                logger.info(
+                    f"Attempting to initialize MongoDB Voyage AI embeddings with model: "
+                    f"{settings.mongodb_voyage_model_name} via {settings.mongodb_voyage_api_base}"
+                )
+                self.embeddings = VoyageAIEmbeddings(
+                    model=settings.mongodb_voyage_model_name,
+                    voyage_api_key=self.mongodb_voyage_api_key,
+                )
+                self.embedding_backend = "mongodb_voyage"
+                logger.info("Successfully initialized MongoDB Voyage AI embeddings (primary)")
+                return
+            except Exception as e:
+                _voyageai_module.api_base = "https://api.voyageai.com/v1"
+                logger.warning(f"Failed to initialize MongoDB Voyage AI embeddings: {e}")
+                self.use_mongodb_voyage = False
+
+        if self.use_voyageai:
+            try:
+                logger.info(f"Attempting to initialize VoyageAI embeddings with model: {settings.voyageai_model_name}")
+                self.embeddings = VoyageAIEmbeddings(
+                    model=settings.voyageai_model_name,
+                    voyage_api_key=self.voyageai_api_key
+                )
+                self.embedding_backend = "voyageai"
+                logger.info("Successfully initialized VoyageAI embeddings (secondary)")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to initialize VoyageAI embeddings: {e}")
+                self.use_voyageai = False
+
+        if self.openai_api_key:
+            try:
+                logger.info(f"Attempting to initialize OpenAI embeddings with model: {settings.openai_embedding_model}")
+                self.embeddings = OpenAIEmbeddings(
+                    model=settings.openai_embedding_model,
+                    openai_api_key=self.openai_api_key
+                )
+                self.embedding_backend = "openai"
+                logger.info("Successfully initialized OpenAI embeddings")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to initialize OpenAI embeddings: {e}")
+
+        if settings.embeddings_model_name:
+            try:
+                logger.info(f"Loading HuggingFace embeddings: {settings.embeddings_model_name}")
+                from langchain_huggingface import HuggingFaceEmbeddings
+                self.embeddings = HuggingFaceEmbeddings(
+                    model_name=settings.embeddings_model_name,
+                    model_kwargs={'token': self.hf_token}
+                )
+                self.embedding_backend = "huggingface"
+                logger.info("Successfully initialized HuggingFace embeddings")
+            except Exception as e:
+                logger.error(f"Failed to initialize HuggingFace embeddings: {e}")
+                raise RuntimeError("Could not initialize any embeddings provider")
+        else:
+            raise RuntimeError("No embeddings model configured")
+
+    def _initialize_mongodb_vector_search(self):
+        if self.use_mongodb_vector:
+            try:
+                logger.info("Attempting to initialize MongoDB Atlas Vector Search...")
+                self.mongo_client = shared_mongo_client
+                self.mongo_collection = self.mongo_client[settings.mongodb_db_name][settings.mongodb_collection_name]
+                self.mongo_client.admin.command('ping')
+                logger.info(f"Successfully initialized MongoDB Atlas Vector Search on {settings.mongodb_db_name}.{settings.mongodb_collection_name}")
+            except Exception as e:
+                log_exception(logger, f"Failed to initialize MongoDB Atlas Vector Search", e)
+                self.use_mongodb_vector = False
+                self.mongo_client = None
+                self.mongo_collection = None
+
+    def _initialize_pinecone(self):
+        logger.info("Initializing Pinecone vector store connection...")
+        if self.use_pinecone:
+            try:
+                logger.info(f"Attempting to initialize Pinecone with index: {self.pinecone_index_name}")
+                self.pc = pinecone.Pinecone(api_key=self.pinecone_api_key)
+                available_indexes = self.pc.list_indexes()
+                logger.info(f"Available Pinecone indexes: {available_indexes}")
+
+                if self.pinecone_index_name not in [index.name for index in available_indexes]:
+                    logger.warning(f"Index {self.pinecone_index_name} not found. Creating new index...")
+                    embed_dim = embedding_dimension(self.embedding_backend)
+
+                    logger.info(f"Using embedding dimension: {embed_dim} for new Pinecone index.")
+                    self.pc.create_index(
+                        name=self.pinecone_index_name,
+                        dimension=embed_dim,
+                        metric="cosine",
+                        spec=ServerlessSpec(cloud="aws", region="us-east-1")
+                    )
+                    logger.info(f"Created new Pinecone index: {self.pinecone_index_name}")
+
+                logger.info("Successfully initialized Pinecone")
+                return True
+            except Exception as e:
+                log_exception(logger, f"Failed to initialize Pinecone", e)
+                return False
+        return False
+
+    def load_contract_documents(
+        self,
+        contract_dir: Path,
+        contract_name: str,
+        specific_contract_output_dir: Path,
+    ) -> Tuple[List[Document], List[TextSegment]]:
+        markdown_path = contract_dir / f"{contract_name}.md"
+        pdf_path = contract_dir / f"{contract_name}.pdf"
+
+        documents = []
+        segments: List[TextSegment] = []
+
+        if markdown_path.exists():
+            try:
+                logger.info(f"Processing Markdown file: {markdown_path}")
+                with open(markdown_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+
+                clean_content, md_segments = self.segmenter.segment_text_with_page_markers(content)
+
+                document = Document(
+                    page_content=f"Contract Content:\n{clean_content}",
+                    metadata={
+                        "source": str(markdown_path),
+                        "contract_name": contract_name,
+                        "is_pdf": False
+                    }
+                )
+                documents.append(document)
+                segments = md_segments
+
+                logger.info(f"Saved full text from Markdown to {specific_contract_output_dir}")
+            except Exception as e:
+                log_exception(logger, f"Error reading markdown file {markdown_path}", e)
+
+        if not documents and pdf_path.exists():
+            try:
+                logger.info(f"Processing PDF file as fallback: {pdf_path}")
+                full_text_from_pdf, pdf_segments = self.segmenter.segment_pdf(pdf_path, contract_name, specific_contract_output_dir)
+
+                if full_text_from_pdf:
+                    document = Document(
+                        page_content=f"Contract Content:\n{full_text_from_pdf}",
+                        metadata={
+                            "source": str(pdf_path),
+                            "contract_name": contract_name,
+                            "is_pdf": True,
+                            "pdf_path": str(pdf_path)
+                        }
+                    )
+                    documents.append(document)
+                    segments = pdf_segments
+            except Exception as e:
+                log_exception(logger, f"Error processing PDF file {pdf_path}", e)
+
+        return documents, segments
+
+    def load_existing_vector_store(self, namespace: Optional[str]):
+        if not namespace:
+            return None
+
+        if self.use_mongodb_vector:
+            try:
+                if self.mongo_collection is not None:
+                    vector_count = self.mongo_collection.count_documents({"namespace": namespace})
+                    if vector_count == 0:
+                        logger.warning(f"No MongoDB vectors found for namespace {namespace}.")
+                        return None
+                    self.current_vector_count = vector_count
+
+                vector_store = MongoDBAtlasVectorSearch.from_connection_string(
+                    connection_string=settings.mongodb_uri,
+                    namespace=f"{settings.mongodb_db_name}.{settings.mongodb_collection_name}",
+                    embedding=self.embeddings,
+                    index_name=settings.mongodb_vector_index_name
+                )
+                self.current_namespace = namespace
+                self.current_vector_backend = "mongodb"
+                logger.info(f"Loaded existing MongoDB vector store namespace {namespace}.")
+                return vector_store
+            except Exception as e:
+                log_exception(logger, f"Failed to load MongoDB vector store namespace {namespace}", e)
+
+        return None
+
+    def create_vector_store(
+        self,
+        documents: List[Document],
+        contract_name: str,
+        namespace: Optional[str] = None,
+        contract_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        replace_existing: bool = False,
+    ):
+        if not documents:
+            logger.warning(f"No documents provided to create vector store for {contract_name}.")
+            return None
+
+        texts = documents_for_vector_store(documents, self.text_splitter)
+        if not texts:
+            logger.warning(f"Text splitting resulted in no chunks for {contract_name}.")
+            return None
+
+        self.current_vector_backend = None
+        self.current_vector_count = 0
+        namespace = namespace or default_vector_namespace(contract_name, contract_id)
+
+        for i, text in enumerate(texts):
+            text.metadata["chunk_index"] = i
+            text.metadata["contract_name"] = contract_name
+            if contract_id:
+                text.metadata["contract_id"] = contract_id
+            if project_id:
+                text.metadata["project_id"] = project_id
+            if user_id:
+                text.metadata["user_id"] = user_id
+            text.metadata["embedded_at"] = datetime.utcnow().isoformat()
+
+        # MongoDB Atlas Vector Search
+        if self.use_mongodb_vector:
+            try:
+                logger.info(f"Creating MongoDB Atlas vector store with namespace {namespace}")
+                if not self.embeddings:
+                    logger.error("Embeddings are not initialized. Cannot create MongoDB vector store.")
+                else:
+                    if replace_existing and self.mongo_collection is not None:
+                        deleted = self.mongo_collection.delete_many({"namespace": namespace}).deleted_count
+                        logger.info(f"Deleted {deleted} existing MongoDB vectors for namespace {namespace}")
+
+                    for doc in texts:
+                        doc.metadata["namespace"] = namespace
+                        doc.metadata["contract_name"] = contract_name
+                        if project_id:
+                            doc.metadata["project_id"] = project_id
+
+                    vector_store = MongoDBAtlasVectorSearch.from_connection_string(
+                        connection_string=settings.mongodb_uri,
+                        namespace=f"{settings.mongodb_db_name}.{settings.mongodb_collection_name}",
+                        embedding=self.embeddings,
+                        index_name=settings.mongodb_vector_index_name
+                    )
+                    vector_store.add_documents(texts)
+                    self.current_vector_count = len(texts)
+
+                    try:
+                        vector_store.create_vector_search_index(
+                            dimensions=embedding_dimension(self.embedding_backend),
+                            filters=[
+                                "namespace",
+                                "contract_name",
+                                "contract_id",
+                                "document_id",
+                                "project_id",
+                                "chunk_schema_version",
+                                "chunk_level",
+                                "section_tags",
+                                "referenced_documents",
+                            ]
+                        )
+                        logger.info("MongoDB vector search index ensured.")
+                    except Exception as idx_err:
+                        logger.debug(f"Vector search index already exists or could not be auto-created: {idx_err}")
+
+                    self.current_namespace = namespace
+                    self.current_vector_backend = "mongodb"
+                    logger.info(f"Successfully created MongoDB Atlas vector store with namespace {namespace}")
+                    return vector_store
+            except Exception as e:
+                log_exception(logger, "MongoDB vector store failed, falling back to FAISS", e)
+
+        # Pinecone
+        if self.use_pinecone:
+            try:
+                logger.info(f"Creating Pinecone vector store with namespace {namespace} for index {self.pinecone_index_name}")
+                if not self.embeddings:
+                    logger.error("Embeddings are not initialized. Cannot create Pinecone vector store.")
+                    return None
+
+                vector_store = PineconeVectorStore.from_documents(
+                    [],
+                    self.embeddings,
+                    index_name=self.pinecone_index_name,
+                    namespace=namespace
+                )
+
+                batch_size = getattr(settings, "pinecone_batch_size", 20)
+                for i in range(0, len(texts), batch_size):
+                    batch = texts[i:i + batch_size]
+                    logger.info(f"Adding batch {i//batch_size + 1} of {len(batch)} documents to Pinecone.")
+                    for doc_in_batch in batch:
+                        if len(doc_in_batch.page_content) > 8000:
+                            doc_in_batch.page_content = doc_in_batch.page_content[:8000]
+                    vector_store.add_documents(batch)
+                    if i + batch_size < len(texts):
+                        time.sleep(getattr(settings, "pinecone_batch_sleep", 10))
+
+                time.sleep(5)
+                self.current_namespace = namespace
+                self.current_vector_backend = "pinecone"
+                self.current_vector_count = len(texts)
+                logger.info(f"Successfully created and populated Pinecone vector store with namespace {namespace}")
+                return vector_store
+            except Exception as e:
+                log_exception(logger, f"Error creating Pinecone vector store", e)
+
+        # FAISS fallback
+        try:
+            from langchain_community.vectorstores import FAISS
+            logger.info("Using FAISS vector store as fallback or default.")
+            if not self.embeddings:
+                logger.error("Embeddings are not initialized. Cannot create FAISS vector store.")
+                return None
+            vector_store = FAISS.from_documents(texts, self.embeddings)
+            time.sleep(1)
+            self.current_vector_backend = "faiss"
+            self.current_vector_count = len(texts)
+            logger.info("Successfully created FAISS vector store.")
+            return vector_store
+        except ImportError:
+            logger.error("FAISS is not available, and MongoDB/Pinecone setup failed or was not enabled.")
+            raise RuntimeError("No vector store implementation available or successfully initialized.")
+        except Exception as e:
+            log_exception(logger, f"Error creating FAISS vector store", e)
+            return None
+
+    def embed_contract_text(
+        self,
+        contract_text: str,
+        contract_name: str,
+        *,
+        contract_id: str,
+        project_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        namespace: Optional[str] = None,
+        replace_existing: bool = True,
+        require_mongodb: bool = True,
+    ) -> Dict[str, Any]:
+        clean_content, segments = self.segmenter.segment_text_with_page_markers(contract_text)
+        if not clean_content.strip():
+            raise ValueError("No extracted contract text available to embed.")
+
+        segments = prepare_segments_for_document(
+            segments,
+            contract_id=contract_id,
+            contract_name=contract_name,
+            token_counter=self.segmenter._estimated_tokens,
+        )
+        namespace = namespace or default_vector_namespace(contract_name, contract_id)
+        index_documents = segments_to_index_documents(
+            segments,
+            contract_name=contract_name,
+            contract_id=contract_id,
+            project_id=project_id,
+            user_id=user_id,
+        )
+        if not index_documents:
+            index_documents = [
+                Document(
+                    page_content=f"Contract Content:\n{clean_content}",
+                    metadata={
+                        "source": "mongodb:index.content",
+                        "contract_name": contract_name,
+                        "contract_id": contract_id,
+                        "project_id": project_id,
+                        "user_id": user_id,
+                        "is_pdf": False,
+                    }
+                )
+            ]
+        chunk_count = len(documents_for_vector_store(index_documents, self.text_splitter))
+
+        vector_store = self.create_vector_store(
+            index_documents,
+            contract_name,
+            namespace=namespace,
+            contract_id=contract_id,
+            project_id=project_id,
+            user_id=user_id,
+            replace_existing=replace_existing,
+        )
+        if not vector_store:
+            raise RuntimeError("Vector store creation failed.")
+
+        if require_mongodb and self.current_vector_backend != "mongodb":
+            raise RuntimeError("MongoDB vector storage is unavailable; embeddings were not persisted in the database.")
+
+        return {
+            "namespace": self.current_namespace,
+            "backend": self.current_vector_backend,
+            "collection": f"{settings.mongodb_db_name}.{settings.mongodb_collection_name}"
+                if self.current_vector_backend == "mongodb" else None,
+            "chunk_count": self.current_vector_count or chunk_count,
+            "segment_count": len(segments),
+            "chunk_schema_version": getattr(settings, "chunk_schema_version", 2),
+            "embedding_backend": self.embedding_backend,
+            "embedding_dimension": embedding_dimension(self.embedding_backend),
+        }

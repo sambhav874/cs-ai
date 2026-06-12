@@ -1,0 +1,4 @@
+approval_required_action_rate,artifact_grounding,attempt,case_id,forbidden_tool_block_rate,layer,passed,required_column_completion,row_citation_precision,score,source_contract_immutability,table_cell_accuracy,table_schema_correctness,tool_argument_accuracy,tool_selection_accuracy,tool_sequence_validity,workflow_completion
+0.0,1.0,1,acord-Change Of Control-change-of-control-fbe732bcd8f6:tools:table_review:b50e0ef2e8,1.0,tools,False,1.0,0.0,0.6667,1.0,0.0,1.0,1.0,0.0,1.0,1.0
+0.0,1.0,1,acord-Clause with multiple governing laws-clause-with-multiple-governing-laws-93d8a44d6f78:tools:table_review:c50f4c4842,1.0,tools,False,1.0,0.0,0.6667,1.0,0.0,1.0,1.0,0.0,1.0,1.0
+0.0,1.0,1,acord-IP Ownership Assignment or Transfer-ip-ownership-assignment-or-transfer-1afef23e7432:tools:table_review:5b4458fc18,1.0,tools,False,1.0,0.0,0.6667,1.0,0.0,1.0,1.0,0.0,1.0,1.0

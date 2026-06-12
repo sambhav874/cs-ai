@@ -1,0 +1,105 @@
+# Service for Backend
+apiVersion: v1
+kind: Service
+metadata:
+  name: extractor-backend
+spec:
+  selector:
+    app: extractor-backend
+  ports:
+  - port: {{ .Values.backendServicePort }}
+    targetPort: {{ .Values.backendPort }}
+    name: http
+  type: LoadBalancer  # Changed from LoadBalancer for internal service
+---
+# Service for Frontend
+apiVersion: v1
+kind: Service
+metadata:
+  name: extractor-frontend
+spec:
+  selector:
+    app: extractor-frontend
+  ports:
+  - port: {{ .Values.frontendServicePort }}
+    targetPort: {{ .Values.frontendPort }}
+    name: http
+  type: LoadBalancer
+---
+# HorizontalPodAutoscaler for Backend
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: extractor-backend-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: extractor-backend
+  minReplicas: 2  # Increased from 2
+  maxReplicas: 10  # Increased from 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60  # Reduced from 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70  # Reduced from 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30  # Reduced from 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30  # Reduced from 60
+    scaleDown:
+      stabilizationWindowSeconds: 180  # Reduced from 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+---
+# HorizontalPodAutoscaler for Frontend
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: extractor-frontend-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: extractor-frontend
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 180
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60

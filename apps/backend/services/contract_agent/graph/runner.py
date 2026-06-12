@@ -1,0 +1,121 @@
+"""Model-led LangGraph ReAct runner for ContractSense."""
+
+from __future__ import annotations
+
+from typing import Any, Callable, Dict, Optional
+
+from .middleware import ActiveMiddlewareEngine
+from .persistence import AgentRunStore
+from .react_runtime import ContractReActRuntime
+from .state import AgentResponse, AgentRunState, AgentStatus, ToolCallRecord
+
+try:
+    from langgraph.checkpoint.memory import MemorySaver
+except Exception:  # pragma: no cover - optional dependency guard.
+    MemorySaver = None  # type: ignore[assignment]
+
+
+ToolExecutor = Callable[[ToolCallRecord, AgentRunState], Dict[str, Any]]
+
+_SHARED_MEMORY_CHECKPOINTER = MemorySaver() if MemorySaver else None
+
+
+class DeepContractAgentRunner:
+    """Stable API wrapper around the LangGraph ReAct agent.
+
+    The model chooses whether to answer, call retrieval/calculation tools, or
+    request approval. This runner only applies backend safety, trace formatting,
+    persistence, and response-shape compatibility.
+    """
+
+    def __init__(
+        self,
+        store: Optional[AgentRunStore] = None,
+        tool_executor: Optional[ToolExecutor] = None,
+        checkpointer: Optional[Any] = None,
+        model: Optional[Any] = None,
+        max_iterations: Optional[int] = None,
+    ) -> None:
+        self.store = store
+        self.tool_executor = tool_executor
+        self.checkpointer = checkpointer if checkpointer is not None else _SHARED_MEMORY_CHECKPOINTER
+        self.model = model
+        self.max_iterations = max_iterations
+        self.middleware = ActiveMiddlewareEngine()
+        self.graph: Optional[Any] = None
+
+    def run(self, state: AgentRunState) -> AgentResponse:
+        state.status = AgentStatus.RUNNING
+        state.add_trace("input_guard", message_length=len(state.message))
+        state = self.middleware.input_guard(state)
+        if state.status != AgentStatus.COMPLETED:
+            self._add_context_trace(state)
+            state = self.middleware.model_guard(state)
+            runtime = ContractReActRuntime(
+                tool_executor=self.tool_executor,
+                checkpointer=self.checkpointer,
+                model=self.model,
+                max_iterations=self.max_iterations,
+            )
+            state = runtime.run(state, checkpoint_config=self.checkpoint_config(state))
+            self.graph = runtime.graph
+            state = self.middleware.tool_guard(state)
+            if state.status == AgentStatus.WAITING_APPROVAL:
+                state = self.middleware.approval_guard(state)
+            elif state.status == AgentStatus.COMPLETED:
+                state = self.middleware.answer_guard(state)
+        self._persist(state)
+        return self.response_from_state(state)
+
+    def checkpoint_thread_id(self, state: AgentRunState) -> str:
+        context = state.context
+        scope_id = (
+            context.contract_id
+            or context.project_id
+            or context.review_id
+            or context.playbook_id
+            or context.surface.value
+            or "global"
+        )
+        run_scope = context.session_id or state.workflow_id
+        raw_parts = ["contract-agent", state.user_id, scope_id, run_scope]
+        return ":".join(str(part).replace(":", "_") for part in raw_parts if part)
+
+    def checkpoint_config(self, state: AgentRunState) -> Dict[str, Any]:
+        return {"configurable": {"thread_id": self.checkpoint_thread_id(state)}}
+
+    def response_from_state(self, state: AgentRunState) -> AgentResponse:
+        requires_approval = state.status == AgentStatus.WAITING_APPROVAL
+        return AgentResponse(
+            answer=state.answer,
+            workflow=state.workflow,
+            confidence=state.confidence,
+            reason=state.reason,
+            citation_details=state.citation_details,
+            citation_annotations=state.citation_annotations,
+            artifacts=state.artifacts,
+            workflow_id=state.workflow_id,
+            workflow_status=state.status,
+            requires_approval=requires_approval,
+            approval_request=state.approval_request if requires_approval else None,
+            tools=[tool.model_dump(mode="json") for tool in state.tools],
+            agent_trace=[trace.model_dump(mode="json") for trace in state.traces],
+            token_usage=state.token_usage,
+            cost_usd=state.cost.cost_usd,
+            created_review_id=state.created_review_id,
+        )
+
+    def _add_context_trace(self, state: AgentRunState) -> None:
+        state.add_trace(
+            "context_resolver",
+            surface=state.context.surface.value,
+            contract_id=state.context.contract_id,
+            project_id=state.context.project_id,
+            selected_document_count=len(state.context.selected_document_ids),
+        )
+
+    def _persist(self, state: AgentRunState) -> None:
+        state.add_trace("persist_run", persisted=bool(self.store))
+        state.add_trace("final_response", status=state.status.value)
+        if self.store:
+            self.store.save(state)

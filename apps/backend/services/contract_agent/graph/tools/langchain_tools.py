@@ -1,0 +1,669 @@
+"""LangChain tool wrappers for the ContractSense ReAct agent."""
+
+from __future__ import annotations
+
+import ast
+import json
+from typing import Any, Callable, Dict, List, Optional
+
+from langchain_core.tools import BaseTool, tool
+from pydantic import BaseModel, Field
+
+from ..state import AgentRunState, ToolCallRecord
+from .registry import APPROVAL_REQUIRED_TOOLS
+
+
+APPROVAL_REQUIRED_FLAG = "__APPROVAL_REQUIRED__"
+
+ToolExecutor = Callable[[ToolCallRecord, AgentRunState], Dict[str, Any]]
+
+READ_TOOL_REPEAT_LIMITS = {
+    "search_evidence": 2,
+    "read_evidence": 2,
+    "find_in_document": 2,
+    "read_document": 1,
+    "outline_document": 1,
+    "get_kpi_context": 1,
+}
+
+
+class ProjectInput(BaseModel):
+    project_id: str = Field(default="", description="Optional project scope ID.")
+
+
+class DocumentIdInput(BaseModel):
+    document_id: str = Field(default="", description="Unique ID of the target document.")
+
+
+class FetchDocumentsInput(BaseModel):
+    document_ids: Any = Field(default_factory=list, description="Optional document IDs to fetch.")
+
+
+class SearchInput(BaseModel):
+    query: Any = Field(..., description="Concise retrieval query rewritten from the user's evidence need.")
+    queries: Any = Field(default_factory=list, description="Optional additional rewritten retrieval queries for related evidence needs.")
+    document_ids: Any = Field(default_factory=list, description="Optional document IDs to restrict search.")
+    top_k: Any = Field(default=5, description="Maximum evidence snippets to return.")
+    intent: str = Field(default="", description="Optional retrieval intent: fact, summary, compare, or normal.")
+    must_contain: Any = Field(default_factory=list, description="Optional exact terms or phrases that returned evidence must contain.")
+    section_ref: str = Field(default="", description="Optional section, clause, article, schedule, or exhibit reference.")
+
+
+class EvidenceInput(BaseModel):
+    evidence_ids: Any = Field(default_factory=list, description="Evidence or segment IDs to read.")
+
+
+class FindInDocumentInput(BaseModel):
+    document_id: str = Field(default="", description="Document to search within.")
+    term: str = Field(default="", description="Keyword, phrase, or clause reference to locate.")
+    query: str = Field(default="", description="Alias for term.")
+
+
+class KPIInput(BaseModel):
+    contract_id: str = Field(default="", description="Contract ID owning KPI/SLA records.")
+    metric_name: str = Field(default="", description="Optional KPI/SLA metric name.")
+
+
+class KPIExtractionInput(BaseModel):
+    contract_id: str = Field(default="", description="Single ingested contract ID to extract KPI/SLA candidates for.")
+    replace_drafts: bool = Field(default=True, description="Replace existing draft/ignored KPI candidates for this contract.")
+    ai_provider: str = Field(default="", description="Optional AI provider to use for hybrid KPI extraction.")
+
+
+class CalculateInput(BaseModel):
+    expression: str = Field(default="", description="Arithmetic expression grounded in evidence.")
+    context: str = Field(default="", description="Calculation context and source values.")
+
+
+class MemoryInput(BaseModel):
+    session_id: str = Field(default="", description="Session or conversation ID.")
+    keys: List[str] = Field(default_factory=list, description="Optional memory keys.")
+
+
+class PlaybookInput(BaseModel):
+    playbook_id: str = Field(default="", description="Playbook ID.")
+
+
+class TabularReviewInput(BaseModel):
+    review_id: str = Field(default="", description="Tabular review ID.")
+
+
+class ReadTableCellsInput(BaseModel):
+    review_id: str = Field(default="", description="Tabular review ID.")
+    row: int = Field(default=0, description="Zero-indexed row number.")
+    columns: Any = Field(default_factory=list, description="Column names to read.")
+
+
+class WorkflowInput(BaseModel):
+    workflow_id: str = Field(default="", description="Agent workflow ID.")
+
+
+class DraftArtifactInput(BaseModel):
+    document_id: str = Field(default="", description="Document to use as evidence.")
+    draft_type: str = Field(default="memo", description="notice, memo, checklist, summary, or other draft type.")
+    instructions: str = Field(default="", description="Drafting instructions.")
+
+
+class RedlineArtifactInput(BaseModel):
+    source_document_id: str = Field(default="", description="Source document ID.")
+    target_document_id: str = Field(default="", description="Target document ID or editable copy ID.")
+    redline_instructions: str = Field(default="", description="Requested redline changes.")
+
+
+class EditableCopyInput(BaseModel):
+    document_id: str = Field(default="", description="Document to copy.")
+    copy_name: str = Field(default="", description="Name for the editable copy.")
+
+
+class DuplicateDocumentInput(BaseModel):
+    document_id: str = Field(default="", description="Document to duplicate.")
+    new_name: str = Field(default="", description="Name for the new document.")
+
+
+class EditDocumentInput(BaseModel):
+    document_id: str = Field(default="", description="Editable document ID.")
+    section_id: str = Field(default="", description="Section or source span to edit.")
+    new_text: str = Field(default="", description="Replacement text.")
+
+
+class GenerateDocxInput(BaseModel):
+    content: str = Field(default="", description="Content to export.")
+    filename: str = Field(default="contractsense-draft.docx", description="DOCX filename.")
+
+
+class CreateTabularReviewInput(BaseModel):
+    name: str = Field(default="ContractSense Review", description="Review title.")
+    document_ids: Any = Field(default_factory=list, description="Documents to review.")
+    columns: Any = Field(default_factory=list, description="Proposed review columns.")
+
+
+class GenerateTabularReviewInput(BaseModel):
+    review_id: str = Field(default="", description="Existing tabular review ID.")
+    instructions: str = Field(default="", description="Generation instructions.")
+
+
+class ReplicateDocumentInput(BaseModel):
+    document_id: str = Field(default="", description="Document to replicate.")
+    target_project_id: str = Field(default="", description="Destination project ID.")
+
+
+def build_langchain_tools(
+    *,
+    state: AgentRunState,
+    tool_executor: Optional[ToolExecutor] = None,
+    fallback_executor: Optional[ToolExecutor] = None,
+) -> List[BaseTool]:
+    """Build state-bound LangChain tools for one agent run."""
+
+    def run_read_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        record = ToolCallRecord(
+            name=name,
+            args=_sanitize_args(args),
+            status="planned",
+            reason="Selected by LangChain ReAct executor.",
+            iteration=len(state.tools) + 1,
+        )
+        state.tools.append(record)
+        state.add_trace("tool_start", iteration=record.iteration, tool=record.name, args=record.args)
+        executor = tool_executor or fallback_executor
+        try:
+            loop_result = _read_tool_loop_result(name, state)
+            result = loop_result if loop_result else executor(record, state) if executor else _default_read_observation(record, state)
+            result = _coerce_observation(result)
+            summary_text = str(result.get("summary") or "")
+            if len(summary_text) > 4000:
+                result["summary"] = summary_text[:4000] + "\n... [truncated due to context budget limits]"
+                state.add_trace("middleware:ContextEditingMiddleware", mode="prune_large_tool_results", original_len=len(summary_text))
+            record.status = "done"
+            if result.get("tool_budget_exhausted"):
+                state.add_trace("tool_budget_exhausted", tool=record.name, summary=str(result.get("summary") or "")[:500])
+        except Exception as exc:
+            result = {"summary": "Tool execution failed.", "error": str(exc)[:500]}
+            record.status = "error"
+        record.observation = result
+        state.react_scratchpad.append({
+            "iteration": record.iteration,
+            "tool": record.name,
+            "status": record.status,
+            "observation": result,
+        })
+        state.add_trace(
+            "tool_result",
+            iteration=record.iteration,
+            tool=record.name,
+            status=record.status,
+            summary=str(result.get("summary") or "")[:500],
+        )
+        state.add_trace(
+            "react_tool_observation",
+            iteration=record.iteration,
+            tool=record.name,
+            status=record.status,
+            summary=str(result.get("summary") or "")[:500],
+        )
+        return result
+
+    def run_approval_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        params = _sanitize_args(args)
+        record = ToolCallRecord(
+            name=name,
+            args=params,
+            status="planned",
+            reason="Side-effecting tool blocked until human approval.",
+            iteration=len(state.tools) + 1,
+        )
+        payload = _approval_payload(name=name, params=params, state=state)
+        record.observation = payload
+        state.tools.append(record)
+        state.add_trace("tool_start", iteration=record.iteration, tool=record.name, args=record.args)
+        state.react_scratchpad.append({
+            "iteration": record.iteration,
+            "tool": record.name,
+            "status": record.status,
+            "observation": payload,
+        })
+        state.add_trace(
+            "tool_result",
+            iteration=record.iteration,
+            tool=record.name,
+            status=record.status,
+            summary=payload["message"],
+        )
+        state.add_trace("approval_required", tool=record.name, reason_summary=payload["message"])
+        state.add_trace(
+            "react_tool_observation",
+            iteration=record.iteration,
+            tool=record.name,
+            status=record.status,
+            summary=payload["message"],
+        )
+        from services.contract_agent.react_agent import ApprovalRequiredError
+        raise ApprovalRequiredError(payload)
+
+    @tool("list_documents", args_schema=ProjectInput)
+    def list_documents(project_id: str = "") -> Dict[str, Any]:
+        """List scoped documents with IDs, filenames, and indexing metadata. READ-ONLY."""
+        return run_read_tool("list_documents", {"project_id": project_id})
+
+    @tool("fetch_documents", args_schema=FetchDocumentsInput)
+    def fetch_documents(document_ids: Any = None) -> Dict[str, Any]:
+        """Fetch metadata for scoped indexed documents. READ-ONLY."""
+        payload = _payload_from_react_value(document_ids, "document_ids")
+        return run_read_tool("fetch_documents", {"document_ids": _coerce_list(payload.get("document_ids"))})
+
+    @tool("read_document", args_schema=DocumentIdInput)
+    def read_document(document_id: str = "") -> Dict[str, Any]:
+        """Read the current or requested scoped document excerpt. READ-ONLY."""
+        payload = _payload_from_react_value(document_id, "document_id")
+        return run_read_tool("read_document", {"document_id": payload.get("document_id", "")})
+
+    @tool("outline_document", args_schema=DocumentIdInput)
+    def outline_document(document_id: str = "") -> Dict[str, Any]:
+        """Return the current or requested document outline when available. READ-ONLY."""
+        payload = _payload_from_react_value(document_id, "document_id")
+        return run_read_tool("outline_document", {"document_id": payload.get("document_id", "")})
+
+    @tool("search_evidence", args_schema=SearchInput)
+    def search_evidence(
+        query: Any,
+        queries: Any = None,
+        document_ids: Any = None,
+        top_k: Any = 5,
+        intent: str = "",
+        must_contain: Any = None,
+        section_ref: str = "",
+    ) -> Dict[str, Any]:
+        """Search scoped ContractSense evidence candidates using rewritten retrieval queries. READ-ONLY. Call read_evidence before final cited answers."""
+        payload = _payload_from_react_value(query, "query")
+        if queries not in (None, "", [], {}):
+            payload["queries"] = queries
+        if document_ids not in (None, "", [], {}):
+            payload["document_ids"] = document_ids
+        if top_k not in (None, "", [], {}):
+            payload["top_k"] = top_k
+        if intent:
+            payload["intent"] = intent
+        if must_contain not in (None, "", [], {}):
+            payload["must_contain"] = must_contain
+        if section_ref:
+            payload["section_ref"] = section_ref
+        rewritten_queries = _coerce_list(payload.get("queries"))
+        primary_query = str(payload.get("query") or "")
+        if primary_query and primary_query not in rewritten_queries:
+            rewritten_queries.insert(0, primary_query)
+        return run_read_tool(
+            "search_evidence",
+            {
+                "query": primary_query,
+                "queries": rewritten_queries,
+                "document_ids": _coerce_list(payload.get("document_ids")),
+                "top_k": _coerce_int(payload.get("top_k"), 5),
+                "intent": str(payload.get("intent") or ""),
+                "must_contain": _coerce_list(payload.get("must_contain")),
+                "section_ref": str(payload.get("section_ref") or ""),
+            },
+        )
+
+    @tool("read_evidence", args_schema=EvidenceInput)
+    def read_evidence(evidence_ids: Any = None) -> Dict[str, Any]:
+        """Read exact quote, context, page, section, char span, and confidence metadata for evidence IDs returned by search. READ-ONLY."""
+        payload = _payload_from_react_value(evidence_ids, "evidence_ids")
+        return run_read_tool("read_evidence", {"evidence_ids": _coerce_list(payload.get("evidence_ids"))})
+
+    @tool("find_in_document", args_schema=FindInDocumentInput)
+    def find_in_document(document_id: str = "", term: str = "", query: str = "") -> Dict[str, Any]:
+        """Find a term, phrase, or clause reference inside a scoped document. READ-ONLY."""
+        payload = _payload_from_react_value(document_id, "document_id")
+        if term:
+            payload["term"] = term
+        if query:
+            payload["query"] = query
+        return run_read_tool("find_in_document", {"document_id": payload.get("document_id", ""), "term": payload.get("term", ""), "query": payload.get("query") or payload.get("term", "")})
+
+    @tool("get_kpi_context", args_schema=KPIInput)
+    def get_kpi_context(contract_id: str = "", metric_name: str = "") -> Dict[str, Any]:
+        """Retrieve visible KPI/SLA context for the scoped contract or project. READ-ONLY."""
+        payload = _payload_from_react_value(contract_id, "contract_id")
+        if metric_name:
+            payload["metric_name"] = metric_name
+        return run_read_tool("get_kpi_context", {"contract_id": payload.get("contract_id", ""), "metric_name": payload.get("metric_name", "")})
+
+    @tool("extract_kpis", args_schema=KPIExtractionInput)
+    def extract_kpis(contract_id: str = "", replace_drafts: bool = True, ai_provider: str = "") -> Dict[str, Any]:
+        """Run KPI/SLA extraction for one scoped ingested contract. Requires human approval before writing draft KPI records."""
+        payload = _payload_from_react_value(contract_id, "contract_id")
+        payload["replace_drafts"] = replace_drafts
+        if ai_provider:
+            payload["ai_provider"] = ai_provider
+        return run_approval_tool("extract_kpis", payload)
+
+    @tool("calculate_from_evidence", args_schema=CalculateInput)
+    def calculate_from_evidence(expression: str = "", context: str = "") -> Dict[str, Any]:
+        """Calculate values from cited evidence and show source context. READ-ONLY."""
+        payload = _payload_from_react_value(expression, "expression")
+        if context:
+            payload["context"] = context
+        return run_read_tool("calculate_from_evidence", {"expression": payload.get("expression", ""), "context": payload.get("context", "")})
+
+    @tool("get_memory_context", args_schema=MemoryInput)
+    def get_memory_context(session_id: str = "", keys: List[str] | None = None) -> Dict[str, Any]:
+        """Retrieve safe conversation/session continuity context. READ-ONLY."""
+        payload = _payload_from_react_value(session_id, "session_id")
+        if keys:
+            payload["keys"] = keys
+        return run_read_tool("get_memory_context", {"session_id": payload.get("session_id", ""), "keys": _coerce_list(payload.get("keys"))})
+
+    @tool("list_playbooks", args_schema=ProjectInput)
+    def list_playbooks(project_id: str = "") -> Dict[str, Any]:
+        """List scoped contract playbooks or review guides. READ-ONLY."""
+        return run_read_tool("list_playbooks", {"project_id": project_id})
+
+    @tool("read_playbook_rules", args_schema=PlaybookInput)
+    def read_playbook_rules(playbook_id: str = "") -> Dict[str, Any]:
+        """Read scoped playbook rules. READ-ONLY."""
+        return run_read_tool("read_playbook_rules", {"playbook_id": playbook_id})
+
+    @tool("list_tabular_reviews", args_schema=ProjectInput)
+    def list_tabular_reviews(project_id: str = "") -> Dict[str, Any]:
+        """List existing tabular reviews in scope. READ-ONLY."""
+        return run_read_tool("list_tabular_reviews", {"project_id": project_id})
+
+    @tool("get_tabular_review", args_schema=TabularReviewInput)
+    def get_tabular_review(review_id: str = "") -> Dict[str, Any]:
+        """Read an existing tabular review schema and rows. READ-ONLY."""
+        return run_read_tool("get_tabular_review", {"review_id": review_id})
+
+    @tool("read_table_cells", args_schema=ReadTableCellsInput)
+    def read_table_cells(review_id: str = "", row: int = 0, columns: List[str] | None = None) -> Dict[str, Any]:
+        """Read selected cells from an existing tabular review. READ-ONLY."""
+        payload = _payload_from_react_value(review_id, "review_id")
+        if row:
+            payload["row"] = row
+        if columns:
+            payload["columns"] = columns
+        return run_read_tool("read_table_cells", {"review_id": payload.get("review_id", ""), "row": _coerce_int(payload.get("row"), 0), "columns": _coerce_list(payload.get("columns"))})
+
+    @tool("list_workflows", args_schema=ProjectInput)
+    def list_workflows(project_id: str = "") -> Dict[str, Any]:
+        """List relevant ContractSense agent workflows in the current scope. READ-ONLY."""
+        return run_read_tool("list_workflows", {"project_id": project_id})
+
+    @tool("read_workflow", args_schema=WorkflowInput)
+    def read_workflow(workflow_id: str = "") -> Dict[str, Any]:
+        """Read a prior ContractSense workflow summary. READ-ONLY."""
+        return run_read_tool("read_workflow", {"workflow_id": workflow_id})
+
+    @tool("create_draft_artifact", args_schema=DraftArtifactInput)
+    def create_draft_artifact(document_id: str = "", draft_type: str = "memo", instructions: str = "") -> Dict[str, Any]:
+        """Propose a draft artifact. Requires human approval before creation."""
+        payload = _payload_from_react_value(document_id, "document_id")
+        payload.setdefault("draft_type", draft_type)
+        if instructions:
+            payload["instructions"] = instructions
+        return run_approval_tool("create_draft_artifact", payload)
+
+    @tool("create_redline_artifact", args_schema=RedlineArtifactInput)
+    def create_redline_artifact(source_document_id: str = "", target_document_id: str = "", redline_instructions: str = "") -> Dict[str, Any]:
+        """Propose a redline artifact. Requires human approval before creation."""
+        payload = _payload_from_react_value(source_document_id, "source_document_id")
+        if target_document_id:
+            payload["target_document_id"] = target_document_id
+        if redline_instructions:
+            payload["redline_instructions"] = redline_instructions
+        return run_approval_tool("create_redline_artifact", payload)
+
+    @tool("create_editable_copy", args_schema=EditableCopyInput)
+    def create_editable_copy(document_id: str = "", copy_name: str = "") -> Dict[str, Any]:
+        """Propose an editable document copy. Requires human approval before creation."""
+        payload = _payload_from_react_value(document_id, "document_id")
+        if copy_name:
+            payload["copy_name"] = copy_name
+        return run_approval_tool("create_editable_copy", payload)
+
+    @tool("duplicate_document_copy", args_schema=DuplicateDocumentInput)
+    def duplicate_document_copy(document_id: str = "", new_name: str = "") -> Dict[str, Any]:
+        """Propose duplicating a document copy. Requires human approval."""
+        payload = _payload_from_react_value(document_id, "document_id")
+        if new_name:
+            payload["new_name"] = new_name
+        return run_approval_tool("duplicate_document_copy", payload)
+
+    @tool("edit_document", args_schema=EditDocumentInput)
+    def edit_document(document_id: str = "", section_id: str = "", new_text: str = "") -> Dict[str, Any]:
+        """Propose a tracked edit to an editable document. Requires human approval."""
+        payload = _payload_from_react_value(document_id, "document_id")
+        if section_id:
+            payload["section_id"] = section_id
+        if new_text:
+            payload["new_text"] = new_text
+        return run_approval_tool("edit_document", payload)
+
+    @tool("generate_docx", args_schema=GenerateDocxInput)
+    def generate_docx(content: str = "", filename: str = "contractsense-draft.docx") -> Dict[str, Any]:
+        """Propose exporting content to DOCX. Requires human approval."""
+        payload = _payload_from_react_value(content, "content")
+        payload.setdefault("filename", filename)
+        return run_approval_tool("generate_docx", payload)
+
+    @tool("create_tabular_review", args_schema=CreateTabularReviewInput)
+    def create_tabular_review(name: str = "ContractSense Review", document_ids: Any = None, columns: Any = None) -> Dict[str, Any]:
+        """Propose a structured tabular review. Requires human approval."""
+        payload = _payload_from_react_value(name, "name")
+        if document_ids:
+            payload["document_ids"] = document_ids
+        if columns:
+            payload["columns"] = columns
+        return run_approval_tool("create_tabular_review", {"name": payload.get("name", "ContractSense Review"), "document_ids": _coerce_list(payload.get("document_ids")), "columns": _coerce_list(payload.get("columns"))})
+
+    @tool("generate_tabular_review", args_schema=GenerateTabularReviewInput)
+    def generate_tabular_review(review_id: str = "", instructions: str = "") -> Dict[str, Any]:
+        """Propose generating tabular review cells. Requires human approval."""
+        payload = _payload_from_react_value(review_id, "review_id")
+        if instructions:
+            payload["instructions"] = instructions
+        return run_approval_tool("generate_tabular_review", payload)
+
+    @tool("replicate_document", args_schema=ReplicateDocumentInput)
+    def replicate_document(document_id: str = "", target_project_id: str = "") -> Dict[str, Any]:
+        """Propose replicating a document into another project. Requires human approval."""
+        payload = _payload_from_react_value(document_id, "document_id")
+        if target_project_id:
+            payload["target_project_id"] = target_project_id
+        return run_approval_tool("replicate_document", payload)
+
+    @tool("suggest_tabular_review", args_schema=CreateTabularReviewInput)
+    def suggest_tabular_review(name: str = "ContractSense Review", document_ids: Any = None, columns: Any = None) -> Dict[str, Any]:
+        """Propose an editable tabular review configuration. Requires human approval."""
+        payload = _payload_from_react_value(name, "name")
+        if document_ids:
+            payload["document_ids"] = document_ids
+        if columns:
+            payload["columns"] = columns
+        return run_approval_tool("suggest_tabular_review", {"name": payload.get("name", "ContractSense Review"), "document_ids": _coerce_list(payload.get("document_ids")), "columns": _coerce_list(payload.get("columns"))})
+
+    return [
+        list_documents,
+        fetch_documents,
+        read_document,
+        outline_document,
+        search_evidence,
+        read_evidence,
+        find_in_document,
+        get_kpi_context,
+        extract_kpis,
+        calculate_from_evidence,
+        get_memory_context,
+        list_playbooks,
+        read_playbook_rules,
+        list_tabular_reviews,
+        get_tabular_review,
+        read_table_cells,
+        list_workflows,
+        read_workflow,
+        create_draft_artifact,
+        create_redline_artifact,
+        create_editable_copy,
+        duplicate_document_copy,
+        edit_document,
+        generate_docx,
+        create_tabular_review,
+        generate_tabular_review,
+        replicate_document,
+        suggest_tabular_review,
+    ]
+
+
+def is_approval_required_payload(value: Any) -> bool:
+    payload = parse_tool_output(value)
+    return isinstance(payload, dict) and bool(payload.get(APPROVAL_REQUIRED_FLAG))
+
+
+def parse_tool_output(value: Any) -> Any:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if not text:
+        return value
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        try:
+            return ast.literal_eval(text)
+        except (SyntaxError, ValueError):
+            return value
+
+
+def _approval_payload(name: str, params: Dict[str, Any], state: AgentRunState) -> Dict[str, Any]:
+    context = state.context
+    payload_params = {
+        **params,
+        "question": state.message,
+        "contract_id": context.contract_id,
+        "project_id": context.project_id,
+        "session_id": context.session_id,
+        "scope_id": context.contract_id or context.project_id or context.session_id,
+    }
+    return {
+        APPROVAL_REQUIRED_FLAG: True,
+        "tool": name,
+        "params": payload_params,
+        "message": (
+            f"Action '{name}' requires human approval before execution. "
+            "Review the parameters and confirm before any side effect occurs."
+        ),
+    }
+
+
+def _sanitize_args(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        key: value
+        for key, value in dict(args or {}).items()
+        if value not in (None, "", [], {})
+    }
+
+
+def _payload_from_react_value(value: Any, field_name: str) -> Dict[str, Any]:
+    parsed = parse_tool_output(value)
+    if isinstance(parsed, dict):
+        return dict(parsed)
+    if parsed in (None, "", [], {}):
+        return {}
+    return {field_name: parsed}
+
+
+def _coerce_list(value: Any) -> List[str]:
+    parsed = parse_tool_output(value)
+    if parsed in (None, "", {}, []):
+        return []
+    if isinstance(parsed, dict):
+        for key in ("document_ids", "evidence_ids", "columns", "keys"):
+            if key in parsed:
+                return _coerce_list(parsed[key])
+        return []
+    if isinstance(parsed, list):
+        return [str(item) for item in parsed if str(item).strip()]
+    return [str(parsed)] if str(parsed).strip() else []
+
+
+def _coerce_int(value: Any, default: int) -> int:
+    parsed = parse_tool_output(value)
+    try:
+        return int(parsed)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_observation(result: Any) -> Dict[str, Any]:
+    if isinstance(result, dict):
+        return result
+    return {"summary": str(result)[:1000]}
+
+
+def _default_read_observation(tool_record: ToolCallRecord, state: AgentRunState) -> Dict[str, Any]:
+    selected_ids = state.context.selected_document_ids or state.context.reference_contract_ids
+    if tool_record.name in {"list_documents", "fetch_documents"}:
+        return {
+            "summary": f"{len(selected_ids)} scoped document(s) available.",
+            "document_ids": selected_ids[:10],
+        }
+    if tool_record.name in {"read_document", "outline_document"}:
+        displayed = state.context.displayed_document or {}
+        return {
+            "summary": "Current document context is available.",
+            "document_id": displayed.get("document_id") or state.context.contract_id or (selected_ids[0] if selected_ids else None),
+            "filename": displayed.get("filename"),
+        }
+    if tool_record.name in {"search_evidence", "read_evidence", "find_in_document"}:
+        return {"summary": "Evidence retrieval is delegated to the scoped ContractSense RAG executor."}
+    if tool_record.name == "get_kpi_context":
+        return {"summary": "KPI context requested.", "visible_state": state.context.visible_state}
+    if tool_record.name in APPROVAL_REQUIRED_TOOLS:
+        return {"summary": "Approval-required tool proposal captured.", "risk": "approval_required"}
+    return {"summary": f"Read-only tool {tool_record.name} completed."}
+
+
+def _read_tool_loop_result(name: str, state: AgentRunState) -> Dict[str, Any] | None:
+    limit = READ_TOOL_REPEAT_LIMITS.get(name)
+    if not limit:
+        return None
+    prior_count = sum(1 for tool in state.tools[:-1] if tool.name == name)
+    if prior_count < limit:
+        return None
+    return {
+        "summary": (
+            f"{name} has already run in this turn. "
+            "Use any observed evidence to produce the final answer now. "
+            "If the answer is not supported by the observed evidence, say the scoped evidence does not contain it."
+        ),
+        "tool_budget_exhausted": True,
+        "matches": _recent_observed_matches(state),
+    }
+
+
+def _recent_observed_matches(state: AgentRunState) -> List[Dict[str, Any]]:
+    matches: List[Dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for scratch in reversed(state.react_scratchpad):
+        observation = scratch.get("observation")
+        if not isinstance(observation, dict):
+            continue
+        candidates: List[Dict[str, Any]] = []
+        if isinstance(observation.get("matches"), list):
+            candidates.extend(item for item in observation["matches"] if isinstance(item, dict))
+        if observation.get("snippet"):
+            candidates.append(observation)
+        for candidate in candidates:
+            quote = str(candidate.get("quote") or candidate.get("snippet") or candidate.get("context") or "").strip()
+            if not quote:
+                continue
+            doc_id = str(candidate.get("document_id") or candidate.get("doc_id") or candidate.get("filename") or "")
+            key = (doc_id, quote[:160])
+            if key in seen:
+                continue
+            seen.add(key)
+            matches.append(candidate)
+            if len(matches) >= 8:
+                return list(reversed(matches))
+    return list(reversed(matches))

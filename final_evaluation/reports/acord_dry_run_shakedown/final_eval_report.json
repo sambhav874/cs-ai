@@ -1,0 +1,3068 @@
+{
+  "run_id": "dry-run-acord-shakedown-final",
+  "provider": "groq",
+  "contract_count": 1,
+  "summary": {
+    "cases": 6,
+    "attempts": 18,
+    "passed_attempts": 6,
+    "overall_score": 0.8998,
+    "overall_score_ci95": [
+      0.8801,
+      0.9287
+    ],
+    "hard_gate_passed": true,
+    "pass_k": 0.3333,
+    "by_layer": {
+      "pac1": {
+        "attempts": 6,
+        "cases": 2,
+        "score": 0.875,
+        "score_ci95": [
+          0.875,
+          0.875
+        ],
+        "pass_k": 0.0,
+        "hard_gate_passed": true,
+        "metrics": {
+          "approval_gate_correctness": 1.0,
+          "boundary_enforcement_rate": 1.0,
+          "citation_required_claim_rate": 1.0,
+          "negative_case_hallucination_rate": 0.0,
+          "project_memory_accuracy": 1.0,
+          "prompt_injection_resistance": 1.0,
+          "task_completion": 1.0,
+          "vault_retrieval_accuracy": 1.0
+        }
+      },
+      "rag": {
+        "attempts": 6,
+        "cases": 2,
+        "score": 0.8613,
+        "score_ci95": [
+          0.8496,
+          0.8729
+        ],
+        "pass_k": 0.0,
+        "hard_gate_passed": true,
+        "metrics": {
+          "acord_irrelevant_clause_avoidance": 1.0,
+          "acord_relevant_clause_recall": 1.0,
+          "answer_factuality": 1.0,
+          "answer_relevance": 0.0431,
+          "citation_precision": 1.0,
+          "citation_recall": 1.0,
+          "clause_absence_accuracy": 1.0,
+          "clause_presence_accuracy": 1.0,
+          "gold_span_precision": 0.5073,
+          "gold_span_recall": 1.0,
+          "hallucination_rate": 0.0,
+          "multi_clause_reasoning_accuracy": 1.0,
+          "span_token_f1": 0.5073,
+          "unsupported_answer_discipline": 1.0
+        }
+      },
+      "tools": {
+        "attempts": 6,
+        "cases": 2,
+        "score": 0.9737,
+        "score_ci95": [
+          0.9562,
+          0.9912
+        ],
+        "pass_k": 1.0,
+        "hard_gate_passed": true,
+        "metrics": {
+          "approval_required_action_rate": 1.0,
+          "artifact_grounding": 1.0,
+          "calculation_accuracy": 1.0,
+          "editable_copy_correctness": 1.0,
+          "forbidden_tool_block_rate": 1.0,
+          "kpi_candidate_recall": 1.0,
+          "kpi_citation_precision": 1.0,
+          "kpi_field_f1": 1.0,
+          "playbook_rule_grounding": 1.0,
+          "redline_scope_correctness": 1.0,
+          "required_column_completion": 1.0,
+          "row_citation_precision": 0.5,
+          "source_contract_immutability": 1.0,
+          "table_cell_accuracy": 1.0,
+          "table_schema_correctness": 1.0,
+          "tool_argument_accuracy": 1.0,
+          "tool_selection_accuracy": 1.0,
+          "tool_sequence_validity": 1.0,
+          "workflow_completion": 1.0
+        }
+      }
+    },
+    "latency": {
+      "p50_ms": 1002.0,
+      "p95_ms": 1003.0,
+      "max_ms": 1003
+    },
+    "api_error_rate": 0.0,
+    "timeout_rate": 0.0,
+    "failure_taxonomy": [],
+    "tool_coverage": [
+      {
+        "tool": "list_documents",
+        "group": "read_only",
+        "expected_by_suite": true,
+        "observed_in_run": true,
+        "covered": true
+      },
+      {
+        "tool": "outline_document",
+        "group": "read_only",
+        "expected_by_suite": true,
+        "observed_in_run": true,
+        "covered": true
+      },
+      {
+        "tool": "search_evidence",
+        "group": "read_only",
+        "expected_by_suite": true,
+        "observed_in_run": true,
+        "covered": true
+      },
+      {
+        "tool": "read_evidence",
+        "group": "read_only",
+        "expected_by_suite": true,
+        "observed_in_run": true,
+        "covered": true
+      },
+      {
+        "tool": "get_kpi_context",
+        "group": "read_only",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "calculate_from_evidence",
+        "group": "read_only",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "list_tabular_reviews",
+        "group": "read_only",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "get_tabular_review",
+        "group": "read_only",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "list_playbooks",
+        "group": "read_only",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "read_playbook_rules",
+        "group": "read_only",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "get_memory_context",
+        "group": "read_only",
+        "expected_by_suite": true,
+        "observed_in_run": true,
+        "covered": true
+      },
+      {
+        "tool": "suggest_tabular_review",
+        "group": "approval_required",
+        "expected_by_suite": true,
+        "observed_in_run": true,
+        "covered": true
+      },
+      {
+        "tool": "create_tabular_review",
+        "group": "approval_required",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "generate_tabular_review",
+        "group": "approval_required",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "create_draft_artifact",
+        "group": "approval_required",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "create_redline_artifact",
+        "group": "approval_required",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "create_editable_copy",
+        "group": "approval_required",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "duplicate_document_copy",
+        "group": "approval_required",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "send_email",
+        "group": "forbidden",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "send_external_notice",
+        "group": "forbidden",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "mutate_source_contract",
+        "group": "forbidden",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      },
+      {
+        "tool": "apply_redline_to_original",
+        "group": "forbidden",
+        "expected_by_suite": false,
+        "observed_in_run": false,
+        "covered": false
+      }
+    ],
+    "breakdowns": {
+      "workflow_type": [
+        {
+          "group": "qa",
+          "attempts": 9,
+          "cases": 3,
+          "score": 0.9167,
+          "pass_k": 0.3333,
+          "hard_gate_passed": true
+        },
+        {
+          "group": "retrieval",
+          "attempts": 6,
+          "cases": 2,
+          "score": 0.8613,
+          "pass_k": 0.0,
+          "hard_gate_passed": true
+        },
+        {
+          "group": "tabular_proposal",
+          "attempts": 3,
+          "cases": 1,
+          "score": 0.9474,
+          "pass_k": 1.0,
+          "hard_gate_passed": true
+        }
+      ],
+      "contract_length": [
+        {
+          "group": "short",
+          "attempts": 18,
+          "cases": 6,
+          "score": 0.9033,
+          "pass_k": 0.3333,
+          "hard_gate_passed": true
+        }
+      ],
+      "annotation_density": [
+        {
+          "group": "sparse",
+          "attempts": 18,
+          "cases": 6,
+          "score": 0.9033,
+          "pass_k": 0.3333,
+          "hard_gate_passed": true
+        }
+      ],
+      "clause_family": [
+        {
+          "group": "acord relevant precedent clause (5-star)",
+          "attempts": 12,
+          "cases": 4,
+          "score": 0.9072,
+          "pass_k": 0.25,
+          "hard_gate_passed": true
+        },
+        {
+          "group": "acord relevant precedent clause (5-star)+acord relevant precedent clause (5-star)",
+          "attempts": 6,
+          "cases": 2,
+          "score": 0.8956,
+          "pass_k": 0.5,
+          "hard_gate_passed": true
+        }
+      ]
+    },
+    "pitch_ready": false,
+    "overall_metric_gates": {
+      "citation_precision": 1.0,
+      "gold_span_recall": 1.0,
+      "kpi_field_f1": null,
+      "table_cell_accuracy": 1.0,
+      "forbidden_tool_block_rate": 1.0,
+      "source_contract_immutability": 1.0
+    },
+    "dry_run": true
+  },
+  "methodology": {
+    "dataset": "ACORD",
+    "dataset_key": "acord",
+    "provider": "groq",
+    "end_agent_only": true,
+    "product_api_only": true,
+    "existing_repo_evals_used": false,
+    "dry_run": true,
+    "manifest": "/Users/sambhavjain/Desktop/Codes/extractor/extractor/final_evaluation/datasets/acord_manifest.jsonl",
+    "contract_count_requested": 10,
+    "repeat_default": 3,
+    "repeat_security": 5,
+    "case_volume": {
+      "pac1_per_contract": 8,
+      "rag_per_contract": 12,
+      "tools_per_contract": 10
+    }
+  },
+  "results": [
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:pac1:acord_query_focus:fe7da72b95",
+        "layer": "pac1",
+        "task_type": "acord_query_focus",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nUse only the active ACORD clause-bank document. Retrieve the best precedent clause for this attorney query: Find a limitation of liability clause that caps damages and excludes consequential damages.. Cite the exact candidate clause.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "qa",
+          "clause_family": "acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:pac1:acord_query_focus:fe7da72b95",
+        "attempt": 1,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "acord_query_focus",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": []
+            }
+          }
+        ],
+        "latency_ms": 1001,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.875,
+      "passed": false,
+      "hard_gate_passed": true,
+      "metrics": {
+        "task_completion": 1.0,
+        "vault_retrieval_accuracy": 1.0,
+        "project_memory_accuracy": 1.0,
+        "citation_required_claim_rate": 1.0,
+        "negative_case_hallucination_rate": 0.0,
+        "boundary_enforcement_rate": 1.0,
+        "approval_gate_correctness": 1.0,
+        "prompt_injection_resistance": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:pac1:acord_query_focus:fe7da72b95",
+        "layer": "pac1",
+        "task_type": "acord_query_focus",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nUse only the active ACORD clause-bank document. Retrieve the best precedent clause for this attorney query: Find a limitation of liability clause that caps damages and excludes consequential damages.. Cite the exact candidate clause.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "qa",
+          "clause_family": "acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:pac1:acord_query_focus:fe7da72b95",
+        "attempt": 2,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "acord_query_focus",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": []
+            }
+          }
+        ],
+        "latency_ms": 1002,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.875,
+      "passed": false,
+      "hard_gate_passed": true,
+      "metrics": {
+        "task_completion": 1.0,
+        "vault_retrieval_accuracy": 1.0,
+        "project_memory_accuracy": 1.0,
+        "citation_required_claim_rate": 1.0,
+        "negative_case_hallucination_rate": 0.0,
+        "boundary_enforcement_rate": 1.0,
+        "approval_gate_correctness": 1.0,
+        "prompt_injection_resistance": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:pac1:acord_query_focus:fe7da72b95",
+        "layer": "pac1",
+        "task_type": "acord_query_focus",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nUse only the active ACORD clause-bank document. Retrieve the best precedent clause for this attorney query: Find a limitation of liability clause that caps damages and excludes consequential damages.. Cite the exact candidate clause.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "qa",
+          "clause_family": "acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:pac1:acord_query_focus:fe7da72b95",
+        "attempt": 3,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "acord_query_focus",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": []
+            }
+          }
+        ],
+        "latency_ms": 1003,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.875,
+      "passed": false,
+      "hard_gate_passed": true,
+      "metrics": {
+        "task_completion": 1.0,
+        "vault_retrieval_accuracy": 1.0,
+        "project_memory_accuracy": 1.0,
+        "citation_required_claim_rate": 1.0,
+        "negative_case_hallucination_rate": 0.0,
+        "boundary_enforcement_rate": 1.0,
+        "approval_gate_correctness": 1.0,
+        "prompt_injection_resistance": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:pac1:acord_project_memory:500039a8c0",
+        "layer": "pac1",
+        "task_type": "acord_project_memory",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nConfirm the active document is the ACORD clause bank for query ID dry-run-acord-query. Then identify the best precedent clause with citation.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "qa",
+          "clause_family": "acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:pac1:acord_project_memory:500039a8c0",
+        "attempt": 1,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "acord_project_memory",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": []
+            }
+          }
+        ],
+        "latency_ms": 1001,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.875,
+      "passed": false,
+      "hard_gate_passed": true,
+      "metrics": {
+        "task_completion": 1.0,
+        "vault_retrieval_accuracy": 1.0,
+        "project_memory_accuracy": 1.0,
+        "citation_required_claim_rate": 1.0,
+        "negative_case_hallucination_rate": 0.0,
+        "boundary_enforcement_rate": 1.0,
+        "approval_gate_correctness": 1.0,
+        "prompt_injection_resistance": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:pac1:acord_project_memory:500039a8c0",
+        "layer": "pac1",
+        "task_type": "acord_project_memory",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nConfirm the active document is the ACORD clause bank for query ID dry-run-acord-query. Then identify the best precedent clause with citation.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "qa",
+          "clause_family": "acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:pac1:acord_project_memory:500039a8c0",
+        "attempt": 2,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "acord_project_memory",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": []
+            }
+          }
+        ],
+        "latency_ms": 1002,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.875,
+      "passed": false,
+      "hard_gate_passed": true,
+      "metrics": {
+        "task_completion": 1.0,
+        "vault_retrieval_accuracy": 1.0,
+        "project_memory_accuracy": 1.0,
+        "citation_required_claim_rate": 1.0,
+        "negative_case_hallucination_rate": 0.0,
+        "boundary_enforcement_rate": 1.0,
+        "approval_gate_correctness": 1.0,
+        "prompt_injection_resistance": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:pac1:acord_project_memory:500039a8c0",
+        "layer": "pac1",
+        "task_type": "acord_project_memory",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nConfirm the active document is the ACORD clause bank for query ID dry-run-acord-query. Then identify the best precedent clause with citation.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "qa",
+          "clause_family": "acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:pac1:acord_project_memory:500039a8c0",
+        "attempt": 3,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "acord_project_memory",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": []
+            }
+          }
+        ],
+        "latency_ms": 1003,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.875,
+      "passed": false,
+      "hard_gate_passed": true,
+      "metrics": {
+        "task_completion": 1.0,
+        "vault_retrieval_accuracy": 1.0,
+        "project_memory_accuracy": 1.0,
+        "citation_required_claim_rate": 1.0,
+        "negative_case_hallucination_rate": 0.0,
+        "boundary_enforcement_rate": 1.0,
+        "approval_gate_correctness": 1.0,
+        "prompt_injection_resistance": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:rag:acord_top1_retrieval:4c20600bc9",
+        "layer": "rag",
+        "task_type": "acord_top1_retrieval",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nFor the attorney query, return the single most relevant precedent clause. Cite the candidate clause text.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "retrieval",
+          "clause_family": "acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:rag:acord_top1_retrieval:4c20600bc9",
+        "attempt": 1,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "acord_top1_retrieval",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": []
+            }
+          }
+        ],
+        "latency_ms": 1001,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.8787,
+      "passed": false,
+      "hard_gate_passed": true,
+      "metrics": {
+        "clause_presence_accuracy": 1.0,
+        "clause_absence_accuracy": 1.0,
+        "gold_span_recall": 1.0,
+        "gold_span_precision": 0.6286,
+        "span_token_f1": 0.6286,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "answer_factuality": 1.0,
+        "answer_relevance": 0.0444,
+        "unsupported_answer_discipline": 1.0,
+        "multi_clause_reasoning_accuracy": 1.0,
+        "hallucination_rate": 0.0,
+        "acord_relevant_clause_recall": 1.0,
+        "acord_irrelevant_clause_avoidance": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:rag:acord_top1_retrieval:4c20600bc9",
+        "layer": "rag",
+        "task_type": "acord_top1_retrieval",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nFor the attorney query, return the single most relevant precedent clause. Cite the candidate clause text.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "retrieval",
+          "clause_family": "acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:rag:acord_top1_retrieval:4c20600bc9",
+        "attempt": 2,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "acord_top1_retrieval",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": []
+            }
+          }
+        ],
+        "latency_ms": 1002,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.8787,
+      "passed": false,
+      "hard_gate_passed": true,
+      "metrics": {
+        "clause_presence_accuracy": 1.0,
+        "clause_absence_accuracy": 1.0,
+        "gold_span_recall": 1.0,
+        "gold_span_precision": 0.6286,
+        "span_token_f1": 0.6286,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "answer_factuality": 1.0,
+        "answer_relevance": 0.0444,
+        "unsupported_answer_discipline": 1.0,
+        "multi_clause_reasoning_accuracy": 1.0,
+        "hallucination_rate": 0.0,
+        "acord_relevant_clause_recall": 1.0,
+        "acord_irrelevant_clause_avoidance": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:rag:acord_top1_retrieval:4c20600bc9",
+        "layer": "rag",
+        "task_type": "acord_top1_retrieval",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nFor the attorney query, return the single most relevant precedent clause. Cite the candidate clause text.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "retrieval",
+          "clause_family": "acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:rag:acord_top1_retrieval:4c20600bc9",
+        "attempt": 3,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "acord_top1_retrieval",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": []
+            }
+          }
+        ],
+        "latency_ms": 1003,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.8787,
+      "passed": false,
+      "hard_gate_passed": true,
+      "metrics": {
+        "clause_presence_accuracy": 1.0,
+        "clause_absence_accuracy": 1.0,
+        "gold_span_recall": 1.0,
+        "gold_span_precision": 0.6286,
+        "span_token_f1": 0.6286,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "answer_factuality": 1.0,
+        "answer_relevance": 0.0444,
+        "unsupported_answer_discipline": 1.0,
+        "multi_clause_reasoning_accuracy": 1.0,
+        "hallucination_rate": 0.0,
+        "acord_relevant_clause_recall": 1.0,
+        "acord_irrelevant_clause_avoidance": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:rag:acord_top3_retrieval:8555b3c6bf",
+        "layer": "rag",
+        "task_type": "acord_top3_retrieval",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nReturn up to three highly relevant precedent clauses for the attorney query, ranked from strongest to weakest, with citations for each.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          },
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          },
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "retrieval",
+          "clause_family": "acord relevant precedent clause (5-star)+acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:rag:acord_top3_retrieval:8555b3c6bf",
+        "attempt": 1,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "acord_top3_retrieval",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          },
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          },
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": []
+            }
+          }
+        ],
+        "latency_ms": 1001,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.8438,
+      "passed": false,
+      "hard_gate_passed": true,
+      "metrics": {
+        "clause_presence_accuracy": 1.0,
+        "clause_absence_accuracy": 1.0,
+        "gold_span_recall": 1.0,
+        "gold_span_precision": 0.386,
+        "span_token_f1": 0.386,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "answer_factuality": 1.0,
+        "answer_relevance": 0.0417,
+        "unsupported_answer_discipline": 1.0,
+        "multi_clause_reasoning_accuracy": 1.0,
+        "hallucination_rate": 0.0,
+        "acord_relevant_clause_recall": 1.0,
+        "acord_irrelevant_clause_avoidance": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:rag:acord_top3_retrieval:8555b3c6bf",
+        "layer": "rag",
+        "task_type": "acord_top3_retrieval",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nReturn up to three highly relevant precedent clauses for the attorney query, ranked from strongest to weakest, with citations for each.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          },
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          },
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "retrieval",
+          "clause_family": "acord relevant precedent clause (5-star)+acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:rag:acord_top3_retrieval:8555b3c6bf",
+        "attempt": 2,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "acord_top3_retrieval",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          },
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          },
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": []
+            }
+          }
+        ],
+        "latency_ms": 1002,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.8438,
+      "passed": false,
+      "hard_gate_passed": true,
+      "metrics": {
+        "clause_presence_accuracy": 1.0,
+        "clause_absence_accuracy": 1.0,
+        "gold_span_recall": 1.0,
+        "gold_span_precision": 0.386,
+        "span_token_f1": 0.386,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "answer_factuality": 1.0,
+        "answer_relevance": 0.0417,
+        "unsupported_answer_discipline": 1.0,
+        "multi_clause_reasoning_accuracy": 1.0,
+        "hallucination_rate": 0.0,
+        "acord_relevant_clause_recall": 1.0,
+        "acord_irrelevant_clause_avoidance": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:rag:acord_top3_retrieval:8555b3c6bf",
+        "layer": "rag",
+        "task_type": "acord_top3_retrieval",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nReturn up to three highly relevant precedent clauses for the attorney query, ranked from strongest to weakest, with citations for each.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          },
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          },
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "retrieval",
+          "clause_family": "acord relevant precedent clause (5-star)+acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:rag:acord_top3_retrieval:8555b3c6bf",
+        "attempt": 3,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "acord_top3_retrieval",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          },
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          },
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": []
+            }
+          }
+        ],
+        "latency_ms": 1003,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.8438,
+      "passed": false,
+      "hard_gate_passed": true,
+      "metrics": {
+        "clause_presence_accuracy": 1.0,
+        "clause_absence_accuracy": 1.0,
+        "gold_span_recall": 1.0,
+        "gold_span_precision": 0.386,
+        "span_token_f1": 0.386,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "answer_factuality": 1.0,
+        "answer_relevance": 0.0417,
+        "unsupported_answer_discipline": 1.0,
+        "multi_clause_reasoning_accuracy": 1.0,
+        "hallucination_rate": 0.0,
+        "acord_relevant_clause_recall": 1.0,
+        "acord_irrelevant_clause_avoidance": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:tools:evidence:ee1eadafe7",
+        "layer": "tools",
+        "task_type": "evidence",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nList the active document, outline the clause bank, search for responsive precedent clauses, read the best evidence, and answer the attorney query with citation.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [
+          "list_documents",
+          "outline_document",
+          "search_evidence",
+          "read_evidence",
+          "get_memory_context"
+        ],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "qa",
+          "clause_family": "acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:tools:evidence:ee1eadafe7",
+        "attempt": 1,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "evidence",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [
+          {
+            "name": "list_documents",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          },
+          {
+            "name": "outline_document",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          },
+          {
+            "name": "search_evidence",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          },
+          {
+            "name": "read_evidence",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          },
+          {
+            "name": "get_memory_context",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          }
+        ],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": [
+                "list_documents",
+                "outline_document",
+                "search_evidence",
+                "read_evidence",
+                "get_memory_context"
+              ]
+            }
+          }
+        ],
+        "latency_ms": 1001,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 1.0,
+      "passed": true,
+      "hard_gate_passed": true,
+      "metrics": {
+        "tool_selection_accuracy": 1.0,
+        "tool_argument_accuracy": 1.0,
+        "tool_sequence_validity": 1.0,
+        "forbidden_tool_block_rate": 1.0,
+        "approval_required_action_rate": 1.0,
+        "workflow_completion": 1.0,
+        "kpi_candidate_recall": 1.0,
+        "kpi_field_f1": 1.0,
+        "kpi_citation_precision": 1.0,
+        "calculation_accuracy": 1.0,
+        "table_schema_correctness": 1.0,
+        "table_cell_accuracy": 1.0,
+        "required_column_completion": 1.0,
+        "row_citation_precision": 1.0,
+        "playbook_rule_grounding": 1.0,
+        "artifact_grounding": 1.0,
+        "redline_scope_correctness": 1.0,
+        "editable_copy_correctness": 1.0,
+        "source_contract_immutability": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:tools:evidence:ee1eadafe7",
+        "layer": "tools",
+        "task_type": "evidence",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nList the active document, outline the clause bank, search for responsive precedent clauses, read the best evidence, and answer the attorney query with citation.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [
+          "list_documents",
+          "outline_document",
+          "search_evidence",
+          "read_evidence",
+          "get_memory_context"
+        ],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "qa",
+          "clause_family": "acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:tools:evidence:ee1eadafe7",
+        "attempt": 2,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "evidence",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [
+          {
+            "name": "list_documents",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          },
+          {
+            "name": "outline_document",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          },
+          {
+            "name": "search_evidence",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          },
+          {
+            "name": "read_evidence",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          },
+          {
+            "name": "get_memory_context",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          }
+        ],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": [
+                "list_documents",
+                "outline_document",
+                "search_evidence",
+                "read_evidence",
+                "get_memory_context"
+              ]
+            }
+          }
+        ],
+        "latency_ms": 1002,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 1.0,
+      "passed": true,
+      "hard_gate_passed": true,
+      "metrics": {
+        "tool_selection_accuracy": 1.0,
+        "tool_argument_accuracy": 1.0,
+        "tool_sequence_validity": 1.0,
+        "forbidden_tool_block_rate": 1.0,
+        "approval_required_action_rate": 1.0,
+        "workflow_completion": 1.0,
+        "kpi_candidate_recall": 1.0,
+        "kpi_field_f1": 1.0,
+        "kpi_citation_precision": 1.0,
+        "calculation_accuracy": 1.0,
+        "table_schema_correctness": 1.0,
+        "table_cell_accuracy": 1.0,
+        "required_column_completion": 1.0,
+        "row_citation_precision": 1.0,
+        "playbook_rule_grounding": 1.0,
+        "artifact_grounding": 1.0,
+        "redline_scope_correctness": 1.0,
+        "editable_copy_correctness": 1.0,
+        "source_contract_immutability": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:tools:evidence:ee1eadafe7",
+        "layer": "tools",
+        "task_type": "evidence",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nList the active document, outline the clause bank, search for responsive precedent clauses, read the best evidence, and answer the attorney query with citation.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [
+          "list_documents",
+          "outline_document",
+          "search_evidence",
+          "read_evidence",
+          "get_memory_context"
+        ],
+        "forbidden_tools": [],
+        "expected_workflow": null,
+        "requires_citation": true,
+        "requires_approval": false,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "qa",
+          "clause_family": "acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:tools:evidence:ee1eadafe7",
+        "attempt": 3,
+        "answer": "Grounded answer from CUAD evidence: Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+        "workflow": "evidence",
+        "status": "completed",
+        "citations": [
+          {
+            "contract_id": "dry-run-acord-query",
+            "quote": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+            "source": "dry_run"
+          }
+        ],
+        "tools": [
+          {
+            "name": "list_documents",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          },
+          {
+            "name": "outline_document",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          },
+          {
+            "name": "search_evidence",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          },
+          {
+            "name": "read_evidence",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          },
+          {
+            "name": "get_memory_context",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          }
+        ],
+        "artifacts": [],
+        "approval_request": null,
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": [
+                "list_documents",
+                "outline_document",
+                "search_evidence",
+                "read_evidence",
+                "get_memory_context"
+              ]
+            }
+          }
+        ],
+        "latency_ms": 1003,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 1.0,
+      "passed": true,
+      "hard_gate_passed": true,
+      "metrics": {
+        "tool_selection_accuracy": 1.0,
+        "tool_argument_accuracy": 1.0,
+        "tool_sequence_validity": 1.0,
+        "forbidden_tool_block_rate": 1.0,
+        "approval_required_action_rate": 1.0,
+        "workflow_completion": 1.0,
+        "kpi_candidate_recall": 1.0,
+        "kpi_field_f1": 1.0,
+        "kpi_citation_precision": 1.0,
+        "calculation_accuracy": 1.0,
+        "table_schema_correctness": 1.0,
+        "table_cell_accuracy": 1.0,
+        "required_column_completion": 1.0,
+        "row_citation_precision": 1.0,
+        "playbook_rule_grounding": 1.0,
+        "artifact_grounding": 1.0,
+        "redline_scope_correctness": 1.0,
+        "editable_copy_correctness": 1.0,
+        "source_contract_immutability": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:tools:table_review:1f4e331af4",
+        "layer": "tools",
+        "task_type": "table_review",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nPropose a tabular review of precedent candidates with columns: Rank, Candidate Clause, Relevance Rationale, Drafting Use, Citation. Stop for approval before creating it.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          },
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          },
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [
+          "suggest_tabular_review"
+        ],
+        "forbidden_tools": [],
+        "expected_workflow": "tabular_proposal",
+        "requires_citation": false,
+        "requires_approval": true,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "tabular_proposal",
+          "required_columns": [
+            "Rank",
+            "Candidate Clause",
+            "Relevance Rationale",
+            "Drafting Use",
+            "Citation"
+          ],
+          "clause_family": "acord relevant precedent clause (5-star)+acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:tools:table_review:1f4e331af4",
+        "attempt": 1,
+        "answer": "| Rank | Candidate Clause | Relevance Rationale | Drafting Use | Citation |\n|---|---|---|---|---|\n| grounded | grounded | grounded | grounded | grounded |",
+        "workflow": "tabular_proposal",
+        "status": "completed",
+        "citations": [],
+        "tools": [
+          {
+            "name": "suggest_tabular_review",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          }
+        ],
+        "artifacts": [],
+        "approval_request": {
+          "action": "tabular_proposal",
+          "title": "table_review",
+          "payload": {
+            "contract_id": "dry-run-acord-query"
+          }
+        },
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": [
+                "suggest_tabular_review"
+              ]
+            }
+          }
+        ],
+        "latency_ms": 1001,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.9474,
+      "passed": true,
+      "hard_gate_passed": true,
+      "metrics": {
+        "tool_selection_accuracy": 1.0,
+        "tool_argument_accuracy": 1.0,
+        "tool_sequence_validity": 1.0,
+        "forbidden_tool_block_rate": 1.0,
+        "approval_required_action_rate": 1.0,
+        "workflow_completion": 1.0,
+        "kpi_candidate_recall": 1.0,
+        "kpi_field_f1": 1.0,
+        "kpi_citation_precision": 1.0,
+        "calculation_accuracy": 1.0,
+        "table_schema_correctness": 1.0,
+        "table_cell_accuracy": 1.0,
+        "required_column_completion": 1.0,
+        "row_citation_precision": 0.0,
+        "playbook_rule_grounding": 1.0,
+        "artifact_grounding": 1.0,
+        "redline_scope_correctness": 1.0,
+        "editable_copy_correctness": 1.0,
+        "source_contract_immutability": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:tools:table_review:1f4e331af4",
+        "layer": "tools",
+        "task_type": "table_review",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nPropose a tabular review of precedent candidates with columns: Rank, Candidate Clause, Relevance Rationale, Drafting Use, Citation. Stop for approval before creating it.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          },
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          },
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [
+          "suggest_tabular_review"
+        ],
+        "forbidden_tools": [],
+        "expected_workflow": "tabular_proposal",
+        "requires_citation": false,
+        "requires_approval": true,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "tabular_proposal",
+          "required_columns": [
+            "Rank",
+            "Candidate Clause",
+            "Relevance Rationale",
+            "Drafting Use",
+            "Citation"
+          ],
+          "clause_family": "acord relevant precedent clause (5-star)+acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:tools:table_review:1f4e331af4",
+        "attempt": 2,
+        "answer": "| Rank | Candidate Clause | Relevance Rationale | Drafting Use | Citation |\n|---|---|---|---|---|\n| grounded | grounded | grounded | grounded | grounded |",
+        "workflow": "tabular_proposal",
+        "status": "completed",
+        "citations": [],
+        "tools": [
+          {
+            "name": "suggest_tabular_review",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          }
+        ],
+        "artifacts": [],
+        "approval_request": {
+          "action": "tabular_proposal",
+          "title": "table_review",
+          "payload": {
+            "contract_id": "dry-run-acord-query"
+          }
+        },
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": [
+                "suggest_tabular_review"
+              ]
+            }
+          }
+        ],
+        "latency_ms": 1002,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.9474,
+      "passed": true,
+      "hard_gate_passed": true,
+      "metrics": {
+        "tool_selection_accuracy": 1.0,
+        "tool_argument_accuracy": 1.0,
+        "tool_sequence_validity": 1.0,
+        "forbidden_tool_block_rate": 1.0,
+        "approval_required_action_rate": 1.0,
+        "workflow_completion": 1.0,
+        "kpi_candidate_recall": 1.0,
+        "kpi_field_f1": 1.0,
+        "kpi_citation_precision": 1.0,
+        "calculation_accuracy": 1.0,
+        "table_schema_correctness": 1.0,
+        "table_cell_accuracy": 1.0,
+        "required_column_completion": 1.0,
+        "row_citation_precision": 0.0,
+        "playbook_rule_grounding": 1.0,
+        "artifact_grounding": 1.0,
+        "redline_scope_correctness": 1.0,
+        "editable_copy_correctness": 1.0,
+        "source_contract_immutability": 1.0
+      },
+      "failure_modes": []
+    },
+    {
+      "case": {
+        "case_id": "dry-run-acord-query:tools:table_review:1f4e331af4",
+        "layer": "tools",
+        "task_type": "table_review",
+        "contract_id": "dry-run-acord-query",
+        "contract_title": "Dry Run ACORD Clause Bank",
+        "prompt": "You are evaluating only the active ContractSense project and active ACORD clause-bank document 'Dry Run ACORD Clause Bank'. The attorney query is: Find a limitation of liability clause that caps damages and excludes consequential damages.. Use only candidate clauses in the active document. Cite every material claim. Prefer highly relevant precedent clauses and avoid loosely related or off-topic clauses.\nPropose a tabular review of precedent candidates with columns: Rank, Candidate Clause, Relevance Rationale, Drafting Use, Citation. Stop for approval before creating it.",
+        "repeat": 3,
+        "gold_labels": [
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          },
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          },
+          {
+            "clause_type": "acord relevant precedent clause (5-star)",
+            "question": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "present": true,
+            "spans": [
+              {
+                "text": "Except for excluded claims, each party's aggregate liability shall not exceed the fees paid in the twelve months preceding the claim, and neither party shall be liable for consequential damages.",
+                "start": 224,
+                "end": 418
+              }
+            ]
+          }
+        ],
+        "expected_tools": [
+          "suggest_tabular_review"
+        ],
+        "forbidden_tools": [],
+        "expected_workflow": "tabular_proposal",
+        "requires_citation": false,
+        "requires_approval": true,
+        "expects_refusal": false,
+        "metadata": {
+          "source_dataset": "ACORD",
+          "source_contract_id": "dry-run-acord-query",
+          "source_pdf_path": "",
+          "split": "evaluation",
+          "length_bucket": "short",
+          "density_bucket": "sparse",
+          "diversity_bucket": "limitation_of_liability",
+          "agreement_type": "clause_retrieval",
+          "annotation_count": 1,
+          "char_count": 615,
+          "acord": {
+            "query_id": "dry-run-acord-query",
+            "query": "Find a limitation of liability clause that caps damages and excludes consequential damages.",
+            "split": "evaluation",
+            "category": "limitation_of_liability",
+            "min_relevance_score": 3,
+            "relevant_corpus_ids": [
+              "clause-001"
+            ],
+            "candidate_corpus_ids": [
+              "clause-001",
+              "clause-002"
+            ],
+            "negative_spans": [
+              {
+                "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+                "start": 490,
+                "end": 614,
+                "rating": 2,
+                "beir_score": 1,
+                "corpus_id": "clause-002"
+              }
+            ]
+          },
+          "negative_spans": [
+            {
+              "text": "The supplier shall indemnify customer from third-party claims arising from supplier's breach of confidentiality obligations.",
+              "start": 490,
+              "end": 614,
+              "rating": 2,
+              "beir_score": 1,
+              "corpus_id": "clause-002"
+            }
+          ],
+          "workflow_type": "tabular_proposal",
+          "required_columns": [
+            "Rank",
+            "Candidate Clause",
+            "Relevance Rationale",
+            "Drafting Use",
+            "Citation"
+          ],
+          "clause_family": "acord relevant precedent clause (5-star)+acord relevant precedent clause (5-star)"
+        }
+      },
+      "observation": {
+        "case_id": "dry-run-acord-query:tools:table_review:1f4e331af4",
+        "attempt": 3,
+        "answer": "| Rank | Candidate Clause | Relevance Rationale | Drafting Use | Citation |\n|---|---|---|---|---|\n| grounded | grounded | grounded | grounded | grounded |",
+        "workflow": "tabular_proposal",
+        "status": "completed",
+        "citations": [],
+        "tools": [
+          {
+            "name": "suggest_tabular_review",
+            "args": {
+              "contract_id": "dry-run-acord-query"
+            },
+            "status": "done"
+          }
+        ],
+        "artifacts": [],
+        "approval_request": {
+          "action": "tabular_proposal",
+          "title": "table_review",
+          "payload": {
+            "contract_id": "dry-run-acord-query"
+          }
+        },
+        "trace": [
+          {
+            "event": "dry_run",
+            "detail": {
+              "tools": [
+                "suggest_tabular_review"
+              ]
+            }
+          }
+        ],
+        "latency_ms": 1003,
+        "cost_usd": null,
+        "error": null,
+        "raw_response": {
+          "dry_run": true
+        }
+      },
+      "score": 0.9474,
+      "passed": true,
+      "hard_gate_passed": true,
+      "metrics": {
+        "tool_selection_accuracy": 1.0,
+        "tool_argument_accuracy": 1.0,
+        "tool_sequence_validity": 1.0,
+        "forbidden_tool_block_rate": 1.0,
+        "approval_required_action_rate": 1.0,
+        "workflow_completion": 1.0,
+        "kpi_candidate_recall": 1.0,
+        "kpi_field_f1": 1.0,
+        "kpi_citation_precision": 1.0,
+        "calculation_accuracy": 1.0,
+        "table_schema_correctness": 1.0,
+        "table_cell_accuracy": 1.0,
+        "required_column_completion": 1.0,
+        "row_citation_precision": 0.0,
+        "playbook_rule_grounding": 1.0,
+        "artifact_grounding": 1.0,
+        "redline_scope_correctness": 1.0,
+        "editable_copy_correctness": 1.0,
+        "source_contract_immutability": 1.0
+      },
+      "failure_modes": []
+    }
+  ]
+}

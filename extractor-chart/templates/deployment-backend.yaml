@@ -1,0 +1,74 @@
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: extractor-backend
+  labels:
+    app: extractor-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: extractor-backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: extractor-backend
+    spec:
+      containers:
+      - name: backend
+        image: "{{ .Values.backendImage }}"
+        imagePullPolicy: Always
+        ports:
+        - name: http  # Added port name for probe references
+          containerPort: {{ .Values.backendPort }}
+        env:
+        - name: API_PORT
+          value: "{{ .Values.backendPort }}"
+        
+        # Simplified Secret Management - only using direct values
+        {{- range $key, $value := .Values.secrets }}
+        - name: {{ $key | upper | replace "-" "_" }}
+          value: "{{ $value }}"
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          failureThreshold: 30
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+      # Moved volumes to correct position
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}
+      # Added pod anti-affinity
+      terminationGracePeriodSeconds: 60
+      imagePullSecrets:
+      {{- with .Values.imagePullSecrets }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
