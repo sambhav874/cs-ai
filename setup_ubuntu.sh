@@ -20,9 +20,9 @@ set -euo pipefail
 #   --help               Show this help message
 # ─────────────────────────────────────────────────────────────
 
-REPO_URL="https://github.com/sambhav874/extractor.git"
-INSTALL_DIR="/opt/extractor"
-BRANCH="main"
+REPO_URL="https://github.com/sambhav874/contractsense.git"
+INSTALL_DIR="/opt/contractsense"
+BRANCH="dev"
 WITH_NGINX=false
 WITH_SSL=false
 DOMAIN=""
