@@ -18,12 +18,11 @@ APPROVAL_REQUIRED_FLAG = "__APPROVAL_REQUIRED__"
 ToolExecutor = Callable[[ToolCallRecord, AgentRunState], Dict[str, Any]]
 
 READ_TOOL_REPEAT_LIMITS = {
-    "search_evidence": 2,
-    "read_evidence": 2,
-    "find_in_document": 2,
-    "read_document": 1,
-    "outline_document": 1,
-    "get_kpi_context": 1,
+    "search_evidence": 5,
+    "find_in_document": 4,
+    "read_document": 3,
+    "outline_document": 2,
+    "get_kpi_context": 2,
 }
 
 
@@ -49,10 +48,6 @@ class SearchInput(BaseModel):
     section_ref: str = Field(default="", description="Optional section, clause, article, schedule, or exhibit reference.")
 
 
-class EvidenceInput(BaseModel):
-    evidence_ids: Any = Field(default_factory=list, description="Evidence or segment IDs to read.")
-
-
 class FindInDocumentInput(BaseModel):
     document_id: str = Field(default="", description="Document to search within.")
     term: str = Field(default="", description="Keyword, phrase, or clause reference to locate.")
@@ -61,7 +56,8 @@ class FindInDocumentInput(BaseModel):
 
 class KPIInput(BaseModel):
     contract_id: str = Field(default="", description="Contract ID owning KPI/SLA records.")
-    metric_name: str = Field(default="", description="Optional KPI/SLA metric name.")
+    metric_name: str = Field(default="", description="Optional KPI/SLA metric name to filter by.")
+    query: str = Field(default="", description="User's natural language query to find relevant KPIs.")
 
 
 class KPIExtractionInput(BaseModel):
@@ -73,29 +69,6 @@ class KPIExtractionInput(BaseModel):
 class CalculateInput(BaseModel):
     expression: str = Field(default="", description="Arithmetic expression grounded in evidence.")
     context: str = Field(default="", description="Calculation context and source values.")
-
-
-class MemoryInput(BaseModel):
-    session_id: str = Field(default="", description="Session or conversation ID.")
-    keys: List[str] = Field(default_factory=list, description="Optional memory keys.")
-
-
-class PlaybookInput(BaseModel):
-    playbook_id: str = Field(default="", description="Playbook ID.")
-
-
-class TabularReviewInput(BaseModel):
-    review_id: str = Field(default="", description="Tabular review ID.")
-
-
-class ReadTableCellsInput(BaseModel):
-    review_id: str = Field(default="", description="Tabular review ID.")
-    row: int = Field(default=0, description="Zero-indexed row number.")
-    columns: Any = Field(default_factory=list, description="Column names to read.")
-
-
-class WorkflowInput(BaseModel):
-    workflow_id: str = Field(default="", description="Agent workflow ID.")
 
 
 class DraftArtifactInput(BaseModel):
@@ -273,7 +246,7 @@ def build_langchain_tools(
         must_contain: Any = None,
         section_ref: str = "",
     ) -> Dict[str, Any]:
-        """Search scoped ContractSense evidence candidates using rewritten retrieval queries. READ-ONLY. Call read_evidence before final cited answers."""
+        """Search scoped contracts and return full clause text with citations. READ-ONLY."""
         payload = _payload_from_react_value(query, "query")
         if queries not in (None, "", [], {}):
             payload["queries"] = queries
@@ -304,12 +277,6 @@ def build_langchain_tools(
             },
         )
 
-    @tool("read_evidence", args_schema=EvidenceInput)
-    def read_evidence(evidence_ids: Any = None) -> Dict[str, Any]:
-        """Read exact quote, context, page, section, char span, and confidence metadata for evidence IDs returned by search. READ-ONLY."""
-        payload = _payload_from_react_value(evidence_ids, "evidence_ids")
-        return run_read_tool("read_evidence", {"evidence_ids": _coerce_list(payload.get("evidence_ids"))})
-
     @tool("find_in_document", args_schema=FindInDocumentInput)
     def find_in_document(document_id: str = "", term: str = "", query: str = "") -> Dict[str, Any]:
         """Find a term, phrase, or clause reference inside a scoped document. READ-ONLY."""
@@ -321,12 +288,14 @@ def build_langchain_tools(
         return run_read_tool("find_in_document", {"document_id": payload.get("document_id", ""), "term": payload.get("term", ""), "query": payload.get("query") or payload.get("term", "")})
 
     @tool("get_kpi_context", args_schema=KPIInput)
-    def get_kpi_context(contract_id: str = "", metric_name: str = "") -> Dict[str, Any]:
-        """Retrieve visible KPI/SLA context for the scoped contract or project. READ-ONLY."""
+    def get_kpi_context(contract_id: str = "", metric_name: str = "", query: str = "") -> Dict[str, Any]:
+        """Retrieve KPI/SLA targets, actuals, breach state, and operational context relevant to the user query. READ-ONLY."""
         payload = _payload_from_react_value(contract_id, "contract_id")
         if metric_name:
             payload["metric_name"] = metric_name
-        return run_read_tool("get_kpi_context", {"contract_id": payload.get("contract_id", ""), "metric_name": payload.get("metric_name", "")})
+        if query:
+            payload["query"] = query
+        return run_read_tool("get_kpi_context", {"contract_id": payload.get("contract_id", ""), "metric_name": payload.get("metric_name", ""), "query": payload.get("query", "")})
 
     @tool("extract_kpis", args_schema=KPIExtractionInput)
     def extract_kpis(contract_id: str = "", replace_drafts: bool = True, ai_provider: str = "") -> Dict[str, Any]:
@@ -344,54 +313,6 @@ def build_langchain_tools(
         if context:
             payload["context"] = context
         return run_read_tool("calculate_from_evidence", {"expression": payload.get("expression", ""), "context": payload.get("context", "")})
-
-    @tool("get_memory_context", args_schema=MemoryInput)
-    def get_memory_context(session_id: str = "", keys: List[str] | None = None) -> Dict[str, Any]:
-        """Retrieve safe conversation/session continuity context. READ-ONLY."""
-        payload = _payload_from_react_value(session_id, "session_id")
-        if keys:
-            payload["keys"] = keys
-        return run_read_tool("get_memory_context", {"session_id": payload.get("session_id", ""), "keys": _coerce_list(payload.get("keys"))})
-
-    @tool("list_playbooks", args_schema=ProjectInput)
-    def list_playbooks(project_id: str = "") -> Dict[str, Any]:
-        """List scoped contract playbooks or review guides. READ-ONLY."""
-        return run_read_tool("list_playbooks", {"project_id": project_id})
-
-    @tool("read_playbook_rules", args_schema=PlaybookInput)
-    def read_playbook_rules(playbook_id: str = "") -> Dict[str, Any]:
-        """Read scoped playbook rules. READ-ONLY."""
-        return run_read_tool("read_playbook_rules", {"playbook_id": playbook_id})
-
-    @tool("list_tabular_reviews", args_schema=ProjectInput)
-    def list_tabular_reviews(project_id: str = "") -> Dict[str, Any]:
-        """List existing tabular reviews in scope. READ-ONLY."""
-        return run_read_tool("list_tabular_reviews", {"project_id": project_id})
-
-    @tool("get_tabular_review", args_schema=TabularReviewInput)
-    def get_tabular_review(review_id: str = "") -> Dict[str, Any]:
-        """Read an existing tabular review schema and rows. READ-ONLY."""
-        return run_read_tool("get_tabular_review", {"review_id": review_id})
-
-    @tool("read_table_cells", args_schema=ReadTableCellsInput)
-    def read_table_cells(review_id: str = "", row: int = 0, columns: List[str] | None = None) -> Dict[str, Any]:
-        """Read selected cells from an existing tabular review. READ-ONLY."""
-        payload = _payload_from_react_value(review_id, "review_id")
-        if row:
-            payload["row"] = row
-        if columns:
-            payload["columns"] = columns
-        return run_read_tool("read_table_cells", {"review_id": payload.get("review_id", ""), "row": _coerce_int(payload.get("row"), 0), "columns": _coerce_list(payload.get("columns"))})
-
-    @tool("list_workflows", args_schema=ProjectInput)
-    def list_workflows(project_id: str = "") -> Dict[str, Any]:
-        """List relevant ContractSense agent workflows in the current scope. READ-ONLY."""
-        return run_read_tool("list_workflows", {"project_id": project_id})
-
-    @tool("read_workflow", args_schema=WorkflowInput)
-    def read_workflow(workflow_id: str = "") -> Dict[str, Any]:
-        """Read a prior ContractSense workflow summary. READ-ONLY."""
-        return run_read_tool("read_workflow", {"workflow_id": workflow_id})
 
     @tool("create_draft_artifact", args_schema=DraftArtifactInput)
     def create_draft_artifact(document_id: str = "", draft_type: str = "memo", instructions: str = "") -> Dict[str, Any]:
@@ -487,19 +408,10 @@ def build_langchain_tools(
         read_document,
         outline_document,
         search_evidence,
-        read_evidence,
         find_in_document,
         get_kpi_context,
         extract_kpis,
         calculate_from_evidence,
-        get_memory_context,
-        list_playbooks,
-        read_playbook_rules,
-        list_tabular_reviews,
-        get_tabular_review,
-        read_table_cells,
-        list_workflows,
-        read_workflow,
         create_draft_artifact,
         create_redline_artifact,
         create_editable_copy,

@@ -21,7 +21,7 @@ _SHARED_MEMORY_CHECKPOINTER = MemorySaver() if MemorySaver else None
 
 
 class DeepContractAgentRunner:
-    """Stable API wrapper around the LangGraph ReAct agent.
+    """Stable API wrapper around the unified ContractReActRuntime.
 
     The model chooses whether to answer, call retrieval/calculation tools, or
     request approval. This runner only applies backend safety, trace formatting,
@@ -42,7 +42,6 @@ class DeepContractAgentRunner:
         self.model = model
         self.max_iterations = max_iterations
         self.middleware = ActiveMiddlewareEngine()
-        self.graph: Optional[Any] = None
 
     def run(self, state: AgentRunState) -> AgentResponse:
         state.status = AgentStatus.RUNNING
@@ -58,7 +57,6 @@ class DeepContractAgentRunner:
                 max_iterations=self.max_iterations,
             )
             state = runtime.run(state, checkpoint_config=self.checkpoint_config(state))
-            self.graph = runtime.graph
             state = self.middleware.tool_guard(state)
             if state.status == AgentStatus.WAITING_APPROVAL:
                 state = self.middleware.approval_guard(state)

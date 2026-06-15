@@ -8,12 +8,6 @@ services:
       - "8001:8001"  # Different port for staging to avoid conflicts
     volumes:
       - ./apps/backend:/app/backend
-      - ./shared/contracts:/shared/contracts
-      - ./shared/cleaned_contracts:/shared/cleaned_contracts
-      - ./shared/final_extracted_data:/shared/final_extracted_data
-      - ./shared/contract_summaries:/shared/contract_summaries
-      - ./shared/dynamic_questions:/shared/dynamic_questions
-      - ./shared/model_cache:/shared/model_cache
     env_file:
       - ./apps/backend/.env.staging  # Staging-specific environment variables
     environment:

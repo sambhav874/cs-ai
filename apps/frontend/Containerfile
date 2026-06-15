@@ -22,9 +22,9 @@ COPY . .
 
 # Set build-time environment variables (will be baked into the build)
 ARG NODE_ENV=production
-ARG NEXT_PUBLIC_EXTRACTOR_API_URL=http://134.33.215.56:8001/api/v1
-ARG NEXT_PUBLIC_API_URL=http://20.185.210.243
-ARG NEXT_PORT=4201
+ARG NEXT_PUBLIC_EXTRACTOR_API_URL=http://localhost:8000/api/v1
+ARG NEXT_PUBLIC_API_URL=http://localhost:4200
+ARG NEXT_PORT=4200
 
 ENV NODE_ENV=${NODE_ENV}
 ENV NEXT_PUBLIC_EXTRACTOR_API_URL=${NEXT_PUBLIC_EXTRACTOR_API_URL}
@@ -44,19 +44,18 @@ WORKDIR /app
 RUN addgroup -g 1001 -S nodejs && \
     adduser -u 1001 -S nextjs -G nodejs
 
-# Copy built assets (including the baked-in environment variables)
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-
-# Runtime environment variables (only non-NEXT_PUBLIC variables need to be set here)
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+# Copy only standalone output (includes necessary node_modules)
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
-EXPOSE ${PORT}
-CMD ["npm", "start"]
+EXPOSE 3000
+CMD ["node", "server.js"]
 
 # ================================================
 # Stage 4: Development image (optional)

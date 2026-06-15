@@ -14,16 +14,17 @@ const noLayoutPages = ['/', '/signin', '/signup','/beta','/assessment']
 export default function ClientLayout({ children }: ClientLayoutProps) {
   const pathname = usePathname()
   const isContractWorkspace = pathname.startsWith('/contracts/')
+  const isPlaybookWorkspace = pathname.startsWith('/playbooks/')
   const shouldHideLayout = noLayoutPages.includes(pathname)
-  const [isExpanded, setIsExpanded] = useState(!isContractWorkspace)
+  const [isExpanded, setIsExpanded] = useState(!isContractWorkspace && !isPlaybookWorkspace)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
 
   useEffect(() => {
-    if (isContractWorkspace) {
+    if (isContractWorkspace || isPlaybookWorkspace) {
       setIsExpanded(false)
       setIsMobileOpen(false)
     }
-  }, [isContractWorkspace])
+  }, [isContractWorkspace, isPlaybookWorkspace])
 
   const handleMobileMenuClick = () => {
     setIsMobileOpen(!isMobileOpen)

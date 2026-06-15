@@ -7,15 +7,52 @@ metadata that is precise enough for citation validation.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
 import hashlib
 import re
+import time
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from core.config import settings
 from utils.text_cleanup import clean_text_encoding
 
 from .schemas import TextSegment
 from .segmentation import DocumentSegmenter
+
+# ---------------------------------------------------------------------------
+# TTL retrieval cache — avoids re-running the full hybrid pipeline for
+# identical (contract, query) pairs within a short window.
+# ---------------------------------------------------------------------------
+_RETRIEVAL_CACHE: OrderedDict[str, Tuple[List[EvidenceHit], float]] = OrderedDict()
+_RETRIEVAL_CACHE_MAX = 256
+_RETRIEVAL_CACHE_TTL_SECONDS = 300  # 5 minutes
+
+
+def _retrieval_cache_key(contract_id: str, query: str) -> str:
+    return hashlib.sha256(
+        f"{contract_id}:{query.strip().lower()}".encode()
+    ).hexdigest()
+
+
+def _retrieval_cache_get(key: str) -> Optional[List[EvidenceHit]]:
+    entry = _RETRIEVAL_CACHE.get(key)
+    if entry:
+        hits, timestamp = entry
+        if time.time() - timestamp < _RETRIEVAL_CACHE_TTL_SECONDS:
+            return hits
+        del _RETRIEVAL_CACHE[key]
+    return None
+
+
+def _retrieval_cache_set(key: str, hits: List[EvidenceHit]) -> None:
+    if len(_RETRIEVAL_CACHE) >= _RETRIEVAL_CACHE_MAX:
+        _RETRIEVAL_CACHE.popitem(last=False)
+    _RETRIEVAL_CACHE[key] = (hits, time.time())
+
+
+def _retrieval_cache_clear() -> None:
+    _RETRIEVAL_CACHE.clear()
 
 
 STOP_WORDS = {
@@ -134,7 +171,7 @@ class EvidenceHit:
             "context": self.context,
             "context_before": self.context_before,
             "context_after": self.context_after,
-            "snippet": self.quote,
+            "snippet": self.context or self.quote,
             "retrieval_backend": self.retrieval_backend,
             "chunk_level": self.chunk_level,
             "section_tags": self.section_tags,
@@ -169,11 +206,46 @@ class EvidenceRetrievalService:
         normalized_section = normalize_section_ref(section_ref)
         resolved_intent = intent or infer_intent(" ".join(normalized_queries))
 
+        # Check retrieval cache (per-contract + query)
+        combined_query = " ".join(normalized_queries)
+        doc_ids = "_".join(sorted(str(d.get("_id", "")) for d in documents))
+        cache_key = _retrieval_cache_key(doc_ids, combined_query)
+        cached = _retrieval_cache_get(cache_key)
+        if cached is not None:
+            return (
+                [hit.to_dict() for hit in cached],
+                "hybrid_v2",
+                {
+                    "retrieval_v2": True,
+                    "backend": "hybrid_v2",
+                    "backend_detail": "cache",
+                    "intent": resolved_intent,
+                    "candidate_counts": {"selected": len(cached)},
+                    "cached": True,
+                },
+            )
+
+        # Optional query decomposition — break compound questions into sub-queries
+        decomposed_queries = normalized_queries
+        decomposition_used = False
+        if getattr(settings, "query_decomposition_enabled", False):
+            from .query_decomposer import decompose_query, is_complex_query
+            if is_complex_query(combined_query):
+                decomposed = decompose_query(
+                    combined_query,
+                    provider=ai_provider or "groq",
+                )
+                if decomposed and decomposed != normalized_queries:
+                    decomposed_queries = decomposed
+                    decomposition_used = True
+
         candidate_k = max(top_k * 4, 20)
+        # Use decomposed queries for metadata + vector + fallback searches
+        search_queries = decomposed_queries if decomposition_used else normalized_queries
         metadata_hits = self._metadata_chunk_search(
             collection,
             documents,
-            normalized_queries,
+            search_queries,
             candidate_k=candidate_k,
             intent=resolved_intent,
             must_contain=normalized_must,
@@ -181,7 +253,7 @@ class EvidenceRetrievalService:
         )
         vector_hits = self._vector_search_documents(
             documents,
-            normalized_queries,
+            search_queries,
             candidate_k=candidate_k,
             ai_provider=ai_provider,
             intent=resolved_intent,
@@ -190,7 +262,7 @@ class EvidenceRetrievalService:
         )
         fallback_hits = self._fallback_segment_search(
             documents,
-            normalized_queries,
+            search_queries,
             candidate_k=candidate_k,
             intent=resolved_intent,
             must_contain=normalized_must,
@@ -225,11 +297,18 @@ class EvidenceRetrievalService:
             backend = "fallback_index"
         else:
             backend = backend_detail
+
+        # Cache results for subsequent identical queries
+        _retrieval_cache_set(cache_key, list(fused))
+
         trace = {
             "retrieval_v2": True,
             "backend": backend,
             "backend_detail": backend_detail,
             "intent": resolved_intent,
+            "query_decomposition_used": decomposition_used,
+            "decomposed_queries": decomposed_queries if decomposition_used else None,
+            "reranker_used": bool(getattr(settings, "voyage_rerank_enabled", False)),
             "candidate_counts": {
                 "metadata": len(metadata_hits),
                 "vector": len(vector_hits),
@@ -255,6 +334,36 @@ class EvidenceRetrievalService:
         for document in documents:
             for hit in self._legal_document_hits(document, requires_read=False):
                 self._register_hit_aliases(by_id, hit)
+
+        # Resolve remaining wanted IDs from executor evidence chunks
+        still_missing = [e for e in wanted if e not in by_id]
+        if still_missing:
+            try:
+                from services.contract_agent.graph.tools.executor import _evidence_chunks as _exec_chunks
+            except Exception:
+                _exec_chunks = None
+            if _exec_chunks:
+                for document in documents:
+                    for chunk in _exec_chunks(document):
+                        eid = str(chunk.get("evidence_id") or "")
+                        if eid not in still_missing:
+                            continue
+                        snippet = str(chunk.get("snippet") or chunk.get("context") or chunk.get("quote") or "")
+                        if not snippet.strip():
+                            continue
+                        hit = EvidenceHit(
+                            evidence_id=eid,
+                            segment_id=str(chunk.get("segment_id") or eid),
+                            document_id=str(chunk.get("document_id") or document.get("_id", "")),
+                            filename=str(chunk.get("filename") or document.get("contract_name") or ""),
+                            quote=str(chunk.get("quote") or snippet[:200]),
+                            context=snippet.strip(),
+                            page_start=coerce_int(chunk.get("page")),
+                            char_start=coerce_int(chunk.get("start")),
+                            char_end=coerce_int(chunk.get("end")),
+                            requires_read=False,
+                        )
+                        self._register_hit_aliases(by_id, hit)
 
         vector_collection = self._vector_collection(collection)
         if vector_collection is not None:
@@ -512,9 +621,37 @@ class EvidenceRetrievalService:
         content = ((document.get("index") or {}).get("content") or "")
         if not content.strip():
             return []
-        clean_text, segments = self.segmenter.segment_text_with_page_markers(content)
         doc_id = str(document.get("_id") or "")
         filename = document.get("contract_name") or doc_id
+
+        # Use cached segments if available (avoids re-segmenting on every fallback query)
+        segments: List[TextSegment] = []
+        index_data = document.get("index") or {}
+        cached_segments_raw = index_data.get("segments")
+        cached_schema = index_data.get("chunk_schema_version")
+        current_schema = getattr(settings, "chunk_schema_version", 2) if hasattr(self, "_settings") else 2
+
+        if cached_segments_raw and cached_schema == current_schema:
+            try:
+                segments = [TextSegment(**seg) for seg in cached_segments_raw]
+            except Exception:
+                cached_segments_raw = None
+
+        if not segments:
+            # Also check module-level cache
+            from .vector_store import get_cached_segments
+            module_cached = get_cached_segments(doc_id, current_schema)
+            if module_cached:
+                try:
+                    segments = [TextSegment(**seg) for seg in module_cached]
+                except Exception:
+                    pass
+
+        if not segments:
+            clean_text, segments = self.segmenter.segment_text_with_page_markers(content)
+        else:
+            clean_text = content
+
         hits: List[EvidenceHit] = []
         for segment in segments:
             enriched = segment.model_copy(update={
@@ -709,6 +846,21 @@ class EvidenceRetrievalService:
                 hit.retrieval_backend = "hybrid_v2"
             fused.append(hit)
         ranked = self._rerank_hits(fused, queries=queries, intent=intent, must_contain=must_contain, section_ref=section_ref)
+
+        # Optional cross-encoder reranker (VoyageAI rerank-2-lite)
+        if getattr(settings, "voyage_rerank_enabled", False):
+            from .reranker import rerank_evidence_hits
+            candidates = ranked[: getattr(settings, "voyage_rerank_top_k", 20)]
+            reranked = rerank_evidence_hits(
+                " ".join(queries),
+                candidates,
+                top_k=getattr(settings, "voyage_rerank_final_k", 8),
+            )
+            # Append any non-reranked hits after the reranked ones
+            reranked_ids = {hit.evidence_id for hit in reranked}
+            remainder = [hit for hit in ranked if hit.evidence_id not in reranked_ids]
+            ranked = reranked + remainder
+
         return ranked[: max(1, min(top_k, 20))]
 
     def _rerank_hits(
@@ -777,15 +929,9 @@ class EvidenceRetrievalService:
             return None
 
     def _vector_search_kwargs(self, document: Dict[str, Any], namespace: str, k: int) -> Dict[str, Any]:
-        doc_id = str(document.get("_id") or "").strip()
         pre_filter: Dict[str, Any] = {}
         if namespace:
             pre_filter["namespace"] = {"$eq": namespace}
-        if doc_id:
-            pre_filter["$or"] = [
-                {"contract_id": {"$eq": doc_id}},
-                {"document_id": {"$eq": doc_id}},
-            ]
         search_kwargs: Dict[str, Any] = {"k": k}
         if pre_filter:
             search_kwargs["pre_filter"] = pre_filter

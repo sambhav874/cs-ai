@@ -165,6 +165,20 @@ async function highlightQuote(textDivs: HTMLElement[], quote: string) {
     }
   }
 
+  if (divHighlightRanges.size === 0) {
+    for (const segment of segments) {
+      const searchKey = segment.slice(0, Math.min(segment.length, 48));
+      for (let i = 0; i < textDivs.length; i++) {
+        const pos = divStripped[i].indexOf(searchKey);
+        if (pos !== -1) {
+          const end = pos + segment.length;
+          divHighlightRanges.set(i, [pos, Math.min(end, divStripped[i].length)]);
+          break;
+        }
+      }
+    }
+  }
+
   if (divHighlightRanges.size === 0) return false;
 
   for (const [index, [strippedStart, strippedEnd]] of divHighlightRanges) {

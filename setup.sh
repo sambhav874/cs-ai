@@ -86,17 +86,9 @@ git clone https://github.com/sambhav874/extractor.git
 cd extractor
 
 # Create shared directories
-echo "Creating shared directories..."
-mkdir -p shared/contracts \
-         shared/contract_summaries \
-         shared/cleaned_contract \
-         shared/final_extracted_data \
-         shared/dynamic_questions \
-         shared/model_cache
-
-# Set permissions for shared directories (optional)
-echo "Setting permissions for shared directories..."
-sudo chmod -R 777 shared
+echo "Creating shared directory..."
+mkdir -p shared
+sudo chmod -R 755 shared
 
 # Install frontend dependencies
 echo "Installing frontend dependencies..."

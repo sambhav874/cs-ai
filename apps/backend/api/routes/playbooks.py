@@ -9,7 +9,7 @@ import requests
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from api.routes.projects import build_accessible_contract_query, verify_project_access
 from api.routes.tabular_reviews import (
@@ -168,6 +168,29 @@ def _clean_list(values: List[str], *, limit: int = 20, max_chars: int = 2000) ->
         if len(cleaned) >= limit:
             break
     return cleaned
+
+
+def _coerce_llm_rule(raw: Dict[str, Any]) -> Dict[str, Any]:
+    coerced = dict(raw)
+    if "required_clause" in coerced:
+        val = coerced["required_clause"]
+        if isinstance(val, str):
+            coerced["required_clause"] = val.strip().lower() in ("true", "yes", "1")
+        elif not isinstance(val, bool):
+            coerced["required_clause"] = bool(val)
+    for field in ("fallback_positions", "unacceptable_deviations", "tags"):
+        if field in coerced:
+            val = coerced[field]
+            if isinstance(val, str):
+                coerced[field] = [val] if val.strip() else []
+            elif val is None or not isinstance(val, list):
+                coerced[field] = []
+    sev = str(coerced.get("severity") or "medium").lower().strip()
+    coerced["severity"] = sev if sev in RULE_SEVERITY_VALUES else "medium"
+    for field in ("name", "clause_type"):
+        if field in coerced and not isinstance(coerced[field], str):
+            coerced[field] = str(coerced[field]) if coerced[field] else ""
+    return coerced
 
 
 def _normalize_rule(rule: PlaybookRuleRequest, index: int) -> Dict[str, Any]:
@@ -737,10 +760,23 @@ def _generate_rules_from_contracts(request: GenerateFromContractsRequest, curren
             raw_rules = parsed.get("rules") or []
             if not isinstance(raw_rules, list):
                 raise ValueError("Model did not return rules list.")
-            normalized = _normalize_rules([PlaybookRuleRequest(**rule) for rule in raw_rules[:MAX_RULES]])
+            normalized = _normalize_rules([PlaybookRuleRequest(**_coerce_llm_rule(rule)) for rule in raw_rules[:MAX_RULES]])
             if not normalized:
                 raise ValueError("No rules were generated.")
             return normalized, project_oid
+        except requests.exceptions.HTTPError as exc:
+            status_code = exc.response.status_code if exc.response is not None else "HTTP"
+            errors.append(f"{provider}: HTTP {status_code}")
+            logger.warning("Playbook generation provider %s failed: HTTP %s", provider, status_code)
+        except requests.exceptions.ConnectionError:
+            errors.append(f"{provider}: Connection failed")
+            logger.warning("Playbook generation provider %s failed: Connection error", provider)
+        except ValidationError:
+            errors.append(f"{provider}: Model returned invalid format")
+            logger.warning("Playbook generation provider %s failed: ValidationError", provider)
+        except ValueError as exc:
+            errors.append(f"{provider}: {exc}")
+            logger.warning("Playbook generation provider %s failed: %s", provider, exc)
         except Exception as exc:
             errors.append(f"{provider}: {exc}")
             logger.warning("Playbook generation provider %s failed: %s", provider, exc)

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
 from .state import AgentRunState, AgentStatus, AgentWorkflow
-from .tools.registry import APPROVAL_REQUIRED_TOOLS, FORBIDDEN_TOOLS, READ_ONLY_TOOLS, tool_specs
+from .tools.registry import APPROVAL_REQUIRED_TOOLS, FORBIDDEN_TOOL_NAMES, READ_ONLY_TOOLS, tool_specs
 
 
 @dataclass(frozen=True)
@@ -38,8 +38,8 @@ def middleware_descriptors() -> List[MiddlewareDescriptor]:
         MiddlewareDescriptor("ModelRetryMiddleware", True, {"max_retries": 2}, runtime="langchain"),
         MiddlewareDescriptor("ToolRetryMiddleware", True, {"max_retries": 1}, runtime="trace", enforced=False),
         MiddlewareDescriptor("ModelFallbackMiddleware", True, {}, runtime="trace", enforced=False),
-        MiddlewareDescriptor("ModelCallLimitMiddleware", True, {"run_limit": 6}, runtime="langchain"),
-        MiddlewareDescriptor("ToolCallLimitMiddleware", True, {"run_limit": 8}, runtime="langchain"),
+        MiddlewareDescriptor("ModelCallLimitMiddleware", True, {"run_limit": 12}, runtime="langchain"),
+        MiddlewareDescriptor("ToolCallLimitMiddleware", True, {"run_limit": 16}, runtime="langchain"),
         MiddlewareDescriptor("PIIMiddleware", True, {"strategy": "redact"}, runtime="trace", enforced=False),
         MiddlewareDescriptor("SummarizationMiddleware", True, {"when": "long_session"}, runtime="trace", enforced=False),
         MiddlewareDescriptor("ContextEditingMiddleware", True, {"mode": "prune_large_tool_results"}, runtime="local"),
@@ -72,8 +72,8 @@ def load_langchain_middleware(*, model: Any | None = None) -> List[Any]:
 
     return [
         ModelRetryMiddleware(max_retries=2, on_failure="error", initial_delay=0, jitter=False),
-        ModelCallLimitMiddleware(run_limit=6, exit_behavior="error"),
-        ToolCallLimitMiddleware(run_limit=8, exit_behavior="continue"),
+        ModelCallLimitMiddleware(run_limit=12, exit_behavior="error"),
+        ToolCallLimitMiddleware(run_limit=16, exit_behavior="continue"),
     ]
 
 
@@ -115,7 +115,7 @@ class ActiveMiddlewareEngine:
         return state
 
     def model_guard(self, state: AgentRunState) -> AgentRunState:
-        state.add_trace("middleware:ModelCallLimitMiddleware", limit=6)
+        state.add_trace("middleware:ModelCallLimitMiddleware", limit=12)
         state.add_trace("middleware:ModelRetryMiddleware", max_retries=2)
         state.add_trace("middleware:ModelFallbackMiddleware", enabled=False, enforced=False, reason="No fallback model is configured.")
         state.add_trace("middleware:PIIMiddleware", strategy="redact", enforced=False, reason="PII redaction is not applied by the local guard.")
@@ -123,12 +123,12 @@ class ActiveMiddlewareEngine:
 
     def tool_guard(self, state: AgentRunState) -> AgentRunState:
         known_tools = tool_specs()
-        allowed_names = READ_ONLY_TOOLS | APPROVAL_REQUIRED_TOOLS | FORBIDDEN_TOOLS
+        allowed_names = READ_ONLY_TOOLS | APPROVAL_REQUIRED_TOOLS | set(FORBIDDEN_TOOL_NAMES)
         already_rejected = [tool for tool in state.tools if tool.status == "rejected"]
         forbidden = [
             tool for tool in state.tools
             if tool.status != "rejected"
-            and (tool.name in FORBIDDEN_TOOLS or tool.name.startswith("send_") or tool.name not in allowed_names)
+            and (tool.name in FORBIDDEN_TOOL_NAMES or tool.name.startswith("send_") or tool.name not in allowed_names)
         ]
         for tool in state.tools:
             if tool.name in APPROVAL_REQUIRED_TOOLS and tool.status == "planned":
@@ -145,7 +145,7 @@ class ActiveMiddlewareEngine:
             state.add_trace("middleware:ToolPolicyMiddleware", decision="reject", tools=rejected_names)
         else:
             state.add_trace("middleware:ToolPolicyMiddleware", decision="allow", tools=[tool.name for tool in state.tools])
-        state.add_trace("middleware:ToolCallLimitMiddleware", limit=8, planned_tools=len(state.tools))
+        state.add_trace("middleware:ToolCallLimitMiddleware", limit=16, planned_tools=len(state.tools))
         state.add_trace("middleware:ToolRetryMiddleware", max_retries=1, enforced=False, reason="Tool calls return structured errors instead of retryable exceptions.")
         return state
 
@@ -174,16 +174,12 @@ class ActiveMiddlewareEngine:
             state.verifier_issues.extend(
                 issue for issue in citation_report["issues"] if issue not in state.verifier_issues
             )
-            if citation_report.get("requires_read_evidence") and not citation_report.get("read_evidence_used"):
-                state.confidence = "low"
         state.add_trace(
             "middleware:CitationGuardMiddleware",
             citation_count=len(state.citation_annotations),
             issue_count=len(citation_report["issues"]),
             issues=citation_report["issues"][:8],
             enforced=True,
-            read_evidence_used=citation_report.get("read_evidence_used", False),
-            requires_read_evidence=citation_report.get("requires_read_evidence", False),
         )
         state.add_trace("middleware:ConfidentialityGuardMiddleware", decision="allow", enforced=False)
         state.add_trace("middleware:ContextEditingMiddleware", mode="prune_large_tool_results")
@@ -215,7 +211,7 @@ def _conversation_summary_from_memory(memory_context: str) -> str:
 
 
 def _validate_citations(state: AgentRunState) -> Dict[str, Any]:
-    observed_texts, read_evidence_ids, requires_read = _observed_evidence(state)
+    observed_texts, _read_evidence_ids, _requires_read = _observed_evidence(state)
     answer_tokens = set(_citation_tokens(state.answer))
     issues: List[str] = []
     valid_annotations: List[Dict[str, Any]] = []
@@ -259,45 +255,29 @@ def _validate_citations(state: AgentRunState) -> Dict[str, Any]:
         cleaned["ref"] = len(valid_annotations) + 1
         valid_annotations.append(cleaned)
 
-    if requires_read and not read_evidence_ids:
-        issues.append("read_evidence_missing_after_search")
-
     return {
         "annotations": valid_annotations,
         "issues": list(dict.fromkeys(issues)),
-        "read_evidence_used": bool(read_evidence_ids),
-        "read_evidence_ids": sorted(read_evidence_ids),
-        "requires_read_evidence": requires_read,
     }
 
 
-def _observed_evidence(state: AgentRunState) -> Tuple[List[str], set[str], bool]:
+def _observed_evidence(state: AgentRunState) -> Tuple[List[str], set, bool]:
     texts: List[str] = []
-    read_evidence_ids: set[str] = set()
-    requires_read = False
     for scratch in state.react_scratchpad:
-        tool = scratch.get("tool")
         observation = scratch.get("observation")
         if not isinstance(observation, dict):
             continue
-        if observation.get("requires_read_evidence"):
-            requires_read = True
         candidates: List[Dict[str, Any]] = []
         if isinstance(observation.get("matches"), list):
             candidates.extend(item for item in observation["matches"] if isinstance(item, dict))
-        if observation.get("snippet") or observation.get("quote"):
+        if observation.get("snippet") or observation.get("quote") or observation.get("search_results"):
             candidates.append(observation)
         for candidate in candidates:
-            if candidate.get("requires_read"):
-                requires_read = True
-            evidence_id = str(candidate.get("evidence_id") or candidate.get("segment_id") or "").strip()
-            if tool == "read_evidence" and evidence_id:
-                read_evidence_ids.add(evidence_id)
-            for key in ("quote", "context", "snippet"):
+            for key in ("context", "quote", "snippet", "search_results"):
                 value = _normalize_citation_text(str(candidate.get(key) or ""))
                 if value:
                     texts.append(value)
-    return texts, read_evidence_ids, requires_read
+    return texts, set(), False
 
 
 def _normalize_citation_text(value: str) -> str:

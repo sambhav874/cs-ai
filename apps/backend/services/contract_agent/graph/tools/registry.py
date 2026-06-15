@@ -21,18 +21,9 @@ READ_ONLY_TOOLS = {
     "fetch_documents",
     "find_in_document",
     "get_kpi_context",
-    "get_memory_context",
-    "get_tabular_review",
     "list_documents",
-    "list_playbooks",
-    "list_tabular_reviews",
-    "list_workflows",
     "outline_document",
     "read_document",
-    "read_evidence",
-    "read_playbook_rules",
-    "read_table_cells",
-    "read_workflow",
     "search_evidence",
 }
 
@@ -50,33 +41,30 @@ APPROVAL_REQUIRED_TOOLS = {
     "suggest_tabular_review",
 }
 
-FORBIDDEN_TOOLS = {
+# Forbidden tools are never callable by the agent. They exist as documentation
+# of actions the system will always reject, enforced by ActiveMiddlewareEngine.
+# send_email              — Forbidden external communication.
+# send_external_notice    — Forbidden external notice delivery.
+# mutate_source_contract  — Forbidden mutation of source contract records.
+# apply_redline_to_original — Forbidden mutation of original source contract.
+FORBIDDEN_TOOL_NAMES = frozenset({
     "send_email",
     "send_external_notice",
     "mutate_source_contract",
     "apply_redline_to_original",
-}
+})
 
 
 def tool_specs() -> Dict[str, ToolSpec]:
     descriptions = {
         "calculate_from_evidence": "Evaluate arithmetic using values found in cited evidence or KPI context.",
-        "fetch_documents": "Fetch scoped indexed document metadata.",
+        "fetch_documents": "Fetch scoped indexed document data by IDs.",
         "find_in_document": "Locate a phrase, clause reference, or keyword inside a scoped document.",
-        "get_kpi_context": "Retrieve visible KPI/SLA targets, actuals, breach state, and operational context.",
-        "get_memory_context": "Retrieve safe session continuity context.",
-        "get_tabular_review": "Read an existing tabular review schema and rows.",
+        "get_kpi_context": "Retrieve KPI/SLA targets, actuals, breach state, and operational context matching the user query.",
         "list_documents": "List scoped indexed documents available to this agent run.",
-        "list_playbooks": "List scoped playbooks or review guides.",
-        "list_tabular_reviews": "List scoped tabular reviews.",
-        "list_workflows": "List relevant prior agent workflows.",
         "outline_document": "Read a document outline or high-level structure.",
         "read_document": "Read an excerpt from the current or requested scoped document.",
-        "read_evidence": "Read exact quote, context, page, section, and span metadata for evidence IDs returned by search.",
-        "read_playbook_rules": "Read the rules in a scoped playbook.",
-        "read_table_cells": "Read selected cells from a tabular review.",
-        "read_workflow": "Read a prior workflow summary.",
-        "search_evidence": "Search scoped ContractSense evidence candidates; use read_evidence before final cited contract answers.",
+        "search_evidence": "Search scoped contracts and return full clause text with citations inline.",
         "create_draft_artifact": "Create a draft artifact only after human approval.",
         "create_editable_copy": "Create an editable document copy only after human approval.",
         "create_redline_artifact": "Create a redline artifact only after human approval.",
@@ -87,17 +75,11 @@ def tool_specs() -> Dict[str, ToolSpec]:
         "generate_docx": "Export content to DOCX only after human approval.",
         "generate_tabular_review": "Generate tabular review cells only after human approval.",
         "replicate_document": "Replicate a document to another project only after human approval.",
-        "suggest_tabular_review": "Suggest an editable tabular review configuration for human approval.",
-        "send_email": "Forbidden external communication.",
-        "send_external_notice": "Forbidden external notice delivery.",
-        "mutate_source_contract": "Forbidden mutation of source contract records.",
-        "apply_redline_to_original": "Forbidden mutation of original source contract.",
+        "suggest_tabular_review": "Suggest an editable tabular review column configuration for human approval.",
     }
     specs: Dict[str, ToolSpec] = {}
     for name in sorted(READ_ONLY_TOOLS):
         specs[name] = ToolSpec(name=name, risk="read_only", description=descriptions.get(name, "Read scoped ContractSense data."))
     for name in sorted(APPROVAL_REQUIRED_TOOLS):
         specs[name] = ToolSpec(name=name, risk="approval_required", description=descriptions.get(name, "Side-effecting action requiring human approval."))
-    for name in sorted(FORBIDDEN_TOOLS):
-        specs[name] = ToolSpec(name=name, risk="forbidden", description=descriptions.get(name, "Forbidden in MVP."))
     return specs

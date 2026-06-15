@@ -557,19 +557,97 @@ async def _run_liteparse_parse(parser: Any, file_path: str, *, ocr_enabled: bool
 
 def _liteparse_page_text(page: Any) -> str:
     if isinstance(page, dict):
-        text = page.get("text") or page.get("markdown") or ""
+        # Prefer markdown output — preserves tables, headers, formatting
+        md = page.get("markdown") or ""
+        if md:
+            return _normalize_markdown_tables(md)
+        text = page.get("text") or ""
         if text:
-            return text
+            return _normalize_aligned_tables(text)
         text_items = page.get("textItems") or []
         if isinstance(text_items, list):
-            return "\n".join(
+            raw = "\n".join(
                 item.get("text", "").strip()
                 for item in text_items
                 if isinstance(item, dict) and item.get("text")
             )
+            return _normalize_aligned_tables(raw)
         return ""
 
-    return getattr(page, "text", "") or getattr(page, "markdown", "") or ""
+    md = getattr(page, "markdown", "") or ""
+    if md:
+        return _normalize_markdown_tables(md)
+    text = getattr(page, "text", "") or ""
+    return _normalize_aligned_tables(text)
+
+
+def _normalize_markdown_tables(text: str) -> str:
+    """Ensure markdown tables are well-formed and not corrupted by extraction."""
+    if "|" not in text:
+        return text
+    lines = text.split("\n")
+    result = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.endswith("|"):
+            # Ensure pipes have surrounding spaces for readability
+            cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+            result.append("| " + " | ".join(cells) + " |")
+        else:
+            result.append(line)
+    return "\n".join(result)
+
+
+def _looks_tabular(line: str) -> bool:
+    """Detect if a line looks like part of an aligned-column table."""
+    return bool(re.search(r"\S\s{3,}\S", line))
+
+
+def _tabular_to_pipe(block: List[str]) -> str:
+    """Convert aligned-text table block to pipe-formatted markdown."""
+    if len(block) < 2:
+        return "\n".join(block)
+    # Split each line by whitespace columns
+    rows = []
+    max_cols = 0
+    for line in block:
+        cols = re.split(r"\s{2,}", line.strip())
+        rows.append([col.strip() for col in cols])
+        max_cols = max(max_cols, len(cols))
+    # Pad rows to uniform column count
+    for row in rows:
+        while len(row) < max_cols:
+            row.append("")
+    # Render as pipe table
+    result = []
+    for i, row in enumerate(rows):
+        result.append("| " + " | ".join(row) + " |")
+        if i == 0:
+            result.append("|" + "|".join(" --- " for _ in range(max_cols)) + "|")
+    return "\n".join(result)
+
+
+def _normalize_aligned_tables(text: str) -> str:
+    """Detect and convert aligned-column table blocks to markdown pipe format."""
+    lines = text.split("\n")
+    result = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if _looks_tabular(line) and i + 1 < len(lines) and (
+            _looks_tabular(lines[i + 1]) or re.match(r"^\s*[-=]+\s*$", lines[i + 1])
+        ):
+            table_block = [line]
+            i += 1
+            while i < len(lines) and (_looks_tabular(lines[i]) or not lines[i].strip()):
+                if lines[i].strip():
+                    table_block.append(lines[i])
+                i += 1
+            result.append(_tabular_to_pipe(table_block))
+        else:
+            result.append(line)
+            i += 1
+    return "\n".join(result)
 
 def _liteparse_page_number(page: Any, fallback: int) -> int:
     if isinstance(page, dict):
@@ -584,7 +662,10 @@ def _liteparse_page_number(page: Any, fallback: int) -> int:
         return fallback
 
 def _liteparse_result_to_text(result: Any) -> str:
-    """Convert LiteParse page output to text with stable page markers."""
+    """Convert LiteParse page output to text with stable page markers.
+
+    Also validates that markers are present and detectable by DocumentSegmenter.
+    """
     pages = getattr(result, "pages", None)
     if pages is None and isinstance(result, dict):
         pages = result.get("pages")
@@ -602,7 +683,27 @@ def _liteparse_result_to_text(result: Any) -> str:
         if page_text:
             content_with_markers.append(f"--- Page {page_num} ---\n\n{page_text}")
 
-    return "\n\n".join(content_with_markers)
+    full_text = "\n\n".join(content_with_markers)
+
+    # Validate markers — if a multi-page doc has no detectable markers,
+    # the segmenter won't be able to split by page.
+    marker_count = len(re.findall(r"---\s*Page\s+\d+\s*---", full_text))
+    if len(pages) > 1 and marker_count == 0:
+        logger.warning(
+            "LiteParse returned %d pages but no page markers were detected. "
+            "Adding synthetic page breaks.",
+            len(pages),
+        )
+        # Rebuild with explicit markers
+        rebuilt = []
+        for index, page in enumerate(pages, 1):
+            page_num = _liteparse_page_number(page, index)
+            page_text = _liteparse_page_text(page).strip()
+            if page_text:
+                rebuilt.append(f"\n\n--- Page {page_num} ---\n\n{page_text}")
+        full_text = "\n".join(rebuilt)
+
+    return full_text
 
 def _liteparse_runtime_error(exc: Exception) -> RuntimeError:
     """Include LiteParse stderr in parse errors."""

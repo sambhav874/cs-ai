@@ -19,6 +19,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { ApprovalCard } from "@/components/agent/ApprovalCard";
+import { CitationHoverCard } from "@/components/agent/CitationHoverCard";
+import { ReActThinkingStream } from "@/components/agent/ReActThinkingStream";
+import { ToolUsageCard } from "@/components/agent/ToolUsageCard";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -2141,6 +2144,32 @@ export default function ContractAgentPanel({
     );
   };
 
+  const renderAgentReActSteps = (message: AgentMessage) => {
+    const events = traceEventsFromData(message.agentTrace);
+    const visibleEvents = events.filter((event) => {
+      const name = event.event || "";
+      if (["input_guard", "context_resolver", "persist_run", "final_response", "tool_result", "tool_start", "verify_answer"].includes(name)) return false;
+      if (name.startsWith("middleware:") && String(event.detail?.decision) !== "deny" && String(event.detail?.decision) !== "reject") return false;
+      return true;
+    });
+    if (!visibleEvents.length) return null;
+
+    const steps: Array<{ iteration: number; type: "thought" | "tool_call" | "tool_result" | "answer"; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: { summary?: string; matches?: Array<Record<string, unknown>>; error?: string }; answerText?: string }> = [];
+    visibleEvents.forEach((event) => {
+      const name = event.event || "";
+      if (name === "react_model_step" && event.detail?.action === "tool") {
+        steps.push({ iteration: steps.length + 1, type: "tool_call", toolName: String(event.detail?.tool || ""), toolArgs: event.detail as Record<string, unknown> });
+      } else if (name === "react_tool_observation") {
+        steps.push({ iteration: steps.length + 1, type: "tool_result", toolName: String(event.detail?.tool || ""), toolResult: { summary: String(event.detail?.summary || ""), matches: undefined } });
+      } else if (name === "react_model_step" && event.detail?.action === "final") {
+        steps.push({ iteration: steps.length + 1, type: "answer", answerText: String(event.detail?.reason || "").slice(0, 120) });
+      }
+    });
+    if (!steps.length) return null;
+
+    return <ReActThinkingStream steps={steps} className="mb-2" />;
+  };
+
   const renderArtifactCard = (artifact: AgentArtifact) => {
     const isKpiExtraction = artifact.artifact_kind === "kpi_extraction" || artifact.type === "kpi_extraction";
     const isRedline = Boolean(artifact.artifact_kind?.includes("redline") || artifact.applied_redline_changes?.length);
@@ -2517,6 +2546,7 @@ export default function ContractAgentPanel({
                     </div>
                     <div className="min-w-0 flex-1 space-y-2 text-xs leading-5 text-gray-800 sm:text-[13px]">
                       {renderAgentReasoning(message)}
+                      {renderAgentReActSteps(message)}
                       {visibleAnswerText(message.content) ? (
                         <div className="contract-agent-markdown min-w-0 max-w-full overflow-hidden break-words rounded-lg bg-white">
                           {renderMarkdownMessage(message)}

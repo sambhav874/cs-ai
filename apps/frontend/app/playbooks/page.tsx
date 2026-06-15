@@ -393,16 +393,17 @@ function PlaybooksContent() {
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto rounded-2xl">
+        <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="font-serif text-2xl font-medium">New Playbook</DialogTitle>
+            <DialogTitle className="font-serif text-xl font-medium">New Playbook</DialogTitle>
+            <p className="mt-1 text-sm text-gray-500">Build a review rule set from a template, a reference document, or from scratch.</p>
           </DialogHeader>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-3">
             {[
-              { id: "template", label: "Template", icon: ClipboardList },
-              { id: "reference", label: "Reference document", icon: Sparkles },
-              { id: "blank", label: "Blank", icon: BookOpen },
+              { id: "template", label: "Template", description: "Pre-built rule set", icon: ClipboardList },
+              { id: "reference", label: "Reference", description: "Generate from contracts", icon: Sparkles },
+              { id: "blank", label: "Blank", description: "Start from scratch", icon: BookOpen },
             ].map((item) => {
               const Icon = item.icon;
               const active = mode === item.id;
@@ -411,12 +412,15 @@ function PlaybooksContent() {
                   key={item.id}
                   type="button"
                   onClick={() => setMode(item.id as CreateMode)}
-                  className={`flex h-10 items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-colors ${
-                    active ? "border-gray-900 bg-gray-950 text-white" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                  className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all ${
+                    active
+                      ? "border-gray-950 bg-gray-50 shadow-sm"
+                      : "border-gray-100 bg-white text-gray-500 hover:border-gray-200 hover:text-gray-700"
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
+                  <Icon className={`h-6 w-6 ${active ? "text-gray-950" : ""}`} />
+                  <span className={`text-sm font-semibold ${active ? "text-gray-950" : ""}`}>{item.label}</span>
+                  <span className="text-xs leading-tight text-gray-400">{item.description}</span>
                 </button>
               );
             })}
@@ -437,110 +441,137 @@ function PlaybooksContent() {
                 ))}
               </select>
             </div>
-            <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Internal description or review posture" className="min-h-20 rounded-lg" />
+            <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Internal notes (optional)" className="min-h-16 rounded-lg text-sm" />
           </div>
 
           {mode === "template" ? (
-            <div className="rounded-lg border border-gray-100">
-              {templates.map((template) => {
-                const active = template.id === templateId;
-                return (
-                  <button
-                    key={template.id}
-                    type="button"
-                    onClick={() => {
-                      setTemplateId(template.id);
-                      setTitle(template.title);
-                      setDescription(template.description || "");
-                      setContractType(template.contract_type || "");
-                    }}
-                    className="flex w-full items-start gap-3 border-b border-gray-50 px-3 py-3 text-left last:border-0 hover:bg-gray-50"
-                  >
-                    <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                      active ? "border-gray-950 bg-gray-950 text-white" : "border-gray-200"
-                    }`}>
-                      {active ? <Check className="h-3 w-3" /> : null}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium text-gray-900">{template.title}</span>
-                      <span className="mt-1 block text-xs leading-5 text-gray-500">
-                        {template.rules.length} rules · {template.description}
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-gray-500">Available templates</p>
+              <div className="rounded-lg border border-gray-100">
+                {templates.map((template) => {
+                  const active = template.id === templateId;
+                  return (
+                    <button
+                      key={template.id}
+                      type="button"
+                      onClick={() => {
+                        setTemplateId(template.id);
+                        setTitle(template.title);
+                        setDescription(template.description || "");
+                        setContractType(template.contract_type || "");
+                      }}
+                      className={`flex w-full items-start gap-3 border-b border-gray-50 px-4 py-3 text-left last:border-0 transition-colors hover:bg-gray-50 ${
+                        active ? "bg-gray-50" : ""
+                      }`}
+                    >
+                      <span className={`mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                        active ? "border-gray-950 bg-gray-950" : "border-gray-200"
+                      }`}>
+                        {active ? <Check className="h-2.5 w-2.5 text-white" /> : null}
                       </span>
-                    </span>
-                  </button>
-                );
-              })}
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-gray-900">{template.title}</span>
+                        <span className="mt-1 block text-xs leading-5 text-gray-500">{template.description}</span>
+                        <span className="mt-1 inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+                          {template.rules.length} rules
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ) : null}
 
           {mode === "reference" ? (
             <div className="space-y-3">
               <div className="grid gap-3 md:grid-cols-2">
-                <select
-                  value={standardContractId}
-                  onChange={(event) => setStandardContractId(event.target.value)}
-                  className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 outline-none"
-                >
-                  <option value="">Reference document</option>
-                  {documents.map((document) => (
-                    <option key={document._id} value={document._id}>{document.contract_name}</option>
-                  ))}
-                </select>
-                <select
-                  value={riskTolerance}
-                  onChange={(event) => setRiskTolerance(event.target.value)}
-                  className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 outline-none"
-                >
-                  <option value="balanced">Balanced</option>
-                  <option value="conservative">Conservative</option>
-                  <option value="commercial">Commercial</option>
-                </select>
+                <div>
+                  <p className="mb-1.5 text-xs font-medium text-gray-500">Reference document</p>
+                  <select
+                    value={standardContractId}
+                    onChange={(event) => setStandardContractId(event.target.value)}
+                    className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 outline-none"
+                  >
+                    <option value="">Select reference document…</option>
+                    {documents.map((document) => (
+                      <option key={document._id} value={document._id}>{document.contract_name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <p className="mb-1.5 text-xs font-medium text-gray-500">Risk tolerance</p>
+                  <select
+                    value={riskTolerance}
+                    onChange={(event) => setRiskTolerance(event.target.value)}
+                    className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 outline-none"
+                  >
+                    <option value="balanced">Balanced</option>
+                    <option value="conservative">Conservative</option>
+                    <option value="commercial">Commercial</option>
+                  </select>
+                </div>
               </div>
-              <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-100">
-                {documents.length ? documents.map((document) => {
-                  const isReference = standardContractId === document._id;
-                  const checked = isReference || exampleContractIds.includes(document._id);
-                  return (
-                    <button
-                      key={document._id}
-                      type="button"
-                      onClick={() => isReference ? undefined : toggleExampleDocument(document._id)}
-                      disabled={isReference}
-                      className="flex w-full items-start gap-3 border-b border-gray-50 px-3 py-2 text-left last:border-0 hover:bg-gray-50"
-                    >
-                      <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                        checked ? "border-gray-950 bg-gray-950 text-white" : "border-gray-200"
-                      }`}>
-                        {checked ? <Check className="h-3 w-3" /> : null}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm text-gray-800">{document.contract_name}</span>
-                        <span className="mt-0.5 flex items-center gap-1 text-xs text-gray-400">
-                          <FileText className="h-3.5 w-3.5" />
-                          {isReference ? "Reference document" : document.status}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                }) : (
-                  <div className="px-3 py-8 text-center text-sm text-gray-400">No indexed documents found</div>
-                )}
-              </div>
-              <p className="text-xs text-gray-500">Use the selected reference document as the source playbook. Optional examples help identify fallbacks and unacceptable positions.</p>
+              {documents.length ? (
+                <div>
+                  <p className="mb-1.5 text-xs font-medium text-gray-500">
+                    Example contracts <span className="font-normal text-gray-400">— optional, helps identify fallbacks</span>
+                  </p>
+                  <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-100">
+                    {documents.map((document) => {
+                      const isReference = standardContractId === document._id;
+                      const checked = isReference || exampleContractIds.includes(document._id);
+                      return (
+                        <label
+                          key={document._id}
+                          className={`flex cursor-pointer items-center gap-3 border-b border-gray-50 px-3 py-2.5 text-left last:border-0 hover:bg-gray-50 ${
+                            isReference ? "cursor-not-allowed opacity-50" : ""
+                          }`}
+                        >
+                          <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                            checked ? "border-gray-950 bg-gray-950 text-white" : "border-gray-200"
+                          }`}>
+                            {checked ? <Check className="h-3 w-3" /> : null}
+                          </span>
+                          <div className="min-w-0">
+                            <span className="block truncate text-sm text-gray-800">{document.contract_name}</span>
+                            <span className="text-xs text-gray-400">
+                              {isReference ? "Reference" : exampleContractIds.includes(document._id) ? "Example" : "Click to include"}
+                            </span>
+                          </div>
+                          {!isReference ? (
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleExampleDocument(document._id)}
+                              className="sr-only"
+                            />
+                          ) : null}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-400">
+                  No indexed documents found. Upload contracts first.
+                </div>
+              )}
             </div>
           ) : null}
 
           {mode === "blank" ? (
-            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-3 text-sm leading-6 text-gray-600">
-              Start with an empty playbook and add rules on the next screen.
+            <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-4 text-sm text-gray-600">
+              <p className="font-medium text-gray-900">Start from scratch</p>
+              <p className="mt-1">Add rules manually on the next screen. Best when you already know your positions.</p>
             </div>
           ) : null}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} className="rounded-lg">Cancel</Button>
             <Button onClick={() => void handleCreate()} disabled={saving} className="rounded-lg bg-gray-950 text-white hover:bg-gray-800">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              {mode === "reference" ? "Create from Reference" : "Create Playbook"}
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {mode === "reference" ? "Generate Rules" : "Create Playbook"}
             </Button>
           </DialogFooter>
         </DialogContent>

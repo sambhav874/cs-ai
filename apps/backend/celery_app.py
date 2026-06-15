@@ -17,6 +17,30 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 settings = Settings()
 
+# Patch Celery 5.5.x task-success logging (TypeError: format requires a mapping).
+# Celery's trace.info() passes a namedtuple as 'context' to logger.info(),
+# but the LOG_SUCCESS format string uses %(name)s dict-style placeholders
+# that require a real dict.  This breaks the logging call and, because
+# fast_trace_task swallows the TypeError, the frontend never sees the
+# task-completed signal through the real-time websocket pipeline.
+import celery.app.trace as _celery_trace  # noqa: E402
+import collections.abc  # noqa: E402
+
+
+_original_info = _celery_trace.info
+
+
+def _safe_info(fmt, context):
+    if not isinstance(context, collections.abc.Mapping):
+        try:
+            context = context._asdict() if hasattr(context, "_asdict") else vars(context)
+        except Exception:
+            context = {}
+    _original_info(fmt, context)
+
+
+_celery_trace.info = _safe_info  # type: ignore[assignment]
+
 # =============================================================================
 # Dynamic Broker & Backend Configuration
 # =============================================================================

@@ -982,7 +982,7 @@ def _post_tabular_prompt(provider: str, system_prompt: str, user_prompt: str) ->
         return response.json()["choices"][0]["message"]["content"]
 
     if provider == "gemini":
-        model = getattr(settings, "gemini_model_name", None) or "gemini-pro"
+        model = getattr(settings, "gemini_model_name", None) or "gemini-2.0-flash"
         response = requests.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={_provider_key('gemini')}",
             headers={"Content-Type": "application/json"},
@@ -1008,7 +1008,7 @@ def _post_tabular_prompt(provider: str, system_prompt: str, user_prompt: str) ->
                 "Content-Type": "application/json",
             },
             json={
-                "model": getattr(settings, "anthropic_model_name", None) or getattr(settings, "claude_model_name", None) or "claude-haiku-4-5",
+                "model": getattr(settings, "anthropic_model_name", None) or getattr(settings, "claude_model_name", None) or "claude-3-5-haiku-20241022",
                 "system": system_prompt,
                 "messages": [{"role": "user", "content": user_prompt}],
                 "temperature": 0,

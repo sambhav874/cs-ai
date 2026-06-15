@@ -535,6 +535,31 @@ class LegacyRetrievalBridge:
             ranked_sets = [(named_heading_docs, 3.2), (vector_docs, 2.0), (lexical_docs, 1.75), (coverage_docs, 1.1)]
 
         fused = self._rrf_fuse_documents(ranked_sets, max_docs=max(final_k * 2, final_k))
+
+        # Optional cross-encoder reranker
+        if getattr(settings, "voyage_rerank_enabled", False):
+            from .reranker import get_reranker
+            reranker = get_reranker()
+            # Build text representations and rerank as EvidenceHit-like docs
+            texts = [
+                f"{getattr(doc, 'page_content', '')[:2400]}"
+                for doc in fused[: getattr(settings, "voyage_rerank_top_k", 20)]
+            ]
+            try:
+                ranked_pairs = reranker.rerank(question, texts, top_k=len(texts))
+                reranked = [fused[idx] for idx, _ in ranked_pairs if idx < len(fused)]
+                # Append any non-reranked docs
+                reranked_ids = {
+                    (d.metadata or {}).get("segment_id", "") for d in reranked
+                }
+                remainder = [
+                    d for d in fused
+                    if (d.metadata or {}).get("segment_id", "") not in reranked_ids
+                ]
+                fused = reranked + remainder
+            except Exception:
+                pass
+
         fused = self._rerank_documents_for_intent(fused, question)
         return self._merge_prompt_documents(fused, [], max_docs=final_k)
 
@@ -699,7 +724,16 @@ class PromptContextSelector:
 
         segment_map = {segment.id: segment for segment in segments}
         max_segments_in_prompt = max_segments or getattr(settings, "max_segments_in_prompt", 18)
-        char_budget = max(2000, context_char_budget or getattr(settings, "retriever_context_char_budget", 12000))
+
+        # Use the model's actual context window as the upper bound, not a fixed char budget.
+        model_window = getattr(settings, "model_context_window", 8192)
+        prompt_overhead = getattr(settings, "prompt_overhead_estimate", 2500)
+        effective_budget = min(
+            max(2000, context_char_budget or getattr(settings, "retriever_context_char_budget", 12000)),
+            model_window - prompt_overhead - len(question),
+        )
+        char_budget = max(2000, effective_budget)
+
         selected_segments: List[TextSegment] = []
         seen_segment_ids = set()
         used_chars = 0

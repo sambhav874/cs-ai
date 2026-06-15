@@ -30,6 +30,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import dynamic from "next/dynamic";
+
+const PDFViewerDynamic = dynamic(() => import("@/components/PDFViewer/Sample"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-gray-50">
+      <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+    </div>
+  ),
+});
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { useAccountContext } from "@/app/context/AccountContext";
@@ -218,6 +228,8 @@ function PlaybookDetailContent() {
   const [exporting, setExporting] = useState(false);
   const [redlining, setRedlining] = useState(false);
   const [redlineArtifacts, setRedlineArtifacts] = useState<PlaybookRedlineArtifact[]>([]);
+  const [findingsExpandedMap, setFindingsExpandedMap] = useState<Record<string, boolean>>({});
+  const [activeViewContractId, setActiveViewContractId] = useState("");
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -758,35 +770,35 @@ function PlaybookDetailContent() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-white pt-16 text-gray-950">
-      <div className="flex min-h-16 items-center gap-3 border-b border-gray-200 px-4 py-3 md:px-8">
-        <Link href="/playbooks" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-950">
+    <main className="flex min-h-screen flex-col bg-[#fafafa] pt-14">
+      <header className="sticky top-14 z-20 flex h-14 items-center gap-3 border-b border-gray-100 bg-white/80 px-6 backdrop-blur-md">
+        <Link href="/playbooks" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            <BookOpen className="h-4 w-4 shrink-0 text-gray-400" />
-            <h1 className="truncate font-serif text-2xl font-medium text-gray-900">{playbook.title}</h1>
-            <Badge className={`hidden border px-2 py-0.5 text-xs sm:inline-flex ${
-              visibility === "project" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-gray-200 bg-white text-gray-600"
+            <BookOpen className="h-4 w-4 shrink-0 text-gray-300" />
+            <h1 className="truncate text-sm font-semibold text-gray-900">{playbook.title}</h1>
+            <span className={`inline-flex items-center rounded-full px-2 py-0 text-[10px] font-medium ${
+              visibility === "project" ? "bg-blue-50 text-blue-600" : "bg-gray-100 text-gray-500"
             }`}>
               {availabilityLabel}
-            </Badge>
-            <Badge className={`hidden border px-2 py-0.5 text-xs sm:inline-flex ${
-              dirty ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"
+            </span>
+            <span className={`inline-flex items-center rounded-full px-2 py-0 text-[10px] font-medium ${
+              dirty ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
             }`}>
               {dirty ? "Unsaved" : "Saved"}
-            </Badge>
+            </span>
           </div>
-          <p className="mt-0.5 truncate text-xs text-gray-500">
-            {playbook.contract_type || "General contract"} · {completeRuleCount}/{rules.length} complete rules · {selectedContractIds.length} inputs selected
+          <p className="mt-0.5 truncate text-[11px] text-gray-400">
+            {playbook.contract_type || "General contract"} · {completeRuleCount}/{rules.length} rules complete · {selectedContractIds.length} contracts
           </p>
         </div>
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
-          className="hidden h-8 gap-1.5 rounded-lg text-xs md:inline-flex"
+          className="hidden h-8 gap-1.5 rounded-lg text-xs text-gray-500 transition-colors hover:text-gray-900 md:inline-flex"
           onClick={() => void loadPage()}
         >
           <RefreshCw className="h-3.5 w-3.5" />
@@ -794,9 +806,9 @@ function PlaybookDetailContent() {
         </Button>
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
-          className="hidden h-8 gap-1.5 rounded-lg text-xs lg:inline-flex"
+          className="hidden h-8 gap-1.5 rounded-lg text-xs text-gray-500 transition-colors hover:text-gray-900 lg:inline-flex"
           disabled={!rules.length || exporting}
           onClick={() => void exportPlaybookRules()}
         >
@@ -817,224 +829,150 @@ function PlaybookDetailContent() {
         <Button
           type="button"
           size="sm"
-          className="h-8 gap-1.5 rounded-lg bg-gray-950 text-xs text-white hover:bg-gray-800"
+          className="h-8 gap-1.5 rounded-lg bg-gray-900 text-xs text-white transition-colors hover:bg-gray-800"
           disabled={running || saving || !runReady}
           onClick={() => void handleRun()}
         >
           {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
           Run
         </Button>
-      </div>
+      </header>
 
-      <div className="grid flex-1 gap-0 lg:grid-cols-[380px_1fr]">
-        <aside className="border-b border-gray-200 bg-gray-50/60 px-4 py-4 lg:border-b-0 lg:border-r lg:px-5">
-          <section className="space-y-3">
-            <Input value={title} onChange={(event) => setTitle(event.target.value)} className="h-9 rounded-lg bg-white" />
-            <Input value={contractType} onChange={(event) => setContractType(event.target.value)} placeholder="Contract type" className="h-9 rounded-lg bg-white" />
-            <Textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Description or review posture"
-              className="min-h-20 rounded-lg bg-white text-sm"
-            />
-            <div className="rounded-lg border border-gray-200 bg-white p-3">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Availability</p>
-                  <p className="mt-1 text-sm font-medium text-gray-900">{visibility === "project" ? "Project playbook" : "Private playbook"}</p>
-                </div>
-                <Badge className={`border px-2 py-0.5 text-xs ${
-                  visibility === "project" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-gray-200 bg-gray-50 text-gray-600"
-                }`}>
-                  {visibility === "project" ? "Project" : "Private"}
-                </Badge>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {([
-                  ["private", "Private"],
-                  ["project", "Project"],
-                ] as Array<["private" | "project", string]>).map(([item, label]) => {
-                  const disabled = item === "project" && !playbook.project_id;
-                  return (
-                    <button
-                      key={item}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => setVisibility(item)}
-                      className={`h-9 rounded-lg border text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                        visibility === item ? "border-gray-950 bg-gray-950 text-white" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                      }`}
+
+
+        <section className="min-w-0 px-6 py-5" style={{ height: "calc(100vh - 112px)" }}>
+          <div className="grid grid-cols-[1fr_1fr] gap-5" style={{ height: "100%" }}>
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-900/5">
+              <div className="shrink-0 border-b border-gray-100 px-5 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="h-4 w-4 text-gray-400" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Rules</span>
+                    <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">{rules.length}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={activeViewContractId}
+                      onChange={(event) => setActiveViewContractId(event.target.value || "")}
+                      className="h-7 rounded-lg border border-gray-200 bg-gray-50 px-2 text-[11px] text-gray-600 outline-none transition-colors hover:bg-gray-100 focus:border-gray-300"
                     >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-
-          <section className="mt-6">
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900">Rules</h2>
-              <Button type="button" size="sm" variant="outline" className="h-7 gap-1 rounded-lg px-2 text-xs" onClick={() => openRuleDialog()}>
-                <Plus className="h-3.5 w-3.5" />
-                Add
-              </Button>
-            </div>
-            <div className="relative mb-3">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-              <input
-                value={ruleSearch}
-                onChange={(event) => setRuleSearch(event.target.value)}
-                placeholder="Search rules..."
-                className="h-8 w-full rounded-lg border border-gray-200 bg-white pl-8 pr-3 text-sm outline-none focus:border-gray-300"
-              />
-            </div>
-            <div className="max-h-[58vh] space-y-2 overflow-y-auto pr-1">
-              {filteredRules.length ? filteredRules.map((rule) => {
-                const selected = Boolean(rule.rule_id && selectedRuleIds.includes(rule.rule_id));
-                const active = Boolean(rule.rule_id && (rule.rule_id === activeRule?.rule_id));
-                return (
-                  <div
-                    key={rule.rule_id || `${rule.name}-${rule.index}`}
-                    className={`rounded-lg border bg-white p-3 transition-colors ${
-                      active ? "border-gray-950 shadow-sm" : "border-gray-200 hover:border-gray-300"
-                    }`}
-                    onClick={() => setActiveRuleId(rule.rule_id || null)}
-                  >
-                    <div className="flex items-start gap-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleRule(rule.rule_id)}
-                        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                          selected ? "border-gray-950 bg-gray-950 text-white" : "border-gray-200 bg-white"
-                        }`}
-                        aria-label={`Select ${rule.name}`}
-                      >
-                        {selected ? <Check className="h-3 w-3" /> : null}
-                      </button>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-sm font-medium text-gray-900">{rule.name}</span>
-                          <Badge className={`shrink-0 border px-1.5 py-0 text-[10px] uppercase ${SEVERITY_CLASS[rule.severity || "medium"]}`}>
-                            {rule.severity || "medium"}
-                          </Badge>
-                        </div>
-                        <p className="mt-1 text-xs text-gray-500">{rule.clause_type}</p>
-                        <p className="mt-2 line-clamp-3 text-xs leading-5 text-gray-600">{rule.standard_position || rule.guidance || "No standard position set"}</p>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex justify-end gap-1">
-                      <button
-                        type="button"
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-900"
-                        onClick={() => openRuleDialog(rule)}
-                        aria-label={`Edit ${rule.name}`}
-                      >
-                        <Edit3 className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-gray-300 hover:bg-red-50 hover:text-red-600"
-                        onClick={() => deleteRule(rule)}
-                        aria-label={`Delete ${rule.name}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              }) : (
-                <div className="rounded-lg border border-dashed border-gray-200 bg-white px-3 py-8 text-center text-sm text-gray-400">
-                  No rules match this search.
-                </div>
-              )}
-            </div>
-          </section>
-        </aside>
-
-        <section className="min-w-0 px-4 py-4 md:px-8">
-          <div className="mb-4 grid gap-3 md:grid-cols-4">
-            <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                <FileText className="h-3.5 w-3.5" />
-                Source
-              </div>
-              <p className="mt-2 truncate text-sm font-semibold text-gray-900">{playbook.reference_document_id ? referenceDocumentName : "Manual rule set"}</p>
-              <p className="mt-0.5 text-xs text-gray-500">{playbook.reference_document_id ? "Reference document" : "No source document"}</p>
-            </div>
-            <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                <BookOpen className="h-3.5 w-3.5" />
-                Rules
-              </div>
-              <p className="mt-2 text-sm font-semibold text-gray-900">{completeRuleCount}/{rules.length} complete</p>
-              <p className="mt-0.5 text-xs text-gray-500">{actionableRuleCount} with fallback, red flag, or guidance</p>
-            </div>
-            <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Inputs
-              </div>
-              <p className="mt-2 text-sm font-semibold text-gray-900">{selectedContractIds.length}/{documents.length} selected</p>
-              <p className="mt-0.5 truncate text-xs text-gray-500">{selectedContracts[0]?.contract_name || "No contract selected"}</p>
-            </div>
-            <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                <Scale className="h-3.5 w-3.5" />
-                Latest Review
-              </div>
-              <p className="mt-2 text-sm font-semibold text-gray-900">{runDetail ? `${latestRunTotal} findings` : "Not run"}</p>
-              <p className="mt-0.5 text-xs text-gray-500">{runDetail?.run ? formatDate(runDetail.run.completed_at || runDetail.run.updated_at) : runReady ? "Ready" : "Needs input"}</p>
-            </div>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_430px]">
-            <div className="min-w-0 rounded-lg border border-gray-200 bg-white">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Reference document</p>
-                  <div className="mt-1 flex min-w-0 items-center gap-2">
-                    <FileText className="h-4 w-4 shrink-0 text-gray-400" />
-                    <span className="truncate text-sm font-semibold text-gray-900">{referenceDocumentName}</span>
+                      <option value="">View PDF…</option>
+                      {documents.map((d) => (
+                        <option key={d._id} value={d._id}>{d.contract_name}</option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 rounded-lg text-[11px]"
+                      disabled={!dirty || saving}
+                      onClick={() => void handleSave()}
+                    >
+                      {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                      Save
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 gap-1 rounded-lg bg-gray-900 text-[11px] text-white transition-colors hover:bg-gray-800"
+                      disabled={running || saving || !runReady}
+                      onClick={() => void handleRun()}
+                    >
+                      {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                      Run
+                    </Button>
                   </div>
                 </div>
-                {playbook.reference_document_id ? (
-                  <Link
-                    href={`/contracts/${playbook.reference_document_id}`}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-950"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Open
-                  </Link>
+                {selectedContractIds.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {selectedContractIds.map((id) => {
+                      const doc = documentsById.get(id);
+                      return doc ? (
+                        <span key={id} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600">
+                          <FileText className="h-3 w-3 text-gray-400" />
+                          {doc.contract_name}
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
                 ) : null}
               </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-[980px] border-collapse text-left text-xs">
-                  <thead className="bg-gray-50 text-gray-500">
-                    <tr>
-                      {["Rule Name", "Standard Position", "Fall Backs", "Unacceptable Position", "Approval Guide / Guidance", "Sample Standard Language"].map((heading) => (
-                        <th key={heading} className="border-b border-gray-100 px-3 py-2 font-medium">{heading}</th>
-                      ))}
+              <div className="flex-1 overflow-auto">
+                <table className="min-w-full border-collapse text-left text-xs">
+                  <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur">
+                    <tr className="text-[10px] font-medium uppercase tracking-wider text-gray-400 [&>th]:border-b [&>th]:border-gray-100 [&>th]:px-4 [&>th]:py-2">
+                      <th className="w-8"></th>
+                      <th>Rule</th>
+                      <th>Standard Position</th>
+                      <th>Fallback</th>
+                      <th>Guidance</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {rules.length ? rules.slice(0, 12).map((rule) => (
-                      <tr
-                        key={rule.rule_id || `${rule.name}-${rule.index}`}
-                        className={`cursor-pointer align-top hover:bg-gray-50 ${rule.rule_id === activeRule?.rule_id ? "bg-gray-50" : ""}`}
-                        onClick={() => setActiveRuleId(rule.rule_id || null)}
-                      >
-                        <td className="w-44 border-b border-gray-50 px-3 py-3 font-medium text-gray-900">{rule.name}</td>
-                        <td className="w-56 border-b border-gray-50 px-3 py-3 leading-5 text-gray-700">{rule.standard_position || "-"}</td>
-                        <td className="w-52 border-b border-gray-50 px-3 py-3 leading-5 text-gray-700">{(rule.fallback_positions || []).join("; ") || "-"}</td>
-                        <td className="w-52 border-b border-gray-50 px-3 py-3 leading-5 text-gray-700">{(rule.unacceptable_deviations || []).join("; ") || "-"}</td>
-                        <td className="w-56 border-b border-gray-50 px-3 py-3 leading-5 text-gray-700">{rule.guidance || "-"}</td>
-                        <td className="w-56 border-b border-gray-50 px-3 py-3 leading-5 text-gray-700">{rule.suggested_language || "-"}</td>
-                      </tr>
-                    )) : (
+                  <tbody className="divide-y divide-gray-50">
+                    {rules.length ? rules.map((rule) => {
+                      const selected = Boolean(rule.rule_id && selectedRuleIds.includes(rule.rule_id));
+                      const hasStandard = Boolean(rule.standard_position || rule.required_clause);
+                      const hasFallback = Boolean((rule.fallback_positions || []).length || (rule.unacceptable_deviations || []).length || rule.guidance);
+                      const completeness = hasStandard && hasFallback ? "green" : hasStandard || hasFallback ? "amber" : "red";
+                      return (
+                        <tr
+                          key={rule.rule_id || `${rule.name}-${rule.index}`}
+                          className="cursor-pointer align-top transition-colors hover:bg-gray-50/50"
+                        >
+                          <td className="px-4 py-2.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleRule(rule.rule_id)}
+                              className={`flex h-4 w-4 items-center justify-center rounded transition-colors ${
+                                selected ? "bg-gray-900 text-white ring-1 ring-gray-900" : "bg-white text-transparent ring-1 ring-gray-200 hover:ring-gray-300"
+                              }`}
+                              aria-label={`Select ${rule.name}`}
+                            >
+                              {selected ? <Check className="h-2.5 w-2.5" /> : null}
+                            </button>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-flex h-1.5 w-1.5 shrink-0 rounded-full ${
+                                completeness === "green" ? "bg-emerald-400" : completeness === "amber" ? "bg-amber-400" : "bg-red-400"
+                              }`} />
+                              <div>
+                                <span className="block text-xs font-medium text-gray-900">{rule.name}</span>
+                                <span className="text-[10px] text-gray-400">{rule.clause_type} · {rule.severity}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5 leading-5 text-gray-600">{rule.standard_position || <span className="text-gray-300">—</span>}</td>
+                          <td className="px-4 py-2.5 leading-5 text-gray-600">{(rule.fallback_positions || []).join("; ") || <span className="text-gray-300">—</span>}</td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="line-clamp-2 leading-5 text-gray-600">{rule.guidance || <span className="text-gray-300">—</span>}</span>
+                              <button
+                                type="button"
+                                className="ml-auto shrink-0 rounded-md p-1 text-gray-300 opacity-0 transition-all group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-600"
+                                onClick={() => openRuleDialog(rule)}
+                                aria-label={`Edit ${rule.name}`}
+                              >
+                                <Edit3 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }) : (
                       <tr>
-                        <td colSpan={6} className="px-3 py-12 text-center text-sm text-gray-400">Add a rule to build the playbook table.</td>
+                        <td colSpan={5}>
+                          <div className="flex flex-col items-center justify-center py-20">
+                            <BookOpen className="mb-3 h-8 w-8 text-gray-200" />
+                            <p className="text-sm text-gray-400">No rules created</p>
+                            <p className="mt-1 text-xs text-gray-300">Add rules to begin reviewing contracts</p>
+                            <Button type="button" size="sm" className="mt-4 h-8 gap-1.5 rounded-lg bg-gray-900 text-xs text-white transition-colors hover:bg-gray-800" onClick={() => openRuleDialog()}>
+                              <Plus className="h-3.5 w-3.5" />
+                              Add rule
+                            </Button>
+                          </div>
+                        </td>
                       </tr>
                     )}
                   </tbody>
@@ -1042,441 +980,281 @@ function PlaybookDetailContent() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-gray-200 bg-white">
-              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{activeRule ? "Edit rule" : "New rule"}</p>
-                  <h2 className="mt-1 text-sm font-semibold text-gray-900">{activeRule?.name || "No rule selected"}</h2>
-                </div>
-                <Button type="button" size="sm" variant="outline" className="h-8 gap-1 rounded-lg px-2 text-xs" onClick={() => openRuleDialog()}>
-                  <Plus className="h-3.5 w-3.5" />
-                  New rule
-                </Button>
-              </div>
-
-              {activeRule ? (
-                <div className="max-h-[640px] space-y-3 overflow-y-auto px-4 py-4">
-                  <Input
-                    value={activeRule.name}
-                    onChange={(event) => updateRuleAt(activeRuleIndex, { name: event.target.value })}
-                    placeholder="Rule name"
-                    className="h-9 rounded-lg"
-                  />
-                  <Input
-                    value={activeRule.clause_type}
-                    onChange={(event) => updateRuleAt(activeRuleIndex, { clause_type: event.target.value })}
-                    placeholder="Clause type"
-                    className="h-9 rounded-lg"
-                  />
-                  <Textarea
-                    value={activeRule.standard_position || ""}
-                    onChange={(event) => updateRuleAt(activeRuleIndex, { standard_position: event.target.value })}
-                    placeholder="Standard position"
-                    className="min-h-20 rounded-lg text-sm"
-                  />
-                  <div>
-                    <Textarea
-                      value={joinLines(activeRule.fallback_positions)}
-                      onChange={(event) => updateRuleAt(activeRuleIndex, { fallback_positions: splitLines(event.target.value) })}
-                      placeholder="Fallback positions"
-                      className="min-h-20 rounded-lg text-sm"
-                    />
-                    <button
-                      type="button"
-                      className="mt-2 text-xs font-medium text-gray-500 hover:text-gray-950"
-                      onClick={() => appendRuleLine(activeRuleIndex, "fallback_positions")}
-                    >
-                      + Add fallback position
-                    </button>
-                  </div>
-                  <div>
-                    <Textarea
-                      value={joinLines(activeRule.unacceptable_deviations)}
-                      onChange={(event) => updateRuleAt(activeRuleIndex, { unacceptable_deviations: splitLines(event.target.value) })}
-                      placeholder="Unacceptable positions"
-                      className="min-h-20 rounded-lg text-sm"
-                    />
-                    <button
-                      type="button"
-                      className="mt-2 text-xs font-medium text-gray-500 hover:text-gray-950"
-                      onClick={() => appendRuleLine(activeRuleIndex, "unacceptable_deviations")}
-                    >
-                      + Add unacceptable position
-                    </button>
-                  </div>
-                  <Textarea
-                    value={activeRule.guidance || ""}
-                    onChange={(event) => updateRuleAt(activeRuleIndex, { guidance: event.target.value })}
-                    placeholder="Guidance"
-                    className="min-h-24 rounded-lg text-sm"
-                  />
-                  <label className="flex items-start gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={activeRule.required_clause}
-                      onChange={(event) => updateRuleAt(activeRuleIndex, { required_clause: event.target.checked })}
-                      className="mt-0.5 h-4 w-4 rounded border-gray-300"
-                    />
-                    <span>
-                      <span className="block font-medium text-gray-800">Required clause</span>
-                      <span className="mt-0.5 block text-xs text-gray-500">If the clause does not exist, mark as not acceptable.</span>
-                    </span>
-                  </label>
-                  <Textarea
-                    value={activeRule.suggested_language || ""}
-                    onChange={(event) => updateRuleAt(activeRuleIndex, { suggested_language: event.target.value })}
-                    placeholder="Sample standard language"
-                    className="min-h-24 rounded-lg text-sm"
-                  />
-                  <Button type="button" className="h-9 w-full rounded-lg bg-gray-950 text-white hover:bg-gray-800" disabled={!dirty || saving} onClick={() => void handleSave()}>
-                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Save
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex min-h-80 flex-col items-center justify-center px-6 text-center">
-                  <BookOpen className="mb-4 h-8 w-8 text-gray-300" />
-                  <p className="font-serif text-2xl font-medium text-gray-900">No rules yet</p>
-                  <Button type="button" size="sm" className="mt-4 h-8 gap-1 rounded-lg bg-gray-950 text-xs text-white hover:bg-gray-800" onClick={() => openRuleDialog()}>
-                    <Plus className="h-3.5 w-3.5" />
-                    Add rule
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            {([
-              ["acceptable", counts.acceptable],
-              ["needs_review", counts.needs_review],
-              ["not_acceptable", counts.not_acceptable],
-              ["not_applicable", counts.not_applicable],
-            ] as Array<[PlaybookStatus, number]>).map(([status, count]) => {
-              const meta = STATUS_META[status];
-              const Icon = meta.icon;
-              return (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => setFindingFilter(findingFilter === status ? "all" : status)}
-                  className={`flex min-h-16 items-center gap-3 rounded-lg border px-3 text-left transition-colors ${
-                    findingFilter === status ? meta.className : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span>
-                    <span className="block text-lg font-semibold leading-none">{count}</span>
-                    <span className="mt-1 block text-xs">{meta.label}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-4 grid gap-4 xl:grid-cols-[360px_1fr]">
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-gray-900">Run Setup</h2>
-                <button
-                  type="button"
-                  className="text-xs font-medium text-gray-500 hover:text-gray-900"
-                  onClick={() => {
-                    if (allRulesSelected) setSelectedRuleIds([]);
-                    else setSelectedRuleIds(rules.map((rule) => rule.rule_id).filter(Boolean) as string[]);
-                  }}
-                >
-                  {allRulesSelected ? "Clear rules" : "All rules"}
-                </button>
-              </div>
-              <div className="space-y-3">
-                <Input
-                  value={representingParty}
-                  onChange={(event) => setRepresentingParty(event.target.value)}
-                  placeholder="Representing party"
-                  className="h-9 rounded-lg"
-                />
-                <Input
-                  value={paperType}
-                  onChange={(event) => setPaperType(event.target.value)}
-                  placeholder="Paper type, e.g. counterparty paper"
-                  className="h-9 rounded-lg"
-                />
-                <Textarea
-                  value={additionalContext}
-                  onChange={(event) => setAdditionalContext(event.target.value)}
-                  placeholder="Deal context, negotiation posture, or special instructions"
-                  className="min-h-20 rounded-lg text-sm"
-                />
-              </div>
-
-              <div className="mt-5">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Contracts</h3>
-                <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-100">
-                  {documents.length ? documents.map((document) => {
-                    const selected = selectedContractIds.includes(document._id);
-                    return (
-                      <button
-                        key={document._id}
-                        type="button"
-                        onClick={() => toggleDocument(document._id)}
-                        className="flex w-full items-start gap-3 border-b border-gray-50 px-3 py-2 text-left last:border-0 hover:bg-gray-50"
-                      >
-                        <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                          selected ? "border-gray-950 bg-gray-950 text-white" : "border-gray-200 bg-white"
-                        }`}>
-                          {selected ? <Check className="h-3 w-3" /> : null}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm text-gray-800">{document.contract_name}</span>
-                          <span className="mt-0.5 flex items-center gap-1 text-xs text-gray-400">
-                            <FileText className="h-3.5 w-3.5" />
-                            {document.status}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  }) : (
-                    <div className="px-3 py-8 text-center text-sm text-gray-400">No indexed contracts found</div>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-5 border-t border-gray-100 pt-4 text-xs text-gray-500">
-                <div className="flex justify-between">
-                  <span>Selected contracts</span>
-                  <span>{selectedContractIds.length}</span>
-                </div>
-                <div className="mt-1 flex justify-between">
-                  <span>Selected rules</span>
-                  <span>{selectedRuleIds.length}</span>
-                </div>
-                {runDetail?.run ? (
-                  <div className="mt-1 flex justify-between">
-                    <span>Latest run</span>
-                    <span>{formatDate(runDetail.run.completed_at || runDetail.run.updated_at)}</span>
-                  </div>
-                ) : null}
-                <div className="mt-3 border-t border-gray-100 pt-3">
-                  <div className="flex justify-between">
-                    <span>Run status</span>
-                    <span className={runReady ? "font-medium text-emerald-700" : "font-medium text-amber-700"}>
-                      {runReady ? "Ready" : "Needs input"}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex justify-between">
-                    <span>Rules</span>
-                    <span className={selectedRuleIds.length ? "text-gray-700" : "text-amber-700"}>
-                      {selectedRuleIds.length ? `${selectedRuleIds.length} selected` : "Missing"}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex justify-between">
-                    <span>Contracts</span>
-                    <span className={selectedContractIds.length ? "text-gray-700" : "text-amber-700"}>
-                      {selectedContractIds.length ? `${selectedContractIds.length} selected` : "Missing"}
-                    </span>
-                  </div>
-                  {dirty ? (
-                    <div className="mt-1 flex justify-between">
-                      <span>Changes</span>
-                      <span className="text-amber-700">Will save before run</span>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
-            <div className="min-w-0 rounded-lg border border-gray-200 bg-white">
-              <div className="border-b border-gray-100 px-4 py-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-gray-900">{playbook.title}</h2>
-                    <p className="mt-0.5 text-xs text-gray-500">
-                      {runDetail ? `${filteredFindings.length} shown from ${findings.length} total` : "Run a playbook to create findings"}
-                    </p>
-                  </div>
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-900/5">
+              <div className="shrink-0 border-b border-gray-100 px-5 py-3">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    {runs.length ? (
+                    <h2 className="text-xs font-semibold text-gray-700">{playbook.title}</h2>
+                    {runDetail ? (
+                      <span className="rounded-full bg-gray-100 px-2 py-0 text-[10px] font-medium text-gray-500">
+                        {runDetail.findings.length}f
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {runs.length > 1 ? (
                       <select
                         value={runDetail?.run.id || ""}
                         onChange={(event) => void loadRun(event.target.value)}
-                        className="h-8 max-w-56 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none"
+                        className="h-7 rounded-lg border border-gray-200 bg-gray-50 px-2 text-[10px] text-gray-600 outline-none transition-colors hover:bg-gray-100"
                       >
                         {runs.map((run) => (
                           <option key={run.id} value={run.id}>
-                            {formatDate(run.completed_at || run.created_at)} · {run.summary?.total || 0} findings
+                            {formatDate(run.completed_at || run.created_at)}
                           </option>
                         ))}
                       </select>
                     ) : null}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1 rounded-lg px-2 text-xs"
-                      disabled={!redlineableFindings.length || redlining}
-                      onClick={() => void handleCreateRedline()}
-                    >
-                      {redlining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Edit3 className="h-3.5 w-3.5" />}
-                      Create redline
+                    <Button type="button" variant="outline" size="sm" className="h-7 gap-1 rounded-lg px-2 text-[10px]" disabled={!redlineableFindings.length || redlining} onClick={() => void handleCreateRedline()}>
+                      {redlining ? <Loader2 className="h-3 w-3 animate-spin" /> : <Edit3 className="h-3 w-3" />}
+                      Redline
                     </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1 rounded-lg px-2 text-xs"
-                      disabled={!findings.length || exporting}
-                      onClick={() => void exportFindings()}
-                    >
-                      {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                    <Button type="button" variant="outline" size="sm" className="h-7 gap-1 rounded-lg px-2 text-[10px]" disabled={!findings.length || exporting} onClick={() => void exportFindings()}>
+                      {exporting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
                       Export
                     </Button>
                   </div>
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   {([
                     ["all", "All"],
-                    ["redlines", "Redlines only"],
-                    ["unreviewed", "Unreviewed rules"],
-                  ] as Array<[FindingView, string]>).map(([view, label]) => (
-                    <button
-                      key={view}
-                      type="button"
-                      onClick={() => setFindingView(view)}
-                      className={`h-8 rounded-lg px-3 text-xs font-medium transition-colors ${
-                        findingView === view ? "bg-gray-950 text-white" : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  <div className="relative ml-auto min-w-52 flex-1 sm:flex-none">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                    ["needs_review", "Needs review"],
+                    ["not_acceptable", "Unacceptable"],
+                    ["acceptable", "Acceptable"],
+                    ["not_applicable", "N/A"],
+                  ] as Array<[string, string]>).map(([status, label]) => {
+                    const count = status === "all" ? findings.length : counts[status as PlaybookStatus] || 0;
+                    const active = findingFilter === status;
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => setFindingFilter(findingFilter === status ? "all" : status as PlaybookStatus | "all")}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-all ${
+                          active
+                            ? "bg-gray-900 text-white shadow-sm"
+                            : "bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                        }`}
+                      >
+                        {label} <span className={active ? "text-white/60" : "text-gray-400"}>{count}</span>
+                      </button>
+                    );
+                  })}
+                  <div className="relative ml-auto">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
                     <input
                       value={findingSearch}
                       onChange={(event) => setFindingSearch(event.target.value)}
-                      placeholder="Search rules..."
-                      className="h-8 w-full rounded-lg border border-gray-200 bg-white pl-8 pr-3 text-sm outline-none focus:border-gray-300"
+                      placeholder="Search findings…"
+                      className="h-7 w-40 rounded-lg border border-gray-200 bg-gray-50 pl-7 pr-2.5 text-[10px] text-gray-600 outline-none transition-colors placeholder:text-gray-400 hover:bg-gray-100 focus:border-gray-300"
                     />
                   </div>
                 </div>
-                {redlineArtifacts.length ? (
-                  <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
-                    {redlineArtifacts.map((artifact) => (
-                      <button
-                        key={artifact.redline_id}
-                        type="button"
-                        className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
-                        onClick={() => void downloadRedlineArtifact(artifact)}
-                      >
-                        <Download className="h-3.5 w-3.5 shrink-0" />
-                        <span className="truncate">{artifact.filename}</span>
-                        <span className="shrink-0 text-emerald-600">· {artifact.applied_count} edits</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
               </div>
-
-              <div className="max-h-[72vh] overflow-y-auto">
-                {groupedFindings.length ? groupedFindings.map((group) => {
-                  const meta = STATUS_META[group.status];
-                  const StatusIcon = meta.icon;
-                  const reviewed = group.findings.filter((finding) => finding.reviewer_status).length;
-                  const countLabel = group.status === "acceptable" ? `${group.findings.length}` : `${reviewed}/${group.findings.length}`;
-                  return (
-                    <section key={group.status} className="border-b border-gray-100 last:border-0">
-                      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-50 bg-white px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
-                          <StatusIcon className="h-3.5 w-3.5 text-gray-500" />
-                          <span className="text-sm font-semibold text-gray-900">{meta.label}</span>
+              <div className="flex-1 overflow-hidden">
+                {activeViewContractId ? (
+                  <div className="flex h-full flex-col">
+                    <div className="flex items-center justify-between bg-gray-50/80 px-4 py-1.5 shrink-0 backdrop-blur">
+                      <span className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600">
+                        <FileText className="h-3.5 w-3.5 text-gray-400" />
+                        {documentsById.get(activeViewContractId)?.contract_name || "Contract PDF"}
+                      </span>
+                      <button
+                        type="button"
+                        className="rounded-md px-2 py-0.5 text-[10px] text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600"
+                        onClick={() => setActiveViewContractId("")}
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-auto">
+                      <PDFViewerDynamic
+                        key={activeViewContractId}
+                        contractId={activeViewContractId}
+                        searchKey=""
+                        searchValue=""
+                        token={token}
+                      />
+                    </div>
+                    {runDetail ? (
+                      <div className="shrink-0 border-t border-gray-100 bg-gray-50/50 px-4 py-2">
+                        <div className="flex items-center gap-4 text-[10px]">
+                          <span className="font-medium text-gray-500">Risk summary</span>
+                          {([
+                            ["acceptable", counts.acceptable, "text-emerald-600"],
+                            ["needs_review", counts.needs_review, "text-amber-600"],
+                            ["not_acceptable", counts.not_acceptable, "text-red-600"],
+                            ["not_applicable", counts.not_applicable, "text-gray-400"],
+                          ] as Array<[PlaybookStatus, number, string]>).map(([s, c, color]) => (
+                            <span key={s} className={`flex items-center gap-1 ${color}`}>
+                              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-current" />
+                              {STATUS_META[s].label} <span className="font-medium tabular-nums">{c}</span>
+                            </span>
+                          ))}
+                          <span className="ml-auto text-gray-400">{findings.length} total</span>
                         </div>
-                        <span className="text-xs font-medium text-gray-500">{countLabel}</span>
                       </div>
-
-                      <div className="divide-y divide-gray-50">
-                        {group.findings.map((finding) => {
-                          const status = findingStatus(finding);
-                          const effectiveMeta = STATUS_META[status];
+                    ) : null}
+                    {groupedFindings.length > 0 ? (
+                      <div className="max-h-[45%] shrink-0 overflow-auto border-t border-gray-100">
+                        {groupedFindings.map((group) => {
+                          const meta = STATUS_META[group.status];
+                          const StatusIcon = meta.icon;
                           return (
-                            <article key={finding.id} className="px-4 py-4">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className={`inline-flex h-2 w-2 rounded-full ${status === "not_acceptable" ? "bg-red-500" : status === "needs_review" ? "bg-amber-500" : status === "acceptable" ? "bg-emerald-500" : "bg-gray-400"}`} />
-                                    <h3 className="truncate text-sm font-semibold text-gray-900">{finding.rule_name}</h3>
-                                    <Badge className={`border px-1.5 py-0 text-[10px] uppercase ${SEVERITY_CLASS[finding.severity || "medium"]}`}>
-                                      {finding.severity || "medium"}
-                                    </Badge>
-                                    {finding.reviewer_status ? <Badge className="border border-gray-200 bg-white px-1.5 py-0 text-[10px] text-gray-500">Reviewed</Badge> : null}
-                                  </div>
-                                  <p className="mt-1 text-xs text-gray-500">
-                                    {finding.document_name || documentsById.get(finding.document_id)?.contract_name || finding.document_id} · {finding.clause_type} · confidence {confidenceLabel(finding.confidence)}
-                                  </p>
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 gap-1 rounded-lg px-2 text-xs"
-                                  onClick={() =>
-                                    setFindingDraft({
-                                      finding,
-                                      reviewer_status: status,
-                                      reviewer_notes: finding.reviewer_notes || "",
-                                      suggested_revision: finding.suggested_revision || "",
-                                    })
-                                  }
-                                >
-                                  <Edit3 className="h-3.5 w-3.5" />
-                                  Review
-                                </Button>
+                            <section key={group.status} className="border-b border-gray-50 last:border-0">
+                              <div className="sticky top-0 z-10 flex items-center gap-2 bg-gray-50/80 px-4 py-1.5 backdrop-blur">
+                                <StatusIcon className="h-3 w-3 text-gray-500" />
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{meta.label}</span>
+                                <span className="text-[10px] text-gray-400">{group.findings.length}</span>
                               </div>
-
-                              <p className="mt-3 text-sm leading-6 text-gray-700">{finding.clause_summary || finding.reasoning || "No summary provided."}</p>
-
-                              {finding.guidance ? (
-                                <p className="mt-2 text-xs leading-5 text-gray-500">{finding.guidance}</p>
-                              ) : null}
-
-                              {finding.suggested_revision ? (
-                                <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-3">
-                                  <div className="flex items-center justify-between gap-3">
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Suggestion</p>
-                                    <Badge className={`border px-2 py-0.5 text-xs ${effectiveMeta.className}`}>{effectiveMeta.label}</Badge>
-                                  </div>
-                                  <p className="mt-2 text-sm leading-6 text-gray-800">{finding.suggested_revision}</p>
-                                  <div className="mt-3 flex justify-end gap-2">
-                                    <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg px-3 text-xs" onClick={() => void handleFindingAction(finding, "dismiss")}>
-                                      Dismiss
-                                    </Button>
-                                    <Button type="button" size="sm" className="h-8 rounded-lg bg-gray-950 px-3 text-xs text-white hover:bg-gray-800" onClick={() => void handleFindingAction(finding, "apply")}>
-                                      Mark applied
-                                    </Button>
-                                  </div>
-                                </div>
-                              ) : null}
-                            </article>
+                              {group.findings.map((finding) => {
+                                const status = findingStatus(finding);
+                                const expanded = findingsExpandedMap[finding.id] ?? false;
+                                return (
+                                  <article key={finding.id} className="cursor-pointer px-4 py-2 transition-colors hover:bg-gray-50" onClick={() => setFindingsExpandedMap((c) => ({ ...c, [finding.id]: !c[finding.id] }))}>
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className={`inline-flex h-1.5 w-1.5 shrink-0 rounded-full ${status === "not_acceptable" ? "bg-red-500" : status === "needs_review" ? "bg-amber-500" : status === "acceptable" ? "bg-emerald-500" : "bg-gray-300"}`} />
+                                          <span className="text-xs font-medium text-gray-900">{finding.rule_name}</span>
+                                          <span className="text-[10px] text-gray-400">{finding.document_name || finding.document_id}</span>
+                                          {finding.reviewer_status ? <Badge className="border-gray-150 border bg-white px-1 py-0 text-[9px] text-gray-400">Done</Badge> : null}
+                                        </div>
+                                        <p className="mt-0.5 line-clamp-1 text-[11px] leading-5 text-gray-500">{finding.clause_summary || finding.reasoning || "No summary"}</p>
+                                      </div>
+                                      <Button type="button" variant="outline" size="sm" className="h-6 gap-1 rounded-md px-1.5 text-[10px]" onClick={(e) => { e.stopPropagation(); setFindingDraft({ finding, reviewer_status: status, reviewer_notes: finding.reviewer_notes || "", suggested_revision: finding.suggested_revision || "" }); }}>
+                                        <Edit3 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                    {expanded ? (
+                                      <div className="mt-2 space-y-2 border-t border-gray-50 pt-2">
+                                        <p className="text-xs leading-5 text-gray-600">{finding.clause_summary || finding.reasoning}</p>
+                                        {finding.guidance ? <p className="text-[10px] text-gray-500">{finding.guidance}</p> : null}
+                                        {finding.suggested_revision ? (
+                                          <div className="rounded-md border border-amber-100 bg-amber-50/50 px-3 py-2">
+                                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Suggestion</p>
+                                            <p className="text-xs leading-5 text-gray-800">{finding.suggested_revision}</p>
+                                            <div className="mt-2 flex justify-end gap-1.5">
+                                              <Button type="button" variant="outline" size="sm" className="h-6 rounded-md px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); void handleFindingAction(finding, "dismiss"); }}>Dismiss</Button>
+                                              <Button type="button" size="sm" className="h-6 rounded-md bg-gray-900 px-2 text-[10px] text-white hover:bg-gray-800" onClick={(e) => { e.stopPropagation(); void handleFindingAction(finding, "apply"); }}>Apply</Button>
+                                            </div>
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
+                                  </article>
+                                );
+                              })}
+                            </section>
                           );
                         })}
                       </div>
-                    </section>
-                  );
-                }) : (
-                  <div className="flex min-h-80 flex-col items-center justify-center px-6 text-center">
-                    <Scale className="mb-4 h-8 w-8 text-gray-300" />
-                    <p className="font-serif text-2xl font-medium text-gray-900">{runDetail ? "No findings in this filter" : "No run yet"}</p>
-                    <p className="mt-1 max-w-sm text-sm leading-6 text-gray-500">
-                      Select contracts and rules, then run the playbook to classify each clause against your standards.
-                    </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="flex h-full flex-col">
+                    {!findings.length && !runDetail ? (
+                      <div className="flex min-h-full flex-col items-center justify-center px-8 text-center">
+                        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-100">
+                          <Scale className="h-6 w-6 text-gray-400" />
+                        </div>
+                        <p className="text-sm font-medium text-gray-600">No findings yet</p>
+                        <p className="mt-1 text-xs text-gray-400">
+                          Select contracts below and rules on the left, then press Run.
+                        </p>
+                        <div className="mt-6 w-full max-w-xs rounded-xl bg-gray-50 p-4 text-left">
+                          <p className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Contracts to review</p>
+                          <div className="max-h-36 space-y-0.5 overflow-y-auto">
+                            {documents.length ? documents.map((doc) => {
+                              const selected = selectedContractIds.includes(doc._id);
+                              return (
+                                <label key={doc._id} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-gray-100">
+                                  <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded transition-colors ${
+                                    selected ? "bg-gray-900 text-white" : "bg-white text-transparent ring-1 ring-gray-200"
+                                  }`}>
+                                    {selected ? <Check className="h-2.5 w-2.5" /> : null}
+                                  </span>
+                                  <span className="truncate text-xs text-gray-700">{doc.contract_name}</span>
+                                  <input type="checkbox" checked={selected} onChange={() => toggleDocument(doc._id)} className="sr-only" />
+                                </label>
+                              );
+                            }) : (
+                              <p className="py-3 text-center text-xs text-gray-400">No indexed contracts</p>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="mt-5 h-8 gap-1.5 rounded-lg bg-gray-900 text-xs text-white transition-colors hover:bg-gray-800"
+                          disabled={!runReady}
+                          onClick={() => void handleRun()}
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                          {runReady ? "Run playbook" : "Select inputs to run"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex-1 overflow-auto">
+                        {groupedFindings.map((group) => {
+                          const meta = STATUS_META[group.status];
+                          const StatusIcon = meta.icon;
+                          return (
+                            <section key={group.status} className="border-b border-gray-50 last:border-0">
+                              <div className="sticky top-0 z-10 flex items-center gap-2 bg-gray-50/80 px-4 py-1.5 backdrop-blur">
+                                <StatusIcon className="h-3 w-3 text-gray-500" />
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{meta.label}</span>
+                                <span className="text-[10px] text-gray-400">{group.findings.length}</span>
+                              </div>
+                              {group.findings.map((finding) => {
+                                const status = findingStatus(finding);
+                                const expanded = findingsExpandedMap[finding.id] ?? false;
+                                return (
+                                  <article key={finding.id} className="cursor-pointer px-4 py-2 transition-colors hover:bg-gray-50" onClick={() => setFindingsExpandedMap((c) => ({ ...c, [finding.id]: !c[finding.id] }))}>
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className={`inline-flex h-1.5 w-1.5 shrink-0 rounded-full ${status === "not_acceptable" ? "bg-red-500" : status === "needs_review" ? "bg-amber-500" : status === "acceptable" ? "bg-emerald-500" : "bg-gray-300"}`} />
+                                          <span className="text-xs font-medium text-gray-900">{finding.rule_name}</span>
+                                          <span className="text-[10px] text-gray-400">{finding.document_name || finding.document_id}</span>
+                                          {finding.reviewer_status ? <Badge className="border-gray-150 border bg-white px-1 py-0 text-[9px] text-gray-400">Done</Badge> : null}
+                                        </div>
+                                        <p className="mt-0.5 line-clamp-1 text-[11px] leading-5 text-gray-500">{finding.clause_summary || finding.reasoning || "No summary"}</p>
+                                      </div>
+                                      <Button type="button" variant="outline" size="sm" className="h-6 gap-1 rounded-md px-1.5 text-[10px]" onClick={(e) => { e.stopPropagation(); setFindingDraft({ finding, reviewer_status: status, reviewer_notes: finding.reviewer_notes || "", suggested_revision: finding.suggested_revision || "" }); }}>
+                                        <Edit3 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                    {expanded ? (
+                                      <div className="mt-2 space-y-2 border-t border-gray-50 pt-2">
+                                        <p className="text-xs leading-5 text-gray-600">{finding.clause_summary || finding.reasoning}</p>
+                                        {finding.guidance ? <p className="text-[10px] text-gray-500">{finding.guidance}</p> : null}
+                                        {finding.suggested_revision ? (
+                                          <div className="rounded-md border border-amber-100 bg-amber-50/50 px-3 py-2">
+                                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Suggestion</p>
+                                            <p className="text-xs leading-5 text-gray-800">{finding.suggested_revision}</p>
+                                            <div className="mt-2 flex justify-end gap-1.5">
+                                              <Button type="button" variant="outline" size="sm" className="h-6 rounded-md px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); void handleFindingAction(finding, "dismiss"); }}>Dismiss</Button>
+                                              <Button type="button" size="sm" className="h-6 rounded-md bg-gray-900 px-2 text-[10px] text-white hover:bg-gray-800" onClick={(e) => { e.stopPropagation(); void handleFindingAction(finding, "apply"); }}>Apply</Button>
+                                            </div>
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
+                                  </article>
+                                );
+                              })}
+                            </section>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             </div>
           </div>
         </section>
-      </div>
 
       <Dialog open={ruleDialogOpen} onOpenChange={setRuleDialogOpen}>
         <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto rounded-2xl">
@@ -1567,6 +1345,16 @@ function PlaybookDetailContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {running ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-sm">
+          <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-xl">
+            <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin text-gray-950" />
+            <p className="text-center font-serif text-lg font-medium text-gray-900">Running playbook</p>
+            <p className="mt-2 text-center text-sm text-gray-500">Reviewing rules against selected contracts…</p>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

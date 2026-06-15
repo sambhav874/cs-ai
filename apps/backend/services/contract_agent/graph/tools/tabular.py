@@ -7,12 +7,11 @@ from typing import Any, Dict, List
 from ..state import TabularColumnProposal, TabularReviewProposal
 
 
-def tabular_columns_payload(columns: List[TabularColumnProposal]) -> List[Dict[str, Any]]:
+def _tabular_columns_payload(columns: List[TabularColumnProposal]) -> List[Dict[str, Any]]:
     return [column.model_dump(mode="json") for column in columns]
 
 
-def tabular_proposal_payload(proposal: TabularReviewProposal) -> Dict[str, Any]:
+def _tabular_proposal_payload(proposal: TabularReviewProposal) -> Dict[str, Any]:
     payload = proposal.model_dump(mode="json")
-    payload["columns_config"] = tabular_columns_payload(proposal.columns_config)
+    payload["columns_config"] = _tabular_columns_payload(proposal.columns_config)
     return payload
-

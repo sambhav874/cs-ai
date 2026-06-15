@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 import os
 import re
 import time
@@ -67,22 +68,96 @@ def default_vector_namespace(contract_name: str, contract_id: Optional[str] = No
     return f"{safe_contract_name}-{int(time.time())}"
 
 
+# --------------------------------------------------------------------------
+# Singleton vector store cache — avoids re-initializing embeddings and
+# MongoDB connections on every retrieval query.
+# --------------------------------------------------------------------------
+_MAX_CACHED_STORES = 128
+_vector_store_cache: OrderedDict[str, Any] = OrderedDict()
+_global_embeddings: Optional[Any] = None
+_global_embedding_backend: Optional[str] = None
+
+# Module-level segment cache — avoids re-segmenting on every fallback retrieval
+_MAX_CACHED_SEGMENTS = 64
+_segment_cache: OrderedDict[str, Tuple[List[Dict[str, Any]], int]] = OrderedDict()
+
+
+def get_singleton_embeddings() -> Any:
+    global _global_embeddings, _global_embedding_backend
+    if _global_embeddings is None:
+        if settings.voyageai_api_key:
+            _global_embeddings = VoyageAIEmbeddings(
+                model=settings.voyageai_model_name,
+                voyage_api_key=settings.voyageai_api_key,
+            )
+            _global_embedding_backend = "voyageai"
+        elif settings.embeddings_model_name:
+            from langchain_huggingface import HuggingFaceEmbeddings
+            _global_embeddings = HuggingFaceEmbeddings(
+                model_name=settings.embeddings_model_name,
+                model_kwargs={'token': getattr(settings, "huggingface_token", None)},
+            )
+            _global_embedding_backend = "huggingface"
+        else:
+            raise RuntimeError("No embeddings provider configured")
+    return _global_embeddings
+
+
+def get_global_embedding_backend() -> str:
+    global _global_embedding_backend
+    if _global_embedding_backend is None:
+        get_singleton_embeddings()
+    return _global_embedding_backend or ""
+
+
+def get_global_embedding_dimension() -> int:
+    return embedding_dimension(get_global_embedding_backend())
+
+
+def get_cached_vector_store(namespace: str) -> Optional[Any]:
+    return _vector_store_cache.get(namespace)
+
+
+def cache_vector_store(namespace: str, store: Any) -> None:
+    if len(_vector_store_cache) >= _MAX_CACHED_STORES:
+        _vector_store_cache.popitem(last=False)
+    _vector_store_cache[namespace] = store
+
+
+def invalidate_vector_store(namespace: str) -> None:
+    _vector_store_cache.pop(namespace, None)
+
+
+def cache_segments(contract_id: str, segments: List[Dict[str, Any]], schema_version: int) -> None:
+    if len(_segment_cache) >= _MAX_CACHED_SEGMENTS:
+        _segment_cache.popitem(last=False)
+    _segment_cache[contract_id] = (segments, schema_version)
+
+
+def get_cached_segments(contract_id: str, schema_version: int) -> Optional[List[Dict[str, Any]]]:
+    entry = _segment_cache.get(contract_id)
+    if entry and entry[1] == schema_version:
+        return entry[0]
+    return None
+
+
 def embedding_dimension(embedding_backend: Optional[str]) -> int:
     backend = embedding_backend or ""
-    if backend in {"mongodb_voyage", "voyageai"}:
-        return 1024
+    if backend == "voyageai":
+        return getattr(settings, "voyageai_embedding_dimension", 1024)
+    if backend == "huggingface":
+        model_name = (settings.embeddings_model_name or "").lower()
+        if "e5-large" in model_name or "gte-large" in model_name:
+            return 1024
+        if "minilm" in model_name:
+            return 384
+        return 768
     if backend == "openai":
         model_name = (settings.openai_embedding_model or "").lower()
         if "3-large" in model_name:
             return 3072
         return getattr(settings, "openai_embed_dim", 1536)
-
-    model_name = (settings.embeddings_model_name or "").lower()
-    if "e5-large" in model_name or "gte-large" in model_name:
-        return 1024
-    if "minilm" in model_name:
-        return 384
-    return 768
+    return 1024  # default
 
 
 def prepare_segments_for_document(
@@ -211,8 +286,6 @@ class VectorStoreManager:
         self.pinecone_index_name = settings.pinecone_index_name
         self.voyageai_api_key = settings.voyageai_api_key
         self.use_voyageai = bool(self.voyageai_api_key)
-        self.mongodb_voyage_api_key = settings.mongodb_voyage_api_key
-        self.use_mongodb_voyage = bool(self.mongodb_voyage_api_key)
         self.use_mongodb_vector = settings.use_mongodb_vector and bool(settings.mongodb_uri)
         self.use_pinecone = (not self.use_mongodb_vector) and bool(self.pinecone_api_key)
 
@@ -224,6 +297,9 @@ class VectorStoreManager:
         self.current_vector_backend = None
         self.current_namespace = None
         self.current_vector_count = 0
+
+        self.embedding_model = None
+        self.embedding_dimension = None
 
         self.segmenter = DocumentSegmenter()
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -241,52 +317,30 @@ class VectorStoreManager:
     def _initialize_embeddings(self):
         logger.info("Initializing embeddings...")
 
-        if self.use_mongodb_voyage:
-            import voyageai as _voyageai_module
+        if self.voyageai_api_key:
             try:
-                _voyageai_module.api_base = settings.mongodb_voyage_api_base
                 logger.info(
-                    f"Attempting to initialize MongoDB Voyage AI embeddings with model: "
-                    f"{settings.mongodb_voyage_model_name} via {settings.mongodb_voyage_api_base}"
+                    f"Initializing VoyageAI embeddings with model: {settings.voyageai_model_name}"
                 )
-                self.embeddings = VoyageAIEmbeddings(
-                    model=settings.mongodb_voyage_model_name,
-                    voyage_api_key=self.mongodb_voyage_api_key,
-                )
-                self.embedding_backend = "mongodb_voyage"
-                logger.info("Successfully initialized MongoDB Voyage AI embeddings (primary)")
-                return
-            except Exception as e:
-                _voyageai_module.api_base = "https://api.voyageai.com/v1"
-                logger.warning(f"Failed to initialize MongoDB Voyage AI embeddings: {e}")
-                self.use_mongodb_voyage = False
-
-        if self.use_voyageai:
-            try:
-                logger.info(f"Attempting to initialize VoyageAI embeddings with model: {settings.voyageai_model_name}")
                 self.embeddings = VoyageAIEmbeddings(
                     model=settings.voyageai_model_name,
-                    voyage_api_key=self.voyageai_api_key
+                    voyage_api_key=self.voyageai_api_key,
                 )
                 self.embedding_backend = "voyageai"
-                logger.info("Successfully initialized VoyageAI embeddings (secondary)")
-                return
-            except Exception as e:
-                logger.warning(f"Failed to initialize VoyageAI embeddings: {e}")
-                self.use_voyageai = False
-
-        if self.openai_api_key:
-            try:
-                logger.info(f"Attempting to initialize OpenAI embeddings with model: {settings.openai_embedding_model}")
-                self.embeddings = OpenAIEmbeddings(
-                    model=settings.openai_embedding_model,
-                    openai_api_key=self.openai_api_key
+                self.embedding_model = settings.voyageai_model_name
+                self.embedding_dimension = getattr(settings, "voyageai_embedding_dimension", 1024)
+                logger.info(
+                    "VoyageAI embeddings initialized: model=%s dim=%s",
+                    self.embedding_model,
+                    self.embedding_dimension,
                 )
-                self.embedding_backend = "openai"
-                logger.info("Successfully initialized OpenAI embeddings")
                 return
             except Exception as e:
-                logger.warning(f"Failed to initialize OpenAI embeddings: {e}")
+                logger.error(f"Failed to initialize VoyageAI embeddings: {e}")
+                raise RuntimeError(
+                    "VoyageAI embeddings are required but failed to initialize. "
+                    "Set VOYAGEAI_API_KEY or configure a local embeddings model."
+                ) from e
 
         if settings.embeddings_model_name:
             try:
@@ -297,12 +351,18 @@ class VectorStoreManager:
                     model_kwargs={'token': self.hf_token}
                 )
                 self.embedding_backend = "huggingface"
-                logger.info("Successfully initialized HuggingFace embeddings")
+                self.embedding_model = settings.embeddings_model_name
+                self.embedding_dimension = embedding_dimension("huggingface")
+                logger.info("HuggingFace embeddings initialized (dev/fallback only)")
+                return
             except Exception as e:
                 logger.error(f"Failed to initialize HuggingFace embeddings: {e}")
-                raise RuntimeError("Could not initialize any embeddings provider")
-        else:
-            raise RuntimeError("No embeddings model configured")
+                raise RuntimeError("Could not initialize any embeddings provider") from e
+
+        raise RuntimeError(
+            "No embeddings provider configured. "
+            "Set VOYAGEAI_API_KEY for production or EMBEDDINGS_MODEL_NAME for local dev."
+        )
 
     def _initialize_mongodb_vector_search(self):
         if self.use_mongodb_vector:
@@ -408,9 +468,32 @@ class VectorStoreManager:
         if not namespace:
             return None
 
+        cached = get_cached_vector_store(namespace)
+        if cached is not None:
+            self.current_namespace = namespace
+            self.current_vector_backend = "mongodb"
+            return cached
+
         if self.use_mongodb_vector:
             try:
                 if self.mongo_collection is not None:
+                    # Validate embedding dimension match before loading
+                    sample = self.mongo_collection.find_one(
+                        {"namespace": namespace},
+                        {"_embedding_dimension": 1, "_embedding_model": 1},
+                    )
+                    if sample:
+                        stored_dim = sample.get("_embedding_dimension")
+                        stored_model = sample.get("_embedding_model")
+                        current_dim = self.embedding_dimension or embedding_dimension(self.embedding_backend)
+                        if stored_dim and stored_dim != current_dim:
+                            raise RuntimeError(
+                                f"Contract {namespace} was indexed with {stored_dim}d vectors "
+                                f"(model: {stored_model}). Current embedding backend "
+                                f"({self.embedding_backend}) produces {current_dim}d vectors. "
+                                f"Re-index the contract or use the original embedding model."
+                            )
+
                     vector_count = self.mongo_collection.count_documents({"namespace": namespace})
                     if vector_count == 0:
                         logger.warning(f"No MongoDB vectors found for namespace {namespace}.")
@@ -425,6 +508,7 @@ class VectorStoreManager:
                 )
                 self.current_namespace = namespace
                 self.current_vector_backend = "mongodb"
+                cache_vector_store(namespace, vector_store)
                 logger.info(f"Loaded existing MongoDB vector store namespace {namespace}.")
                 return vector_store
             except Exception as e:
@@ -455,6 +539,9 @@ class VectorStoreManager:
         self.current_vector_count = 0
         namespace = namespace or default_vector_namespace(contract_name, contract_id)
 
+        if replace_existing:
+            invalidate_vector_store(namespace)
+
         for i, text in enumerate(texts):
             text.metadata["chunk_index"] = i
             text.metadata["contract_name"] = contract_name
@@ -480,6 +567,9 @@ class VectorStoreManager:
                     for doc in texts:
                         doc.metadata["namespace"] = namespace
                         doc.metadata["contract_name"] = contract_name
+                        doc.metadata["_embedding_model"] = self.embedding_model
+                        doc.metadata["_embedding_dimension"] = self.embedding_dimension
+                        doc.metadata["_embedding_backend"] = self.embedding_backend
                         if project_id:
                             doc.metadata["project_id"] = project_id
 
@@ -619,6 +709,11 @@ class VectorStoreManager:
             ]
         chunk_count = len(documents_for_vector_store(index_documents, self.text_splitter))
 
+        # Persist segments to contract document for fallback retrieval caching
+        schema_version = getattr(settings, "chunk_schema_version", 2)
+        segments_dicts = [segment.model_dump(mode="json") for segment in segments]
+        cache_segments(contract_id, segments_dicts, schema_version)
+
         vector_store = self.create_vector_store(
             index_documents,
             contract_name,
@@ -643,5 +738,6 @@ class VectorStoreManager:
             "segment_count": len(segments),
             "chunk_schema_version": getattr(settings, "chunk_schema_version", 2),
             "embedding_backend": self.embedding_backend,
+            "embedding_model": self.embedding_model,
             "embedding_dimension": embedding_dimension(self.embedding_backend),
         }

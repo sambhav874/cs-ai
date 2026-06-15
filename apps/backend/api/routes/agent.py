@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from core.rate_limiter import limiter
-from api.dependencies import get_current_user_from_ticket_or_session
+from api.dependencies import get_current_user_from_ticket_or_session, get_contract_and_verify_access
 from api.routes.projects import verify_project_access
 from api.routes.tabular_reviews import (
     _ensure_review_access,
@@ -21,7 +21,8 @@ from api.routes.tabular_reviews import (
     find_tabular_review_for_agent_workflow,
     generate_tabular_review_for_agent,
 )
-from core.database import collection, db, fs
+from api.routes.projects import build_accessible_contract_query
+from core.database import collection, db, fs, projects_collection , teams_collection
 from core.security import get_current_active_user
 from models.domain import UserInDB
 from services.agent_documents import AgentDocumentManager
@@ -38,6 +39,7 @@ from services.contract_agent.graph import (
     AgentResponse,
     AgentRunState,
     AgentStatus,
+    AgentSurface,
     AgentWorkflow,
     ApprovalDecision,
     DeepContractAgentRunner,
@@ -47,6 +49,7 @@ from services.contract_agent.graph.approvals import ApprovalManager
 from services.contract_agent.graph.persistence import AgentRunStore
 from services.contract_agent.graph.state import ApprovalRequest, ToolCallRecord
 from services.contract_agent.graph.tools.executor import execute_mongo_read_tool
+from services.contract_agent.rag.facade import ContractRAGSystem
 from utils.secure_logger import log_exception
 
 logger = logging.getLogger(__name__)
@@ -2121,6 +2124,7 @@ def query_contract_agent(
     )
 
     reference_contract_oids: List[ObjectId] = []
+    contract_oid = ObjectId(contract_id)
     seen_reference_ids = set()
     for raw_reference_id in request.reference_contract_ids or []:
         try:
@@ -2876,6 +2880,7 @@ def stream_contract_agent(
     )
 
     reference_contract_oids: List[ObjectId] = []
+    contract_oid = ObjectId(contract_id)
     seen_reference_ids = set()
     for raw_reference_id in request.reference_contract_ids or []:
         try:

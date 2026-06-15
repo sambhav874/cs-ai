@@ -51,6 +51,9 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: |
+            apps/frontend/package-lock.json
+            testing/e2e/package-lock.json
       
       - name: Upgarde npm to match local version
         run: npm install -g npm@11.4.2
@@ -62,19 +65,18 @@ jobs:
 
       - name: Install All Dependencies
         run: |
-          # 1. Install all Node.js dependencies from the root
-          npm install --legacy-peer-deps
-
-          # install in frontend
+          # 1. Install frontend dependencies
           cd apps/frontend && npm install --legacy-peer-deps
-
-          # Go back to the root directory
           cd ../..
           
-          # 2. Install Poetry itself
+          # 2. Install E2E test dependencies
+          cd testing/e2e && npm install --legacy-peer-deps
+          cd ../..
+          
+          # 3. Install Poetry itself
           pip install poetry
           
-          # 3. Install all Python dependencies using Poetry
+          # 4. Install all Python dependencies using Poetry
           cd apps/backend
           poetry install
       
@@ -169,4 +171,3 @@ jobs:
            CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            CI: true
-           NX_SKIP_NPM_INSTALL: true # Skip npm install since we already did it earlier

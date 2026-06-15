@@ -38,9 +38,6 @@ testem.log
 .DS_Store
 Thumbs.db
 
-.nx/cache
-.nx/workspace-data
-
 shared
 venv
 model_cache
@@ -55,6 +52,7 @@ tsconfig.tsbuildinfo
 .gemini/
 temp_graphify/
 testing/backend/app-cache/
+testing/root-pytest-cache/
 contract_rag.log
 contract_summarizer.log
 
@@ -69,7 +67,10 @@ final_extracted_data/
 
 
 cypress.env.json
-terraform/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
 
 # Ignored data files
 ContractSense_Supplier_Performance_Report.xlsx

@@ -321,6 +321,29 @@ def initialize_all_indexes(db):
             "vouchers_created_for_user_id_unique"
         )
 
+        # Contract vector retrieval indexes
+        contract_vectors = db["contract_vectors"]
+        _create_index_safe(
+            contract_vectors,
+            [("namespace", ASCENDING), ("chunk_level", ASCENDING)],
+            "cv_namespace_chunk_level"
+        )
+        _create_index_safe(
+            contract_vectors,
+            [("contract_id", ASCENDING), ("chunk_level", ASCENDING)],
+            "cv_contract_chunk_level"
+        )
+        _create_index_safe(
+            contract_vectors,
+            [("segment_id", ASCENDING)],
+            "cv_segment_id"
+        )
+        _create_index_safe(
+            contract_vectors,
+            [("document_id", ASCENDING)],
+            "cv_document_id"
+        )
+
         # Jobs collection indexes
         jobs = db["jobs"]
         _create_index_safe(

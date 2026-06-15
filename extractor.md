@@ -70,7 +70,7 @@ Modify `.env` to match your setup.
 A `shared` folder should be created in the root directory for commonly used utilities and configurations.
 
 ```bash
-mkdir shared shared/contracts shared/cleaned-contracts shared/contract-summaries shared/final_extracted_data shared/model_cache
+mkdir -p shared
 ```
 
 ## Business Unit Policies

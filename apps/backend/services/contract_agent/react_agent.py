@@ -16,5 +16,5 @@ class ApprovalRequiredError(Exception):
 def build_agent_executor(*_args: Any, **_kwargs: Any) -> Any:
     raise RuntimeError(
         "The classic text ReAct path is retired. "
-        "Use DeepContractAgentRunner, which wraps langchain.agents.create_agent."
+        "Use DeepContractAgentRunner, which wraps the unified ContractReActRuntime loop."
     )

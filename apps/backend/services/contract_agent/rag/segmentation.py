@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import fitz
+import tiktoken
 
 from core.config import Settings
 from utils.secure_logger import log_exception
@@ -18,6 +19,18 @@ from .schemas import TextSegment
 
 settings = Settings()
 logger = logging.getLogger(__name__)
+
+# Module-level tiktoken encoder cache — expensive to create, so reuse across
+# all segmentation and prompt-budgeting calls.
+_tokenizer = None
+
+
+def _get_tokenizer():
+    global _tokenizer
+    if _tokenizer is None:
+        _tokenizer = tiktoken.get_encoding("cl100k_base")
+    return _tokenizer
+
 
 class DocumentSegmenter:
     """Handles document segmentation into hierarchical text units."""
@@ -179,8 +192,7 @@ class DocumentSegmenter:
     def _estimated_tokens(self, text: str) -> int:
         if not text:
             return 0
-        # A fast approximation is enough for routing and prompt budgeting.
-        return max(1, int(len(re.findall(r"\S+", text)) * 1.3))
+        return len(_get_tokenizer().encode(text))
 
     def _stable_segment_id(self, text: str, segment_type: str, start_index: int) -> str:
         content_hash = hashlib.md5(f"{segment_type}:{start_index}:{text[:500]}".encode()).hexdigest()[:10]
@@ -756,6 +768,28 @@ class DocumentSegmenter:
                     macro_id = macro_segment.id
 
             if is_macro and section.get("has_child"):
+                # Create meso segments for the text between the macro end
+                # and the first child section to avoid gaps.
+                macro_end = macro_segments[-1].char_end if macro_segments else section["start"]
+                child_start = min(
+                    (child_section["start"] for child_section in sections
+                     if child_section["start"] > macro_end and child_section.get("level", 1) > 1),
+                    default=section["end"],
+                )
+                if child_start > macro_end:
+                    gap_section = {
+                        "start": macro_end,
+                        "end": child_start,
+                        "path": section["path"],
+                        "tags": section["tags"],
+                    }
+                    section_meso_segments = self._meso_segments_for_section(
+                        full_text=full_text,
+                        section=gap_section,
+                        page_spans=page_spans,
+                        parent_id=macro_id,
+                    )
+                    meso_segments.extend(section_meso_segments)
                 continue
 
             section_meso_segments = self._meso_segments_for_section(

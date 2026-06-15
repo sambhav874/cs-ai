@@ -1,55 +1,88 @@
-version: '3.8'
-
 services:
   frontend:
     image: extractor-frontend
     build:
       context: ./apps/frontend
-      target: dev
-      dockerfile: Dockerfile
-    volumes:
-      - ./apps/frontend:/app
-      - /app/node_modules
-      - /app/.next
-      - ./shared:/app/shared
+      target: production
+      dockerfile: Containerfile
+      args:
+        NEXT_PUBLIC_EXTRACTOR_API_URL: ${NEXT_PUBLIC_EXTRACTOR_API_URL:-http://localhost:8000/api/v1}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4200}
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-4200}:3000"
     env_file:
       - ./apps/frontend/.env
     depends_on:
       - backend
     networks:
       - frontend-net
+    restart: unless-stopped
 
   backend:
-    image: contract-rag-system
+    image: extractor-backend
     build:
-      context: ./apps/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/backend/Containerfile
       args:
-        USE_GPU: ${USE_GPU:-false}  # Pass USE_GPU as a build argument
+        USE_GPU: ${USE_GPU:-false}
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     env_file:
       - ./apps/backend/.env
+    environment:
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
     networks:
       - frontend-net
       - backend-net
     volumes:
       - ./shared:/app/shared
-      - ./shared/contracts:/app/shared/contracts
-      - ./shared/cleaned_contracts:/app/shared/cleaned_contracts
-      - ./shared/final_extracted_data:/app/shared/final_extracted_data
-      - ./shared/contract_summaries:/app/shared/contract_summaries
-      - ./shared/model_cache:/app/shared/model_cache
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+
+  worker:
+    image: extractor-worker
+    build:
+      context: .
+      dockerfile: apps/backend/Containerfile.worker
+    env_file:
+      - ./apps/backend/.env
+    environment:
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+    networks:
+      - backend-net
+    volumes:
+      - ./shared:/app/shared
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    networks:
+      - backend-net
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
 volumes:
   shared:
+  rabbitmq_data:
 
 networks:
   frontend-net:
     driver: bridge
   backend-net:
     driver: bridge
-    internal: true

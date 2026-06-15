@@ -135,8 +135,8 @@ class ToolPerformanceCoverageTest(unittest.TestCase):
 
     def test_table_execution_scores_schema_cells_and_row_citations(self):
         case = tool_case(
-            "table_review",
-            expected_tools=["create_tabular_review", "generate_tabular_review", "list_tabular_reviews", "get_tabular_review"],
+            "table_execute",
+            expected_tools=["create_tabular_review", "generate_tabular_review"],
             requires_citation=False,
             requires_approval=True,
             expected_workflow="tabular_execution",
@@ -158,8 +158,6 @@ class ToolPerformanceCoverageTest(unittest.TestCase):
             tools=[
                 observed_tool("create_tabular_review", "planned"),
                 observed_tool("generate_tabular_review", "planned"),
-                observed_tool("list_tabular_reviews"),
-                observed_tool("get_tabular_review"),
             ],
             approval_request={"action": "create_tabular_review", "payload": {"contract_id": "product-doc-1"}},
         )
@@ -207,7 +205,7 @@ class ToolPerformanceCoverageTest(unittest.TestCase):
     def test_playbook_grounding_requires_cited_contract_span(self):
         case = tool_case(
             "playbook",
-            expected_tools=["list_playbooks", "read_playbook_rules", "search_evidence", "read_evidence"],
+            expected_tools=["search_evidence", "read_evidence"],
         )
         observation = EvalObservation(
             case_id=case.case_id,
@@ -215,8 +213,6 @@ class ToolPerformanceCoverageTest(unittest.TestCase):
             answer="The playbook check is grounded in the audit clause: Customer may audit records on thirty (30) days prior written notice.",
             citations=[citation()],
             tools=[
-                observed_tool("list_playbooks"),
-                observed_tool("read_playbook_rules"),
                 observed_tool("search_evidence"),
                 observed_tool("read_evidence"),
             ],

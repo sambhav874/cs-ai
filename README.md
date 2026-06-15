@@ -1,6 +1,6 @@
-# ContractLens — AI-Powered Contract Analysis Platform
+# ContractSense — AI-Powered Contract Analysis Platform
 
-ContractLens is a full-stack application that ingests PDF contracts, converts them to structured markdown via OCR, generates executive summaries via LLM, and performs deep question-answering (RAG) over the document. Results are surfaced in a rich Next.js dashboard with real-time progress via WebSockets.
+ContractSense is a full-stack application that ingests PDF contracts, converts them to structured markdown via OCR, generates executive summaries via LLM, and performs deep question-answering (RAG) over the document. Results are surfaced in a rich Next.js dashboard with real-time progress via WebSockets.
 
 ---
 

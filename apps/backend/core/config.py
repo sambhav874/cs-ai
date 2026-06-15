@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     
     # Model Configuration
-    model_name: str = Field(default="meta-llama/Llama-3.2-1B", env="MODEL_NAME")
+    model_name: str = Field(default="llama-3.1-8b-instant", env="MODEL_NAME")
     use_gpu: bool = Field(default=False, env="USE_GPU")
     max_tokens: int = Field(default=2048, env="MAX_TOKENS")
     temperature: float = Field(default=0.1, env="TEMPERATURE")
@@ -80,18 +80,28 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     
     
+    voyageai_api_key: str = Field(default="", env="VOYAGEAI_API_KEY")
+    voyageai_model_name: str = Field(default="voyage-law-2", env="VOYAGEAI_MODEL_NAME")
+    voyageai_embedding_dimension: int = Field(default=1024, env="VOYAGEAI_EMBEDDING_DIMENSION")
+
+    # Reranker (VoyageAI direct HTTP — optional, config-gated)
+    voyage_rerank_enabled: bool = Field(default=False, env="VOYAGE_RERANK_ENABLED")
+    voyage_rerank_model: str = Field(default="rerank-2-lite", env="VOYAGE_RERANK_MODEL")
+    voyage_rerank_top_k: int = Field(default=20, env="VOYAGE_RERANK_TOP_K")
+    voyage_rerank_final_k: int = Field(default=8, env="VOYAGE_RERANK_FINAL_K")
+
+    # Query decomposition (optional, config-gated)
+    query_decomposition_enabled: bool = Field(default=False, env="QUERY_DECOMPOSITION_ENABLED")
+    query_decomposition_max_subqueries: int = Field(default=4, env="QUERY_DECOMPOSITION_MAX_SUBQUERIES")
+
+    # Model context window safety
+    model_context_window: int = Field(default=8192, env="MODEL_CONTEXT_WINDOW")
+    prompt_overhead_estimate: int = Field(default=2500, env="PROMPT_OVERHEAD_ESTIMATE")
+
     openai_embed_dim: int = Field(default=1536, env="OPENAI_EMBED_DIM") 
     pinecone_api_key: str = Field(default="", env="PINECONE_API_KEY")
     pinecone_index_name: str = Field(default="", env="PINECONE_INDEX_NAME")
     openai_embedding_model: str = Field(default="text-embedding-3-small", env="OPENAI_EMBEDDING_MODEL")
-    voyageai_api_key: str = Field(default="", env="VOYAGEAI_API_KEY")
-    voyageai_model_name: str = Field(default="voyage-law-2", env="VOYAGEAI_MODEL_NAME")
-
-    # MongoDB-hosted Voyage AI (Atlas Model API Keys)
-    mongodb_voyage_api_key: str = Field(default="", env="MONGODB_VOYAGE_API_KEY")
-    mongodb_voyage_model_name: str = Field(default="voyage-3-large", env="MONGODB_VOYAGE_MODEL_NAME")
-    mongodb_voyage_api_base: str = Field(default="https://ai.mongodb.com/v1", env="MONGODB_VOYAGE_API_BASE")
-
     # MongoDB Atlas Vector Search
     use_mongodb_vector: bool = Field(default=True, env="USE_MONGODB_VECTOR")
     mongodb_db_name: str = Field(default="contract_analysis", env="MONGODB_DB_NAME")
@@ -99,14 +109,14 @@ class Settings(BaseSettings):
     mongodb_vector_index_name: str = Field(default="vector_index", env="MONGODB_VECTOR_INDEX_NAME")
 
     anthropic_api_key: str = Field(default="", env="ANTHROPIC_API_KEY")
-    anthropic_model_name: Optional[str] = Field(default="claude-haiku-4-5", env="ANTHROPIC_MODEL_NAME")
+    anthropic_model_name: Optional[str] = Field(default="claude-3-5-haiku-20241022", env="ANTHROPIC_MODEL_NAME")
     claude_strict_mode: bool = Field(default=False, env="CLAUDE_STRICT_MODE")
     gemini_api_key: str = Field(default="", env="GEMINI_API_KEY")
     gemini_model_name: Optional[str] = Field(default="gemini-2.0-flash", env="GEMINI_MODEL_NAME")
     cleanup_pinecone_namespace: bool = Field(default=True, env="CLEANUP_PINECONE_NAMESPACE")
     openai_api_key: Optional[str] = Field(default="", env="OPENAI_API_KEY")
     openai_model_name: Optional[str] = Field(default="gpt-4-turbo-preview", env="OPENAI_MODEL_NAME")
-    claude_model_name: Optional[str] = Field(default="claude-haiku-4-5", env="CLAUDE_MODEL_NAME")
+    claude_model_name: Optional[str] = Field(default="claude-3-5-haiku-20241022", env="CLAUDE_MODEL_NAME")
 
     # Celery & Redis Configuration
     celery_broker_url: str = Field(default="amqp://guest:guest@localhost:5672//", env="CELERY_BROKER_URL")

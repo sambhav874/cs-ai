@@ -37,47 +37,47 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
         content = ((document.get("index") or {}).get("content") or "").strip()
         if tool.name == "outline_document":
             return _outline_document(collection, document, content)
+        section_ref = str(tool.args.get("section_ref") or tool.args.get("section") or "")
+        if section_ref:
+            section_block = _find_section_block(document, content, section_ref)
+            if section_block:
+                return {
+                    "summary": f"Read {document.get('contract_name') or document['_id']}, section {section_ref}.",
+                    "document_id": str(document["_id"]),
+                    "filename": document.get("contract_name") or str(document["_id"]),
+                    "section": section_ref,
+                    "snippet": section_block.get("snippet") or section_block.get("context", ""),
+                    "page": section_block.get("page"),
+                }
         return {
             "summary": f"Read {document.get('contract_name') or document['_id']}.",
             "document_id": str(document["_id"]),
             "filename": document.get("contract_name") or str(document["_id"]),
-            "snippet": content[:1800],
+            "snippet": content[:12000],
         }
     if tool.name == "search_evidence":
         queries = _coerce_queries(tool.args.get("queries") or tool.args.get("query") or state.message)
+        top_k = _coerce_int(tool.args.get("top_k"), 5)
         matches, backend, trace = _search_documents(
             collection,
             scoped_docs,
             queries,
-            top_k=_coerce_int(tool.args.get("top_k"), 5),
+            top_k=top_k,
             ai_provider=state.ai_provider,
             intent=str(tool.args.get("intent") or "") or None,
             must_contain=_coerce_list(tool.args.get("must_contain")),
             section_ref=str(tool.args.get("section_ref") or "") or None,
         )
         state.add_trace("retrieval_v2", **trace)
+
+        results_block = _format_search_results_as_text(matches, scoped_docs, queries[0] if queries else state.message)
+
         return {
-            "summary": (
-                f"Found {len(matches)} scoped evidence candidate(s) using {backend} retrieval. "
-                "Call read_evidence with the selected evidence_id values before finalizing exact contract citations."
-            ),
-            "rewritten_query": queries[0] if queries else "",
-            "rewritten_queries": queries,
+            "summary": f"Found {len(matches)} relevant section(s) matching your query.",
+            "search_results": results_block,
+            "match_count": len(matches),
             "retrieval_backend": backend,
-            "requires_read_evidence": bool(matches),
             "trace": trace,
-            "matches": matches,
-        }
-    if tool.name == "read_evidence":
-        evidence_ids = _coerce_list(tool.args.get("evidence_ids") or tool.args.get("segment_ids"))
-        if not evidence_ids:
-            return {"summary": "No evidence_ids were provided to read_evidence.", "matches": []}
-        matches = _read_evidence_ids(collection, scoped_docs, evidence_ids)
-        missing = [evidence_id for evidence_id in evidence_ids if evidence_id not in {match.get("evidence_id") for match in matches}]
-        return {
-            "summary": f"Read {len(matches)} scoped evidence snippet(s)." + (f" Missing {len(missing)}." if missing else ""),
-            "matches": matches,
-            "missing_evidence_ids": missing,
         }
     if tool.name == "find_in_document":
         document = _select_document(tool, state, scoped_docs)
@@ -100,14 +100,14 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
             "matches": matches,
         }
     if tool.name == "get_kpi_context":
-        return {"summary": "KPI context is available from visible state.", "visible_state": state.context.visible_state}
+        contract_id = str(tool.args.get("contract_id") or state.context.contract_id or "")
+        metric_name = str(tool.args.get("metric_name") or "")
+        query = str(tool.args.get("query") or state.message or "")
+        return _get_kpi_context(collection, contract_id, metric_name=metric_name, query=query)
     if tool.name == "calculate_from_evidence":
-        text = " ".join(
-            str(tool.args.get(key) or "")
-            for key in ("expression", "context", "text")
-        )
-        values = [float(match.replace(",", "")) for match in re.findall(r"\b\d[\d,]*(?:\.\d+)?\b", text)]
-        return {"summary": f"Found {len(values)} numeric value(s) for calculation.", "values": values, "count": len(values)}
+        expression = str(tool.args.get("expression") or "")
+        context = str(tool.args.get("context") or tool.args.get("text") or "")
+        return _calculate_from_evidence(expression, context)
     return {"summary": f"Read-only tool {tool.name} completed."}
 
 
@@ -740,7 +740,7 @@ def _evidence_chunks(document: Dict[str, Any]) -> List[Dict[str, Any]]:
     return chunks
 
 
-def _chunk_text(text: str, *, max_chars: int = 900, overlap: int = 160) -> List[Tuple[int, int, str]]:
+def _chunk_text(text: str, *, max_chars: int = 3000, overlap: int = 400) -> List[Tuple[int, int, str]]:
     chunks: List[Tuple[int, int, str]] = []
     clean_text = text or ""
     paragraph_matches = list(re.finditer(r"\S(?:.*?\S)?(?:\n\s*\n|$)", clean_text, flags=re.DOTALL))
@@ -829,20 +829,25 @@ def _find_in_text(document: Dict[str, Any], text: str, query: str) -> List[Dict[
     if not needle:
         return []
     normalized_text = re.sub(r"\s+", " ", text or "")
-    position = normalized_text.lower().find(needle.lower())
-    if position < 0:
-        return []
-    context = normalized_text[max(0, position - 360):position + len(needle) + 520]
-    return [
-        _evidence_payload(
-            document,
-            start=position,
-            end=position + len(needle),
-            snippet=context,
-            section=None,
-            quote=normalized_text[position:position + len(needle)],
+    results: List[Dict[str, Any]] = []
+    cursor = 0
+    while cursor < len(normalized_text):
+        position = normalized_text.lower().find(needle.lower(), cursor)
+        if position < 0:
+            break
+        context = normalized_text[max(0, position - 360):position + len(needle) + 520]
+        results.append(
+            _evidence_payload(
+                document,
+                start=position,
+                end=position + len(needle),
+                snippet=context,
+                section=None,
+                quote=normalized_text[position:position + len(needle)],
+            )
         )
-    ]
+        cursor = position + 1
+    return results[:8]  # return up to 8 matches
 
 
 def _extract_clause_reference(query: str) -> Optional[str]:
@@ -1004,8 +1009,161 @@ def _roman_to_int(value: str) -> int:
     return total
 
 
+def _format_search_results_as_text(matches: List[Dict[str, Any]], documents: List[Dict[str, Any]], query: str) -> str:
+    if not matches:
+        return f"No contract sections matched the query \"{query}\"."
+
+    lines: List[str] = []
+    for index, match in enumerate(matches[:8], start=1):
+        doc_id = str(match.get("document_id") or "")
+        doc_name = match.get("filename") or ""
+        if not doc_name and doc_id:
+            for doc in documents:
+                if str(doc.get("_id")) == doc_id:
+                    doc_name = doc.get("contract_name") or str(doc.get("_id"))
+                    break
+            if not doc_name:
+                doc_name = doc_id
+        section = match.get("section") or ""
+        page = match.get("page")
+        evidence_id = match.get("evidence_id") or match.get("segment_id") or ""
+        text = match.get("context") or match.get("snippet") or match.get("quote") or ""
+
+        lines.append(f"[{index}] {doc_name}" + (f", {section}" if section else "") + (f", p.{page}" if page else ""))
+        if evidence_id:
+            lines.append(f"    Evidence ID: {evidence_id}")
+        lines.append(f"    {text[:2500]}")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
 def _coerce_int(value: Any, default: int) -> int:
     try:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+# ── KPI context & calculation helpers ──────────────────────────────────────
+
+
+def _get_kpi_context(collection: Any, contract_id: str, *, metric_name: str = "", query: str = "") -> Dict[str, Any]:
+    """Fetch KPI/SLA records for the given contract, filtering by metric name or query."""
+    if not contract_id:
+        return {"summary": "No contract_id available for KPI lookup.", "kpis": [], "count": 0}
+
+    try:
+        from services.kpi_manager import ContractKPIManager
+        manager = ContractKPIManager()
+        kpis = manager.list_contract_kpis(contract_id)
+    except Exception as exc:
+        return {"summary": f"KPI lookup failed: {str(exc)[:300]}", "kpis": [], "count": 0}
+
+    if not kpis:
+        return {
+            "summary": f"No KPI/SLA records found for the scoped contract.",
+            "kpis": [],
+            "count": 0,
+        }
+
+    search_terms = _extract_search_terms(metric_name or query)
+    if search_terms:
+        kpis = _rank_kpis_by_query(kpis, search_terms)
+
+    summary_data = ContractKPIManager().summarize_kpis(kpis) if hasattr(ContractKPIManager, "summarize_kpis") else {}
+
+    compact_kpis = []
+    for kpi in kpis[:20]:
+        compact_kpis.append({
+            "kpi_id": kpi.get("kpi_id"),
+            "name": kpi.get("name"),
+            "kpi_type": kpi.get("kpi_type"),
+            "value": kpi.get("value"),
+            "unit": kpi.get("unit"),
+            "status": kpi.get("status"),
+            "threshold": kpi.get("threshold") or kpi.get("threshold_min"),
+            "breach_state": kpi.get("breach_state"),
+            "actual_value": kpi.get("actual_value"),
+            "page_start": kpi.get("page_start"),
+            "quote": (kpi.get("quote") or "")[:300],
+            "citation": kpi.get("citation"),
+        })
+
+    return {
+        "summary": (
+            f"Found {len(kpis)} KPI/SLA record(s) matching the query. "
+            f"Key categories: {summary_data.get('by_type', {})}. "
+            f"Status breakdown: {summary_data.get('by_status', {})}."
+            if summary_data
+            else f"Found {len(kpis)} KPI/SLA record(s) for the scoped contract."
+        ),
+        "count": len(kpis),
+        "kpis": compact_kpis,
+        "summary_data": summary_data,
+    }
+
+
+def _extract_search_terms(text: str) -> List[str]:
+    cleaned = re.sub(r"[^\w\s]", " ", text.lower()).strip()
+    tokens = [token for token in cleaned.split() if len(token) > 2 and token not in {
+        "the", "and", "for", "what", "are", "is", "this", "that", "with", "from",
+        "get", "find", "show", "list", "kpi", "sla", "give", "tell", "please",
+    }]
+    return tokens[:8]
+
+
+def _rank_kpis_by_query(kpis: List[Dict[str, Any]], terms: List[str]) -> List[Dict[str, Any]]:
+    scored = []
+    for kpi in kpis:
+        searchable = " ".join(str(kpi.get(key) or "").lower() for key in ("name", "kpi_type", "definition", "quote"))
+        score = sum(2.0 for term in terms if term in kpi.get("name", "").lower())
+        score += sum(1.0 for term in terms if term in searchable)
+        scored.append((score, kpi))
+    scored.sort(key=lambda item: -item[0])
+    return [item[1] for item in scored]
+
+
+def _calculate_from_evidence(expression: str, context: str) -> Dict[str, Any]:
+    """Safely evaluate an arithmetic expression grounded in evidence values."""
+    if not expression.strip():
+        return {"summary": "No expression provided for calculation.", "result": None}
+
+    numbers = re.findall(r"\b\d[\d,]*(?:\.\d+)?\b", f"{expression} {context}")
+    values = []
+    for match in numbers:
+        try:
+            values.append(float(match.replace(",", "")))
+        except ValueError:
+            continue
+
+    sanitized = expression.strip()
+    sanitized = re.sub(r"\b\d[\d,]*(?:\.\d+)?\b", lambda m: m.group(0).replace(",", ""), sanitized)
+
+    allowed_chars = set("0123456789.+-*/() eExXpiPIAR_")
+    if not all(c in allowed_chars for c in sanitized.replace(" ", "")):
+        return {
+            "summary": "Expression contains unsupported characters. Only basic arithmetic (+, -, *, /, parentheses) and numeric values from evidence are allowed.",
+            "result": None,
+            "value_count": len(values),
+        }
+
+    result = None
+    error = None
+    try:
+        result = float(eval(sanitized, {"__builtins__": {}}))
+    except Exception as exc:
+        error = str(exc)[:200]
+
+    return {
+        "summary": (
+            f"Computed result: {result} from {len(values)} source value(s)."
+            if result is not None
+            else f"Could not evaluate expression: {error}"
+        ),
+        "result": result,
+        "source_values": values,
+        "value_count": len(values),
+        "expression": sanitized,
+        "error": error,
+    }

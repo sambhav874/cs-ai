@@ -1,25 +1,24 @@
 FROM python:3.11-slim
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    POETRY_VIRTUALENVS_CREATE=false
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app/backend
 
-# Install system dependencies + Poetry
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir poetry
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy only what's needed for Celery
+RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH="/root/.local/bin:$PATH"
+RUN poetry config virtualenvs.create true
+
 COPY apps/backend/pyproject.toml apps/backend/poetry.lock ./
-RUN poetry install --only main --no-interaction --no-ansi
+RUN poetry install --no-root --no-cache
 
 COPY apps/backend/ ./
 
-# Set entrypoint
 COPY apps/backend/celery_entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]

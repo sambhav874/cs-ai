@@ -8,6 +8,7 @@ from core.database import collection
 from utils.helpers import JobManager, get_job_manager as get_shared_job_manager
 from core.config import Settings
 from utils.secure_logger import log_exception
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
