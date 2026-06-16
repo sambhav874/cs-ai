@@ -47,15 +47,31 @@ def queue_contract_ingestion(
             "status": "Indexing",
         }}
     )
-    task = index_contract_task.delay(
-        contract_id=contract_id,
-        contract_oid_str=str(contract_oid),
-        file_id_str=str(file_id),
-        file_name=file_name,
-        use_local_marker=use_local_marker,
-        user_id=user_id,
-    )
-    return task.id if hasattr(task, "id") else None
+    try:
+        task = index_contract_task.delay(
+            contract_id=contract_id,
+            contract_oid_str=str(contract_oid),
+            file_id_str=str(file_id),
+            file_name=file_name,
+            use_local_marker=use_local_marker,
+            user_id=user_id,
+        )
+        return task.id if hasattr(task, "id") else None
+    except Exception as e:
+        logger.warning("Failed to queue contract ingestion task for %s (broker may be unavailable): %s", contract_id, e)
+        # Mark as queued so the retry mechanism can pick it up
+        collection.update_one(
+            {"_id": contract_oid},
+            {"$set": {
+                "index.status": "queued",
+                "index.queued_at": datetime.utcnow(),
+                "index.retry_count": 0,
+                "index.use_local_marker": use_local_marker,
+                "index.error": "Ingestion queued — will resume when the processing service is available.",
+                "status": "Queued",
+            }}
+        )
+        return None
 
 def check_contract_access(contract_doc: Optional[Dict[str, Any]], current_user: UserInDB):
     """

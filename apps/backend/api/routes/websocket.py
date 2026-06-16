@@ -30,7 +30,6 @@ class ContractStatusResponse(BaseModel):
     contract_id: str
     status: str
     index_status: Optional[str]
-    summarize_status: Optional[str]
     process_status: Optional[str]
     jobs: List[JobStatusResponse]
 
@@ -119,7 +118,6 @@ def get_contract_status(
             contract_id=contract_id,
             status=status,
             index_status=contract_doc.get("index", {}).get("status"),
-            summarize_status=contract_doc.get("summarize", {}).get("status"),
             process_status=contract_doc.get("process", {}).get("status"),
             jobs=job_statuses
         )

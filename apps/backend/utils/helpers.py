@@ -47,10 +47,6 @@ class JobManager:
         }
 
         self.jobs.insert_one(job_data)
-        self.contracts.update_one(
-            {"_id": ObjectId(contract_id)},
-            {"$set": {"processing_status": f"{job_type}_{status}"}}
-        )
         
         return job_id
 
@@ -89,23 +85,16 @@ class JobManager:
         )
 
         if job:
-            contract_update = {
-                "processing_status": f"{job['job_type']}_{job['status']}",
-                "last_updated": datetime.utcnow()
-            }
+            contract_update = {}
             
             if job["status"] == JobStatus.COMPLETED and job["job_type"] == "processing":
                 contract_update["status"] = "Ready to Edit"
-            
-            if job["status"] == JobStatus.COMPLETED:
-                contract_update[f"{job['job_type']}_completed_at"] = datetime.utcnow()
-            elif job["status"] == JobStatus.FAILED:
-                contract_update[f"{job['job_type']}_failed_at"] = datetime.utcnow()
 
-            self.contracts.update_one(
-                {"_id": job["contract_id"]},
-                {"$set": contract_update}
-            )
+            if contract_update:
+                self.contracts.update_one(
+                    {"_id": job["contract_id"]},
+                    {"$set": contract_update}
+                )
             return True
         return False
 

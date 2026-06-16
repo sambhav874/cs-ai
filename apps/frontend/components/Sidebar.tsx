@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { useAccountContext } from "@/app/context/AccountContext"
 import { useAuth } from "@/hooks/useAuth"
+import AccountSwitcher from "@/components/layout/AccountSwitcher"
 
 // Inline tooltip for collapsed sidebar nav items
 function Tooltip({
@@ -98,7 +99,7 @@ function assistantSessionHref(session: AssistantSessionSummary) {
 
 export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOpen }: SidebarProps) {
   const pathname = usePathname()
-  const { selectedAccountId, isInitialized: accountInitialized } = useAccountContext()
+  const { selectedAccountId, setSelectedAccount, isInitialized: accountInitialized } = useAccountContext()
   const { isAuthenticated, authenticatedFetch } = useAuth()
   const [isMobile, setIsMobile] = React.useState(false)
   const [recentProjects, setRecentProjects] = React.useState<ProjectSummary[]>([])
@@ -234,6 +235,15 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
               </button>
             )}
           </div>
+
+          {sidebarExpanded && (
+            <div className="shrink-0 px-3 pb-3">
+              <AccountSwitcher
+                onAccountChange={(id) => setSelectedAccount(id)}
+                initialAccountId={selectedAccountId}
+              />
+            </div>
+          )}
 
           <nav className={sidebarExpanded ? "shrink-0 px-3 pb-5" : "flex shrink-0 flex-col items-center gap-3 py-4"}>
             {navItems.map((item) => {

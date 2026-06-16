@@ -1002,7 +1002,6 @@ def _serialize_project_contract_summary(doc: Dict[str, Any], user_map: Dict[str,
             "approver_name": user_map.get(str(workflow_roles.get("approverUserId"))),
         },
         "index": doc.get("index"),
-        "upload": doc.get("upload"),
     }
 
 
@@ -1026,7 +1025,6 @@ def list_project_contract_documents(
         "uploaded_by": 1,
         "workflowRoles": 1,
         "index.status": 1,
-        "upload": 1,
     }
     documents = list(collection.find(project_query, projection).sort("uploaded_at", -1).limit(limit))
     user_ids = {

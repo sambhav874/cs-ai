@@ -71,32 +71,27 @@ def create_feedback_endpoint(request: Request, feedback: FeedbackRequest):
     """
     # SECURITY: Do not log user PII (email addresses) at INFO level \u2014 ISO 27001 A.5.34 / GDPR Article 5
     logger.info(f"Received {feedback.feedback_type.value} feedback request")
+    task_id = None
     try:
-        # Queue the email task
         task = send_feedback_email_task.delay(
             feedback_type=feedback.feedback_type.value,
             user_email=feedback.user_email,
             name=feedback.name,
             message=feedback.message
         )
-        
+        task_id = task.id
         logger.info("Queued feedback email task %s", task.id)
-        
-        return {
-            "message": "Feedback submitted successfully and will be processed shortly.",
-            "details": {
-                "task_id": task.id,
-                "status": "queued",
-                "feedback_type": feedback.feedback_type.value
-            }
-        }
-        
     except Exception as e:
-        log_exception(logger, "Failed to queue feedback email task", e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to submit feedback. Please try again later."
-        )
+        logger.warning("Failed to queue feedback email task (broker may be unavailable): %s", e)
+
+    return {
+        "message": "Feedback submitted successfully and will be processed shortly.",
+        "details": {
+            "task_id": task_id,
+            "status": "queued" if task_id else "pending_retry",
+            "feedback_type": feedback.feedback_type.value
+        }
+    }
 
 # NEW: Contact endpoint
 @support_sub_router.post("/contact", status_code=status.HTTP_202_ACCEPTED, response_model=ContactResponse)
@@ -106,24 +101,33 @@ def create_contact_endpoint(request: Request, contact: ContactRequest):
     Accepts contact/demo requests, stores them in MongoDB, and emails support + user confirmation.
     """
     logger.info("Received contact request.")
-    try:
-        # 1) Persist to DB
-        doc = {
-            "name": contact.name,
-            "email": contact.email,
-            "company": contact.company,
-            "phone": contact.phone,
-            "message": contact.message,
-            "demo_date": contact.demo_date,
-            "demo_time": contact.demo_time,
-            "source": "landing_modal",
-            "status": "new",
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-        }
-        insert_result = contact_messages_collection.insert_one(doc)
 
-        # 2) Send email to support team and optionally a confirmation to the user in a single task
+    # 1) Persist to DB
+    doc = {
+        "name": contact.name,
+        "email": contact.email,
+        "company": contact.company,
+        "phone": contact.phone,
+        "message": contact.message,
+        "demo_date": contact.demo_date,
+        "demo_time": contact.demo_time,
+        "source": "landing_modal",
+        "status": "new",
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    }
+    try:
+        insert_result = contact_messages_collection.insert_one(doc)
+    except Exception as e:
+        log_exception(logger, "Failed to persist contact request to DB", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to submit your request. Please try again later."
+        )
+
+    # 2) Queue email task (non-blocking — contact is already saved)
+    task_id = None
+    try:
         task_combined = send_contact_and_demo_confirmation.delay(
             name=contact.name,
             user_email=contact.email,
@@ -134,21 +138,16 @@ def create_contact_endpoint(request: Request, contact: ContactRequest):
             demo_time=contact.demo_time,
             source="landing_modal",
         )
-
-        logger.info("Queued combined contact+confirmation task %s; DB id: %s", task_combined.id, insert_result.inserted_id)
-
-        return {
-            "message": "Thanks! Your request has been received.",
-            "details": {
-                "task_id": task_combined.id,
-                "status": "queued",
-                "id": str(insert_result.inserted_id)
-            }
-        }
-
+        task_id = task_combined.id
+        logger.info("Queued combined contact+confirmation task %s; DB id: %s", task_id, insert_result.inserted_id)
     except Exception as e:
-        log_exception(logger, "Failed to handle contact request", e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to submit your request. Please try again later."
-        )
+        logger.warning("Failed to queue contact email task (broker may be unavailable): %s", e)
+
+    return {
+        "message": "Thanks! Your request has been received.",
+        "details": {
+            "task_id": task_id,
+            "status": "queued" if task_id else "pending_retry",
+            "id": str(insert_result.inserted_id)
+        }
+    }

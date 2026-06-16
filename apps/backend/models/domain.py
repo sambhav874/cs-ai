@@ -137,9 +137,10 @@ class Account(AccountBase):
 
 
 class AccessibleAccountInfo(BaseModel):
-    id:str
-    name:str
-    role: Literal['owner','member','individual']
+    id: str
+    name: str
+    role: Literal['owner', 'member', 'individual']
+    type: Literal['personal', 'team'] = 'personal'
 
 
 # models for role assignment

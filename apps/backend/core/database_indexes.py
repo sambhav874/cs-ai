@@ -313,14 +313,6 @@ def initialize_all_indexes(db):
             if "already exists" not in str(ttl_err):
                 logger.warning(f"Failed to create TTL index on revoked_tokens: {ttl_err}")
 
-        # Vouchers \u2014 unique per issuing user to prevent TOCTOU duplicates.
-        vouchers = db["vouchers"]
-        _create_unique_index_safe(
-            vouchers,
-            "created_for_user_id",
-            "vouchers_created_for_user_id_unique"
-        )
-
         # Contract vector retrieval indexes
         contract_vectors = db["contract_vectors"]
         _create_index_safe(

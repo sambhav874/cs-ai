@@ -36,13 +36,8 @@ users_collection = db["users"]
 accounts_collection = db["accounts"]
 contract_roles_collection = db["contract_roles"]
 teams_collection = db["teams"]
-transactions_collection = db["transactions"]
-vouchers_collection = db["vouchers"]
 audit_logs_collection = db["audit_logs"]
-question_categories_collection = db["question_categories"]
 projects_collection = db["projects"]
-
-standard_category_additions_collection = db["standard_category_additions"]
 
 # Async Collections (Motor)
 jobs_collection_async = async_db["jobs"]

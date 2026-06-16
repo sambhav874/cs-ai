@@ -14,7 +14,6 @@ All endpoints are prefixed with `/api/v1`. The API is documented interactively a
 - [Teams & Accounts](#teams--accounts)
 - [Question Categories](#question-categories)
 - [Credits](#credits)
-- [Vouchers](#vouchers)
 - [Questions](#questions)
 - [Audit Logs](#audit-logs)
 - [Support](#support)
@@ -336,24 +335,6 @@ Initiate a Stripe payment session to purchase credits.
 ### `GET /api/v1/credits/history`
 
 Get credit usage history.
-
----
-
-## Vouchers
-
-### `POST /api/v1/vouchers/redeem`
-
-Redeem a voucher code for credits.
-
-**Request Body**
-```json
-{ "code": "BETA50" }
-```
-
-**Response** `200 OK`
-```json
-{ "credits_added": 50, "new_balance": 200 }
-```
 
 ---
 

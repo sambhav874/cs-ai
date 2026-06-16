@@ -47,7 +47,6 @@ apps/backend/
 │       ├── support.py       # Support ticket routes
 │       ├── tasks.py         # Celery task status polling routes
 │       ├── teams.py         # Multi-tenancy: team & account management routes
-│       ├── vouchers.py      # Voucher/discount code routes
 │       └── websocket.py     # WebSocket endpoint for real-time job status
 │
 ├── core/
@@ -146,7 +145,6 @@ Copy `.env.template` to `.env` and fill in the required values before starting.
 ├── /audit/*              → audit_logger_sub_router (audit.py)
 ├── /ws/*                 → status_router         (websocket.py)
 ├── /credits/*            → credits_sub_router    (credits.py)
-├── /vouchers/*           → voucher_sub_router    (vouchers.py)
 ├── /beta/*               → beta_router           (beta.py)
 ├── /support/*            → support_sub_router    (support.py)
 ├── /questions/*          → question_router       (questions.py)

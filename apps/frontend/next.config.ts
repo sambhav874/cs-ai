@@ -42,15 +42,7 @@ const nextConfig: NextConfig = {
     },
   },
   // redirect to handle signup route
-  async redirects() {
-    return [
-      {
-        source: '/signup',
-        destination: '/signin',
-        permanent: false,
-      },
-    ];
-  },
+
   async headers() {
     return [
       {

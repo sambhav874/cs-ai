@@ -24,7 +24,6 @@ apps/backend/
 │       ├── support.py
 │       ├── tasks.py
 │       ├── teams.py
-│       ├── vouchers.py
 │       └── websocket.py
 │
 ├── core/                # App-wide infrastructure (config, DB, auth)
@@ -100,7 +99,6 @@ All files were renamed and moved. Use this table if you're looking for something
 | `categories_route.py` | `api/routes/categories.py` |
 | `audit_routes.py` | `api/routes/audit.py` |
 | `credits_routes.py` | `api/routes/credits.py` |
-| `voucher_routes.py` | `api/routes/vouchers.py` |
 | `beta_route.py` | `api/routes/beta.py` |
 | `support_routes.py` | `api/routes/support.py` |
 | `question_endpoints.py` | `api/routes/questions.py` |

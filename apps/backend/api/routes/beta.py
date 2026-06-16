@@ -1,11 +1,14 @@
 # apps/backend/beta_route.py
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 from motor.motor_asyncio import AsyncIOMotorClient
 from core.rate_limiter import limiter
+
+logger = logging.getLogger(__name__)
 
 # We will need to import your async_db object and the Celery task.
 # The exact import path might need adjustment based on your project structure.
@@ -90,11 +93,13 @@ async def signup_beta_user(
     await beta_collection.insert_one(user_document.model_dump())
 
     # 4. Trigger the background Celery task to send the email.
-    # The API will return a response to the user IMMEDIATELY without waiting for this to finish.
-    send_beta_welcome_email_task.delay(
-        recipient_email=user_data.email,
-        name=user_data.name,
-        coupon_code=coupon_code
-    )
+    try:
+        send_beta_welcome_email_task.delay(
+            recipient_email=user_data.email,
+            name=user_data.name,
+            coupon_code=coupon_code
+        )
+    except Exception as e:
+        logger.warning("Failed to queue beta welcome email task (broker may be unavailable): %s", e)
 
     return {"message": "Thank you for applying! If you are accepted into the program, you will receive an email with your coupon code shortly."}

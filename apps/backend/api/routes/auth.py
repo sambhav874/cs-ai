@@ -222,7 +222,8 @@ def list_accessible_accounts(
             # Determine user's role in the team
             for member in team.get("members", []):
                 if str(member.get("userId")) == str(current_user.id):
-                    role = member.get("team_role", "member")
+                    raw_role = member.get("team_role", "member")
+                    role = raw_role if raw_role in ("owner", "member") else "member"
                     break
             
             accounts.append(AccessibleAccountInfo(
