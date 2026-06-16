@@ -15,8 +15,8 @@ const apiOrigin = (() => {
 
 const cspDirectives = [
   "default-src 'self'",
-  // 'unsafe-eval' needed by Next.js HMR in dev; 'unsafe-inline' needed for hydration chunks
-  `script-src 'self' 'unsafe-eval'${isDev ? " 'unsafe-inline'" : ""}`,
+  // 'unsafe-eval' needed by Next.js HMR in dev; 'unsafe-inline' required by Next.js App Router for RSC streaming/hydration
+  "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob:",

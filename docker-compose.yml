@@ -6,16 +6,16 @@ services:
       target: production
       dockerfile: Containerfile
       args:
-        NEXT_PUBLIC_EXTRACTOR_API_URL: ${NEXT_PUBLIC_EXTRACTOR_API_URL:-http://localhost:8000/api/v1}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4200}
+        NEXT_PUBLIC_EXTRACTOR_API_URL: ${NEXT_PUBLIC_EXTRACTOR_API_URL:-http://localhost:8001/api/v1}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
     ports:
-      - "${FRONTEND_PORT:-4200}:3000"
+      - "3001:3000"
     env_file:
       - ./apps/frontend/.env
     depends_on:
       - backend
     networks:
-      - frontend-net
+      - contractsense-net
     restart: unless-stopped
 
   backend:
@@ -24,20 +24,17 @@ services:
       context: .
       dockerfile: apps/backend/Containerfile
       args:
-        USE_GPU: ${USE_GPU:-false}
+        USE_GPU: "false"
     ports:
-      - "127.0.0.1:${API_PORT:-8000}:8000"
+      - "8001:8000"
     env_file:
       - ./apps/backend/.env
     environment:
-      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-amqp://guest:guest@localhost:5672//}
     networks:
-      - frontend-net
-      - backend-net
+      - contractsense-net
     volumes:
       - ./shared:/app/shared
-    depends_on:
-      - rabbitmq
     restart: unless-stopped
 
   worker:
@@ -48,41 +45,16 @@ services:
     env_file:
       - ./apps/backend/.env
     environment:
-      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-amqp://guest:guest@localhost:5672//}
     networks:
-      - backend-net
+      - contractsense-net
     volumes:
       - ./shared:/app/shared
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
-
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    ports:
-      - "127.0.0.1:5672:5672"
-      - "127.0.0.1:15672:15672"
-    environment:
-      - RABBITMQ_DEFAULT_USER=guest
-      - RABBITMQ_DEFAULT_PASS=guest
-    networks:
-      - backend-net
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
     restart: unless-stopped
 
 volumes:
   shared:
-  rabbitmq_data:
 
 networks:
-  frontend-net:
-    driver: bridge
-  backend-net:
+  contractsense-net:
     driver: bridge
