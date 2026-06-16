@@ -305,7 +305,8 @@ function completedStatusForJob(jobType?: string) {
 function getProcessingLabel(doc: DocumentWithProgress) {
   if (doc.error) return `Error: ${doc.error.message}`;
   if (doc.status === "Ready to Edit") return "Ready to edit";
-  if (doc.status === "pending" || doc.status === "queued") return "Waiting";
+  if (doc.status === "queued") return "Queued — waiting for service";
+  if (doc.status === "pending") return "Waiting";
   if (doc.status === "Summarized") return "Summarized";
   if (doc.status === "Indexed") return "Ingested";
   if (doc.status === "Syncronizing") return "Indexing";
@@ -1095,15 +1096,12 @@ function DashboardContent() {
         ),
       );
 
-      const selectedProvider = (localStorage.getItem("aiProvider") as AIProvider) || "groq";
       const requestBody = {
         contract_id: contractId,
         use_local_marker: useLocalMarker,
-        ...(selectedAccountId && { context_id: selectedAccountId }),
-        ai_provider: selectedProvider,
       };
 
-      const { data, error } = await authenticatedFetch(`${apiUrl}/process-chain/`, {
+      const { data, error } = await authenticatedFetch(`${apiUrl}/index/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
@@ -1114,12 +1112,26 @@ function DashboardContent() {
       }
 
       const jobId = (data as any)?.job_id;
-      if (!jobId) throw new Error("No job ID returned from server");
+      const responseStatus = (data as any)?.status;
 
-      setDocuments((prevDocs) =>
-        prevDocs.map((doc) => doc._id === contractId ? { ...doc, activeJobId: jobId } : doc),
-      );
-      toast({ title: "Ingestion started", description: "The contract is being indexed for the agent." });
+      if (jobId) {
+        setDocuments((prevDocs) =>
+          prevDocs.map((doc) => doc._id === contractId ? { ...doc, activeJobId: jobId } : doc),
+        );
+        toast({ title: "Ingestion started", description: "The contract is being indexed for the agent." });
+      } else {
+        setDocuments((prevDocs) =>
+          prevDocs.map((doc) =>
+            doc._id === contractId
+              ? { ...doc, isProcessing: false, progress: 0, currentStep: null, status: "queued" }
+              : doc,
+          ),
+        );
+        toast({
+          title: "Ingestion queued",
+          description: "The processing service is temporarily unavailable. Ingestion will resume automatically.",
+        });
+      }
     } catch (err) {
       console.error(`Error starting processing for contract ${contractId}:`, err);
       setDocuments((prevDocs) =>

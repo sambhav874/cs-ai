@@ -21,7 +21,7 @@ from core.database import (
 from core.security import get_current_active_user
 from models.domain import UserInDB, AccessibleAccountInfo
 from models.response_types import (
-    UploadResponse, ProcessResponse, SummarizeResponse, IndexResponse,
+    ProcessResponse, IndexResponse,
     ContractResponse, ContractAnalysis, IndexRequest, ProcessRequest, LastSaveResponse, Category,
     DraftSaveRequest, DraftSubmitRequest, WorkflowRoles, JobStatusResponse
 )
@@ -160,11 +160,8 @@ async def upload_contract(
             "page_count": page_count,
             "file_id": file_id,
             "credits_deducted": False,
-            "upload": {"status": "success"},
             "index": {"status": "pending", "content": None, "updated_at": None},
-            "summarize": {"status": "pending", "summary": None, "updated_at": None},
             "process": {"status": "pending", "results": [], "dynamic_results": [], "lastSave":None, "updated_at": None},
-            "contract_think": None,
             "workflowRoles":{
                 "editorUserId": None,
                 "approverUserId": None,
@@ -224,18 +221,10 @@ async def upload_contract(
                         user_id=str(current_user.id),
                         use_local_marker=False,
                     )
-                    ingestion_status = "queued"
+                    ingestion_status = "queued" if ingestion_job_id else "failed_to_queue"
                 except Exception as ingestion_error:
                     ingestion_status = "failed_to_queue"
                     log_exception(logger, f"Failed to queue auto-ingestion for uploaded contract {contract_id_str}", ingestion_error)
-                    collection.update_one(
-                        {"_id": contract_oid},
-                        {"$set": {
-                            "index.status": "failed",
-                            "index.error": "Auto-ingestion failed to queue.",
-                            "status": "Error",
-                        }}
-                    )
 
         audit_account_id = None
         if owner_type == "team" and isinstance(owner_id, ObjectId):
@@ -434,6 +423,16 @@ async def index_documents(
         celery_task_id = task.id if hasattr(task, 'id') else None
     except Exception as celery_e:
         logger.error(f"Failed to submit Celery task for contract {request.contract_id}: {celery_e}")
+        await contracts_collection_async.update_one(
+            {"_id": contract_oid},
+            {"$set": {
+                "index.status": "queued",
+                "index.queued_at": datetime.utcnow(),
+                "index.retry_count": 0,
+                "index.error": "Ingestion queued — will resume when the processing service is available.",
+                "status": "Queued"
+            }}
+        )
         celery_task_id = None
 
     audit_log_task_account_id = None
@@ -651,7 +650,6 @@ async def process_contract_chain_endpoint(
             {"_id": contract_oid},
             {"$set": {
                 "index.status": "processing",
-                "summarize.status": "pending",
                 "process.status": "pending",
                 "status": "Indexing",
                 "index.started_at": datetime.utcnow(),
@@ -702,17 +700,21 @@ async def process_contract_chain_endpoint(
             )
 
         except Exception as celery_e:
+            logger.warning("Failed to queue ingestion task for contract %s (broker may be unavailable): %s", request.contract_id, celery_e)
             await contracts_collection_async.update_one(
                 {"_id": contract_oid},
                 {"$set": {
-                    "status": "Error",
-                    "index.status": "failed",
-                    "error_detail": f"Ingestion task submission failed: {str(celery_e)}"
+                    "status": "Queued",
+                    "index.status": "queued",
+                    "index.queued_at": datetime.utcnow(),
+                    "index.retry_count": 0,
+                    "index.use_local_marker": use_local_marker_from_request,
+                    "error_detail": "Ingestion queued — will resume when the processing service is available."
                 }}
             )
             await create_audit_log(
                 user=current_user,
-                action="CONTRACT_INGESTION_FAILED_TO_QUEUE",
+                action="CONTRACT_INGESTION_QUEUED_OFFLINE",
                 contract_id=contract_oid,
                 contract_name_override=contract_doc.get("contract_name"),
                 account_id_override=audit_log_ingestion_account_id,
@@ -722,15 +724,11 @@ async def process_contract_chain_endpoint(
                     "use_local_marker": use_local_marker_from_request
                 }
             )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to initiate contract ingestion task."
-            )
 
         return ProcessResponse(
-            status="indexing",
+            status="queued" if celery_ingestion_id is None else "indexing",
             contract_name=file_name,
-            message="Contract ingestion started. It will be ready for the agent after indexing completes.",
+            message="Ingestion queued — it will resume when the processing service is available." if celery_ingestion_id is None else "Contract ingestion started. It will be ready for the agent after indexing completes.",
             job_id=celery_ingestion_id
         )
 
@@ -873,12 +871,8 @@ def list_documents(
             "rejectedReason": 1,
             "reEditRequest": 1,
             "index.status": 1,
-            "index.job_id": 1,
-            "summarize.status": 1,
-            "summarize.job_id": 1,
             "process.status": 1,
             "process.job_id": 1,
-            "upload": 1,
             "error": 1
         }
         
@@ -945,8 +939,8 @@ def list_documents(
                     "reviewedByUserId": str(uid) if (uid := re_edit_request.get("reviewedByUserId")) else None,
                     "reviewedAt": re_edit_request.get("reviewedAt")
                 } if re_edit_request else None,
-                "index": doc.get("index"), "summarize": doc.get("summarize"),
-                "process": doc.get("process"), "upload": doc.get("upload")
+                "index": doc.get("index"),
+                "process": doc.get("process"),
             }
             latest_job = latest_jobs_by_contract.get(str(doc["_id"]))
             if latest_job:
@@ -1002,18 +996,13 @@ def get_contract(
             "approvedOrRejectedBy": 1,
             "rejectedReason": 1,
             "reEditRequest":1,
-            "upload.status": 1,
             "index.status": 1,
             "index.content": 1,
             "index.html_content": 1,
-            "summarize.status": 1,
-            "summarize.summary": 1,
             "process.status": 1,
             "process.results": {"$slice": -1},
             "process.dynamic_results": 1,
             "process.lastSave": 1,
-            "contract_think": 1,
-            "mongodb_save_error": 1
         }
 
         contract = collection.find_one({"_id": contract_oid}, projection)
@@ -1136,17 +1125,11 @@ def get_contract(
             approvedOrRejectedBy=contract.get("approvedOrRejectedBy"),
             rejectedReason=contract.get("rejectedReason"),
             reEditRequest=contract.get("reEditRequest"),
-            upload=UploadResponse(status=contract.get("upload", {}).get("status", "unknown")),
             index=IndexResponse(
                 status=contract.get("index", {}).get("status", "unknown"),
                 contract_name=contract.get("contract_name", ""),
                 content=contract.get("index", {}).get("content", ""),
                 html_content=contract.get("index", {}).get("html_content")
-            ),
-            summarize=SummarizeResponse(
-                status=contract.get("summarize", {}).get("status", "unknown"),
-                summary=contract.get("summarize", {}).get("summary", ""),
-                contract_name=contract.get("contract_name", "")
             ),
             process=ProcessResponse(
                 status=process_data.get("status", "unknown"),
@@ -1154,8 +1137,6 @@ def get_contract(
                 dynamic_results=process_data.get("dynamic_results", []),
                 lastSave=last_save,
             ),
-            think=contract.get("contract_think", ""),
-            mongodb_save_error=contract.get("mongodb_save_error")
         )
         return response
 
@@ -1338,13 +1319,11 @@ async def get_contract_stats(
             status_map = {
                 "uploaded": {"$or": [
                     {"status": "Uploaded"},
-                    {"upload.status": {"$in": ["success", "updated"]}},
-                    {"index.status": "pending", "summarize.status": "pending", "process.status": "pending"}
+                    {"index.status": "pending", "process.status": "pending"}
                 ]},
                 "processing": {"$or": [
                     {"status": {"$in": ["Indexing", "Summarizing", "Processing"]}},
                     {"index.status": "processing"},
-                    {"summarize.status": "processing"},
                     {"process.status": "processing"}
                 ]},
                 "ready_to_edit": {"status": "Ready to Edit"},

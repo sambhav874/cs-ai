@@ -11,35 +11,39 @@ from utils.secure_logger import log_exception
 # =============================================================================
 # Logging & Environment Setup
 # =============================================================================
+
+# Fix Celery 5.5.x "TypeError: format requires a mapping".
+# Celery passes namedtuple contexts to logger.info(), but %(key)s format
+# strings require a dict. Monkey-patch getMessage at the lowest level so
+# every logger/handler/formatter is covered.
+_original_getMessage = logging.LogRecord.getMessage
+
+
+def _safe_getMessage(self):
+    try:
+        return _original_getMessage(self)
+    except TypeError:
+        # Celery passes namedtuple / non-dict args to %(key)s format strings.
+        # Convert to dict if possible, otherwise drop args and return raw msg.
+        if hasattr(self.args, "_asdict"):
+            self.args = self.args._asdict()
+        elif hasattr(self.args, "__dict__"):
+            self.args = vars(self.args)
+        else:
+            self.args = None
+        try:
+            return _original_getMessage(self)
+        except TypeError:
+            return str(self.msg)
+
+
+logging.LogRecord.getMessage = _safe_getMessage
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 settings = Settings()
-
-# Patch Celery 5.5.x task-success logging (TypeError: format requires a mapping).
-# Celery's trace.info() passes a namedtuple as 'context' to logger.info(),
-# but the LOG_SUCCESS format string uses %(name)s dict-style placeholders
-# that require a real dict.  This breaks the logging call and, because
-# fast_trace_task swallows the TypeError, the frontend never sees the
-# task-completed signal through the real-time websocket pipeline.
-import celery.app.trace as _celery_trace  # noqa: E402
-import collections.abc  # noqa: E402
-
-
-_original_info = _celery_trace.info
-
-
-def _safe_info(fmt, context):
-    if not isinstance(context, collections.abc.Mapping):
-        try:
-            context = context._asdict() if hasattr(context, "_asdict") else vars(context)
-        except Exception:
-            context = {}
-    _original_info(fmt, context)
-
-
-_celery_trace.info = _safe_info  # type: ignore[assignment]
 
 # =============================================================================
 # Dynamic Broker & Backend Configuration
@@ -134,6 +138,10 @@ celery_app.conf.update(
         'run-due-kpi-source-fetches-every-5-minutes': {
             'task': 'run_due_kpi_source_fetches',
             'schedule': 300.0,
+        },
+        'retry-queued-ingestions-every-2-minutes': {
+            'task': 'retry_queued_ingestions',
+            'schedule': 120.0,
         },
     },
     

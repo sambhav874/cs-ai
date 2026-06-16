@@ -1,3 +1,48 @@
+# ============================================================
+# Stage 1: Builder — compile dependencies with full build tools
+# ============================================================
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+# Install build-time system dependencies (compilers, headers)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH="/root/.local/bin:$PATH"
+
+# Create an isolated virtualenv for the runtime
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    VIRTUAL_ENV="/opt/venv" \
+    POETRY_VIRTUALENVS_CREATE=false
+
+# Install Python dependencies first (cached layer — only re-runs on lock changes)
+COPY apps/backend/pyproject.toml apps/backend/poetry.lock ./
+
+RUN poetry install --no-root --no-interaction
+
+# Slim down the venv: remove caches, tests, docs, pip/setuptools/wheel
+RUN find /opt/venv -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true \
+    && find /opt/venv -type f -name '*.pyc' -delete 2>/dev/null || true \
+    && find /opt/venv -type f -name '*.pyo' -delete 2>/dev/null || true \
+    && find /opt/venv -type d \( -name 'tests' -o -name 'test' -o -name 'testing' \) -exec rm -rf {} + 2>/dev/null || true \
+    && find /opt/venv -type d -name 'examples' -exec rm -rf {} + 2>/dev/null || true \
+    && rm -rf /opt/venv/lib/python3.11/site-packages/pip \
+             /opt/venv/lib/python3.11/site-packages/setuptools \
+             /opt/venv/lib/python3.11/site-packages/wheel \
+             /opt/venv/lib/python3.11/site-packages/poetry \
+             /opt/venv/share \
+             /opt/venv/include \
+             /root/.cache
+
+# ============================================================
+# Stage 2: Runtime — minimal image, no build tools
+# ============================================================
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -5,20 +50,26 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app/backend
 
+# Install only the shared libraries needed at runtime (no compilers)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    libgomp1 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-RUN curl -sSL https://install.python-poetry.org | python3 -
-ENV PATH="/root/.local/bin:$PATH"
-RUN poetry config virtualenvs.create true
+# Copy the pre-built virtualenv from the builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-COPY apps/backend/pyproject.toml apps/backend/poetry.lock ./
-RUN poetry install --no-root --no-cache
-
+# Copy application code
 COPY apps/backend/ ./
 
+# Set up entrypoint
 COPY apps/backend/celery_entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+# Run as non-root for security
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app/backend
+USER appuser
+
 ENTRYPOINT ["/entrypoint.sh"]

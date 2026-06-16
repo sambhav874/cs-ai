@@ -1,6 +1,6 @@
 from celery import Celery, shared_task, chain, signature
 from celery.utils.log import get_task_logger
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import asyncio
 import inspect
@@ -286,6 +286,105 @@ def run_due_kpi_source_fetches(self):
         "checked_at": now.isoformat(),
     }
 
+# Maximum number of retry attempts for queued contracts before marking as Error
+MAX_INGESTION_RETRIES = 5
+# Minimum seconds to wait before retrying a queued contract (avoids retrying while broker is still down)
+RETRY_BACKOFF_SECONDS = 60
+
+
+@celery_app.task(bind=True, name='retry_queued_ingestions')
+def retry_queued_ingestions(self):
+    """Scan for contracts stuck in 'queued' or 'error' status and re-dispatch.
+
+    This is the worker side of the transactional outbox pattern:
+    - When the broker is unavailable, contract endpoints persist the intent to
+      ingest by setting index.status='queued' with a queued_at timestamp.
+    - When indexing fails, index.status is set to 'error'.
+    - This beat task periodically checks for both and re-dispatches.
+    - After MAX_INGESTION_RETRIES failures the contract is marked 'Error'.
+    """
+    now = datetime.utcnow()
+    cutoff = now - timedelta(seconds=RETRY_BACKOFF_SECONDS)
+
+    # Pick up both broker-level failures ("queued") and task-level failures ("error")
+    # For "error" contracts, match those with updated_at older than cutoff OR
+    # those without updated_at at all (stuck from before the retry fix was applied)
+    query = {
+        "$or": [
+            {"index.status": "queued", "index.queued_at": {"$lte": cutoff}},
+            {"index.status": "error", "$or": [
+                {"index.updated_at": {"$lte": cutoff}},
+                {"index.updated_at": {"$exists": False}},
+                {"index.updated_at": None},
+            ]},
+        ]
+    }
+
+    retried = []
+    failed = []
+
+    for contract in db["contracts"].find(query).limit(50):
+        contract_id = str(contract.get("_id"))
+        retry_count = (contract.get("index") or {}).get("retry_count", 0)
+
+        if retry_count >= MAX_INGESTION_RETRIES:
+            db["contracts"].update_one(
+                {"_id": contract["_id"]},
+                {"$set": {
+                    "status": "Error",
+                    "index.status": "failed",
+                    "index.error": f"Ingestion failed after {MAX_INGESTION_RETRIES} retries. The processing service may be unavailable.",
+                }}
+            )
+            failed.append(contract_id)
+            continue
+
+        file_id = contract.get("file_id")
+        file_name = contract.get("contract_name", f"{contract_id}.pdf")
+        user_id = str(contract.get("ownerId", ""))
+        use_local_marker = (contract.get("index") or {}).get("use_local_marker", False)
+
+        try:
+            result = index_contract_task.delay(
+                contract_id=contract_id,
+                contract_oid_str=contract_id,
+                file_id_str=str(file_id),
+                file_name=file_name,
+                use_local_marker=use_local_marker,
+                user_id=user_id,
+            )
+            db["contracts"].update_one(
+                {"_id": contract["_id"]},
+                {"$set": {
+                    "status": "Indexing",
+                    "index.status": "processing",
+                    "index.started_at": now,
+                    "index.retry_count": retry_count + 1,
+                    "index.last_retry_at": now,
+                    "index.queued_at": None,
+                    "index.error": "",
+                }}
+            )
+            retried.append({"contract_id": contract_id, "task_id": result.id})
+        except Exception as exc:
+            db["contracts"].update_one(
+                {"_id": contract["_id"]},
+                {"$set": {
+                    "index.retry_count": retry_count + 1,
+                    "index.last_retry_at": now,
+                }}
+            )
+            logger.warning("Retry failed for contract %s (attempt %d): %s", contract_id, retry_count + 1, exc)
+
+    return {
+        "retried_count": len(retried),
+        "failed_count": len(failed),
+        "retried": retried,
+        "failed": failed,
+        "checked_at": now.isoformat(),
+    }
+
+
 @celery_app.task(bind=True, name='index_contract_task')
 def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_str: str, 
                        file_name: str, use_local_marker: bool, user_id: str):
@@ -463,18 +562,27 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
         logger.error(f"Indexing failed for contract {contract_id}: {str(e)}")
         if job_id:
             job_manager.update_job_status(job_id, "FAILED", str(e))
-        error_msg = "Indexing failed due to processing error"
-        collection.update_one(
-            {"_id": contract_oid},
-            {"$set": {
-                "index.status": "error",
-                "index.error": error_msg,
-                "index.embedding_status": "failed",
-                "index.updated_at": datetime.utcnow(),
-                "status": "Index Error"
-            }}
-        )
-        raise self.retry(exc=e, countdown=60, max_retries=3)
+
+        try:
+            raise self.retry(exc=e, countdown=60, max_retries=3)
+        except MaxRetriesExceededError:
+            logger.error(f"Max retries exhausted for contract {contract_id}")
+            try:
+                oid = validate_object_id(contract_oid_str, "contract_oid")
+            except Exception:
+                oid = None
+            if oid:
+                collection.update_one(
+                    {"_id": oid},
+                    {"$set": {
+                        "index.status": "error",
+                        "index.error": "Indexing failed after maximum retries",
+                        "index.embedding_status": "failed",
+                        "index.updated_at": datetime.utcnow(),
+                        "status": "Index Error"
+                    }}
+                )
+            raise
 
 
 def _process_with_marker(temp_pdf_path: Path, file_name: str,

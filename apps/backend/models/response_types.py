@@ -45,22 +45,13 @@ class ContractAnalysis(BaseModel):
     report_info: Optional[ReportInfo] = None
 
 
-class UploadResponse(BaseModel):
-    status: str
-
-
 class IndexResponse(BaseModel):
     status: str
     contract_name: Optional[str] = None
     content: Optional[str] = None
     html_content: Optional[str] = None
-
-
-class SummarizeResponse(BaseModel):
-    status: str
-    summary: Optional[str]
-    contract_name: str
     message: Optional[str] = None
+    job_id: Optional[str] = None
 
 
 class LastSaveResponse(BaseModel):
@@ -130,15 +121,8 @@ class ContractResponse(BaseModel):
     ownerType: Optional[Literal['user', 'team']] = None 
     ownerId: ObjectIdStr = None 
     projectId: ObjectIdStr = None
-    upload: UploadResponse
     index: IndexResponse
-    summarize: SummarizeResponse
     process: ProcessResponse = Field(description="Contains confidence-annotated processing results")
-    think: Optional[str] = Field(
-        default=None,
-        description="Contract-level reasoning and analysis"
-    )
-    mongodb_save_error: Optional[str] = None
 
     model_config = ConfigDict(
         populate_by_name=True,

@@ -1,13 +1,18 @@
 #!/bin/bash
 set -e
 
+# If arguments are passed, run them instead of the default server
+# This allows: docker run ... python -c "import foo; print('OK')"
+if [ "$#" -gt 0 ]; then
+    exec "$@"
+fi
+
 # Determine the environment (dev, staging, prod)
 ENVIRONMENT=${ENVIRONMENT:-dev}
 
 if [ "$ENVIRONMENT" = "prod" ] || [ "$ENVIRONMENT" = "staging" ]; then
-    # Production/Staging - Use Gunicorn with Uvicorn workers
     echo "Starting production server with Gunicorn..."
-    exec poetry run gunicorn -k uvicorn.workers.UvicornWorker \
+    exec gunicorn -k uvicorn.workers.UvicornWorker \
     --bind "${API_HOST:-0.0.0.0}:${API_PORT:-8000}" \
     --workers "${API_WORKERS:-4}" \
     --timeout "${API_TIMEOUT:-300}" \
@@ -16,9 +21,8 @@ if [ "$ENVIRONMENT" = "prod" ] || [ "$ENVIRONMENT" = "staging" ]; then
     --error-logfile - \
     main:app
 else
-    # Development - Use Uvicorn directly
     echo "Starting development server with Uvicorn..."
-    exec poetry run uvicorn main:app \
+    exec uvicorn main:app \
         --host "${API_HOST:-0.0.0.0}" \
         --port "${API_PORT:-8000}" \
         --workers "${API_WORKERS:-2}" \
