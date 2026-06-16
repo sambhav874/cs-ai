@@ -31,7 +31,7 @@ services:
       - ./apps/backend/.env
     environment:
       - CELERY_BROKER_URL=${CELERY_BROKER_URL:-amqp://guest:guest@localhost:5672//}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3001}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3001,http://localhost:4200}
     networks:
       - contractsense-net
     volumes:
