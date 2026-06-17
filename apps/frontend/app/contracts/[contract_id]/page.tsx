@@ -38,6 +38,8 @@ import {
   Info,
   BookOpen,
   Play,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 
 import { useAccountContext } from '@/app/context/AccountContext';
@@ -731,6 +733,7 @@ export default function ContractView() {
   const [agentDocumentPreview, setAgentDocumentPreview] = useState<AgentDocumentPreview | null>(null);
   const [isAgentDocumentsLoading, setIsAgentDocumentsLoading] = useState(false);
   const [isAgentDocumentPreviewLoading, setIsAgentDocumentPreviewLoading] = useState(false);
+  const [isExplorerOpen, setIsExplorerOpen] = useState(true);
   const [isCreatingEditableCopy, setIsCreatingEditableCopy] = useState(false);
   const [isSavingAgentDocument, setIsSavingAgentDocument] = useState(false);
   const [resolvingAgentEditIds, setResolvingAgentEditIds] = useState<Set<string>>(() => new Set());
@@ -2890,6 +2893,8 @@ export default function ContractView() {
                     sourceFetchRuns={kpiSourceFetchRuns}
                     sourceActionResults={kpiSourceActionResults}
                     isSourceLoading={isKpiSourceLoading}
+                    isExplorerOpen={isExplorerOpen}
+                    onToggleExplorer={() => setIsExplorerOpen((prev) => !prev)}
                     onOpenContractDocument={openContractDocument}
                     onOpenAgentDocument={openAgentDocument}
                     onCreateEditableCopy={createEditableCopy}
@@ -6214,6 +6219,8 @@ function ContractProjectExplorer({
   sourceFetchRuns,
   sourceActionResults,
   isSourceLoading,
+  isExplorerOpen,
+  onToggleExplorer,
   onOpenContractDocument,
   onOpenAgentDocument,
   onCreateEditableCopy,
@@ -6240,6 +6247,8 @@ function ContractProjectExplorer({
   sourceFetchRuns: Record<string, KPISourceFetchRun[]>;
   sourceActionResults: Record<string, any>;
   isSourceLoading: boolean;
+  isExplorerOpen: boolean;
+  onToggleExplorer: () => void;
   onOpenContractDocument: () => void;
   onOpenAgentDocument: (documentId: string, versionId?: string) => void;
   onCreateEditableCopy: () => void;
@@ -6346,21 +6355,71 @@ function ContractProjectExplorer({
           : "border-amber-200 bg-amber-50 text-amber-700"
   );
 
+  if (!isExplorerOpen) {
+    return (
+      <aside className="hidden w-[48px] shrink-0 flex-col items-center border-r border-gray-200 bg-white py-2 md:flex">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-gray-500 hover:text-gray-950"
+          onClick={onToggleExplorer}
+          title="Expand explorer"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+        </Button>
+        <div className="mt-3 flex flex-col items-center gap-1.5 overflow-y-auto px-1">
+          {documents.map((document) => {
+            const isCurrent = !selectedAgentDocumentId && document._id === currentContractId;
+            return (
+              <Link
+                key={document._id}
+                href={`/contracts/${document._id}`}
+                title={document.contract_name}
+                onClick={() => {
+                  if (document._id === currentContractId) onOpenContractDocument();
+                }}
+                className={`group relative flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                  isCurrent ? "bg-blue-50 text-blue-600" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+                }`}
+              >
+                <FileText className="h-4 w-4" />
+                <span className="pointer-events-none absolute left-full z-50 ml-2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100">
+                  {document.contract_name}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="hidden w-[260px] shrink-0 flex-col border-r border-gray-200 bg-white md:flex xl:w-[300px]">
       <div className="flex h-12 items-center justify-between border-b border-gray-200 px-4">
         <div className="text-sm font-medium text-gray-800">Explorer</div>
-        <Button
-          asChild
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-gray-500 hover:text-gray-950"
-          title="Upload document"
-        >
-          <Link href={uploadHref} aria-label="Upload document">
-            <UploadCloud className="h-4 w-4" />
-          </Link>
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-gray-500 hover:text-gray-950"
+            onClick={onToggleExplorer}
+            title="Collapse explorer"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </Button>
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-gray-500 hover:text-gray-950"
+            title="Upload document"
+          >
+            <Link href={uploadHref} aria-label="Upload document">
+              <UploadCloud className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         <div className="mb-3 flex min-w-0 items-center gap-2 px-1 text-sm text-gray-600">

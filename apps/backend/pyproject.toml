@@ -52,6 +52,7 @@ azure-identity = "^1.23.0"
 kombu = {extras = ["azureservicebus"], version = "^5.5.4"}
 azure-storage-blob = "^12.25.1"
 slowapi = "^0.1.9"
+gevent = "^24.11.1"
 pypdf = "^6.8.0"
 liteparse = "^2.0.8"
 langchain-google-genai = "^4.2.4"

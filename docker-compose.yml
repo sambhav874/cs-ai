@@ -1,4 +1,28 @@
 services:
+  # ────────────────────────────────────────────────────────────
+  # Nginx — reverse proxy & load balancer for backend replicas
+  # ────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - contractsense-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+  # ────────────────────────────────────────────────────────────
+  # Frontend — Next.js standalone
+  # ────────────────────────────────────────────────────────────
   frontend:
     image: extractor-frontend
     build:
@@ -6,18 +30,24 @@ services:
       target: production
       dockerfile: Containerfile
       args:
-        NEXT_PUBLIC_EXTRACTOR_API_URL: ${NEXT_PUBLIC_EXTRACTOR_API_URL:-http://localhost:8001/api/v1}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
-    ports:
-      - "3001:3000"
+        NEXT_PUBLIC_EXTRACTOR_API_URL: ${NEXT_PUBLIC_EXTRACTOR_API_URL:-http://localhost/api/v1}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost}
     env_file:
       - ./apps/frontend/.env
     depends_on:
-      - backend
+      - nginx
     networks:
       - contractsense-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
 
+  # ────────────────────────────────────────────────────────────
+  # Backend — FastAPI (gunicorn + uvicorn workers)
+  # ────────────────────────────────────────────────────────────
   backend:
     image: extractor-backend
     build:
@@ -25,23 +55,39 @@ services:
       dockerfile: apps/backend/Containerfile
       args:
         USE_GPU: "false"
-    ports:
-      - "8001:8000"
     env_file:
       - ./apps/backend/.env
     environment:
       - CELERY_BROKER_URL=${CELERY_BROKER_URL:-amqp://guest:guest@rabbitmq:5672//}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3001,http://localhost:4200}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost,http://localhost:3001}
+      - API_WORKERS=${API_WORKERS:-4}
+      - API_TIMEOUT=${API_TIMEOUT:-300}
+      - REDIS_URL=${REDIS_URL:-}
+      - RATE_LIMIT_STORAGE_URI=${REDIS_URL:-memory://}
     depends_on:
       rabbitmq:
         condition: service_healthy
         required: false
     networks:
       - contractsense-net
-    volumes:
-      - ./shared:/app/shared
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+        reservations:
+          memory: 256M
 
+  # ────────────────────────────────────────────────────────────
+  # Celery Worker — contract indexing, KPI ingestion, emails
+  # ────────────────────────────────────────────────────────────
   worker:
     image: extractor-worker
     build:
@@ -51,16 +97,59 @@ services:
       - ./apps/backend/.env
     environment:
       - CELERY_BROKER_URL=${CELERY_BROKER_URL:-amqp://guest:guest@rabbitmq:5672//}
+      - CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-60}
+      - CELERY_POOL=${CELERY_POOL:-gevent}
+      - CELERY_QUEUES=${CELERY_QUEUES:-default,indexing,kpi_ingestion}
     depends_on:
       rabbitmq:
         condition: service_healthy
         required: false
     networks:
       - contractsense-net
-    volumes:
-      - ./shared:/app/shared
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A celery_app inspect ping --timeout 5 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "1.5"
+        reservations:
+          memory: 256M
 
+  # ────────────────────────────────────────────────────────────
+  # Celery Beat — periodic task scheduler (single instance only)
+  # ────────────────────────────────────────────────────────────
+  celery-beat:
+    image: extractor-worker
+    build:
+      context: .
+      dockerfile: apps/backend/Containerfile.worker
+    env_file:
+      - ./apps/backend/.env
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-amqp://guest:guest@rabbitmq:5672//}
+      - CELERY_MODE=beat
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+        required: false
+    networks:
+      - contractsense-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+
+  # ────────────────────────────────────────────────────────────
+  # RabbitMQ — local message broker (local-broker profile only)
+  # ────────────────────────────────────────────────────────────
   rabbitmq:
     image: rabbitmq:3-management
     profiles:
@@ -82,10 +171,41 @@ services:
       retries: 5
       start_period: 15s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+  # ────────────────────────────────────────────────────────────
+  # Redis — optional rate limiting & caching layer
+  # Enable with: docker compose --profile cache up -d
+  # ────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    profiles:
+      - cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - contractsense-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
 
 volumes:
-  shared:
   rabbitmq_data:
+  redis_data:
 
 networks:
   contractsense-net:

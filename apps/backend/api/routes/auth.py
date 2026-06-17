@@ -220,11 +220,19 @@ def list_accessible_accounts(
             team_id_str = str(team["_id"])
             role = "member"
             # Determine user's role in the team
+            is_team_owner = current_user.ownedAccountId == team_id_str
             for member in team.get("members", []):
                 if str(member.get("userId")) == str(current_user.id):
                     raw_role = member.get("team_role", "member")
-                    role = raw_role if raw_role in ("owner", "member") else "member"
+                    if raw_role in ("owner", "admin") or is_team_owner:
+                        role = "owner"
+                    else:
+                        role = "member"
                     break
+            else:
+                # User not in members list but owns the team via ownedAccountId
+                if is_team_owner:
+                    role = "owner"
             
             accounts.append(AccessibleAccountInfo(
                 id=team_id_str,

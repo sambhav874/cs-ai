@@ -27,6 +27,8 @@ from utils.secure_logger import log_exception
 from services.kpi_manager import ContractKPIManager, USER_CONFIGURABLE_SOURCE_TYPES
 from services.kpi_source_ingestion import KpiSourceError, KpiSourceIngestionService
 from api.dependencies import get_contract_and_verify_access, get_project_and_verify_access
+from api.routes.projects import verify_project_access, build_accessible_contract_query
+from core.cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -239,14 +241,22 @@ def list_contract_kpis(
 
     contract = collection.find_one({"_id": contract_oid}, {"_id": 1, "ownerType": 1, "ownerId": 1})
     check_contract_access(contract, current_user)
+
+    cache_key = f"kpi:list:{contract_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     manager = _kpi_manager()
     kpis = manager.list_contract_kpis(contract_id)
-    return {
+    result = {
         "contract_id": contract_id,
         "count": len(kpis),
         "summary": manager.summarize_kpis(kpis),
         "kpis": kpis,
     }
+    cache.set(cache_key, result, ttl=60)
+    return result
 
 
 @kpis_router.get("/kpis/source-catalog")
@@ -568,12 +578,14 @@ def extract_contract_kpis(
     if (contract.get("index") or {}).get("status") != "success":
         raise HTTPException(status_code=400, detail="Contract must be ingested before KPI extraction.")
 
-    return _kpi_manager().extract_for_contract(
+    result = _kpi_manager().extract_for_contract(
         contract_doc=contract,
         user_id=str(current_user.id),
         replace_drafts=request.replace_drafts,
         ai_provider=request.ai_provider,
     )
+    cache.delete(f"kpi:list:{contract_id}")
+    return result
 
 
 @kpis_router.patch("/contracts/{contract_id}/kpis/{kpi_id}")
@@ -598,6 +610,7 @@ def update_contract_kpi(
     )
     if not updated:
         raise HTTPException(status_code=404, detail="KPI not found.")
+    cache.delete(f"kpi:list:{contract_id}")
     return updated
 
 

@@ -71,25 +71,10 @@ def build_accessible_contract_query(
     if current_user.ownedAccountId == owner_id_str:
         return base
 
-    active_statuses = [
-        "Uploaded",
-        "Indexing",
-        "Summarizing",
-        "Processing",
-        "Ready to Edit",
-        "Editing",
-        "Pending Approval",
-        "Rejected",
-        "Error",
-        "Indexed",
-    ]
     base["$or"] = [
-        {"uploaded_by": user_oid, "status": {"$in": active_statuses}},
+        {"uploaded_by": user_oid},
         {"workflowRoles.editorUserId": user_oid},
-        {
-            "workflowRoles.approverUserId": user_oid,
-            "status": {"$in": ["Pending Approval", "Completed", "Pending Re-edit Approval", "Re-edit Denied"]},
-        },
+        {"workflowRoles.approverUserId": user_oid},
     ]
     return base
 

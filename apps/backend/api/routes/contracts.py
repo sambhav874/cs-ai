@@ -38,6 +38,7 @@ from api.dependencies import (
 from utils.audit_logger import create_audit_log
 from utils.secure_logger import log_exception
 from utils.http_headers import content_disposition
+from core.cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -1005,7 +1006,20 @@ def get_contract(
             "process.lastSave": 1,
         }
 
-        contract = collection.find_one({"_id": contract_oid}, projection)
+        cache_key = f"contract:doc:{contract_id}"
+        contract = cache.get(cache_key)
+        if contract is not None:
+            contract["_id"] = ObjectId(contract["_id"])
+            if contract.get("ownerId"):
+                contract["ownerId"] = ObjectId(contract["ownerId"])
+            if contract.get("uploaded_by"):
+                contract["uploaded_by"] = ObjectId(contract["uploaded_by"])
+            if contract.get("projectId"):
+                contract["projectId"] = ObjectId(contract["projectId"])
+        else:
+            contract = collection.find_one({"_id": contract_oid}, projection)
+            if contract:
+                cache.set(cache_key, contract, ttl=30)
         if not contract:
             raise HTTPException(status_code=404, detail="Contract not found")
 
@@ -1200,7 +1214,6 @@ async def render_contract_pdf(
     if not user_has_access:
         raise HTTPException(status_code=403, detail="You do not have permission to view this contract's file.")
 
-    grid_out = None
     try:
         file_id = contract.get("file_id")
         contract_name = contract.get("contract_name", "contract.pdf")
@@ -1208,30 +1221,48 @@ async def render_contract_pdf(
         if not file_id:
             raise HTTPException(status_code=404, detail="PDF file reference not found.")
 
+        cache_key = f"pdf:{contract_id}"
+
+        # Try cache first — PDFs are immutable after upload
+        cached_bytes = cache.get_bytes(cache_key)
+        if cached_bytes is not None:
+            logger.debug(f"PDF cache hit for {contract_id}")
+            return StreamingResponse(
+                iter([cached_bytes]),
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": content_disposition("inline", contract_name, "contract.pdf"),
+                    "Cache-Control": "private, max-age=3600",
+                    "X-Cache": "HIT",
+                }
+            )
+
+        # Cache miss — read from GridFS and cache
+        logger.debug(f"PDF cache miss for {contract_id}, reading from GridFS")
         grid_out = fs.get(file_id)
-        
-        upload_date = grid_out.upload_date.strftime("%Y%m%d%H%M%S") if grid_out.upload_date else "0"
-        etag = f'W/"{contract_id}-{upload_date}"'
-        
+        try:
+            pdf_bytes = grid_out.read()
+        finally:
+            grid_out.close()
+
+        # Cache for 1 hour (PDFs are immutable)
+        cache.set_bytes(cache_key, pdf_bytes, ttl=3600)
+
         return StreamingResponse(
-            grid_out,
-            media_type=grid_out.content_type or "application/pdf",
+            iter([pdf_bytes]),
+            media_type="application/pdf",
             headers={
                 "Content-Disposition": content_disposition("inline", contract_name, "contract.pdf"),
-                "Cache-Control": "private, max-age=60",
-                "ETag": etag
+                "Cache-Control": "private, max-age=3600",
+                "X-Cache": "MISS",
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Error rendering PDF {contract_id}: {e}")
         raise HTTPException(status_code=500, detail="Error rendering PDF.")
-    finally:
-        if grid_out:
-            try:
-                grid_out.close()
-            except Exception as close_err:
-                logger.warning(f"Error closing GridFS stream {file_id}: {close_err}")
 
 @contracts_router.get("/contracts-stats", response_model=Dict[str, int])
 async def get_contract_stats(

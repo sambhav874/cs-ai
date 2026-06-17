@@ -76,3 +76,4 @@ cypress.env.json
 ContractSense_Supplier_Performance_Report.xlsx
 ContractSense_Performance_Monitoring_Technical_Spec.pdf
 spec_text.txt
+celerybeat-schedule*
