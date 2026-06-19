@@ -11,12 +11,14 @@ export default {
 	theme: {
 		extend: {
 			fontFamily: {
-				GullyVar: ["GullyVar"],
-				InterVar: ["InterVar"],
-				cormorant: ["var(--font-cormorant)", ...fontFamily.serif],
-				mono: ["var(--font-dm-mono)", ...fontFamily.mono],
-				syne: ["var(--font-syne)", ...fontFamily.sans],
-			},
+			sans: ["InterVar", "system-ui", "sans-serif"],
+			GullyVar: ["GullyVar"],
+			InterVar: ["InterVar"],
+			cormorant: ["var(--font-cormorant)", ...fontFamily.serif],
+			"plus-jakarta": ["var(--font-plus-jakarta)", ...fontFamily.sans],
+			mono: ["var(--font-dm-mono)", ...fontFamily.mono],
+			syne: ["var(--font-syne)", ...fontFamily.sans],
+		},
 			colors: {
 				background: 'hsl(var(--background))',
 				foreground: 'hsl(var(--foreground))',

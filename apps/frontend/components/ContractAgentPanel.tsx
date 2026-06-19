@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
+  ChevronRight,
   Download,
   FileText,
   History,
@@ -70,6 +71,7 @@ type AgentMessage = {
   agentTrace?: AgentTraceData;
   tokenUsage?: AgentTokenUsage | null;
   costUsd?: number | null;
+  currentThinking?: string;
 };
 
 type AgentTraceData = AgentTraceEvent[] | Record<string, unknown>;
@@ -203,6 +205,7 @@ type CitedSegment = {
   type: string;
   contract_id?: string | null;
   contract_name?: string | null;
+  verified?: boolean;
 };
 
 type CitationAnnotation = {
@@ -219,6 +222,7 @@ type CitationAnnotation = {
   page?: number | string | null;
   quote: string;
   segment_id?: string;
+  verified?: boolean;
 };
 
 type CitationDetails = {
@@ -1007,8 +1011,10 @@ export default function ContractAgentPanel({
     isAIProvider(aiProvider) ? aiProvider : "groq",
   );
   const [resolvingEditIds, setResolvingEditIds] = useState<Set<string>>(() => new Set());
+  const [traceExpanded, setTraceExpanded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamTextRef = useRef<Map<string, string>>(new Map());
+  const thinkingRef = useRef<Map<string, string>>(new Map());
   const isProjectScope = scope === "project" || (!contractId && Boolean(projectId));
   const agentScopeId = isProjectScope ? projectId || "" : contractId || "";
   const agentBasePath = apiUrl && agentScopeId
@@ -1402,14 +1408,18 @@ export default function ContractAgentPanel({
     const nextRawText = `${streamTextRef.current.get(messageId) ?? ""}${streamDelta}`;
     streamTextRef.current.set(messageId, nextRawText);
     const displayText = cleanDisplayText(nextRawText, { trim: false });
+    // Clear thinking when answer starts streaming
+    thinkingRef.current.delete(messageId);
     updateAgentMessage(messageId, (message) => ({
       ...message,
       content: displayText,
+      currentThinking: undefined,
     }));
   };
 
   const stopStreamText = (messageId: string) => {
     streamTextRef.current.delete(messageId);
+    thinkingRef.current.delete(messageId);
   };
 
   const applyStreamEvent = (
@@ -1433,75 +1443,87 @@ export default function ContractAgentPanel({
     }
 
     if (eventName === "status") {
-      const statusLabel = cleanDisplayText(data.message || "Preparing context");
-      const statusKey = statusLabel.toLowerCase().includes("retriev")
-        ? "retrieving"
-        : statusLabel.toLowerCase().includes("planning")
-          ? "planning"
-          : "status";
-      if (statusKey === "retrieving") {
-        completeAgentActivity(agentMessageId, "status-planning", { label: "planning" });
-      }
-      upsertAgentActivity(agentMessageId, {
-        id: `status-${statusKey}`,
-        label: statusLabel,
-        status: "running",
-      });
-      return;
-    }
-
-    if (eventName === "doc_read_start") {
-      const documentKey = data.document_id || data.filename || "document";
-      upsertAgentActivity(agentMessageId, {
-        id: `doc-read-${documentKey}`,
-        label: `Reading ${cleanDisplayText(data.filename || "document")}`,
-        status: "running",
-      });
-      return;
-    }
-
-    if (eventName === "doc_read") {
-      const documentKey = data.document_id || data.filename || "document";
-      completeAgentActivity(agentMessageId, `doc-read-${documentKey}`, {
-        label: `Read ${cleanDisplayText(data.filename || "document")}`,
-        detail: data.segment_count ? `${data.segment_count} excerpts` : undefined,
-      });
-      return;
-    }
-
-    if (eventName === "doc_search_start") {
-      upsertAgentActivity(agentMessageId, {
-        id: "doc-search",
-        label: cleanDisplayText(data.message || "Searching indexed documents"),
-        detail: data.document_count ? `${data.document_count} docs` : undefined,
-        status: "running",
-      });
-      return;
-    }
-
-    if (eventName === "doc_search") {
-      completeAgentActivity(agentMessageId, "doc-search", {
-        label: "Searched indexed documents",
-        detail: data.match_count ? `${data.match_count} excerpts` : "No matching excerpts",
+      const message = typeof data.message === "string" ? data.message : "";
+      const iteration = typeof data.iteration === "number" ? data.iteration : 1;
+      updateAgentMessage(agentMessageId, (msg) => {
+        const currentTrace = Array.isArray(msg.agentTrace) ? [...msg.agentTrace] : [];
+        currentTrace.push({
+          event: "react_model_step",
+          detail: { iteration, action: "status", reason: message },
+        });
+        return { ...msg, agentTrace: currentTrace };
       });
       return;
     }
 
     if (eventName === "thinking") {
-      upsertAgentActivity(agentMessageId, {
-        id: "thinking",
-        label: cleanDisplayText(data.message || "Thinking"),
-        status: "running",
+      const message = typeof data.message === "string" ? data.message : "";
+      const iteration = typeof data.iteration === "number" ? data.iteration : 1;
+      // Store latest thinking for real-time display
+      thinkingRef.current.set(agentMessageId, message);
+      updateAgentMessage(agentMessageId, (msg) => {
+        const currentTrace = Array.isArray(msg.agentTrace) ? [...msg.agentTrace] : [];
+        currentTrace.push({
+          event: "react_thought",
+          detail: { iteration, thought: message },
+        });
+        return { ...msg, agentTrace: currentTrace, currentThinking: message };
       });
       return;
     }
 
-    if (eventName === "content_done") {
-      completeAgentActivity(agentMessageId, "thinking", { label: "Answer drafted" });
+    if (eventName === "tool_call") {
+      const tool = typeof data.name === "string" ? data.name : "";
+      const args = data.args ?? {};
+      const iteration = typeof data.iteration === "number" ? data.iteration : 1;
+      updateAgentMessage(agentMessageId, (msg) => {
+        const currentTrace = Array.isArray(msg.agentTrace) ? [...msg.agentTrace] : [];
+        currentTrace.push({
+          event: "react_model_step",
+          detail: { iteration, action: "tool", tool, args },
+        });
+        return { ...msg, agentTrace: currentTrace };
+      });
       return;
     }
 
-    if (eventName === "citations") {
+    if (eventName === "tool_result") {
+      const tool = typeof data.name === "string" ? data.name : "";
+      const summary = typeof data.summary === "string" ? data.summary : "";
+      const status = typeof data.status === "string" ? data.status : "done";
+      const iteration = typeof data.iteration === "number" ? data.iteration : 1;
+      updateAgentMessage(agentMessageId, (msg) => {
+        const currentTrace = Array.isArray(msg.agentTrace) ? [...msg.agentTrace] : [];
+        currentTrace.push({
+          event: "react_tool_observation",
+          detail: { iteration, tool, summary, status },
+        });
+        return { ...msg, agentTrace: currentTrace };
+      });
+      return;
+    }
+
+    if (eventName === "doc_read_start") {
+      updateAgentMessage(agentMessageId, (msg) => {
+        const currentTrace = Array.isArray(msg.agentTrace) ? [...msg.agentTrace] : [];
+        currentTrace.push({
+          event: "react_model_step",
+          detail: { iteration: 1, action: "status", reason: `Reading ${cleanDisplayText(data.filename || "document")}` },
+        });
+        return { ...msg, agentTrace: currentTrace };
+      });
+      return;
+    }
+
+    if (eventName === "doc_read" || eventName === "doc_search" || eventName === "doc_search_start") {
+      return;
+    }
+
+    if (eventName === "content_done") {
+      return;
+    }
+
+    if (eventName === "citations" || eventName === "citation") {
       const citationDetails = (data.citation_details ?? {}) as CitationDetails;
       const citationAnnotations = citationAnnotationsFromDetails(citationDetails, data.citation_annotations);
       const normalizedCitations = normalizeCitationPayload(citationAnnotations);
@@ -1582,8 +1604,8 @@ export default function ContractAgentPanel({
       return;
     }
 
-    if (eventName === "delta") {
-      const deltaText = typeof data.text === "string" ? data.text : "";
+    if (eventName === "delta" || eventName === "text") {
+      const deltaText = typeof data.text === "string" ? data.text : (typeof data === "string" ? data : "");
       if (!deltaText) return;
       enqueueStreamText(agentMessageId, deltaText);
       return;
@@ -1872,6 +1894,24 @@ export default function ContractAgentPanel({
     const page = annotation.page ? `Page ${annotation.page}` : "Page not identified";
     const documentName = citationDocumentName(annotation);
     const isSourceVariant = variant === "source";
+    const isUnverified = annotation.verified === false;
+    const hasNoActionableData = !annotation.page && !citationQuote(annotation);
+
+    if (hasNoActionableData) {
+      return (
+        <span
+          key={`${message.id}-citation-${keySuffix}`}
+          className={cn(
+            "inline-flex items-center justify-center border font-medium cursor-default",
+            isSourceVariant
+              ? "h-5 min-w-5 rounded-md border-gray-100 bg-gray-100 px-1.5 text-[10px] leading-none text-gray-500"
+              : "mx-0.5 h-4 min-w-4 rounded border-gray-100 bg-gray-100 px-1 align-super text-[9px] leading-none text-gray-500",
+          )}
+        >
+          {annotation.ref}
+        </span>
+      );
+    }
 
     return (
       <Tooltip key={`${message.id}-citation-${keySuffix}`}>
@@ -1881,9 +1921,13 @@ export default function ContractAgentPanel({
             onClick={() => handleCitationClick(message, annotation)}
             className={cn(
               "inline-flex items-center justify-center border font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300",
-              isSourceVariant
-                ? "h-5 min-w-5 rounded-md border-gray-200 bg-white px-1.5 text-[10px] leading-none text-gray-600 hover:border-gray-300 hover:bg-gray-50"
-                : "mx-0.5 h-4 min-w-4 rounded border-gray-200 bg-white px-1 align-super text-[9px] leading-none text-gray-600 hover:border-gray-300 hover:bg-gray-50",
+              isUnverified
+                ? isSourceVariant
+                  ? "h-5 min-w-5 rounded-md border-amber-200 bg-amber-50 px-1.5 text-[10px] leading-none text-amber-700 hover:border-amber-300 hover:bg-amber-100"
+                  : "mx-0.5 h-4 min-w-4 rounded border-amber-200 bg-amber-50 px-1 align-super text-[9px] leading-none text-amber-700 hover:border-amber-300 hover:bg-amber-100"
+                : isSourceVariant
+                  ? "h-5 min-w-5 rounded-md border-gray-200 bg-white px-1.5 text-[10px] leading-none text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                  : "mx-0.5 h-4 min-w-4 rounded border-gray-200 bg-white px-1 align-super text-[9px] leading-none text-gray-600 hover:border-gray-300 hover:bg-gray-50",
             )}
             aria-label={`Open citation ${annotation.ref}`}
           >
@@ -1894,6 +1938,12 @@ export default function ContractAgentPanel({
           <div className="space-y-1.5">
             <div className="text-xs font-semibold text-gray-900">{documentName}</div>
             <div className="text-[11px] font-medium text-blue-700">{page}</div>
+            {isUnverified && (
+              <div className="text-[10px] text-amber-700 font-semibold bg-amber-50 rounded px-1.5 py-0.5 border border-amber-100 flex items-center gap-1">
+                <span>⚠️</span>
+                <span>Unverified source text</span>
+              </div>
+            )}
             {quote ? (
               <div className="max-h-24 overflow-hidden text-xs leading-5 text-gray-600">{quote}</div>
             ) : (
@@ -1912,8 +1962,6 @@ export default function ContractAgentPanel({
     keyPrefix: string,
   ): ReactNode[] => {
     const annotations = message.citationAnnotations ?? [];
-    if (!annotations.length) return [text];
-
     const annotationsByRef = new Map(annotations.map((annotation) => [Number(annotation.ref), annotation]));
     const markerRegex = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
     const parts: ReactNode[] = [];
@@ -1926,12 +1974,12 @@ export default function ContractAgentPanel({
         parts.push(text.slice(lastIndex, match.index));
       }
 
-      const matchedAnnotations = citationRefs(match[1])
+      const annotationsForThisMarker = citationRefs(match[1])
         .map((ref) => annotationsByRef.get(ref))
         .filter((annotation): annotation is CitationAnnotation => Boolean(annotation));
 
-      if (matchedAnnotations.length) {
-        matchedAnnotations.forEach((annotation, annotationIndex) => {
+      if (annotationsForThisMarker.length) {
+        annotationsForThisMarker.forEach((annotation, annotationIndex) => {
           parts.push(renderCitationButton(message, annotation, `${keyPrefix}-${markerStart}-${annotationIndex}`));
         });
       } else {
@@ -2104,47 +2152,21 @@ export default function ContractAgentPanel({
     const items = buildAgentReasoningItems(message);
     if (!items.length) return null;
 
-    const hasRunning = items.some((item) => item.status === "running");
     const hasAttention = items.some((item) => item.tone === "attention" || item.status === "error");
 
-    return (
-      <details className="group max-w-md" aria-label="Agent reasoning summary">
-        <summary className="inline-flex max-w-full cursor-pointer list-none items-center gap-1.5 rounded-md py-0.5 text-[10px] font-medium text-gray-500 outline-none transition-colors hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-gray-300 [&::-webkit-details-marker]:hidden">
-          <span className={cn(
-            "h-1.5 w-1.5 shrink-0 rounded-full",
-            hasAttention ? "bg-amber-500" : hasRunning ? "animate-pulse bg-blue-500" : "bg-gray-300",
-          )} />
-          <span>{hasRunning ? "Working" : "Reasoning"}</span>
-          <span className="min-w-0 truncate font-normal text-gray-400">{reasoningSubtitle(items)}</span>
-          <ChevronDown className="h-3 w-3 shrink-0 text-gray-400 transition-transform group-open:rotate-180" />
-        </summary>
-
-        <div className="ml-0.5 mt-1 max-w-md border-l border-gray-200 pl-2.5 text-[10px] leading-4 text-gray-500">
-          <div className="space-y-0.5">
-            {items.map((item) => (
-              <div key={item.id} className="flex min-w-0 items-start gap-1.5">
-                <span className={cn(
-                  "mt-[7px] h-1 w-1 shrink-0 rounded-full",
-                  item.status === "running" && "animate-pulse bg-blue-500",
-                  item.tone === "attention" && item.status !== "running" && "bg-amber-500",
-                  item.tone === "success" && item.status !== "running" && "bg-emerald-500",
-                  (!item.tone || item.tone === "neutral") && item.status !== "running" && "bg-gray-300",
-                )} />
-                <div className="min-w-0">
-                  <div className="font-medium text-gray-600">{item.label}</div>
-                  {item.detail ? (
-                    <div className="line-clamp-2 text-gray-400">{item.detail}</div>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
+    if (hasAttention) {
+      return (
+        <div className="mb-1 flex items-center gap-1.5 text-[10px] text-amber-500">
+          <span className="inline-block h-1 w-1 rounded-full bg-amber-500" />
+          <span>Needs attention</span>
         </div>
-      </details>
-    );
+      );
+    }
+
+    return null;
   };
 
-  const renderAgentReActSteps = (message: AgentMessage) => {
+  const renderAgentReActSteps = (message: AgentMessage, isRunning = false) => {
     const events = traceEventsFromData(message.agentTrace);
     const visibleEvents = events.filter((event) => {
       const name = event.event || "";
@@ -2152,12 +2174,18 @@ export default function ContractAgentPanel({
       if (name.startsWith("middleware:") && String(event.detail?.decision) !== "deny" && String(event.detail?.decision) !== "reject") return false;
       return true;
     });
-    if (!visibleEvents.length) return null;
+    if (!visibleEvents.length && !isRunning) return null;
 
     const steps: Array<{ iteration: number; type: "thought" | "tool_call" | "tool_result" | "answer"; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: { summary?: string; matches?: Array<Record<string, unknown>>; error?: string }; answerText?: string }> = [];
     visibleEvents.forEach((event) => {
       const name = event.event || "";
-      if (name === "react_model_step" && event.detail?.action === "tool") {
+      if (name === "react_thought") {
+        steps.push({
+          iteration: steps.length + 1,
+          type: "thought",
+          answerText: String(event.detail?.thought || ""),
+        });
+      } else if (name === "react_model_step" && event.detail?.action === "tool") {
         steps.push({ iteration: steps.length + 1, type: "tool_call", toolName: String(event.detail?.tool || ""), toolArgs: event.detail as Record<string, unknown> });
       } else if (name === "react_tool_observation") {
         steps.push({ iteration: steps.length + 1, type: "tool_result", toolName: String(event.detail?.tool || ""), toolResult: { summary: String(event.detail?.summary || ""), matches: undefined } });
@@ -2165,9 +2193,69 @@ export default function ContractAgentPanel({
         steps.push({ iteration: steps.length + 1, type: "answer", answerText: String(event.detail?.reason || "").slice(0, 120) });
       }
     });
-    if (!steps.length) return null;
 
-    return <ReActThinkingStream steps={steps} className="mb-2" />;
+    const toolSteps = steps.filter((s) => s.type === "tool_call" || s.type === "tool_result");
+
+    if (!toolSteps.length && !isRunning) return null;
+
+    return (
+      <div className="mb-1.5">
+        {/* Minimal inline tool indicator */}
+        <div className="flex items-center gap-2 text-[10px] text-gray-400">
+          {isRunning ? (
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-gray-400" />
+              <span>Working</span>
+            </span>
+          ) : (
+            <span>{toolSteps.length} tool call{toolSteps.length !== 1 ? "s" : ""}</span>
+          )}
+          {steps.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setTraceExpanded(!traceExpanded)}
+              className="inline-flex items-center gap-0.5 text-gray-300 hover:text-gray-500 transition-colors"
+            >
+              {traceExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            </button>
+          ) : null}
+        </div>
+
+        {/* Expanded detail — clean list, no badges */}
+        {traceExpanded && steps.length > 0 ? (
+          <div className="mt-1.5 space-y-1 pl-0">
+            {steps.map((step, idx) => (
+              <div
+                key={idx}
+                className="flex items-start gap-2 text-[10px] leading-4 text-gray-400"
+              >
+                <span className="mt-0.5 h-1 w-1 shrink-0 rounded-full bg-gray-200" />
+                <span className="min-w-0 flex-1 font-mono">
+                  {step.type === "thought" && step.answerText && (
+                    <span className="text-gray-400">{step.answerText.slice(0, 100)}</span>
+                  )}
+                  {step.type === "tool_call" && (
+                    <span className="text-gray-500">{step.toolName}()</span>
+                  )}
+                  {step.type === "tool_result" && (
+                    <span className="text-gray-400">
+                      {step.toolResult?.error ? (
+                        <span className="text-red-400">{step.toolResult.error.slice(0, 80)}</span>
+                      ) : (
+                        step.toolResult?.summary?.slice(0, 80) || "Done"
+                      )}
+                    </span>
+                  )}
+                  {step.type === "answer" && step.answerText && (
+                    <span className="text-gray-300">{step.answerText.slice(0, 80)}</span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
   };
 
   const renderArtifactCard = (artifact: AgentArtifact) => {
@@ -2531,27 +2619,40 @@ export default function ContractAgentPanel({
           </div>
         ) : (
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 overflow-x-hidden pb-28">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={cn(
-                  "flex w-full",
-                  message.role === "user" ? "justify-end" : "justify-start"
-                )}
-              >
-                {message.role === "agent" ? (
-                  <div className="flex min-w-0 max-w-full flex-1 items-start gap-2.5">
-                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm">
-                      <Sparkles className="h-3.5 w-3.5 text-gray-700" />
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-2 text-xs leading-5 text-gray-800 sm:text-[13px]">
-                      {renderAgentReasoning(message)}
-                      {renderAgentReActSteps(message)}
-                      {visibleAnswerText(message.content) ? (
-                        <div className="contract-agent-markdown min-w-0 max-w-full overflow-hidden break-words rounded-lg bg-white">
-                          {renderMarkdownMessage(message)}
-                        </div>
-                      ) : null}
+            {messages.map((message) => {
+              const isLastAgentMessage = messages.filter((m) => m.role === "agent").slice(-1)[0]?.id === message.id;
+              const isRunning = isThinking && isLastAgentMessage;
+
+              return (
+                <div
+                  key={message.id}
+                  className={cn(
+                    "flex w-full",
+                    message.role === "user" ? "justify-end" : "justify-start"
+                  )}
+                >
+                  {message.role === "agent" ? (
+                    <div className="flex min-w-0 max-w-full flex-1 items-start gap-2.5">
+                      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm">
+                        <Sparkles className="h-3.5 w-3.5 text-gray-700" />
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-2 text-xs leading-5 text-gray-800 sm:text-[13px]">
+                        {renderAgentReasoning(message)}
+                        {renderAgentReActSteps(message, isRunning)}
+                        {/* Real-time thinking display */}
+                        {isRunning && message.currentThinking && !visibleAnswerText(message.content) ? (
+                          <div className="text-[11px] leading-5 text-gray-400 italic">
+                            {message.currentThinking}
+                          </div>
+                        ) : null}
+                        {visibleAnswerText(message.content) ? (
+                          <div className={cn(
+                            "contract-agent-markdown min-w-0 max-w-full overflow-hidden break-words rounded-lg bg-white",
+                            isRunning && "streaming-cursor"
+                          )}>
+                            {renderMarkdownMessage(message)}
+                          </div>
+                        ) : null}
                       {message.workflow?.status === "waiting_approval" && message.workflow.approval ? (
                         <ApprovalCard
                           approval={message.workflow.approval}
@@ -2568,24 +2669,34 @@ export default function ContractAgentPanel({
                           {message.artifacts.map(renderArtifactCard)}
                         </div>
                       ) : null}
-                      {message.citationAnnotations?.length || message.citation || message.confidence ? (
-                        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 pt-1 text-[10px] leading-5 text-gray-500">
+                      {message.citationAnnotations?.length || message.citation ? (
+                        <div className="mt-2 flex flex-col gap-1 border-t border-gray-100 pt-2 text-[10px] text-gray-500">
                           {message.citationAnnotations?.length ? (
                             <>
-                              <span className="font-medium uppercase tracking-[0.08em] text-gray-400">Sources</span>
-                              <span className="flex flex-wrap items-center gap-0.5">
-                                {getUsedAndSortedAnnotations(message).map((annotation) =>
-                                  renderCitationButton(message, annotation, `source-${annotation.ref}`, "source"),
-                                )}
-                              </span>
+                              <span className="font-semibold uppercase tracking-wider text-gray-400">Sources</span>
+                              <div className="flex flex-col gap-1.5 mt-1">
+                                {getUsedAndSortedAnnotations(message).map((annotation) => {
+                                  const docName = citationDocumentName(annotation);
+                                  const page = annotation.page ? `Page ${annotation.page}` : "Page not identified";
+                                  return (
+                                    <div key={annotation.ref} className="flex items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCitationClick(message, annotation)}
+                                        className="h-4 min-w-4 rounded border border-gray-200 bg-white px-1 text-[9px] font-medium text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                                      >
+                                        {annotation.ref}
+                                      </button>
+                                      <span className="font-medium text-gray-700">{docName}</span>
+                                      <span className="text-gray-400">·</span>
+                                      <span className="text-blue-600">{page}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </>
                           ) : message.citation ? (
                             <span className="min-w-0 break-words text-gray-400">Source: {cleanDisplayText(message.citation)}</span>
-                          ) : null}
-                          {message.confidence ? (
-                            <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
-                              {confidenceLabel(message.confidence)}
-                            </span>
                           ) : null}
                         </div>
                       ) : null}
@@ -2597,7 +2708,8 @@ export default function ContractAgentPanel({
                   </div>
                 )}
               </div>
-            ))}
+            );
+          })}
             <div ref={messagesEndRef} />
           </div>
         )}

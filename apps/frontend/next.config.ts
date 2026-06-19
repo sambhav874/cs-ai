@@ -16,7 +16,7 @@ const apiOrigin = (() => {
 const cspDirectives = [
   "default-src 'self'",
   // 'unsafe-eval' needed by Next.js HMR in dev; 'unsafe-inline' required by Next.js App Router for RSC streaming/hydration
-  "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+  `script-src 'self'${isDev ? " 'unsafe-eval'" : ""} 'unsafe-inline'`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob:",
@@ -30,7 +30,12 @@ const cspDirectives = [
 const nextConfig: NextConfig = {
   output: 'standalone',
   reactStrictMode: true,
-  images: { unoptimized: true },
+  serverExternalPackages: ["@react-pdf/renderer"],
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "picsum.photos" },
+    ],
+  },
   webpack: (config) => {
     config.resolve.alias.canvas = false;
     return config;

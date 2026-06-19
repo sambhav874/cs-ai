@@ -159,7 +159,7 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
     return () => {
       cancelled = true
     }
-  }, [selectedAccountId, accountInitialized, pathname, isAuthenticated, authenticatedFetch])
+  }, [selectedAccountId, accountInitialized, isAuthenticated, authenticatedFetch])
 
   const navItems = [
     { href: "/dashboard", label: "Projects", icon: FolderOpen },
@@ -218,9 +218,9 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
                 type="button"
                 onClick={() => setIsExpanded(true)}
                 className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-300 bg-white text-gray-900 shadow-sm transition-colors hover:bg-gray-100"
-                title="Expand sidebar"
+                aria-label="Expand sidebar"
               >
-                <PanelLeftOpen className="h-5 w-5" />
+                <PanelLeftOpen className="h-5 w-5" aria-hidden="true" />
               </button>
             )}
 
@@ -229,9 +229,9 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
                 type="button"
                 onClick={() => setIsExpanded(false)}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-300 bg-white text-gray-900 shadow-sm transition-colors hover:bg-gray-100"
-                title="Collapse sidebar"
+                aria-label="Collapse sidebar"
               >
-                <PanelLeftClose className="h-5 w-5" />
+                <PanelLeftClose className="h-5 w-5" aria-hidden="true" />
               </button>
             )}
           </div>
@@ -255,11 +255,12 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
                   <Tooltip key={item.href} content={item.label} enabled>
                     <Link
                       href={item.href}
+                      aria-label={item.label}
                       className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
                         active ? "bg-white text-gray-950 shadow-sm ring-1 ring-gray-200" : "text-gray-500 hover:bg-white hover:text-gray-950"
                       }`}
                     >
-                      <Icon className="h-5 w-5" />
+                      <Icon className="h-5 w-5" aria-hidden="true" />
                     </Link>
                   </Tooltip>
                 )
@@ -389,11 +390,13 @@ function SidebarSection({
         type="button"
         onClick={onToggle}
         className="mb-3 flex w-full items-center justify-between text-sm font-semibold text-gray-500"
+        aria-expanded={isOpen}
+        aria-controls={title.toLowerCase().replace(/\s+/g, "-")}
       >
         <span>{title}</span>
-        {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        {isOpen ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
       </button>
-      {isOpen && children}
+      {isOpen && <div id={title.toLowerCase().replace(/\s+/g, "-")}>{children}</div>}
     </section>
   )
 }

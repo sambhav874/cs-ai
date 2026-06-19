@@ -3,7 +3,13 @@
 @tailwind utilities;
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'InterVar', system-ui, sans-serif;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--azure);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* Custom prose styling for contract documents */
@@ -118,33 +124,6 @@ body {
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
-  }
-
-  /* Custom cursor */
-  .custom-cursor {
-    position: fixed;
-    width: 12px;
-    height: 12px;
-    background: var(--azure);
-    border-radius: 50%;
-    pointer-events: none;
-    z-index: 9999;
-    transform: translate(-50%, -50%);
-    transition: transform 0.1s, width 0.3s, height 0.3s, background 0.3s;
-    mix-blend-mode: multiply;
-  }
-
-  .custom-cursor-ring {
-    position: fixed;
-    width: 40px;
-    height: 40px;
-    border: 1px solid var(--azure);
-    border-radius: 50%;
-    pointer-events: none;
-    z-index: 9998;
-    transform: translate(-50%, -50%);
-    transition: transform 0.15s ease-out, width 0.4s, height 0.4s;
-    opacity: 0.5;
   }
 
   /* Reveal on scroll */
@@ -398,15 +377,9 @@ body {
   border-radius: 3px;
 }
 
-@keyframes pulseBorder {
-
-  0%,
-  100% {
-    opacity: 0.5;
-  }
-
-  50% {
-    opacity: 1;
+@keyframes gradient {
+  to {
+    backgroundPosition: var(--bg-size, 300%) 0;
   }
 }
 
@@ -476,6 +449,17 @@ body {
   }
 
   .dark {
+    --ink: #e8e6dc;
+    --paper: #14141a;
+    --azure: #5eb8ff;
+    --azure-light: #0078d4;
+    --warm: #3a3428;
+    --accent: #ff6b33;
+    --silver: #6b6e73;
+    --border-color: rgba(245, 243, 238, 0.15);
+    --color-CLPrimary: 94 184 255;
+    --color-CLBackground: 20 20 26;
+    --color-CLForeground: 38 38 48;
     --background: 20 14.3% 4.1%;
     --foreground: 60 9.1% 97.8%;
     --card: 20 14.3% 4.1%;
@@ -570,16 +554,6 @@ body {
   }
 }
 
-@keyframes hide {
-  from {
-    opacity: 1;
-  }
-
-  to {
-    opacity: 0;
-  }
-}
-
 @keyframes slideDownAndFade {
   from {
     opacity: 0;
@@ -625,5 +599,30 @@ body {
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+/* Streaming Cursor animation */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.streaming-cursor::after {
+  content: '▋';
+  display: inline-block;
+  margin-left: 2px;
+  animation: blink 0.8s infinite;
+  color: #3b82f6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

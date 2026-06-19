@@ -1073,7 +1073,7 @@ function PlaybookDetailContent() {
                         contractId={activeViewContractId}
                         searchKey=""
                         searchValue=""
-                        token={token}
+                        token={token ?? ""}
                       />
                     </div>
                     {runDetail ? (

@@ -78,6 +78,7 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
             "match_count": len(matches),
             "retrieval_backend": backend,
             "trace": trace,
+            "matches": matches,
         }
     if tool.name == "find_in_document":
         document = _select_document(tool, state, scoped_docs)
@@ -454,7 +455,7 @@ def _match_from_langchain_document(source_document: Dict[str, Any], doc: Any, *,
         "section": metadata.get("section_path"),
         "start": metadata.get("char_start") or 0,
         "end": metadata.get("char_end") or 0,
-        "quote": _first_line(text),
+        "quote": text[:500],
         "context": text[:1800],
         "snippet": text[:1800],
         "retrieval_backend": backend,
@@ -490,7 +491,7 @@ def _match_from_vector_chunk(
         "section": _metadata_value(raw, "section_path"),
         "start": _metadata_value(raw, "char_start") or 0,
         "end": _metadata_value(raw, "char_end") or 0,
-        "quote": _first_line(text),
+        "quote": text[:500],
         "context": text[:1800],
         "snippet": text[:1800],
         "retrieval_backend": backend,

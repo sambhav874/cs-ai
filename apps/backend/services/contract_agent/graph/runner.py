@@ -43,7 +43,7 @@ class DeepContractAgentRunner:
         self.max_iterations = max_iterations
         self.middleware = ActiveMiddlewareEngine()
 
-    def run(self, state: AgentRunState) -> AgentResponse:
+    def run(self, state: AgentRunState, on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None) -> AgentResponse:
         state.status = AgentStatus.RUNNING
         state.add_trace("input_guard", message_length=len(state.message))
         state = self.middleware.input_guard(state)
@@ -56,7 +56,7 @@ class DeepContractAgentRunner:
                 model=self.model,
                 max_iterations=self.max_iterations,
             )
-            state = runtime.run(state, checkpoint_config=self.checkpoint_config(state))
+            state = runtime.run(state, checkpoint_config=self.checkpoint_config(state), on_event=on_event)
             state = self.middleware.tool_guard(state)
             if state.status == AgentStatus.WAITING_APPROVAL:
                 state = self.middleware.approval_guard(state)

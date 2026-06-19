@@ -646,6 +646,7 @@ def _run_stream_agent_gate(
     message: str,
     context: AgentContext,
     ai_provider: Optional[str],
+    on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None,
 ) -> AgentResponse:
     state = AgentRunState(
         user_id=user_id,
@@ -656,7 +657,7 @@ def _run_stream_agent_gate(
     return DeepContractAgentRunner(
         store=_agent_run_store(),
         tool_executor=_stream_agent_tool_executor,
-    ).run(state)
+    ).run(state, on_event=on_event)
 
 
 def _stream_agent_tool_executor(tool: ToolCallRecord, state: AgentRunState) -> Dict[str, Any]:
@@ -696,6 +697,11 @@ def _persist_stream_agent_gate_message(
         "agent_trace": response.agent_trace,
         "token_usage": response.token_usage.model_dump(mode="json"),
         "cost_usd": response.cost_usd,
+        "confidence": response.confidence,
+        "citation": getattr(response, "citation", "") or "",
+        "reason": response.reason,
+        "citation_details": response.citation_details,
+        "citation_annotations": response.citation_annotations,
     }
     memory.append_message(
         session_id=session_id,
@@ -2546,12 +2552,51 @@ def stream_project_agent(
         try:
             yield format_sse_event("session", {"session_id": session_id})
             yield format_sse_event("status", {"message": "planning"})
-            deep_agent_response = _run_stream_agent_gate(
-                user_id=user_id_text,
-                message=request.message,
-                context=deep_agent_context,
-                ai_provider=request.ai_provider,
-            )
+
+            import queue
+            import threading
+
+            event_queue = queue.Queue()
+
+            def run_agent():
+                try:
+                    def on_event(event_type: str, payload: Dict[str, Any]):
+                        event_queue.put((event_type, payload))
+
+                    response = _run_stream_agent_gate(
+                        user_id=user_id_text,
+                        message=request.message,
+                        context=deep_agent_context,
+                        ai_provider=request.ai_provider,
+                        on_event=on_event,
+                    )
+                    event_queue.put(("final_response", response))
+                except Exception as e:
+                    event_queue.put(("error", e))
+
+            thread = threading.Thread(target=run_agent)
+            thread.start()
+
+            deep_agent_response = None
+            while True:
+                try:
+                    item = event_queue.get(timeout=0.1)
+                    event_type, payload = item
+                    if event_type == "final_response":
+                        deep_agent_response = payload
+                        break
+                    elif event_type == "error":
+                        raise payload
+                    else:
+                        yield format_sse_event(event_type, payload)
+                except queue.Empty:
+                    if not thread.is_alive():
+                        break
+                    continue
+
+            if not deep_agent_response:
+                raise RuntimeError("Agent failed to produce a response.")
+
             if _should_interrupt_stream_for_agent(deep_agent_response):
                 try:
                     _persist_stream_agent_gate_message(
@@ -2565,6 +2610,22 @@ def stream_project_agent(
                     )
                 except Exception as memory_error:
                     log_exception(logger, f"Failed to persist deep agent gate for project {project_id}", memory_error)
+
+                answer_text = deep_agent_response.answer
+                if answer_text:
+                    yield format_sse_event("content_done", {})
+
+                yield format_sse_event("citations", {
+                    "citation": getattr(deep_agent_response, "citation", "") or "",
+                    "citation_details": deep_agent_response.citation_details,
+                    "citation_annotations": deep_agent_response.citation_annotations,
+                })
+                yield format_sse_event("citation", {
+                    "citation": getattr(deep_agent_response, "citation", "") or "",
+                    "citation_details": deep_agent_response.citation_details,
+                    "citation_annotations": deep_agent_response.citation_annotations,
+                })
+
                 event_name = "approval_required" if deep_agent_response.requires_approval else "final"
                 yield format_sse_event(event_name, deep_agent_response.model_dump(mode="json"))
                 yield format_sse_event("done", {})
@@ -2577,9 +2638,15 @@ def stream_project_agent(
                 yield format_sse_event("thinking", {"message": "Reading ContractSense KPI register."})
                 for index in range(0, len(answer_text), 48):
                     yield format_sse_event("delta", {"text": answer_text[index:index + 48]})
+                    yield format_sse_event("text", {"text": answer_text[index:index + 48]})
                 yield format_sse_event("content_done", {})
                 final_payload = {**dict(operational_payload), "artifacts": []}
                 yield format_sse_event("citations", {
+                    "citation": final_payload.get("citation", ""),
+                    "citation_details": final_payload.get("citation_details", {}),
+                    "citation_annotations": final_payload.get("citation_annotations", []),
+                })
+                yield format_sse_event("citation", {
                     "citation": final_payload.get("citation", ""),
                     "citation_details": final_payload.get("citation_details", {}),
                     "citation_annotations": final_payload.get("citation_annotations", []),
@@ -2649,6 +2716,11 @@ def stream_project_agent(
                 final_payload = dict(final_payload)
                 answer_text = str(final_payload.get("answer") or "")
                 yield format_sse_event("citations", {
+                    "citation": final_payload.get("citation", ""),
+                    "citation_details": final_payload.get("citation_details", {}),
+                    "citation_annotations": final_payload.get("citation_annotations", []),
+                })
+                yield format_sse_event("citation", {
                     "citation": final_payload.get("citation", ""),
                     "citation_details": final_payload.get("citation_details", {}),
                     "citation_annotations": final_payload.get("citation_annotations", []),
@@ -3007,12 +3079,51 @@ def stream_contract_agent(
         try:
             yield format_sse_event("session", {"session_id": session_id})
             yield format_sse_event("status", {"message": "planning"})
-            deep_agent_response = _run_stream_agent_gate(
-                user_id=user_id_text,
-                message=request.message,
-                context=deep_agent_context,
-                ai_provider=request.ai_provider,
-            )
+
+            import queue
+            import threading
+
+            event_queue = queue.Queue()
+
+            def run_agent():
+                try:
+                    def on_event(event_type: str, payload: Dict[str, Any]):
+                        event_queue.put((event_type, payload))
+
+                    response = _run_stream_agent_gate(
+                        user_id=user_id_text,
+                        message=request.message,
+                        context=deep_agent_context,
+                        ai_provider=request.ai_provider,
+                        on_event=on_event,
+                    )
+                    event_queue.put(("final_response", response))
+                except Exception as e:
+                    event_queue.put(("error", e))
+
+            thread = threading.Thread(target=run_agent)
+            thread.start()
+
+            deep_agent_response = None
+            while True:
+                try:
+                    item = event_queue.get(timeout=0.1)
+                    event_type, payload = item
+                    if event_type == "final_response":
+                        deep_agent_response = payload
+                        break
+                    elif event_type == "error":
+                        raise payload
+                    else:
+                        yield format_sse_event(event_type, payload)
+                except queue.Empty:
+                    if not thread.is_alive():
+                        break
+                    continue
+
+            if not deep_agent_response:
+                raise RuntimeError("Agent failed to produce a response.")
+
             if _should_interrupt_stream_for_agent(deep_agent_response):
                 try:
                     _persist_stream_agent_gate_message(
@@ -3026,6 +3137,22 @@ def stream_contract_agent(
                     )
                 except Exception as memory_error:
                     log_exception(logger, f"Failed to persist deep agent gate for contract {contract_id}", memory_error)
+
+                answer_text = deep_agent_response.answer
+                if answer_text:
+                    yield format_sse_event("content_done", {})
+
+                yield format_sse_event("citations", {
+                    "citation": getattr(deep_agent_response, "citation", "") or "",
+                    "citation_details": deep_agent_response.citation_details,
+                    "citation_annotations": deep_agent_response.citation_annotations,
+                })
+                yield format_sse_event("citation", {
+                    "citation": getattr(deep_agent_response, "citation", "") or "",
+                    "citation_details": deep_agent_response.citation_details,
+                    "citation_annotations": deep_agent_response.citation_annotations,
+                })
+
                 event_name = "approval_required" if deep_agent_response.requires_approval else "final"
                 yield format_sse_event(event_name, deep_agent_response.model_dump(mode="json"))
                 yield format_sse_event("done", {})
@@ -3038,9 +3165,15 @@ def stream_contract_agent(
                 yield format_sse_event("thinking", {"message": "Reading ContractSense KPI register."})
                 for index in range(0, len(answer_text), 48):
                     yield format_sse_event("delta", {"text": answer_text[index:index + 48]})
+                    yield format_sse_event("text", {"text": answer_text[index:index + 48]})
                 yield format_sse_event("content_done", {})
                 final_payload = {**dict(operational_payload), "artifacts": []}
                 yield format_sse_event("citations", {
+                    "citation": final_payload.get("citation", ""),
+                    "citation_details": final_payload.get("citation_details", {}),
+                    "citation_annotations": final_payload.get("citation_annotations", []),
+                })
+                yield format_sse_event("citation", {
                     "citation": final_payload.get("citation", ""),
                     "citation_details": final_payload.get("citation_details", {}),
                     "citation_annotations": final_payload.get("citation_annotations", []),
@@ -3155,6 +3288,11 @@ def stream_contract_agent(
                 final_payload = dict(final_payload)
                 answer_text = str(final_payload.get("answer") or "")
                 yield format_sse_event("citations", {
+                    "citation": final_payload.get("citation", ""),
+                    "citation_details": final_payload.get("citation_details", {}),
+                    "citation_annotations": final_payload.get("citation_annotations", []),
+                })
+                yield format_sse_event("citation", {
                     "citation": final_payload.get("citation", ""),
                     "citation_details": final_payload.get("citation_details", {}),
                     "citation_annotations": final_payload.get("citation_annotations", []),

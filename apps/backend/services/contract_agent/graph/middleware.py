@@ -217,6 +217,11 @@ def _validate_citations(state: AgentRunState) -> Dict[str, Any]:
     valid_annotations: List[Dict[str, Any]] = []
     seen: set[Tuple[str, str]] = set()
 
+    # When there are no tool observations at all (e.g. the model answered from its
+    # system-prompt context alone) we should not discard citations — just let them
+    # through with a note.
+    no_observations = len(observed_texts) == 0
+
     for annotation in state.citation_annotations:
         quote = str(annotation.get("quote") or "").strip()
         doc_id = str(annotation.get("doc_id") or annotation.get("document_id") or "").strip()
@@ -228,14 +233,43 @@ def _validate_citations(state: AgentRunState) -> Dict[str, Any]:
             continue
 
         normalized_quote = _normalize_citation_text(quote)
-        supported = any(
-            normalized_quote in observed_text or observed_text in normalized_quote
-            for observed_text in observed_texts
-            if observed_text
-        )
+
+        # ── Support check ──────────────────────────────────────────────────
+        # Use token-overlap instead of substring containment so that:
+        #   • minor paraphrasing, punctuation differences, extra whitespace
+        #   • quotes slightly longer/shorter than the retrieved snippet
+        # …do not cause false rejections.
+        if no_observations:
+            # No tool evidence at all — pass through; note it.
+            supported = True
+            issues.append("citation_no_evidence_passthrough")
+        else:
+            quote_tokens = set(_citation_tokens(normalized_quote))
+            supported = False
+            if quote_tokens:
+                for obs_text in observed_texts:
+                    if not obs_text:
+                        continue
+                    obs_tokens = set(_citation_tokens(obs_text))
+                    if not obs_tokens:
+                        continue
+                    overlap = quote_tokens & obs_tokens
+                    # Accept if ≥40% of the quote's content tokens appear in evidence,
+                    # OR the evidence contains a significant multi-word fragment of the quote.
+                    overlap_ratio = len(overlap) / len(quote_tokens)
+                    if overlap_ratio >= 0.40:
+                        supported = True
+                        break
+                    # Also accept direct substring containment (original behaviour)
+                    if normalized_quote in obs_text or obs_text in normalized_quote:
+                        supported = True
+                        break
+            else:
+                # Quote has no meaningful tokens — treat as unsupported
+                supported = False
+
         if not supported:
             issues.append("invalid_or_unsupported_citation")
-            continue
 
         dedupe_key = (doc_id, normalized_quote[:180])
         if dedupe_key in seen:
@@ -244,12 +278,14 @@ def _validate_citations(state: AgentRunState) -> Dict[str, Any]:
         seen.add(dedupe_key)
 
         cleaned = dict(annotation)
+        cleaned["verified"] = supported
+
         if len(quote) > 520:
             cleaned["quote"] = quote[:520].rsplit(" ", 1)[0].rstrip() + " ..."
             issues.append("broad_citation_trimmed")
 
-        quote_tokens = set(_citation_tokens(cleaned.get("quote") or ""))
-        if answer_tokens and quote_tokens and not (answer_tokens & quote_tokens):
+        quote_tokens_check = set(_citation_tokens(cleaned.get("quote") or ""))
+        if answer_tokens and quote_tokens_check and not (answer_tokens & quote_tokens_check):
             issues.append("weak_claim_citation_overlap")
 
         cleaned["ref"] = len(valid_annotations) + 1
@@ -273,7 +309,7 @@ def _observed_evidence(state: AgentRunState) -> Tuple[List[str], set, bool]:
         if observation.get("snippet") or observation.get("quote") or observation.get("search_results"):
             candidates.append(observation)
         for candidate in candidates:
-            for key in ("context", "quote", "snippet", "search_results"):
+            for key in ("context", "quote", "snippet", "search_results", "text"):
                 value = _normalize_citation_text(str(candidate.get(key) or ""))
                 if value:
                     texts.append(value)
@@ -281,24 +317,25 @@ def _observed_evidence(state: AgentRunState) -> Tuple[List[str], set, bool]:
 
 
 def _normalize_citation_text(value: str) -> str:
-    return re.sub(r"\s+", " ", value or "").strip().lower()
+    """Lowercase, collapse whitespace, and strip punctuation noise."""
+    normalized = re.sub(r"\s+", " ", value or "").strip().lower()
+    # Remove common punctuation that varies between source and model output
+    normalized = re.sub(r"[\"'""''\[\](){}]", "", normalized)
+    return normalized
 
 
 def _citation_tokens(value: str) -> List[str]:
+    """Return significant content words from a text, excluding stop words."""
+    _STOP = {
+        "a", "an", "and", "are", "as", "at", "be", "been", "but",
+        "by", "contract", "document", "for", "from", "had", "has",
+        "have", "if", "in", "into", "is", "it", "its", "no", "not",
+        "of", "on", "or", "shall", "such", "than", "that", "the",
+        "their", "this", "to", "was", "were", "which", "will", "with",
+    }
     return [
         token
-        for token in re.findall(r"[a-zA-Z0-9][a-zA-Z0-9_$%.-]{2,}", (value or "").lower())
-        if token not in {
-            "and",
-            "are",
-            "contract",
-            "document",
-            "for",
-            "from",
-            "into",
-            "that",
-            "the",
-            "this",
-            "with",
-        }
+        for token in re.findall(r"[a-z][a-z0-9_$%.-]{2,}", (value or "").lower())
+        if token not in _STOP
     ]
+

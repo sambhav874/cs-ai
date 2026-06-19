@@ -1758,6 +1758,7 @@ export default function ContractView() {
 
     let cancelled = false;
     async function loadPreview() {
+      if (!selectedAgentDocument) return;
       setIsAgentDocumentPreviewLoading(true);
       try {
         const response = await apiFetch(
@@ -2437,7 +2438,7 @@ export default function ContractView() {
     const pdfCitationEntries = allSegments && allSegments.length > 0
       ? allSegments.map((segment) => ({
           page: segment.page ?? segment.page_number,
-          quote: allSegments.length === 1 && cleanedCitationText ? cleanedCitationText : segment.text,
+          quote: segment.text || cleanedCitationText,
         }))
       : cleanedCitationText
         ? [{ quote: cleanedCitationText }]
@@ -2680,7 +2681,7 @@ export default function ContractView() {
       contractName={contract.contract_name}
       projectId={contractProjectId}
       roleLabel={agentRoleLabel}
-      userName={currentUserInfo.username}
+      userName={currentUserInfo?.username ?? ""}
       canEdit={canEdit}
       canApprove={canApprove}
       canRequestReEdit={canRequestReEdit}

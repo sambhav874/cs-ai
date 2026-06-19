@@ -27,6 +27,7 @@ export default function RequestDemoModal({ isOpen, onClose }: RequestDemoModalPr
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
+  const [error, setError] = useState("");
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -102,7 +103,7 @@ export default function RequestDemoModal({ isOpen, onClose }: RequestDemoModalPr
       if (!baseUrl) throw new Error('Missing NEXT_PUBLIC_EXTRACTOR_API_URL');
 
       if (!formData.demo_date || !formData.demo_time) {
-        alert('Please select a date and time for the demo.');
+        setError('Please select a date and time for the demo.');
         setIsSubmitting(false);
         return;
       }
@@ -150,6 +151,9 @@ export default function RequestDemoModal({ isOpen, onClose }: RequestDemoModalPr
             animate={{ scale: 1, opacity: 1 }}
             className="bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-4xl h-[600px] flex flex-col overflow-hidden relative"
             onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Request a demo"
           >
             {/* Header & Progress Line */}
             <div className="border-b border-slate-100 p-6 flex items-center justify-between bg-white">
@@ -168,8 +172,12 @@ export default function RequestDemoModal({ isOpen, onClose }: RequestDemoModalPr
                   <span className={`text-sm font-semibold ${step === 2 ? 'text-slate-900' : 'text-slate-400'}`}>Schedule Demo</span>
                 </div>
               </div>
-              <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
-                <X className="h-5 w-5" />
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+                aria-label="Close dialog"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
               </button>
             </div>
 
@@ -191,51 +199,66 @@ export default function RequestDemoModal({ isOpen, onClose }: RequestDemoModalPr
                       <div className="mb-8">
                         <h2 className="text-2xl font-bold text-slate-900">Let's get to know you</h2>
                         <p className="text-slate-500 mt-1">Please provide your details to schedule a personalized session.</p>
+                        {error && (
+                          <div role="alert" aria-live="assertive" className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700 border border-red-200">
+                            {error}
+                          </div>
+                        )}
                       </div>
+
+                      <fieldset className="border-0 p-0">
+                        <legend className="sr-only">Contact information</legend>
 
                       <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                         <div className="space-y-1.5">
-                          <label className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">Full Name *</label>
+                          <label htmlFor="demo-name" className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">Full Name *</label>
                           <div className="relative">
-                            <User className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                            <User className="absolute left-3 top-3 h-4 w-4 text-slate-400" aria-hidden="true" />
                             <input
+                              id="demo-name"
                               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-600 outline-none text-sm transition-all"
                               value={formData.name}
                               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                               placeholder="Alan Turing"
+                              aria-required="true"
                             />
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">Work Email *</label>
+                          <label htmlFor="demo-email" className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">Work Email *</label>
                           <div className="relative">
-                            <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                            <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" aria-hidden="true" />
                             <input
+                              id="demo-email"
                               type="email"
                               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-600 outline-none text-sm transition-all"
                               value={formData.email}
                               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                               placeholder="alan.turing@contractsenseai.com"
+                              aria-required="true"
                             />
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">Company *</label>
+                          <label htmlFor="demo-company" className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">Company *</label>
                           <div className="relative">
-                            <Building2 className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                            <Building2 className="absolute left-3 top-3 h-4 w-4 text-slate-400" aria-hidden="true" />
                             <input
+                              id="demo-company"
                               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-600 outline-none text-sm transition-all"
                               value={formData.company}
                               onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                              placeholder="Your Compnay"
+                              placeholder="Your Company"
+                              aria-required="true"
                             />
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">Phone Number</label>
+                          <label htmlFor="demo-phone" className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">Phone Number</label>
                           <div className="relative">
-                            <Phone className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                            <Phone className="absolute left-3 top-3 h-4 w-4 text-slate-400" aria-hidden="true" />
                             <input
+                              id="demo-phone"
                               type="tel"
                               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-600 outline-none text-sm transition-all"
                               value={formData.phone}
@@ -245,10 +268,11 @@ export default function RequestDemoModal({ isOpen, onClose }: RequestDemoModalPr
                           </div>
                         </div>
                         <div className="col-span-2 space-y-1.5">
-                          <label className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">Message</label>
+                          <label htmlFor="demo-message" className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">Message</label>
                           <div className="relative">
-                            <MessageSquare className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                            <MessageSquare className="absolute left-3 top-3 h-4 w-4 text-slate-400" aria-hidden="true" />
                             <textarea
+                              id="demo-message"
                               rows={3}
                               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-600 outline-none text-sm transition-all resize-none"
                               value={formData.message}
@@ -258,6 +282,7 @@ export default function RequestDemoModal({ isOpen, onClose }: RequestDemoModalPr
                           </div>
                         </div>
                       </div>
+                      </fieldset>
                     </motion.div>
                   ) : (
                     <motion.div

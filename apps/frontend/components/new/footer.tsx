@@ -64,17 +64,17 @@ const Footer = () => {
               Connect With Us
             </h3>
             <div className="flex flex-wrap gap-4">
-              <a href="#" className="group bg-gray-800 p-3 rounded-lg hover:bg-[#5666f5] transition-colors">
-                <Facebook className="w-5 h-5 text-gray-400 group-hover:text-white" />
+              <a href="#" className="group bg-gray-800 p-3 rounded-lg hover:bg-[#5666f5] transition-colors" aria-label="Follow us on Facebook">
+                <Facebook className="w-5 h-5 text-gray-400 group-hover:text-white" aria-hidden="true" />
               </a>
-              <a href="#" className="group bg-gray-800 p-3 rounded-lg hover:bg-[#5666f5] transition-colors">
-                <Twitter className="w-5 h-5 text-gray-400 group-hover:text-white" />
+              <a href="#" className="group bg-gray-800 p-3 rounded-lg hover:bg-[#5666f5] transition-colors" aria-label="Follow us on Twitter">
+                <Twitter className="w-5 h-5 text-gray-400 group-hover:text-white" aria-hidden="true" />
               </a>
-              <a href="#" className="group bg-gray-800 p-3 rounded-lg hover:bg-[#5666f5] transition-colors">
-                <Instagram className="w-5 h-5 text-gray-400 group-hover:text-white" />
+              <a href="#" className="group bg-gray-800 p-3 rounded-lg hover:bg-[#5666f5] transition-colors" aria-label="Follow us on Instagram">
+                <Instagram className="w-5 h-5 text-gray-400 group-hover:text-white" aria-hidden="true" />
               </a>
-              <a href="#" className="group bg-gray-800 p-3 rounded-lg hover:bg-[#5666f5] transition-colors">
-                <Linkedin className="w-5 h-5 text-gray-400 group-hover:text-white" />
+              <a href="#" className="group bg-gray-800 p-3 rounded-lg hover:bg-[#5666f5] transition-colors" aria-label="Follow us on LinkedIn">
+                <Linkedin className="w-5 h-5 text-gray-400 group-hover:text-white" aria-hidden="true" />
               </a>
             </div>
             <p className="text-sm text-gray-400">
@@ -91,8 +91,10 @@ const Footer = () => {
               Subscribe to our newsletter for the latest features and updates.
             </p>
             <form className="space-y-3">
+              <label htmlFor="footer-email" className="sr-only">Email for newsletter</label>
               <div className="relative">
                 <Input
+                  id="footer-email"
                   type="email"
                   placeholder="Enter your email"
                   className="w-full bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:ring-[#5666f5] focus:border-[#5666f5]"

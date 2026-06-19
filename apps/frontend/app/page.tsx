@@ -65,7 +65,7 @@ const dmMono = DM_Mono({
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
   weight: ["400", "600", "700", "800"],
-  variable: "--font-cormorant",
+  variable: "--font-plus-jakarta",
 });
 
 // ─── Hero Animation — React Three Fiber + GLSL ───────────────────────────────
@@ -584,41 +584,13 @@ export default function Home() {
   const [selectedCitation, setSelectedCitation] = useState<string | null>(null);
   const pdfContainerRef = useRef<HTMLDivElement>(null);
 
-  const cursorRef = useRef<HTMLDivElement>(null);
-  const ringRef = useRef<HTMLDivElement>(null);
-  const mouseRef = useRef({ x: 0, y: 0 });
-  const ringPos = useRef({ x: 0, y: 0 });
-
   useEffect(() => {
     setIsClient(true);
-    const handleMouseMove = (e: MouseEvent) => {
-      mouseRef.current = { x: e.clientX, y: e.clientY };
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
   useEffect(() => {
     if (!isClient) return;
-    const animRing = () => {
-      ringPos.current.x += (mouseRef.current.x - ringPos.current.x) * 0.12;
-      ringPos.current.y += (mouseRef.current.y - ringPos.current.y) * 0.12;
 
-      if (ringRef.current) {
-        ringRef.current.style.left = `${ringPos.current.x}px`;
-        ringRef.current.style.top = `${ringPos.current.y}px`;
-      }
-      if (cursorRef.current) {
-        cursorRef.current.style.left = `${mouseRef.current.x}px`;
-        cursorRef.current.style.top = `${mouseRef.current.y}px`;
-      }
-      requestAnimationFrame(animRing);
-    };
-    const animationFrame = requestAnimationFrame(animRing);
-    return () => cancelAnimationFrame(animationFrame);
-  }, [isClient]);
-
-  useEffect(() => {
     const reveals = document.querySelectorAll('.reveal');
     const observer = new IntersectionObserver(entries => {
       entries.forEach(e => {
@@ -628,24 +600,6 @@ export default function Home() {
     reveals.forEach(el => observer.observe(el));
     return () => observer.disconnect();
   }, [isClient]);
-
-  const handleMouseEnter = () => {
-    if (cursorRef.current && ringRef.current) {
-      cursorRef.current.style.width = '20px';
-      cursorRef.current.style.height = '20px';
-      ringRef.current.style.width = '60px';
-      ringRef.current.style.height = '60px';
-    }
-  };
-
-  const handleMouseLeave = () => {
-    if (cursorRef.current && ringRef.current) {
-      cursorRef.current.style.width = '12px';
-      cursorRef.current.style.height = '12px';
-      ringRef.current.style.width = '40px';
-      ringRef.current.style.height = '40px';
-    }
-  };
 
   const contractData = [
     {
@@ -691,14 +645,10 @@ export default function Home() {
           style={{ scaleX }}
         />
 
-        {/* Custom Cursor */}
-        <div ref={cursorRef} className="custom-cursor pointer-events-none hidden md:block" />
-        <div ref={ringRef} className="custom-cursor-ring pointer-events-none hidden md:block" />
-
         {/* Nav */}
         <nav className="fixed top-0 left-0 right-0 z-[100] px-6 py-6 md:px-12 md:py-8 flex justify-between items-center transition-all duration-500 bg-white/10 backdrop-blur-md border-b border-black/5">
           <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+            <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
               <Image src="/logo.png" alt="ContractSense Logo" width={32} height={32} className="object-contain" />
               <span className=" font-extrabold text-sm tracking-[0.15em] uppercase">ContractSense<span className="text-[#0078d4]">.ai</span></span>
             </Link>
@@ -708,8 +658,6 @@ export default function Home() {
               target="_blank"
               rel="noopener noreferrer"
               className="hidden sm:flex items-center gap-2 group transition-opacity opacity-40 hover:opacity-100"
-              onMouseEnter={handleMouseEnter}
-              onMouseLeave={handleMouseLeave}
             >
               <span className="text-[9px] tracking-[0.2em] uppercase">by Ninth Quadrant</span>
               <ArrowRight size={10} className="transition-transform group-hover:translate-x-0.5" />
@@ -727,8 +675,6 @@ export default function Home() {
                 <Link
                   href={item.id}
                   className="text-[10px] tracking-[0.25em]  font-bold uppercase hover:text-[#0078d4] transition-colors"
-                  onMouseEnter={handleMouseEnter}
-                  onMouseLeave={handleMouseLeave}
                 >
                   {item.name}
                 </Link>
@@ -746,8 +692,6 @@ export default function Home() {
             <button
               onClick={() => setIsContactModalOpen(true)}
               className="hidden sm:inline-flex bg-[#0a0a0f] text-[#f5f3ee] px-6 py-3 text-[9px]  font-bold tracking-[0.2em] uppercase hover:bg-[#0078d4] transition-all"
-              onMouseEnter={handleMouseEnter}
-              onMouseLeave={handleMouseLeave}
             >
               Request Demo →
             </button>
@@ -821,16 +765,12 @@ export default function Home() {
                   <button
                     onClick={() => demoRef.current?.scrollIntoView({ behavior: 'smooth' })}
                     className="bg-[#0a0a0f] text-[#f5f3ee] px-12 py-5 text-[11px] tracking-[0.12em] uppercase hover:bg-[#0078d4] transition-colors shadow-xl"
-                    onMouseEnter={handleMouseEnter}
-                    onMouseLeave={handleMouseLeave}
                   >
                     Watch Demo
                   </button>
                   <button
                     onClick={() => analyzerRef.current?.scrollIntoView({ behavior: 'smooth' })}
                     className="bg-white px-12 py-5 text-[11px] tracking-[0.12em] uppercase border border-[rgba(10,10,15,0.12)] hover:border-[#0078d4] hover:text-[#0078d4] transition-all shadow-sm"
-                    onMouseEnter={handleMouseEnter}
-                    onMouseLeave={handleMouseLeave}
                   >
                     Interactive Analysis
                   </button>
@@ -1351,7 +1291,7 @@ export default function Home() {
               <button
                 onClick={() => setIsContactModalOpen(true)}
                 className="bg-[#0a0a0f] text-[#f5f3ee] px-12 py-5 text-[11px] tracking-[0.15em] uppercase hover:bg-[#0078d4] transition-colors"
-                onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}
+               
               >
                 Get Started →
               </button>
