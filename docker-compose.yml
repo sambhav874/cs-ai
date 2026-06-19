@@ -186,7 +186,7 @@ services:
     profiles:
       - cache
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     networks:
