@@ -110,6 +110,11 @@ class WorkflowApprovalRequest(BaseModel):
     feedback: Optional[str] = Field(default=None, max_length=2000)
 
 
+class AgentDocumentTextSaveRequest(BaseModel):
+    body_text: str = Field(..., description="The body text content to save as a new version.")
+    change_summary: str = Field(default="Saved from live editor", description="Summary of changes for this version.")
+
+
 def _store() -> AgentRunStore:
     return AgentRunStore(db)
 
@@ -301,6 +306,7 @@ def approve_workflow(
         return _approve_kpi_extraction_workflow(state, current_user)
     if state.approval_request.action in {
         "create_draft_artifact",
+        "create_modified_copy",
         "create_redline_artifact",
         "create_editable_copy",
         "duplicate_document_copy",
@@ -521,6 +527,39 @@ def _approve_artifact_workflow(state: AgentRunState, current_user: UserInDB) -> 
             "edit_annotations": result.annotations,
             "errors": result.errors,
         }]
+    elif action == "create_modified_copy":
+        document_id = str(payload.get("document_id") or "")
+        edits = payload.get("edits") if isinstance(payload.get("edits"), list) else []
+        if not document_id or not edits:
+            raise HTTPException(status_code=400, detail="Missing document_id or edits for modified copy workflow.")
+        contract_name = str(payload.get("contract_name") or "")
+        if not contract_id and not ObjectId.is_valid(document_id):
+            raise HTTPException(status_code=400, detail="Invalid document_id for modified copy workflow.")
+        result = _agent_documents().create_modified_copy(
+            contract_id=contract_id or None,
+            project_id=str(project_id) if project_id else None,
+            user_id=str(current_user.id),
+            session_id=session_id,
+            document_id=document_id,
+            edits=edits,
+            source_contract_name=contract_name,
+            contracts_collection=collection,
+            fs=fs,
+        )
+        if not result:
+            raise HTTPException(status_code=404, detail="Document not found or could not be processed.")
+        artifacts = [{
+            "artifact_id": f"artifact-{result.version_id}",
+            "document_id": result.document_id,
+            "version_id": result.version_id,
+            "version_number": result.version_number,
+            "filename": result.filename,
+            "download_url": result.download_url,
+            "artifact_kind": "modified_copy",
+            "editable": True,
+            "edit_annotations": result.annotations,
+            "errors": result.errors,
+        }]
     else:
         source_text = ""
         contract_name = str(payload.get("contract_name") or "Contract Work Product")
@@ -576,6 +615,8 @@ def _approve_artifact_workflow(state: AgentRunState, current_user: UserInDB) -> 
         state.answer = "Approved. I created a DOCX redline copy with the approved tracked changes applied to the original contract text."
     elif artifacts and action == "edit_document":
         state.answer = "Approved. I created a tracked-edit DOCX version with deterministic source-text matches and pending edit cards."
+    elif artifacts and action == "create_modified_copy":
+        state.answer = "Approved. I created a modified copy with the requested changes applied as tracked edits."
     elif not artifacts:
         state.answer = f"{state.answer}\n\nNo artifact was created because there was no eligible assistant work product to save."
     state.reason = "Human approved the assistant work-product side effect."

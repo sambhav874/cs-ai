@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 
-import LoadingScreen from "@/components/animation/LoadingScreen";
+import LoadingScreen from "@/components/loader";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useAccountContext } from "@/app/context/AccountContext";
@@ -363,7 +363,7 @@ function TabularReviewsContent() {
   }
 
   if (!isAuthenticated || loading) {
-    return <LoadingScreen message="Loading tabular reviews..." />;
+    return <LoadingScreen />;
   }
 
   return (
@@ -872,7 +872,7 @@ function TabularReviewsContent() {
 
 export default function TabularReviewsPage() {
   return (
-    <Suspense fallback={<LoadingScreen message="Loading tabular reviews..." />}>
+    <Suspense fallback={<LoadingScreen />}>
       <TabularReviewsContent />
     </Suspense>
   );

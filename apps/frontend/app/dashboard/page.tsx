@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import LoadingScreen from "@/components/animation/LoadingScreen";
+import LoadingScreen from "@/components/loader";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useAccountContext } from "../context/AccountContext";
@@ -385,7 +385,7 @@ const ProcessingPill = memo(function ProcessingPill({ doc }: { doc: DocumentWith
 
 export default function Dashboard() {
   return (
-    <Suspense fallback={<LoadingScreen message="Loading workspace..." />}>
+    <Suspense fallback={<LoadingScreen />}>
       <DashboardContent />
     </Suspense>
   );
@@ -1427,7 +1427,7 @@ function DashboardContent() {
     <div className="min-h-screen bg-white font-InterVar text-gray-900">
       {isInitialLoading && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-white">
-          <LoadingScreen message="Loading workspace..." />
+          <LoadingScreen />
         </div>
       )}
 

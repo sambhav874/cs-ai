@@ -538,6 +538,216 @@ body {
   }
 }
 
+/* ─── TipTap Document Editor ──────────────────────────────── */
+
+/* Gray background that holds pages */
+.tiptap-pages {
+  background: #e5e7eb;
+  min-height: 720px;
+  padding: 2rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* The ProseMirror content area — looks like a stack of pages */
+.tiptap-pages .ProseMirror {
+  width: 100%;
+  max-width: 816px;
+  background: #fff;
+  min-height: 900px;
+  outline: none;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 15px;
+  line-height: 1.75;
+  color: #1a1a2e;
+  padding: 3rem 3.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.06);
+  border-radius: 2px;
+}
+
+/* ── Page breaks — look like page tears ── */
+.tiptap-pages .ProseMirror > div[data-page-break] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 2.5rem -3.5rem;
+  padding: 0.75rem 3.5rem;
+  user-select: none;
+  position: relative;
+}
+
+.tiptap-pages .ProseMirror > div[data-page-break]::before {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: repeating-linear-gradient(
+    90deg,
+    #d1d5db 0,
+    #d1d5db 6px,
+    transparent 6px,
+    transparent 10px
+  );
+}
+
+.tiptap-pages .ProseMirror > div[data-page-break] .page-number {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 11px;
+  font-style: italic;
+  color: #9ca3af;
+  white-space: nowrap;
+  letter-spacing: 0.05em;
+}
+
+.tiptap-pages .ProseMirror > div[data-page-break]::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: repeating-linear-gradient(
+    90deg,
+    #d1d5db 0,
+    #d1d5db 6px,
+    transparent 6px,
+    transparent 10px
+  );
+}
+
+/* ── Headings ── */
+.tiptap-pages .ProseMirror h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.75;
+  margin-bottom: 0.75rem;
+  margin-top: 1.5rem;
+  text-transform: uppercase;
+}
+
+.tiptap-pages .ProseMirror h2 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.75;
+  margin-bottom: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.tiptap-pages .ProseMirror h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.75;
+  margin-bottom: 0.5rem;
+  margin-top: 1rem;
+}
+
+.tiptap-pages .ProseMirror h1:first-child,
+.tiptap-pages .ProseMirror h2:first-child,
+.tiptap-pages .ProseMirror h3:first-child {
+  margin-top: 0;
+}
+
+/* ── Paragraphs ── */
+.tiptap-pages .ProseMirror p {
+  margin-bottom: 0.5rem;
+  text-align: justify;
+  white-space: pre-wrap;
+}
+
+.tiptap-pages .ProseMirror p:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Lists ── */
+.tiptap-pages .ProseMirror ul,
+.tiptap-pages .ProseMirror ol {
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.tiptap-pages .ProseMirror li {
+  margin-bottom: 0.25rem;
+}
+
+.tiptap-pages .ProseMirror li p {
+  margin-bottom: 0;
+  text-align: left;
+}
+
+/* ── Inline marks ── */
+.tiptap-pages .ProseMirror strong {
+  font-weight: 700;
+}
+
+.tiptap-pages .ProseMirror em {
+  font-style: italic;
+}
+
+.tiptap-pages .ProseMirror u {
+  text-decoration: underline;
+}
+
+.tiptap-pages .ProseMirror s,
+.tiptap-pages .ProseMirror del {
+  text-decoration: line-through;
+}
+
+.tiptap-pages .ProseMirror mark {
+  padding: 0.1em 0.2em;
+  border-radius: 2px;
+}
+
+/* ── Tables ── */
+.tiptap-pages .ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.tiptap-pages .ProseMirror th,
+.tiptap-pages .ProseMirror td {
+  border: 1px solid #d1d5db;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.tiptap-pages .ProseMirror th {
+  background-color: #f9fafb;
+  font-weight: 600;
+}
+
+.tiptap-pages .ProseMirror td {
+  background-color: #fff;
+}
+
+.tiptap-pages .ProseMirror .selectedCell {
+  background-color: #eff6ff;
+}
+
+/* ── Text alignment ── */
+.tiptap-pages .ProseMirror [style*="text-align: center"] {
+  text-align: center !important;
+}
+
+.tiptap-pages .ProseMirror [style*="text-align: right"] {
+  text-align: right !important;
+}
+
+.tiptap-pages .ProseMirror [style*="text-align: justify"] {
+  text-align: justify !important;
+}
+
+/* ── Placeholder ── */
+.tiptap-pages .ProseMirror p.is-editor-empty:first-child::before {
+  color: #adb5bd;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
 @keyframes background-position-spin {
   0% {
     backgroundPosition: top center;

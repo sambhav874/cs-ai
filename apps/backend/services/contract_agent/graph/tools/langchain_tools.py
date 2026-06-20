@@ -99,6 +99,12 @@ class EditDocumentInput(BaseModel):
     new_text: str = Field(default="", description="Replacement text.")
 
 
+class ModifiedCopyInput(BaseModel):
+    document_id: str = Field(default="", description="Source document ID to copy and edit.")
+    edits: Any = Field(default_factory=list, description="List of {find, replace} edit pairs to apply.")
+    reason: str = Field(default="", description="Optional overall reason for the modified copy.")
+
+
 class GenerateDocxInput(BaseModel):
     content: str = Field(default="", description="Content to export.")
     filename: str = Field(default="contractsense-draft.docx", description="DOCX filename.")
@@ -359,6 +365,16 @@ def build_langchain_tools(
             payload["new_text"] = new_text
         return run_approval_tool("edit_document", payload)
 
+    @tool("create_modified_copy", args_schema=ModifiedCopyInput)
+    def create_modified_copy(document_id: str = "", edits: Any = None, reason: str = "") -> Dict[str, Any]:
+        """Propose creating a modified copy of a document with find/replace edits as tracked changes. Requires human approval."""
+        payload = _payload_from_react_value(document_id, "document_id")
+        if edits not in (None, "", [], {}):
+            payload["edits"] = edits
+        if reason:
+            payload["reason"] = reason
+        return run_approval_tool("create_modified_copy", payload)
+
     @tool("generate_docx", args_schema=GenerateDocxInput)
     def generate_docx(content: str = "", filename: str = "contractsense-draft.docx") -> Dict[str, Any]:
         """Propose exporting content to DOCX. Requires human approval."""
@@ -421,6 +437,7 @@ def build_langchain_tools(
         create_tabular_review,
         generate_tabular_review,
         replicate_document,
+        create_modified_copy,
         suggest_tabular_review,
     ]
 

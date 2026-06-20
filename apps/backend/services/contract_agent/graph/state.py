@@ -118,6 +118,7 @@ class ApprovalRequest(BaseModel):
         "create_draft_artifact",
         "create_redline_artifact",
         "create_editable_copy",
+        "create_modified_copy",
         "duplicate_document_copy",
         "edit_document",
         "extract_kpis",

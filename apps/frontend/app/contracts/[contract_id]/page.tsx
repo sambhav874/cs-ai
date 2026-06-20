@@ -15,7 +15,12 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { TooltipProvider, TooltipTrigger, TooltipContent, Tooltip } from "@/components/ui/tooltip";
 import ContractAgentPanel from "@/components/ContractAgentPanel";
-import LoadingScreen from "@/components/animation/LoadingScreen";
+import LoadingScreen from "@/components/loader";
+
+const DocumentEditor = dynamic(
+  () => import("@/components/editor/DocumentEditor").then((m) => ({ default: m.DocumentEditor })),
+  { ssr: false },
+);
 import KpiSourceFieldMapper from "@/components/kpis/KpiSourceFieldMapper";
 import { Badge } from "@/components/ui/badge";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
@@ -606,11 +611,7 @@ const PDFViewerDynamic = dynamic(() => import('@/components/PDFViewer/Sample'), 
   ), // Optional: Show a loading message while the component loads.
 });
 
-const ContractLoadingScreen = () => (
-  <div className="h-[calc(100vh-200px)] flex items-center justify-center">
-    <LoadingScreen message="Loading Contract..." />
-  </div>
-);
+const ContractLoadingScreen = () => <LoadingScreen />;
 
 function truncateMiddle(value: string, maxLength = 38) {
   if (!value || value.length <= maxLength) return value;
@@ -1704,6 +1705,11 @@ export default function ContractView() {
     if (!apiUrl || !token || !contractId || !selectedAgentDocument) return null;
     setIsSavingAgentDocument(true);
     try {
+      const body = JSON.stringify({
+        body_text: bodyText,
+        change_summary: "Saved from live editor",
+      });
+      console.log("[saveAgentDocumentText] Sending body_text length:", bodyText?.length);
       const response = await apiFetch(
         `${apiUrl}/contracts/${contractId}/agent/documents/${selectedAgentDocument.documentId}/versions`,
         {
@@ -1711,14 +1717,14 @@ export default function ContractView() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            body_text: bodyText,
-            change_summary: "Saved from live editor",
-          }),
+          body,
         },
       );
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.detail || "Unable to save DOCX version.");
+      if (!response.ok) {
+        console.error("[saveAgentDocumentText] Error response:", payload);
+        throw new Error(payload?.detail || "Unable to save DOCX version.");
+      }
       await fetchAgentDocuments();
       setSelectedAgentDocument({
         documentId: selectedAgentDocument.documentId,
@@ -1741,7 +1747,7 @@ export default function ContractView() {
     } catch (error: any) {
       toast({
         title: "Could not save DOCX",
-        description: error?.message || "Please try again.",
+        description: typeof error?.message === "string" ? error.message : JSON.stringify(error?.message),
         variant: "destructive",
       });
       return null;
@@ -5915,6 +5921,29 @@ function docxPreviewBlocks(text: string) {
     .split(/\n{2,}/);
 }
 
+/** Groups blocks into pages by `--- Page N ---` markers. Returns null if no page markers found. */
+function groupBlocksByPage(blocks: string[]): string[][] | null {
+  const pages: string[][] = [];
+  let current: string[] = [];
+  let hasMarker = false;
+
+  for (const block of blocks) {
+    const trimmed = block.trim();
+    if (/^---\s*Page\s+\d+\s*---$/i.test(trimmed)) {
+      hasMarker = true;
+      if (current.length > 0) {
+        pages.push(current);
+        current = [];
+      }
+      continue;
+    }
+    current.push(block);
+  }
+  if (current.length > 0) pages.push(current);
+
+  return hasMarker ? pages : null;
+}
+
 function AgentDocumentPreviewPane({
   document,
   preview,
@@ -6154,47 +6183,77 @@ function AgentDocumentPreviewPane({
             ) : null}
             {mode === "edit" ? (
               <div className="space-y-3">
-                <Textarea
-                  value={draftText}
-                  onChange={(event) => setDraftText(event.target.value)}
-                  className="min-h-[720px] resize-y rounded-none border-0 bg-transparent p-0 text-[15px] leading-7 text-gray-950 shadow-none focus-visible:ring-0"
-                  style={{ fontFamily: '"Times New Roman", Times, serif' }}
-                  aria-label="Edit generated DOCX text"
+                <DocumentEditor
+                  content={bodyText}
+                  onChange={(text) => setDraftText(text)}
                 />
                 <div className="font-sans text-xs text-gray-400">
                   Saving creates a new DOCX version in the explorer.
                 </div>
               </div>
-            ) : bodyText ? (
-              <div className="space-y-4">
-                {docxPreviewBlocks(bodyText).map((block, index) => {
-                  const trimmed = block.trim();
-                  if (!trimmed) return null;
-                  if (trimmed === "--- Page Break ---") {
-                    return (
-                      <div key={`${index}-${trimmed}`} className="my-8 border-t border-dashed border-gray-300 pt-2 text-right text-xs italic text-gray-400">
-                        Page break
+            ) : bodyText ? (() => {
+              const blocks = docxPreviewBlocks(bodyText);
+              const pages = groupBlocksByPage(blocks);
+              if (pages) {
+                return (
+                  <div className="space-y-8">
+                    {pages.map((pageBlocks, pageIdx) => (
+                      <div key={pageIdx} className="break-inside-avoid rounded-sm bg-white px-16 py-14 shadow-sm ring-1 ring-gray-200" style={{ fontFamily: '"Times New Roman", Times, serif', minHeight: "900px" }}>
+                        {pageBlocks.map((block, index) => {
+                          const trimmed = block.trim();
+                          if (!trimmed) return null;
+                          if (/^(Amendment \/ Applied Change|Converted Source Contract Text)$/i.test(trimmed)) {
+                            return <h2 key={index} className="pt-3 text-base font-bold">{trimmed}</h2>;
+                          }
+                          if (/^Source page \d+/i.test(trimmed)) {
+                            return <p key={index} className="text-right text-xs italic text-gray-500">{trimmed}</p>;
+                          }
+                          const pageMarker = trimmed.match(/^\[\[DOCX_PAGE:(\d+)\]\]$/);
+                          if (pageMarker) {
+                            return <p key={index} className="text-right text-xs italic text-gray-500">Source page {pageMarker[1]}</p>;
+                          }
+                          return (
+                            <p key={index} className="whitespace-pre-wrap text-justify">
+                              {isRedline ? renderInlineRedlineText(trimmed, `redline-${pageIdx}-${index}`) : trimmed}
+                            </p>
+                          );
+                        })}
                       </div>
+                    ))}
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-4">
+                  {blocks.map((block, index) => {
+                    const trimmed = block.trim();
+                    if (!trimmed) return null;
+                    if (trimmed === "--- Page Break ---") {
+                      return (
+                        <div key={`${index}-${trimmed}`} className="my-8 border-t border-dashed border-gray-300 pt-2 text-right text-xs italic text-gray-400">
+                          Page break
+                        </div>
+                      );
+                    }
+                    if (/^(Amendment \/ Applied Change|Converted Source Contract Text)$/i.test(trimmed)) {
+                      return <h2 key={`${index}-${trimmed}`} className="pt-3 text-base font-bold">{trimmed}</h2>;
+                    }
+                    if (/^Source page \d+/i.test(trimmed)) {
+                      return <p key={`${index}-${trimmed}`} className="text-right text-xs italic text-gray-500">{trimmed}</p>;
+                    }
+                    const pageMarker = trimmed.match(/^\[\[DOCX_PAGE:(\d+)\]\]$/);
+                    if (pageMarker) {
+                      return <p key={`${index}-${trimmed}`} className="text-right text-xs italic text-gray-500">Source page {pageMarker[1]}</p>;
+                    }
+                    return (
+                      <p key={`${index}-${trimmed.slice(0, 20)}`} className="whitespace-pre-wrap text-justify">
+                        {isRedline ? renderInlineRedlineText(trimmed, `redline-${index}`) : trimmed}
+                      </p>
                     );
-                  }
-                  if (/^(Amendment \/ Applied Change|Converted Source Contract Text)$/i.test(trimmed)) {
-                    return <h2 key={`${index}-${trimmed}`} className="pt-3 text-base font-bold">{trimmed}</h2>;
-                  }
-                  if (/^Source page \d+/i.test(trimmed)) {
-                    return <p key={`${index}-${trimmed}`} className="text-right text-xs italic text-gray-500">{trimmed}</p>;
-                  }
-                  const pageMarker = trimmed.match(/^\[\[DOCX_PAGE:(\d+)\]\]$/);
-                  if (pageMarker) {
-                    return <p key={`${index}-${trimmed}`} className="text-right text-xs italic text-gray-500">Source page {pageMarker[1]}</p>;
-                  }
-                  return (
-                    <p key={`${index}-${trimmed.slice(0, 20)}`} className="whitespace-pre-wrap text-justify">
-                      {isRedline ? renderInlineRedlineText(trimmed, `redline-${index}`) : trimmed}
-                    </p>
-                  );
-                })}
-              </div>
-            ) : (
+                  })}
+                </div>
+              );
+            })() : (
               <p className="text-sm text-gray-500">No preview text is available for this DOCX.</p>
             )}
           </div>

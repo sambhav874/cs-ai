@@ -30,6 +30,7 @@ READ_ONLY_TOOLS = {
 APPROVAL_REQUIRED_TOOLS = {
     "create_draft_artifact",
     "create_editable_copy",
+    "create_modified_copy",
     "create_redline_artifact",
     "create_tabular_review",
     "duplicate_document_copy",
@@ -67,6 +68,7 @@ def tool_specs() -> Dict[str, ToolSpec]:
         "search_evidence": "Search scoped contracts and return full clause text with citations inline.",
         "create_draft_artifact": "Create a draft artifact only after human approval.",
         "create_editable_copy": "Create an editable document copy only after human approval.",
+        "create_modified_copy": "Create a modified copy of a document with find/replace edits applied as tracked changes, only after human approval.",
         "create_redline_artifact": "Create a redline artifact only after human approval.",
         "create_tabular_review": "Create a tabular review only after human approval.",
         "duplicate_document_copy": "Duplicate a document copy only after human approval.",

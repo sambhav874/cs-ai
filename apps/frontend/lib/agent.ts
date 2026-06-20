@@ -72,6 +72,15 @@ export interface AgentTokenUsage {
   total_tokens: number;
 }
 
+export interface Suggestion {
+  id: string;
+  action: string;
+  label: string;
+  preview?: string | null;
+  confidence?: 'high' | 'medium' | 'low';
+  payload?: Record<string, unknown>;
+}
+
 export interface AgentResponse {
   answer: string;
   workflow?: string;
@@ -84,6 +93,7 @@ export interface AgentResponse {
   workflow_status: AgentWorkflowStatus;
   requires_approval: boolean;
   approval_request?: AgentApprovalRequest | null;
+  suggestions?: Suggestion[] | null;
   agent_trace?: AgentTraceEvent[];
   token_usage?: AgentTokenUsage;
   cost_usd?: number;

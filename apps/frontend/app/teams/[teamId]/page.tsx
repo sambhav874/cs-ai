@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import LoadingScreen from "@/components/animation/LoadingScreen";
+import LoadingScreen from "@/components/loader";
 import {
     Users, ShieldCheck, User as UserIcon, Plus, ArrowLeft, Loader2, UserX, AlertTriangle, Pencil,
     BarChart2, FileText

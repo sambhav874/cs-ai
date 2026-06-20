@@ -19,10 +19,10 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { ApprovalCard } from "@/components/agent/ApprovalCard";
 import { CitationHoverCard } from "@/components/agent/CitationHoverCard";
 import { ReActThinkingStream } from "@/components/agent/ReActThinkingStream";
 import { ToolUsageCard } from "@/components/agent/ToolUsageCard";
+import { ApprovalInput } from "@/components/agent/ApprovalInput";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -43,6 +43,7 @@ import {
   type AgentTokenUsage,
   type AgentTraceEvent,
   type AgentWorkflowStatus,
+  type Suggestion,
   type TabularReviewProposal,
 } from "@/lib/agent";
 import { apiDownload, apiFetch } from "@/lib/apiClient";
@@ -1012,6 +1013,8 @@ export default function ContractAgentPanel({
   );
   const [resolvingEditIds, setResolvingEditIds] = useState<Set<string>>(() => new Set());
   const [traceExpanded, setTraceExpanded] = useState(false);
+  const [pendingSuggestion, setPendingSuggestion] = useState<Suggestion | null>(null);
+  const [pendingWorkflowId, setPendingWorkflowId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamTextRef = useRef<Map<string, string>>(new Map());
   const thinkingRef = useRef<Map<string, string>>(new Map());
@@ -1312,6 +1315,30 @@ export default function ContractAgentPanel({
     const citationDetails = (response.citation_details ?? {}) as CitationDetails;
     const citationAnnotations = citationAnnotationsFromDetails(citationDetails, response.citation_annotations);
     const normalizedCitations = normalizeCitationPayload(citationAnnotations);
+
+    // Build suggestions from the approval request, or use explicit suggestions from backend
+    const builtSuggestions: Suggestion[] = response.suggestions?.length
+      ? response.suggestions
+      : approval
+        ? [{
+            id: `${response.workflow_id}-${approval.approval_id}`,
+            action: approval.action,
+            label: approval.title || approval.description || "Approve this action",
+            preview: approval.description || null,
+            payload: approval.payload || undefined,
+            confidence: "medium" as const,
+          }]
+        : [];
+
+    // Set or clear pending suggestion for the input area
+    if (builtSuggestions.length) {
+      setPendingSuggestion(builtSuggestions[0]);
+      setPendingWorkflowId(response.workflow_id);
+    } else {
+      setPendingSuggestion(null);
+      setPendingWorkflowId(null);
+    }
+
     updateAgentMessage(messageId, (message) => ({
       ...message,
       content: `${normalizeCitationMarkerText(
@@ -1329,7 +1356,7 @@ export default function ContractAgentPanel({
         ...(message.activity ?? []).filter((activity) => activity.id !== "deep-agent"),
         {
           id: "deep-agent",
-          label: response.requires_approval ? "Approval required" : "Workflow completed",
+          label: builtSuggestions.length ? "Awaiting your decision" : "Workflow completed",
           detail: response.created_review_id ? "Tabular review created" : undefined,
           status: "done",
         },
@@ -1706,6 +1733,8 @@ export default function ContractAgentPanel({
     ]);
     setDraft("");
     setIsThinking(true);
+    setPendingSuggestion(null);
+    setPendingWorkflowId(null);
 
     try {
       if (!agentBasePath || !token) {
@@ -2653,17 +2682,6 @@ export default function ContractAgentPanel({
                             {renderMarkdownMessage(message)}
                           </div>
                         ) : null}
-                      {message.workflow?.status === "waiting_approval" && message.workflow.approval ? (
-                        <ApprovalCard
-                          approval={message.workflow.approval}
-                          proposal={message.workflow.proposal}
-                          busy={message.workflow.busy}
-                          documentNamesById={documentNameById}
-                          onProposalChange={(proposal) => updateWorkflowProposal(message.id, proposal)}
-                          onApprove={() => approveWorkflow(message.id, message.workflow as AgentWorkflowState)}
-                          onReject={() => rejectWorkflow(message.id, message.workflow as AgentWorkflowState)}
-                        />
-                      ) : null}
                       {message.artifacts?.length ? (
                         <div className="space-y-2">
                           {message.artifacts.map(renderArtifactCard)}
@@ -2716,6 +2734,89 @@ export default function ContractAgentPanel({
       </div>
 
       <div className="shrink-0 border-t border-gray-100 bg-white px-3 pb-2 pt-2">
+        {pendingSuggestion ? (
+          <div>
+            <ApprovalInput
+              suggestion={pendingSuggestion}
+              busy={isThinking}
+              onApprove={() => {
+                // Find the last agent message with a matching workflow
+                const workflowMsg = messages.find((m) => m.role === "agent" && m.workflow?.workflowId === pendingWorkflowId);
+                if (workflowMsg?.workflow) {
+                  approveWorkflow(workflowMsg.id, workflowMsg.workflow);
+                }
+              }}
+              onReject={() => {
+                const workflowMsg = messages.find((m) => m.role === "agent" && m.workflow?.workflowId === pendingWorkflowId);
+                if (workflowMsg?.workflow) {
+                  rejectWorkflow(workflowMsg.id, workflowMsg.workflow);
+                } else {
+                  // No workflow found — likely a non-workflow suggestion, just dismiss
+                  setPendingSuggestion(null);
+                  setPendingWorkflowId(null);
+                }
+              }}
+              onCustom={(instruction) => {
+                // Reset the input, then submit the custom instruction as a new query
+                setPendingSuggestion(null);
+                setPendingWorkflowId(null);
+
+                // Build the request body the same way handleSubmit does
+                const followUp = `Regarding your suggestion: ${instruction}`;
+
+                // Add user message, then trigger the stream
+                const agentMessageId = `agent-${Date.now()}`;
+                setMessages((current) => [
+                  ...current,
+                  { id: `user-${Date.now()}`, role: "user", content: followUp },
+                  { id: agentMessageId, role: "agent", content: "" },
+                ]);
+                setIsThinking(true);
+
+                (async () => {
+                  try {
+                    if (!agentBasePath || !token) {
+                      throw new Error("Agent is not connected to the backend.");
+                    }
+                    const requestBody = {
+                      message: followUp,
+                      session_id: sessionId,
+                      ai_provider: selectedProvider,
+                      reference_contract_ids: explicitReferenceIds,
+                      displayed_document: !isProjectScope && contractId
+                        ? { document_id: contractId, filename: contractName }
+                        : undefined,
+                      attached_documents: attachedDocumentsPayload.length ? attachedDocumentsPayload : undefined,
+                    };
+                    const response = await apiFetch(`${agentBasePath}/query/stream`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(requestBody),
+                    });
+                    if (!response.ok) {
+                      const errorText = await response.text();
+                      let detail = errorText || "Agent query failed.";
+                      try { detail = JSON.parse(errorText)?.detail || detail; } catch { /* ignore */ }
+                      throw new Error(detail);
+                    }
+                    await readAgentStream(response, agentMessageId);
+                  } catch (error) {
+                    updateAgentMessage(agentMessageId, (message) => ({
+                      ...message,
+                      content: error instanceof Error ? error.message : "Agent query failed.",
+                    }));
+                  } finally {
+                    setIsThinking(false);
+                    void refreshSessions();
+                    void refreshDrafts();
+                  }
+                })();
+              }}
+            />
+            <p className="pt-1.5 text-center text-[11px] leading-4 text-gray-500">AI can make mistakes. Answers are not legal advice.</p>
+          </div>
+        ) : (
+          <>
         <form onSubmit={handleSubmit} className="rounded-2xl border border-gray-300 bg-white shadow-sm transition-colors focus-within:border-gray-400 focus-within:ring-2 focus-within:ring-gray-100">
           <div className="px-4 pt-2.5">
             <textarea
@@ -2819,6 +2920,8 @@ export default function ContractAgentPanel({
           </div>
         </form>
         <p className="pt-1.5 text-center text-[11px] leading-4 text-gray-500">AI can make mistakes. Answers are not legal advice.</p>
+        </>
+        )}
       </div>
     </div>
     </TooltipProvider>

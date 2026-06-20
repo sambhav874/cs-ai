@@ -25,7 +25,7 @@ import {
   XCircle,
 } from "lucide-react";
 
-import LoadingScreen from "@/components/animation/LoadingScreen";
+import LoadingScreen from "@/components/loader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -752,7 +752,7 @@ function PlaybookDetailContent() {
   }
 
   if (!isAuthenticated || loading) {
-    return <LoadingScreen message="Loading playbook..." />;
+    return <LoadingScreen />;
   }
 
   if (!playbook) {
@@ -1361,7 +1361,7 @@ function PlaybookDetailContent() {
 
 export default function PlaybookDetailPage() {
   return (
-    <Suspense fallback={<LoadingScreen message="Loading playbook..." />}>
+    <Suspense fallback={<LoadingScreen />}>
       <PlaybookDetailContent />
     </Suspense>
   );

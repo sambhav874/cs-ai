@@ -63,6 +63,8 @@ defusedxml = "^0.7.1"
 sentence-transformers = { version = "^3.3.1", optional = true }
 accelerate = { version = "^1.2.1", optional = true }
 langchain-huggingface = { version = "^1.2.2", optional = true }
+lxml = "^6.1.1"
+python-docx = "^1.2.0"
 [tool.poetry.extras]
 ml = [ "sentence-transformers", "sentencepiece", "accelerate", "langchain-huggingface"]
 faiss = ["faiss-cpu"]

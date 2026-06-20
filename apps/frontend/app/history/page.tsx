@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { toast } from "@/hooks/use-toast";
 import { History as HistoryIcon, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
-import LoadingScreen from "@/components/animation/LoadingScreen";
+import LoadingScreen from "@/components/loader";
 import { useAccountContext } from "../context/AccountContext";
 import { useAuth } from "@/hooks/useAuth";
 import HistoryTable from "@/components/new/HistoryTable"; // We will create this in the next phase
@@ -158,7 +158,7 @@ export default function HistoryPage() {
 
 
   if (isInitialLoading) {
-    return <LoadingScreen message="Loading contract history..." />;
+    return <LoadingScreen />;
   }
 
   return (

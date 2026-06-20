@@ -14,7 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-import LoadingScreen from "@/components/animation/LoadingScreen";
+import LoadingScreen from "@/components/loader";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -265,7 +265,7 @@ function PlaybooksContent() {
   }
 
   if (!isAuthenticated || loading) {
-    return <LoadingScreen message="Loading playbooks..." />;
+    return <LoadingScreen />;
   }
 
   return (
@@ -582,7 +582,7 @@ function PlaybooksContent() {
 
 export default function PlaybooksPage() {
   return (
-    <Suspense fallback={<LoadingScreen message="Loading playbooks..." />}>
+    <Suspense fallback={<LoadingScreen />}>
       <PlaybooksContent />
     </Suspense>
   );

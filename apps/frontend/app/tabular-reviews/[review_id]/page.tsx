@@ -20,7 +20,7 @@ import {
   Upload,
 } from "lucide-react";
 
-import LoadingScreen from "@/components/animation/LoadingScreen";
+import LoadingScreen from "@/components/loader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -479,7 +479,7 @@ export default function TabularReviewDetailPage() {
   }
 
   if (!isAuthenticated || loading) {
-    return <LoadingScreen message="Loading tabular review..." />;
+    return <LoadingScreen />;
   }
 
   if (!review) {

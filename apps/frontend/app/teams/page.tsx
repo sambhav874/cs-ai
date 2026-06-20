@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button"; // Keep for potential "Create Team" button
 import Link from "next/link"; // For linking to team details page later
-import LoadingScreen from "@/components/animation/LoadingScreen"; // Reuse your loading component
+import LoadingScreen from "@/components/loader";
 import { Users, Plus } from "lucide-react"; // Example icons
 import { apiFetch } from "@/lib/apiClient";
 

@@ -8,8 +8,11 @@ assistant turns.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import uuid4
@@ -529,6 +532,170 @@ class AgentDocumentManager:
                 document_id=document_id,
                 version_id=result.version_id,
             ),
+            annotations=annotations,
+            errors=apply_result.errors,
+        )
+
+    def create_modified_copy(
+        self,
+        *,
+        contract_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        user_id: str,
+        session_id: str,
+        document_id: str,
+        edits: list[Dict[str, Any]],
+        source_contract_name: str = "Contract",
+        contracts_collection: Any = None,
+        fs: Any = None,
+    ) -> Optional[AgentTrackedEditResult]:
+        """Create a modified copy of a document with find/replace edits.
+
+        Supports both agent documents (by agent-doc-xxx ID) and source
+        contracts (by MongoDB ObjectId string).  For source contracts the
+        method creates a brand-new agent document; for agent documents it
+        creates a new version of the existing document.
+        """
+        from bson import ObjectId as _ObjectId
+
+        # 1) Try agent-document path first
+        result = self.edit_document(
+            contract_id=None,
+            project_id=project_id,
+            user_id=user_id,
+            document_id=document_id,
+            edits=edits,
+        )
+        if result is not None:
+            return result
+
+        # 2) Not an agent document — try source-contract path
+        if contracts_collection is None or fs is None:
+            return None
+        try:
+            contract_oid = _ObjectId(document_id)
+        except Exception:
+            return None
+
+        contract_doc = contracts_collection.find_one(
+            {"_id": contract_oid},
+            {"file_id": 1, "contract_name": 1, "file_type": 1, "index": 1},
+        )
+        if not contract_doc:
+            return None
+
+        file_id = contract_doc.get("file_id")
+        if not isinstance(file_id, _ObjectId):
+            return None
+
+        grid_out = fs.get(file_id)
+        file_type = contract_doc.get("file_type") or grid_out.content_type or ""
+
+        # Build TrackedEditInput list (shared by both paths)
+        edit_inputs = [
+            TrackedEditInput(
+                find=str(item.get("find") or ""),
+                replace=str(item.get("replace") or ""),
+                context_before=str(item.get("context_before") or ""),
+                context_after=str(item.get("context_after") or ""),
+                reason=str(item.get("reason") or f"Modified copy edit {i + 1}"),
+            )
+            for i, item in enumerate(edits)
+        ]
+
+        is_docx = not file_type or DOCX_CONTENT_TYPE in file_type
+        if is_docx:
+            # DOCX source — apply tracked edits directly to the docx bytes
+            docx_bytes = grid_out.read()
+        else:
+            # Non-DOCX source — use extracted text to build a DOCX first
+            index_data = contract_doc.get("index") or {}
+            body_text = (index_data.get("content") or "").strip()
+            if not body_text:
+                logger.warning(
+                    "create_modified_copy: source contract %s is %s and has no extracted text.",
+                    document_id, file_type,
+                )
+                return AgentTrackedEditResult(
+                    document_id=document_id,
+                    version_id="",
+                    version_number=0,
+                    filename=contract_doc.get("contract_name", "Contract"),
+                    download_url=f"/contracts/{document_id}/render",
+                    annotations=[],
+                    errors=[f"Cannot create modified copy: this contract is a {file_type} file with no extracted text available."],
+                )
+            contract_name = contract_doc.get("contract_name", "Contract")
+            docx_bytes = _render_text_docx(title=contract_name, body=body_text)
+            logger.info(
+                "create_modified_copy: built DOCX from extracted text for contract %s (%s).",
+                document_id, file_type,
+            )
+
+        apply_result = apply_tracked_edits_to_docx(docx_bytes, edit_inputs)
+        if not apply_result.annotations:
+            return AgentTrackedEditResult(
+                document_id=document_id,
+                version_id="",
+                version_number=0,
+                filename=contract_doc.get("contract_name", "Contract") + ".docx",
+                download_url=f"/contracts/{document_id}/render" if not is_docx else "",
+                annotations=[],
+                errors=apply_result.errors,
+            )
+
+        body_text = _extract_docx_text(apply_result.docx_bytes)
+        cid = contract_id or document_id
+        new_doc = self._create_document_from_bytes(
+            contract_id=cid,
+            project_id=project_id,
+            user_id=user_id,
+            session_id=session_id,
+            source_contract_id=document_id,
+            source_contract_name=source_contract_name,
+            title=contract_doc.get("contract_name", "Modified Copy"),
+            filename=f"modified_{document_id[:12]}_{uuid4().hex[:8]}.docx",
+            docx_bytes=apply_result.docx_bytes,
+            body_text=body_text,
+            draft_type="modified_copy",
+            artifact_kind="modified_copy",
+            change_summary=f"Applied {len(apply_result.annotations)} tracked edit(s)",
+        )
+
+        annotations: list[Dict[str, Any]] = []
+        now = _now()
+        for annotation in apply_result.annotations:
+            edit_id = f"edit-{uuid4().hex}"
+            payload = {
+                "edit_id": edit_id,
+                "type": "edit_data",
+                "kind": "edit",
+                "document_id": new_doc.document_id,
+                "contract_id": cid,
+                "project_id": project_id,
+                "user_id": user_id,
+                "version_id": new_doc.version_id,
+                "version_number": new_doc.version_number,
+                "change_id": annotation.change_id,
+                "del_w_id": annotation.del_w_id,
+                "ins_w_id": annotation.ins_w_id,
+                "deleted_text": annotation.deleted_text,
+                "inserted_text": annotation.inserted_text,
+                "context_before": annotation.context_before,
+                "context_after": annotation.context_after,
+                "reason": annotation.reason,
+                "status": "pending",
+                "created_at": now,
+            }
+            self.edits.insert_one(payload)
+            annotations.append(self._serialize_doc(payload))
+
+        return AgentTrackedEditResult(
+            document_id=new_doc.document_id,
+            version_id=new_doc.version_id,
+            version_number=new_doc.version_number,
+            filename=new_doc.filename,
+            download_url=new_doc.download_url,
             annotations=annotations,
             errors=apply_result.errors,
         )
@@ -1415,6 +1582,45 @@ class AgentDocumentManager:
             if isinstance(clean_doc.get(key), datetime):
                 clean_doc[key] = clean_doc[key].isoformat()
         return clean_doc
+
+
+def _render_text_docx(*, title: str, body: str) -> bytes:
+    """Build a DOCX from plain text preserving every character verbatim.
+
+    Unlike render_minimal_docx (which strips whitespace, interprets headings,
+    and collapses structure), this function writes each line as a plain
+    paragraph with no transformations.  Find/replace matching against the
+    output will produce the same results as matching against the input text.
+    """
+    from io import BytesIO
+    from docx import Document as DocxDocument
+    from docx.shared import Pt, Inches, RGBColor
+
+    doc = DocxDocument()
+    section = doc.sections[0]
+    section.top_margin = Inches(1)
+    section.bottom_margin = Inches(1)
+    section.left_margin = Inches(1)
+    section.right_margin = Inches(1)
+
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(11)
+    style.font.color.rgb = RGBColor(0, 0, 0)
+
+    p = doc.add_paragraph()
+    run = p.add_run(title)
+    run.bold = True
+    run.font.size = Pt(14)
+    run.font.name = "Calibri"
+
+    for line in body.split("\n"):
+        para = doc.add_paragraph()
+        para.add_run(line)
+
+    buf = BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
 
 
 def _extract_docx_text(docx_bytes: bytes) -> str:

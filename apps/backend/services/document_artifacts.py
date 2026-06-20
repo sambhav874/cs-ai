@@ -2,70 +2,41 @@
 
 The assistant cannot safely mutate source PDFs in place. For drafting and edit
 requests, we generate a separate Word document artifact and store it in GridFS
-so the UI can present a Mike-style download card.
+so the UI can present a download card.
+
+NOTE: Hand-rolled OOXML has been replaced by docx_engine (python-docx + lxml).
+This module now only contains business logic — text processing, draft-type
+inference, change parsing — and delegates all XML work to services.docx_engine.
 """
 
 from __future__ import annotations
 
 import re
-import zipfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
-from defusedxml import ElementTree as DefusedElementTree
-from xml.etree import ElementTree
-from xml.sax.saxutils import escape
 
+from services.docx_engine import (
+    DocxSection,
+    EditInput,
+    TrackedEditApplyResult,
+    TrackedEditAnnotation,
+    apply_tracked_edits,
+    extract_tracked_change_ids,
+    generate_docx,
+    normalized_with_map,
+    parse_docx_xml,
+    read_docx_xml_file,
+    resolve_tracked_changes,
+)
 from utils.text_cleanup import clean_text_encoding
 
 
 DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-DOCX_FONT = "Times New Roman"
 REDLINE_DELETE_OPEN_PREFIX = "[[CS_REDLINE_DEL:"
 REDLINE_DELETE_CLOSE = "[[/CS_REDLINE_DEL]]"
 REDLINE_INSERT_OPEN_PREFIX = "[[CS_REDLINE_INS:"
 REDLINE_INSERT_CLOSE = "[[/CS_REDLINE_INS]]"
-W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-ElementTree.register_namespace("w", W_NS)
-MAX_DOCX_PACKAGE_MEMBERS = 256
-MAX_DOCX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024
-MAX_DOCX_XML_BYTES = 5 * 1024 * 1024
-
-
-def _w_tag(name: str) -> str:
-    return f"{{{W_NS}}}{name}"
-
-
-def read_docx_package_files(docx_bytes: bytes) -> Dict[str, bytes]:
-    with zipfile.ZipFile(BytesIO(docx_bytes), "r") as package:
-        members = package.infolist()
-        if len(members) > MAX_DOCX_PACKAGE_MEMBERS:
-            raise ValueError("DOCX package contains too many files.")
-        total_uncompressed = sum(member.file_size for member in members)
-        if total_uncompressed > MAX_DOCX_UNCOMPRESSED_BYTES:
-            raise ValueError("DOCX package expands beyond the safe processing limit.")
-        for member in members:
-            if member.filename.startswith("/") or ".." in member.filename.split("/"):
-                raise ValueError("DOCX package contains an unsafe file path.")
-        return {member.filename: package.read(member.filename) for member in members}
-
-
-def read_docx_xml_file(docx_bytes: bytes, name: str) -> bytes:
-    files = read_docx_package_files(docx_bytes)
-    content = files.get(name)
-    if content is None:
-        raise KeyError(name)
-    if len(content) > MAX_DOCX_XML_BYTES:
-        raise ValueError("DOCX XML file is too large to process safely.")
-    return content
-
-
-def parse_docx_xml(content: bytes):
-    if len(content) > MAX_DOCX_XML_BYTES:
-        raise ValueError("DOCX XML file is too large to process safely.")
-    return DefusedElementTree.fromstring(content)
 
 
 @dataclass
@@ -608,17 +579,47 @@ def _source_contract_starts_next_page(source: str) -> str:
 
 
 def render_minimal_docx(*, title: str, body: str, landscape: bool = False) -> bytes:
-    document_xml = _document_xml(title, body, landscape=landscape)
-    out = BytesIO()
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as package:
-        package.writestr("[Content_Types].xml", _content_types_xml())
-        package.writestr("_rels/.rels", _rels_xml())
-        package.writestr("word/_rels/document.xml.rels", _document_rels_xml())
-        package.writestr("word/styles.xml", _styles_xml())
-        package.writestr("word/settings.xml", _settings_xml())
-        package.writestr("word/fontTable.xml", _font_table_xml())
-        package.writestr("word/document.xml", document_xml)
-    return out.getvalue()
+    """Generate a DOCX from title + body text using docx_engine."""
+    sections = _body_to_sections(body)
+    return generate_docx(title, sections, landscape=landscape)
+
+
+def _body_to_sections(body: str) -> List[DocxSection]:
+    """Convert a plain-text body (with headings and [[DOCX_PAGE:N]] markers) into DocxSections."""
+    if not body:
+        return [DocxSection(content="")]
+    sections: List[DocxSection] = []
+    lines = body.split("\n")
+    current_heading: Optional[str] = None
+    current_level = 1
+    current_content: List[str] = []
+    page_break = False
+    def _flush():
+        sections.append(DocxSection(
+            heading=current_heading,
+            level=current_level,
+            content="\n".join(current_content).strip() if current_content else None,
+            page_break=page_break,
+        ))
+        current_content.clear()
+    for line in lines:
+        stripped = line.strip()
+        if re.match(r"^\[\[DOCX_PAGE:\d+\]\]", stripped):
+            _flush()
+            page_break = True
+            current_heading = None
+            continue
+        heading_match = re.match(r"^(#{1,3})\s+(.+)$", stripped)
+        if heading_match:
+            _flush()
+            page_break = False
+            current_level = len(heading_match.group(1))
+            current_heading = heading_match.group(2)
+            continue
+        if stripped:
+            current_content.append(stripped)
+    _flush()
+    return sections
 
 
 def render_redline_docx(
@@ -628,50 +629,45 @@ def render_redline_docx(
     document_name: str,
     changes: List[RedlineChange],
 ) -> RedlineRenderResult:
-    """Render a DOCX with real Word tracked-change insertions/deletions.
-
-    Source contracts are immutable PDFs/indexed text in this app, so this
-    produces a separate Word redline copy. Each matched clause is represented
-    with a tracked deletion followed by a tracked insertion.
-    """
+    """Render a redline DOCX using docx_engine for tracked changes."""
     cleaned_source = _clean_source_contract_text(source_text)
     planned_changes = _plan_redline_changes(cleaned_source, changes)
-    _attach_redline_revision_ids(planned_changes, cleaned_source)
-    document_xml = _redline_document_xml(
-        title=title,
-        document_name=document_name,
-        source_text=cleaned_source,
-        changes=planned_changes,
-    )
-    out = BytesIO()
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as package:
-        package.writestr("[Content_Types].xml", _content_types_xml())
-        package.writestr("_rels/.rels", _rels_xml())
-        package.writestr("word/_rels/document.xml.rels", _document_rels_xml())
-        package.writestr("word/styles.xml", _styles_xml())
-        package.writestr("word/settings.xml", _redline_settings_xml())
-        package.writestr("word/fontTable.xml", _font_table_xml())
-        package.writestr("word/document.xml", document_xml)
-    return RedlineRenderResult(
-        docx_bytes=out.getvalue(),
-        applied_changes=[change["summary"] for change in planned_changes if change.get("applied")],
-        unmatched_changes=[change["summary"] for change in planned_changes if not change.get("applied")],
-    )
 
+    applied = [c for c in planned_changes if c.get("applied")]
+    unmatched = [c for c in planned_changes if not c.get("applied")]
 
-def _attach_redline_revision_ids(planned_changes: List[Dict[str, Any]], source_text: str) -> None:
-    revision_id = 1
-    for change in sorted([item for item in planned_changes if item.get("applied")], key=lambda item: item["start"]):
+    if not applied:
+        # Generate a minimal DOCX with no changes applied
+        body = f"No tracked changes could be applied to {document_name or 'the source document'}."
+        sections = [DocxSection(content=body)]
+        return RedlineRenderResult(
+            docx_bytes=generate_docx(title, sections),
+            applied_changes=[],
+            unmatched_changes=[change["summary"] for change in unmatched],
+        )
+
+    # Build EditInputs from planned changes
+    edits = []
+    for change in applied:
+        s, e = int(change["start"]), int(change["end"])
+        deleted = cleaned_source[s:e]
         replacement = str(change.get("replacement") or "")
-        start = int(change["start"])
-        end = int(change["end"])
-        summary = change.setdefault("summary", {})
-        summary["change_id"] = f"contractsense-redline-{revision_id}"
-        summary["del_w_id"] = str(revision_id)
-        summary["ins_w_id"] = str(revision_id) if replacement else None
-        summary["deleted_text"] = source_text[start:end]
-        summary["inserted_text"] = replacement
-        revision_id += 1
+        edits.append(EditInput(
+            find=deleted,
+            replace=replacement,
+            reason=str(change.get("summary", {}).get("rule_name", "Redline edit")),
+        ))
+
+    # Create a clean DOCX from the source text, then apply tracked edits
+    sections = [DocxSection(content=cleaned_source)]
+    clean_docx = generate_docx(title, sections)
+    result = apply_tracked_edits(clean_docx, edits)
+
+    return RedlineRenderResult(
+        docx_bytes=result.docx_bytes,
+        applied_changes=[change["summary"] for change in applied],
+        unmatched_changes=[change["summary"] for change in unmatched],
+    )
 
 
 def apply_tracked_edits_to_docx(
@@ -680,96 +676,25 @@ def apply_tracked_edits_to_docx(
     *,
     author: str = "ContractSense",
 ) -> TrackedEditApplyResult:
-    """Apply precise substitutions to a DOCX as Word tracked changes."""
-    if not edits:
-        return TrackedEditApplyResult(docx_bytes=docx_bytes, annotations=[], errors=[{"index": 0, "reason": "edits array is empty"}])
-
-    files = read_docx_package_files(docx_bytes)
-    document_xml = files.get("word/document.xml")
-    if not document_xml:
-        return TrackedEditApplyResult(docx_bytes=docx_bytes, annotations=[], errors=[{"index": 0, "reason": "document.xml missing from docx"}])
-
-    root = parse_docx_xml(document_xml)
-    paragraphs = list(root.iter(_w_tag("p")))
-    paragraph_texts = [_paragraph_accepted_text(paragraph) for paragraph in paragraphs]
-    max_w_id = _max_tracked_change_id(root)
-    next_w_id = max_w_id + 1
-    plans_by_paragraph: Dict[int, List[Dict[str, Any]]] = {}
-    annotations: List[TrackedEditAnnotation] = []
-    errors: List[Dict[str, Any]] = []
-
-    for edit_index, edit in enumerate(edits):
-        find = clean_text_encoding(edit.find or "")
-        replace = clean_text_encoding(edit.replace or "")
-        if not find and not replace:
-            errors.append({"index": edit_index, "reason": "empty edit"})
-            continue
-        if not find:
-            errors.append({"index": edit_index, "reason": "pure insertion requires matched text in ContractSense MVP"})
-            continue
-
-        hit = _find_unique_tracked_edit_hit(
-            paragraph_texts,
-            find=find,
-            context_before=edit.context_before,
-            context_after=edit.context_after,
-        )
-        if hit.get("error"):
-            errors.append({"index": edit_index, "reason": hit["error"], "find": find})
-            continue
-
-        paragraph_index = int(hit["paragraph_index"])
-        start = int(hit["start"])
-        end = int(hit["end"])
-        existing = plans_by_paragraph.get(paragraph_index, [])
-        if any(start < plan["end"] and end > plan["start"] for plan in existing):
-            errors.append({"index": edit_index, "reason": "overlaps another edit in the same paragraph", "find": find})
-            continue
-
-        deleted_text = paragraph_texts[paragraph_index][start:end]
-        change_id = f"contractsense-{uuid4().hex[:12]}"
-        del_w_id = str(next_w_id) if deleted_text else None
-        next_w_id += 1 if deleted_text else 0
-        ins_w_id = str(next_w_id) if replace else None
-        next_w_id += 1 if replace else 0
-        plan = {
-            "start": start,
-            "end": end,
-            "deleted_text": deleted_text,
-            "inserted_text": replace,
-            "change_id": change_id,
-            "del_w_id": del_w_id,
-            "ins_w_id": ins_w_id,
-            "reason": edit.reason,
-        }
-        existing.append(plan)
-        plans_by_paragraph[paragraph_index] = sorted(existing, key=lambda item: item["start"])
-        annotations.append(
+    """Apply tracked edits using docx_engine (delegates to lxml-based implementation)."""
+    result = apply_tracked_edits(docx_bytes, edits, author=author)
+    return TrackedEditApplyResult(
+        docx_bytes=result.docx_bytes,
+        annotations=[
             TrackedEditAnnotation(
-                change_id=change_id,
-                del_w_id=del_w_id,
-                ins_w_id=ins_w_id,
-                deleted_text=deleted_text,
-                inserted_text=replace,
-                context_before=edit.context_before,
-                context_after=edit.context_after,
-                reason=edit.reason,
+                change_id=a.change_id,
+                del_w_id=a.del_w_id,
+                ins_w_id=a.ins_w_id,
+                deleted_text=a.deleted_text,
+                inserted_text=a.inserted_text,
+                context_before=a.context_before,
+                context_after=a.context_after,
+                reason=a.reason,
             )
-        )
-
-    for paragraph_index, plans in plans_by_paragraph.items():
-        _rewrite_paragraph_with_tracked_edits(
-            paragraphs[paragraph_index],
-            paragraph_texts[paragraph_index],
-            plans,
-            author=author,
-        )
-
-    if not annotations:
-        return TrackedEditApplyResult(docx_bytes=docx_bytes, annotations=[], errors=errors)
-
-    files["word/document.xml"] = ElementTree.tostring(root, encoding="utf-8", xml_declaration=True)
-    return TrackedEditApplyResult(docx_bytes=_zip_docx_files(files), annotations=annotations, errors=errors)
+            for a in result.annotations
+        ],
+        errors=result.errors,
+    )
 
 
 def resolve_tracked_changes_in_docx(
@@ -778,213 +703,13 @@ def resolve_tracked_changes_in_docx(
     change_ids: List[str],
     mode: str,
 ) -> Tuple[bytes, bool]:
-    """Accept or reject tracked changes by Word w:id values."""
-    wanted = {str(value) for value in change_ids if value}
-    if mode not in {"accept", "reject"} or not wanted:
-        return docx_bytes, False
-
-    files = read_docx_package_files(docx_bytes)
-    document_xml = files.get("word/document.xml")
-    if not document_xml:
-        return docx_bytes, False
-
-    root = parse_docx_xml(document_xml)
-    found = _resolve_tracked_change_children(root, wanted=wanted, mode=mode)
-    if not found:
-        return docx_bytes, False
-    files["word/document.xml"] = ElementTree.tostring(root, encoding="utf-8", xml_declaration=True)
-    return _zip_docx_files(files), True
+    """Accept or reject tracked changes using docx_engine."""
+    return resolve_tracked_changes(docx_bytes, change_ids, mode)
 
 
 def tracked_change_ids_from_docx(docx_bytes: bytes) -> List[Dict[str, str]]:
-    document_xml = read_docx_xml_file(docx_bytes, "word/document.xml")
-    root = parse_docx_xml(document_xml)
-    ids: List[Dict[str, str]] = []
-    for element in root.iter():
-        if element.tag not in {_w_tag("ins"), _w_tag("del")}:
-            continue
-        w_id = element.attrib.get(_w_tag("id"))
-        if w_id:
-            ids.append({"kind": "ins" if element.tag == _w_tag("ins") else "del", "w_id": str(w_id)})
-    return ids
-
-
-def _paragraph_accepted_text(paragraph: ElementTree.Element) -> str:
-    parts: List[str] = []
-    for node in paragraph.iter():
-        if node.tag == _w_tag("del"):
-            continue
-        if node.tag in {_w_tag("t"), _w_tag("delText")} and node.text:
-            # Deleted text is only visible when rejecting an existing deletion.
-            if node.tag == _w_tag("delText"):
-                continue
-            parts.append(node.text)
-        elif node.tag == _w_tag("tab"):
-            parts.append("\t")
-        elif node.tag == _w_tag("br"):
-            parts.append("\n")
-    return "".join(parts)
-
-
-def _find_unique_tracked_edit_hit(
-    paragraph_texts: List[str],
-    *,
-    find: str,
-    context_before: str,
-    context_after: str,
-) -> Dict[str, Any]:
-    find_normalized, _ = _normalized_with_map(find)
-    before_normalized, _ = _normalized_with_map(context_before or "")
-    after_normalized, _ = _normalized_with_map(context_after or "")
-    if not find_normalized:
-        return {"error": "empty find text"}
-
-    hits: List[Dict[str, int]] = []
-    for paragraph_index, text in enumerate(paragraph_texts):
-        normalized, index_map = _normalized_with_map(text)
-        position = normalized.find(find_normalized)
-        while position >= 0:
-            end_norm = position + len(find_normalized)
-            before_ok = not before_normalized or normalized[:position].rstrip().endswith(before_normalized)
-            after_ok = not after_normalized or normalized[end_norm:].lstrip().startswith(after_normalized)
-            if before_ok and after_ok:
-                original_start = index_map[position]
-                original_end = index_map[min(end_norm - 1, len(index_map) - 1)] + 1
-                hits.append({"paragraph_index": paragraph_index, "start": original_start, "end": original_end})
-            position = normalized.find(find_normalized, position + max(1, len(find_normalized)))
-
-    if not hits:
-        return {"error": "matched text was not found with the provided context"}
-    if len(hits) > 1:
-        return {"error": "matched text is ambiguous; provide more context_before/context_after"}
-    return hits[0]
-
-
-def _max_tracked_change_id(root: ElementTree.Element) -> int:
-    max_id = 0
-    for element in root.iter():
-        if element.tag not in {_w_tag("ins"), _w_tag("del")}:
-            continue
-        raw_id = element.attrib.get(_w_tag("id"))
-        if raw_id and raw_id.isdigit():
-            max_id = max(max_id, int(raw_id))
-    return max_id
-
-
-def _rewrite_paragraph_with_tracked_edits(
-    paragraph: ElementTree.Element,
-    text: str,
-    plans: List[Dict[str, Any]],
-    *,
-    author: str,
-) -> None:
-    ppr = paragraph.find(_w_tag("pPr"))
-    for child in list(paragraph):
-        paragraph.remove(child)
-    if ppr is not None:
-        paragraph.append(ppr)
-
-    cursor = 0
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-    for plan in plans:
-        start = int(plan["start"])
-        end = int(plan["end"])
-        if start > cursor:
-            paragraph.append(_word_run_element(text[cursor:start]))
-        deleted = text[start:end]
-        inserted = str(plan.get("inserted_text") or "")
-        if deleted and plan.get("del_w_id"):
-            deletion = ElementTree.Element(_w_tag("del"), {
-                _w_tag("id"): str(plan["del_w_id"]),
-                _w_tag("author"): author,
-                _w_tag("date"): now,
-            })
-            deletion.append(_word_run_element(deleted, deleted=True, color="C00000", strike=True))
-            paragraph.append(deletion)
-        if inserted and plan.get("ins_w_id"):
-            insertion = ElementTree.Element(_w_tag("ins"), {
-                _w_tag("id"): str(plan["ins_w_id"]),
-                _w_tag("author"): author,
-                _w_tag("date"): now,
-            })
-            insertion.append(_word_run_element(inserted, color="008A3D", underline=True))
-            paragraph.append(insertion)
-        cursor = end
-    if cursor < len(text):
-        paragraph.append(_word_run_element(text[cursor:]))
-
-
-def _word_run_element(
-    text: str,
-    *,
-    deleted: bool = False,
-    color: str = "000000",
-    strike: bool = False,
-    underline: bool = False,
-) -> ElementTree.Element:
-    run = ElementTree.Element(_w_tag("r"))
-    rpr = ElementTree.SubElement(run, _w_tag("rPr"))
-    ElementTree.SubElement(rpr, _w_tag("rFonts"), {
-        _w_tag("ascii"): DOCX_FONT,
-        _w_tag("hAnsi"): DOCX_FONT,
-        _w_tag("eastAsia"): DOCX_FONT,
-        _w_tag("cs"): DOCX_FONT,
-    })
-    ElementTree.SubElement(rpr, _w_tag("sz"), {_w_tag("val"): "22"})
-    ElementTree.SubElement(rpr, _w_tag("szCs"), {_w_tag("val"): "22"})
-    ElementTree.SubElement(rpr, _w_tag("color"), {_w_tag("val"): color})
-    if strike:
-        ElementTree.SubElement(rpr, _w_tag("strike"))
-    if underline:
-        ElementTree.SubElement(rpr, _w_tag("u"), {_w_tag("val"): "single"})
-    text_el = ElementTree.SubElement(run, _w_tag("delText" if deleted else "t"))
-    text_el.attrib["{http://www.w3.org/XML/1998/namespace}space"] = "preserve"
-    text_el.text = text
-    return run
-
-
-def _resolve_tracked_change_children(
-    parent: ElementTree.Element,
-    *,
-    wanted: set[str],
-    mode: str,
-) -> bool:
-    found = False
-    for child in list(parent):
-        if child.tag in {_w_tag("ins"), _w_tag("del")} and str(child.attrib.get(_w_tag("id")) or "") in wanted:
-            found = True
-            index = list(parent).index(child)
-            parent.remove(child)
-            keep_children = (
-                (child.tag == _w_tag("ins") and mode == "accept")
-                or (child.tag == _w_tag("del") and mode == "reject")
-            )
-            if keep_children:
-                replacement_children = list(child)
-                if child.tag == _w_tag("del"):
-                    for node in replacement_children:
-                        _convert_deleted_text_to_normal_text(node)
-                for offset, replacement in enumerate(replacement_children):
-                    parent.insert(index + offset, replacement)
-            continue
-        if _resolve_tracked_change_children(child, wanted=wanted, mode=mode):
-            found = True
-    return found
-
-
-def _convert_deleted_text_to_normal_text(node: ElementTree.Element) -> None:
-    if node.tag == _w_tag("delText"):
-        node.tag = _w_tag("t")
-    for child in list(node):
-        _convert_deleted_text_to_normal_text(child)
-
-
-def _zip_docx_files(files: Dict[str, bytes]) -> bytes:
-    out = BytesIO()
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as package:
-        for name, content in files.items():
-            package.writestr(name, content)
-    return out.getvalue()
+    """Extract tracked change IDs using docx_engine."""
+    return extract_tracked_change_ids(docx_bytes)
 
 
 def _should_render_landscape(question: str, answer: str, draft_type: str) -> bool:
@@ -1129,291 +854,6 @@ def _safe_filename(title: str, suffix: str) -> str:
     return f"{safe or 'Contract Work Product'}{suffix}"
 
 
-def _content_types_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
-  <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
-  <Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/>
-</Types>"""
-
-
-def _rels_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-</Relationships>"""
-
-
-def _document_rels_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
-  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>
-</Relationships>"""
-
-
-def _styles_xml() -> str:
-    return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:docDefaults>
-    <w:rPrDefault>
-      <w:rPr>
-        <w:rFonts w:ascii="{DOCX_FONT}" w:hAnsi="{DOCX_FONT}" w:eastAsia="{DOCX_FONT}" w:cs="{DOCX_FONT}"/>
-        <w:sz w:val="22"/>
-        <w:szCs w:val="22"/>
-        <w:color w:val="000000"/>
-      </w:rPr>
-    </w:rPrDefault>
-    <w:pPrDefault>
-      <w:pPr>
-        <w:spacing w:after="120" w:line="276" w:lineRule="auto"/>
-      </w:pPr>
-    </w:pPrDefault>
-  </w:docDefaults>
-  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
-    <w:name w:val="Normal"/>
-    <w:qFormat/>
-    <w:pPr>
-      <w:spacing w:after="120" w:line="276" w:lineRule="auto"/>
-    </w:pPr>
-    <w:rPr>
-      <w:rFonts w:ascii="{DOCX_FONT}" w:hAnsi="{DOCX_FONT}" w:eastAsia="{DOCX_FONT}" w:cs="{DOCX_FONT}"/>
-      <w:sz w:val="22"/>
-      <w:szCs w:val="22"/>
-    </w:rPr>
-  </w:style>
-  <w:style w:type="paragraph" w:styleId="Title">
-    <w:name w:val="Title"/>
-    <w:basedOn w:val="Normal"/>
-    <w:qFormat/>
-    <w:pPr>
-      <w:jc w:val="center"/>
-      <w:spacing w:after="360"/>
-    </w:pPr>
-    <w:rPr>
-      <w:rFonts w:ascii="{DOCX_FONT}" w:hAnsi="{DOCX_FONT}" w:eastAsia="{DOCX_FONT}" w:cs="{DOCX_FONT}"/>
-      <w:b/>
-      <w:sz w:val="28"/>
-      <w:szCs w:val="28"/>
-    </w:rPr>
-  </w:style>
-  <w:style w:type="paragraph" w:styleId="Heading1">
-    <w:name w:val="heading 1"/>
-    <w:basedOn w:val="Normal"/>
-    <w:next w:val="Normal"/>
-    <w:qFormat/>
-    <w:pPr>
-      <w:keepNext/>
-      <w:spacing w:before="240" w:after="160"/>
-    </w:pPr>
-    <w:rPr>
-      <w:rFonts w:ascii="{DOCX_FONT}" w:hAnsi="{DOCX_FONT}" w:eastAsia="{DOCX_FONT}" w:cs="{DOCX_FONT}"/>
-      <w:b/>
-      <w:sz w:val="24"/>
-      <w:szCs w:val="24"/>
-    </w:rPr>
-  </w:style>
-</w:styles>"""
-
-
-def _settings_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:zoom w:percent="100"/>
-  <w:defaultTabStop w:val="720"/>
-  <w:compat/>
-</w:settings>"""
-
-
-def _font_table_xml() -> str:
-    return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:font w:name="{DOCX_FONT}">
-    <w:family w:val="roman"/>
-    <w:pitch w:val="variable"/>
-  </w:font>
-</w:fonts>"""
-
-
-def _document_xml(title: str, body: str, *, landscape: bool = False) -> str:
-    paragraphs = [_paragraph(title.upper(), bold=True, size=28, alignment="center", spacing_after=360, style="Title")]
-    for kind, value in _markdown_blocks(body):
-        if kind == "page_break":
-            paragraphs.append(_page_break_paragraph())
-        elif kind == "page_label":
-            paragraphs.append(_paragraph(f"Source page {value}", size=18, italic=True, alignment="right", spacing_after=180))
-        elif kind == "table":
-            table = value if isinstance(value, dict) else {}
-            paragraphs.append(_table_xml(table.get("headers") or [], table.get("rows") or []))
-        elif kind == "source_meta":
-            paragraphs.append(_paragraph(value, size=20, spacing_after=80, alignment="left"))
-        elif kind == "source_exhibit":
-            paragraphs.append(_paragraph(value, bold=True, size=22, alignment="right", spacing_after=180))
-        elif kind == "source_center":
-            paragraphs.append(_paragraph(value, bold=True, size=22, alignment="center", spacing_after=80))
-        elif kind == "heading":
-            paragraphs.append(_paragraph(value, bold=True, size=24, spacing_before=240, spacing_after=160, style="Heading1"))
-        elif kind == "bullet":
-            paragraphs.append(_paragraph(f"- {value}", size=22, indent=720, hanging=360, spacing_after=80, alignment="both"))
-        elif kind == "numbered":
-            paragraphs.append(_paragraph(value, size=22, indent=720, hanging=360, spacing_after=80, alignment="both"))
-        else:
-            paragraphs.append(_paragraph(value, size=22, spacing_after=120, alignment="both"))
-
-    body_xml = "\n".join(paragraphs)
-    page_size = (
-        '<w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/>'
-        if landscape
-        else '<w:pgSz w:w="12240" w:h="15840"/>'
-    )
-    return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:xml="http://www.w3.org/XML/1998/namespace">
-  <w:body>
-    {body_xml}
-    <w:sectPr>
-      {page_size}
-      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
-    </w:sectPr>
-  </w:body>
-</w:document>"""
-
-
-def _markdown_blocks(body: str):
-    lines = body.splitlines()
-    index = 0
-    while index < len(lines):
-        raw_line = lines[index]
-        line = raw_line.strip()
-        if not line:
-            index += 1
-            continue
-        line = re.sub(r"^>\s*", "", line).strip()
-        table = _parse_markdown_table(lines, index)
-        if table:
-            headers, rows, next_index = table
-            yield "table", {"headers": headers, "rows": rows}
-            index = next_index
-            continue
-        page_marker = re.match(r"^\[\[DOCX_PAGE:(\d+)\]\]$", line)
-        if page_marker:
-            yield "page_break", ""
-            yield "page_label", page_marker.group(1)
-            index += 1
-            continue
-        if line.lower() in {"amendment / applied change", "converted source contract text"}:
-            yield "heading", _clean_inline_markdown(line)
-            index += 1
-            continue
-        if re.match(r"^EX-\d", line, flags=re.IGNORECASE):
-            yield "source_meta", _clean_inline_markdown(line)
-            index += 1
-            continue
-        if re.match(r"^Exhibit\s+\d", line, flags=re.IGNORECASE):
-            yield "source_exhibit", _clean_inline_markdown(line)
-            index += 1
-            continue
-        if _looks_like_centered_contract_line(line):
-            yield "source_center", _clean_inline_markdown(line)
-            index += 1
-            continue
-        if re.match(r"^[A-Z][A-Za-z ]{3,60}:$", line):
-            yield "heading", _clean_inline_markdown(line.rstrip(":"))
-            index += 1
-            continue
-        heading = re.match(r"^#{1,4}\s+(.+)$", line)
-        if heading:
-            yield "heading", _clean_inline_markdown(heading.group(1))
-            index += 1
-            continue
-        bold_heading = re.match(r"^\*\*([^*]{3,120})\*\*:?\s*$", line)
-        if bold_heading:
-            yield "heading", _clean_inline_markdown(bold_heading.group(1))
-            index += 1
-            continue
-        bullet = re.match(r"^[-*•●]\s+(.+)$", line)
-        if bullet:
-            yield "bullet", _clean_inline_markdown(bullet.group(1))
-            index += 1
-            continue
-        numbered = re.match(r"^(\d+[.)])\s+(.+)$", line)
-        if numbered:
-            yield "numbered", f"{numbered.group(1)} {_clean_inline_markdown(numbered.group(2))}"
-            index += 1
-            continue
-        yield "paragraph", _clean_inline_markdown(line)
-        index += 1
-
-
-def _parse_markdown_table(lines: list[str], index: int) -> Optional[tuple[list[str], list[list[str]], int]]:
-    if index + 1 >= len(lines):
-        return None
-    header_line = lines[index].strip()
-    separator_line = lines[index + 1].strip()
-    if "|" not in header_line:
-        return None
-    if not re.match(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$", separator_line):
-        return None
-
-    headers = [_clean_inline_markdown(cell) for cell in header_line.strip("|").split("|")]
-    headers = [header for header in headers if header]
-    if not headers:
-        return None
-
-    rows: list[list[str]] = []
-    cursor = index + 2
-    while cursor < len(lines):
-        row_line = lines[cursor].strip()
-        if not row_line or "|" not in row_line:
-            break
-        if re.match(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$", row_line):
-            cursor += 1
-            continue
-        raw_cells = [_clean_inline_markdown(cell) for cell in row_line.strip("|").split("|")]
-        row = [raw_cells[i] if i < len(raw_cells) else "" for i in range(len(headers))]
-        rows.append(row)
-        cursor += 1
-
-    return headers, rows, cursor
-
-
-def _looks_like_centered_contract_line(line: str) -> bool:
-    cleaned = _clean_inline_markdown(line)
-    if not cleaned or len(cleaned) > 95:
-        return False
-    if re.match(r"^[A-Z][a-z]+ \d{1,2}, \d{4}$", cleaned):
-        return True
-    centered_phrases = (
-        "Cascade Natural Gas Corporation",
-        "Key Performance Incentive Plan",
-    )
-    return any(phrase in cleaned for phrase in centered_phrases)
-
-
-def _clean_inline_markdown(value: str) -> str:
-    value = _normalize_artifact_text(value)
-    value = re.sub(r"\*\*([^*]+)\*\*", r"\1", value)
-    value = re.sub(r"\*([^*]+)\*", r"\1", value)
-    value = re.sub(r"`([^`]+)`", r"\1", value)
-    value = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", value)
-    value = re.sub(r"\[(?:\d+)(?:\s*,\s*\d+)*\]", "", value)
-    return re.sub(r"\s+", " ", clean_text_encoding(value)).strip()
-
-
-def _redline_settings_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:zoom w:percent="100"/>
-  <w:trackRevisions/>
-  <w:defaultTabStop w:val="720"/>
-  <w:compat/>
-</w:settings>"""
-
-
 def _plan_redline_changes(source_text: str, changes: List[RedlineChange]) -> List[Dict[str, Any]]:
     planned: List[Dict[str, Any]] = []
     occupied: List[Tuple[int, int]] = []
@@ -1477,31 +917,11 @@ def _clean_redline_revision_text(value: str) -> str:
     return text.strip()
 
 
-def _normalized_with_map(value: str) -> Tuple[str, List[int]]:
-    normalized_chars: List[str] = []
-    index_map: List[int] = []
-    last_was_space = False
-    for index, char in enumerate(value or ""):
-        if char.isspace():
-            if normalized_chars and not last_was_space:
-                normalized_chars.append(" ")
-                index_map.append(index)
-                last_was_space = True
-            continue
-        normalized_chars.append(char.lower())
-        index_map.append(index)
-        last_was_space = False
-    while normalized_chars and normalized_chars[-1] == " ":
-        normalized_chars.pop()
-        index_map.pop()
-    return "".join(normalized_chars), index_map
-
-
 def _find_flexible_span(source_text: str, needle: str) -> Optional[Tuple[int, int]]:
     if not source_text or not needle:
         return None
-    source_normalized, source_map = _normalized_with_map(source_text)
-    needle_normalized, _ = _normalized_with_map(needle)
+    source_normalized, source_map = normalized_with_map(source_text)
+    needle_normalized, _ = normalized_with_map(needle)
     if not needle_normalized:
         return None
 
@@ -1524,8 +944,8 @@ def _find_next_available_flexible_span(
 ) -> Optional[Tuple[int, int]]:
     if not source_text or not needle:
         return None
-    source_normalized, source_map = _normalized_with_map(source_text)
-    needle_normalized, _ = _normalized_with_map(needle)
+    source_normalized, source_map = normalized_with_map(source_text)
+    needle_normalized, _ = normalized_with_map(needle)
     if not needle_normalized:
         return None
 
@@ -1550,8 +970,8 @@ def _find_next_available_flexible_span(
 def _count_flexible_occurrences(source_text: str, needle: str, *, limit: int = 12) -> int:
     if not source_text or not needle:
         return 0
-    source_normalized, _ = _normalized_with_map(source_text)
-    needle_normalized, _ = _normalized_with_map(needle)
+    source_normalized, _ = normalized_with_map(source_text)
+    needle_normalized, _ = normalized_with_map(needle)
     if not needle_normalized:
         return 0
 
@@ -1561,235 +981,3 @@ def _count_flexible_occurrences(source_text: str, needle: str, *, limit: int = 1
         count += 1
         position = source_normalized.find(needle_normalized, position + max(1, len(needle_normalized)))
     return count
-
-
-def _redline_document_xml(
-    *,
-    title: str,
-    document_name: str,
-    source_text: str,
-    changes: List[Dict[str, Any]],
-) -> str:
-    applied = [change for change in changes if change.get("applied")]
-    unmatched = [change for change in changes if not change.get("applied")]
-    paragraphs = [
-        _paragraph(title.upper(), bold=True, size=28, alignment="center", spacing_after=240, style="Title"),
-    ]
-    if not applied:
-        paragraphs.append(_paragraph(f"No tracked changes could be applied to {document_name or 'the source document'}.", italic=True, size=20, spacing_after=220))
-    paragraphs.extend(_redline_source_paragraphs(source_text, applied))
-    if unmatched:
-        paragraphs.append(_page_break_paragraph())
-        paragraphs.append(_paragraph("Unmatched Suggestions", bold=True, size=24, spacing_before=160, spacing_after=160, style="Heading1"))
-        for change in unmatched:
-            summary = change.get("summary") or {}
-            paragraphs.append(_paragraph(summary.get("rule_name") or "Unmatched rule", bold=True, size=22, spacing_after=80))
-            if summary.get("matched_text"):
-                paragraphs.append(_paragraph(f"Matched text: {summary.get('matched_text')}", size=20, spacing_after=80))
-            if summary.get("suggested_revision"):
-                paragraphs.append(_paragraph(f"Suggested revision: {summary.get('suggested_revision')}", size=20, spacing_after=80))
-            if summary.get("reason"):
-                paragraphs.append(_paragraph(f"Reason: {summary.get('reason')}", italic=True, size=18, spacing_after=160))
-
-    body_xml = "\n".join(paragraphs)
-    return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:xml="http://www.w3.org/XML/1998/namespace">
-  <w:body>
-    {body_xml}
-    <w:sectPr>
-      <w:pgSz w:w="12240" w:h="15840"/>
-      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
-    </w:sectPr>
-  </w:body>
-</w:document>"""
-
-
-def _redline_source_paragraphs(source_text: str, applied_changes: List[Dict[str, Any]]) -> List[str]:
-    parts: List[Tuple[str, str, int]] = []
-    cursor = 0
-    revision_id = 1
-    for change in sorted(applied_changes, key=lambda item: item["start"]):
-        start = int(change["start"])
-        end = int(change["end"])
-        if start > cursor:
-            parts.append(("normal", source_text[cursor:start], 0))
-        parts.append(("delete", source_text[start:end], revision_id))
-        parts.append(("insert", str(change.get("replacement") or ""), revision_id))
-        cursor = end
-        revision_id += 1
-    if cursor < len(source_text):
-        parts.append(("normal", source_text[cursor:], 0))
-
-    paragraphs: List[str] = []
-    current_runs: List[str] = []
-    for kind, text, change_id in parts:
-        chunks = re.split(r"(\n+)", text or "")
-        for chunk in chunks:
-            if not chunk:
-                continue
-            if chunk.startswith("\n"):
-                if current_runs:
-                    paragraphs.append(_redline_paragraph(current_runs))
-                    current_runs = []
-                blank_count = max(0, chunk.count("\n") - 1)
-                for _ in range(min(blank_count, 2)):
-                    paragraphs.append(_redline_paragraph([]))
-                continue
-            current_runs.append(_redline_run(kind, chunk, change_id))
-    if current_runs:
-        paragraphs.append(_redline_paragraph(current_runs))
-    return paragraphs or [_paragraph("No source text available.", italic=True, size=20)]
-
-
-def _redline_paragraph(runs: List[str]) -> str:
-    return (
-        "<w:p>"
-        '<w:pPr><w:spacing w:after="120" w:line="276" w:lineRule="auto"/><w:jc w:val="both"/></w:pPr>'
-        f"{''.join(runs)}"
-        "</w:p>"
-    )
-
-
-def _redline_run(kind: str, text: str, change_id: int) -> str:
-    if not text:
-        return ""
-    date = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-    if kind == "delete":
-        return (
-            f'<w:del w:id="{change_id}" w:author="ContractSense" w:date="{date}">'
-            f"{_run_xml(text, deleted=True, color='C00000', strike=True)}"
-            "</w:del>"
-        )
-    if kind == "insert":
-        return (
-            f'<w:ins w:id="{change_id}" w:author="ContractSense" w:date="{date}">'
-            f"{_run_xml(text, color='008A3D', underline=True)}"
-            "</w:ins>"
-        )
-    return _run_xml(text)
-
-
-def _run_xml(
-    text: str,
-    *,
-    deleted: bool = False,
-    color: str = "000000",
-    strike: bool = False,
-    underline: bool = False,
-) -> str:
-    tag = "w:delText" if deleted else "w:t"
-    rpr = [
-        f'<w:rFonts w:ascii="{DOCX_FONT}" w:hAnsi="{DOCX_FONT}" w:eastAsia="{DOCX_FONT}" w:cs="{DOCX_FONT}"/>',
-        '<w:sz w:val="22"/>',
-        '<w:szCs w:val="22"/>',
-        f'<w:color w:val="{color}"/>',
-    ]
-    if strike:
-        rpr.append("<w:strike/>")
-    if underline:
-        rpr.append('<w:u w:val="single"/>')
-    return (
-        "<w:r>"
-        f"<w:rPr>{''.join(rpr)}</w:rPr>"
-        f'<{tag} xml:space="preserve">{escape(text)}</{tag}>'
-        "</w:r>"
-    )
-
-
-def _paragraph(
-    text: str,
-    *,
-    bold: bool = False,
-    italic: bool = False,
-    size: int = 22,
-    alignment: Optional[str] = None,
-    indent: int = 0,
-    hanging: int = 0,
-    spacing_before: int = 0,
-    spacing_after: int = 120,
-    style: Optional[str] = None,
-) -> str:
-    ppr_parts = []
-    if style:
-        ppr_parts.append(f'<w:pStyle w:val="{style}"/>')
-    ppr_parts.append(f'<w:spacing w:before="{spacing_before}" w:after="{spacing_after}" w:line="276" w:lineRule="auto"/>')
-    if alignment:
-        ppr_parts.append(f'<w:jc w:val="{alignment}"/>')
-    if indent:
-        hanging_attr = f' w:hanging="{hanging}"' if hanging else ""
-        ppr_parts.append(f'<w:ind w:left="{indent}"{hanging_attr}/>')
-    rpr_parts = [
-        f'<w:rFonts w:ascii="{DOCX_FONT}" w:hAnsi="{DOCX_FONT}" w:eastAsia="{DOCX_FONT}" w:cs="{DOCX_FONT}"/>',
-        f'<w:sz w:val="{size}"/>',
-        f'<w:szCs w:val="{size}"/>',
-        '<w:color w:val="000000"/>',
-    ]
-    if bold:
-        rpr_parts.insert(0, "<w:b/>")
-    if italic:
-        rpr_parts.insert(0, "<w:i/>")
-    safe_text = escape(text or "")
-    return (
-        "<w:p>"
-        f"<w:pPr>{''.join(ppr_parts)}</w:pPr>"
-        "<w:r>"
-        f"<w:rPr>{''.join(rpr_parts)}</w:rPr>"
-        f'<w:t xml:space="preserve">{safe_text}</w:t>'
-        "</w:r>"
-        "</w:p>"
-    )
-
-
-def _table_xml(headers: list[str], rows: list[list[str]]) -> str:
-    if not headers:
-        return ""
-    col_count = len(headers)
-    normalized_rows = [
-        [row[i] if i < len(row) else "" for i in range(col_count)]
-        for row in rows
-    ]
-    all_rows = [headers, *normalized_rows]
-    row_xml = []
-    for row_index, row in enumerate(all_rows):
-        cells = []
-        for cell in row:
-            fill = '<w:shd w:fill="F2F2F2"/>' if row_index == 0 else ""
-            cells.append(
-                "<w:tc>"
-                "<w:tcPr>"
-                '<w:tcW w:w="0" w:type="auto"/>'
-                f"{fill}"
-                "<w:tcBorders>"
-                '<w:top w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>'
-                '<w:left w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>'
-                '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>'
-                '<w:right w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>'
-                "</w:tcBorders>"
-                "</w:tcPr>"
-                f"{_paragraph(cell, bold=row_index == 0, size=20, spacing_after=0)}"
-                "</w:tc>"
-            )
-        row_xml.append(f"<w:tr>{''.join(cells)}</w:tr>")
-
-    return (
-        "<w:tbl>"
-        "<w:tblPr>"
-        '<w:tblW w:w="5000" w:type="pct"/>'
-        "<w:tblBorders>"
-        '<w:top w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>'
-        '<w:left w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>'
-        '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>'
-        '<w:right w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>'
-        '<w:insideH w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>'
-        '<w:insideV w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>'
-        "</w:tblBorders>"
-        '<w:tblCellMar><w:top w:w="80" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar>'
-        "</w:tblPr>"
-        f"{''.join(row_xml)}"
-        "</w:tbl>"
-        '<w:p><w:pPr><w:spacing w:after="160"/></w:pPr></w:p>'
-    )
-
-
-def _page_break_paragraph() -> str:
-    return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>'
