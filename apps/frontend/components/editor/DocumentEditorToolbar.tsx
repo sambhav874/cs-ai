@@ -46,7 +46,7 @@ function TbBtn({
       title={label}
       aria-label={label}
       className={
-        "flex h-7 min-w-7 items-center justify-center rounded text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 aria-[pressed=true]:bg-gray-200 aria-[pressed=true]:text-gray-900"
+        "flex h-7 min-w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground aria-[pressed=true]:bg-primary/10 aria-[pressed=true]:text-primary"
       }
       aria-pressed={active}
     >
@@ -56,7 +56,7 @@ function TbBtn({
 }
 
 function Divider() {
-  return <div className="mx-0.5 h-4 w-px bg-gray-200" />;
+  return <div className="mx-0.5 h-4 w-px bg-border" />;
 }
 
 function ColorPicker({
@@ -87,7 +87,7 @@ function ColorPicker({
         onMouseDown={handleClick}
         title={label}
         aria-label={label}
-        className="relative flex h-7 min-w-7 items-center justify-center rounded text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+        className="relative flex h-7 min-w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
       >
         {icon}
         <span
@@ -123,7 +123,7 @@ export function DocumentEditorToolbar({ editor }: ToolbarProps) {
   );
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5 border-b border-gray-200 bg-white px-3 py-1.5 font-sans">
+    <div className="flex flex-wrap items-center gap-0.5 border-b border-border bg-background px-3 py-1.5 font-sans">
       {/* ── Headings ── */}
       <TbBtn
         label="Heading 1"

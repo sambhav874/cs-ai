@@ -20,6 +20,10 @@ export default {
 			syne: ["var(--font-syne)", ...fontFamily.sans],
 		},
 			colors: {
+				'cs-background': '#FFFFFF',
+				'cs-primary': '#015CA9',
+				'cs-secondary': '#EE3224',
+				'cs-muted': '#A7A9AC',
 				background: 'hsl(var(--background))',
 				foreground: 'hsl(var(--foreground))',
 				card: {

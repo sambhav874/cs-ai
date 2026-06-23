@@ -269,34 +269,36 @@ function PlaybooksContent() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-white pt-16 text-gray-950">
-      <div className="flex items-center justify-between px-4 py-3 md:px-10">
+    <main className="flex min-h-screen flex-col bg-background pt-16 text-foreground">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center justify-between p-6 md:p-8 border-b border-border">
         <div className="min-w-0">
-          <h1 className="font-serif text-2xl font-medium text-gray-900">Playbooks</h1>
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground mb-1">
+            <span className="truncate">Playbooks</span>
+          </div>
+          <h1 className="text-3xl font-bold text-foreground">Playbooks</h1>
           {initialContractId ? (
-            <p className="mt-1 text-xs text-gray-500">Choose or create a playbook to run against the opened contract.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Choose or create a playbook to run against the opened contract.</p>
           ) : null}
         </div>
         <div className="flex items-center gap-2">
           <div className="relative hidden sm:block">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search playbooks..."
-              className="h-8 w-56 rounded-lg border border-gray-100 bg-white pl-8 pr-3 text-sm text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-300"
+              className="h-9 w-56 rounded-md border border-input bg-transparent pl-8 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
             />
           </div>
           <Button
             type="button"
-            size="sm"
-            className="h-8 gap-1.5 rounded-lg bg-gray-950 px-3 text-xs text-white hover:bg-gray-800"
+            className="h-9 gap-1.5"
             onClick={() => {
               resetCreateForm(initialContractId ? "reference" : "template");
               setCreateOpen(true);
             }}
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus className="h-4 w-4" />
             New Playbook
           </Button>
         </div>

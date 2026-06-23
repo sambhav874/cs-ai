@@ -90,9 +90,9 @@ export function DocumentEditor({ content, onChange }: DocumentEditorProps) {
   }
 
   return (
-    <div className="tiptap-editor">
+    <div className="tiptap-editor flex flex-col border border-border rounded-md overflow-hidden bg-background">
       <DocumentEditorToolbar editor={editor} />
-      <div className="tiptap-pages">
+      <div className="tiptap-pages bg-muted/20 p-4 md:p-8 overflow-y-auto">
         <EditorContent editor={editor} />
       </div>
     </div>
