@@ -1,6 +1,0 @@
-approval_required_action_rate,artifact_grounding,attempt,case_id,forbidden_tool_block_rate,layer,passed,required_column_completion,row_citation_precision,score,source_contract_immutability,table_cell_accuracy,table_schema_correctness,tool_argument_accuracy,tool_selection_accuracy,tool_sequence_validity,workflow_completion
-0.0,1.0,1,cuad-0011-metlife-inc-remarketing-agreement-f63e27b47b72:tools:table_review:99e531dcce,1.0,tools,False,0.0,0.0,0.4167,1.0,0.0,0.0,1.0,0.0,1.0,0.0
-0.0,1.0,1,cuad-0040-cytodyninc-20200109-10-q-ex-10-5-11941634-ex-10-5-license-ag-abc8e9538636:tools:table_review:439c2eb6f1,1.0,tools,False,0.0,0.0,0.4167,1.0,0.0,0.0,1.0,0.0,1.0,0.0
-0.0,1.0,1,cuad-0073-antares-pharma-inc-manufacturing-agreement-b68b061aa76e:tools:table_review:a91029b8c5,1.0,tools,False,0.0,0.0,0.4167,1.0,0.0,0.0,1.0,0.0,1.0,0.0
-0.0,1.0,1,cuad-0093-n2kinc-10-16-1997-ex-10-16-sponsorship-agreement-72206778cab5:tools:table_review:300fd10ee6,1.0,tools,False,0.0,0.0,0.4167,1.0,0.0,0.0,1.0,0.0,1.0,0.0
-0.0,1.0,1,cuad-0127-anixabiosciencesinc-06-09-2020-ex-10-1-collaboration-agreeme-766a09d61746:tools:table_review:f6676aa4ad,1.0,tools,False,0.0,0.0,0.4167,1.0,0.0,0.0,1.0,0.0,1.0,0.0

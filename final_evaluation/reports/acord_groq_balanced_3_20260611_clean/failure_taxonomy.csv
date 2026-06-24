@@ -1,5 +1,0 @@
-count,example_case_id,failure_mode
-9,acord-Change Of Control-change-of-control-fbe732bcd8f6:pac1:acord_query_focus:400c8815ce,invalid_or_unsupported_citation
-6,acord-Change Of Control-change-of-control-fbe732bcd8f6:rag:acord_top1_retrieval:f6204af818,missing_citation
-3,acord-Change Of Control-change-of-control-fbe732bcd8f6:tools:table_review:b50e0ef2e8,approval_request_missing
-2,acord-Change Of Control-change-of-control-fbe732bcd8f6:tools:security_denial:3d37358db3,expected_refusal_missing
