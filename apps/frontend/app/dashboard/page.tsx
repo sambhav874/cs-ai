@@ -12,6 +12,7 @@ import {
   BarChart3,
   BookOpen,
   ChevronDown,
+  ChevronRight,
   CheckCircle2,
   CreditCard,
   Download,
@@ -27,9 +28,14 @@ import {
   UploadCloud,
   X,
   Table2,
+  Info,
+  User,
+  Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -89,7 +95,6 @@ import {
 } from "@/components/dashboard/utils";
 import { ContractExplorer } from "@/components/dashboard/ContractExplorer";
 import { ProjectOverview } from "@/components/dashboard/ProjectOverview";
-import { ProjectSwitcher } from "@/components/dashboard/ProjectSwitcher";
 import { ProjectAssistantWorkspace } from "@/components/dashboard/ProjectAssistantWorkspace";
 import { ProjectKPIWorkspace } from "@/components/dashboard/ProjectKPIWorkspace";
 
@@ -109,6 +114,7 @@ function DashboardContent() {
   const requestedTab = searchParams.get("tab");
   const requestedUpload = searchParams.get("upload") === "1";
   const requestedSessionId = searchParams.get("session_id");
+  const requestedView = searchParams.get("view");
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectIdState] = useState<string | null>(null);
   const [projectStats, setProjectStats] = useState<ProjectStats>(emptyStats);
@@ -249,6 +255,15 @@ function DashboardContent() {
     }
   }, [apiUrl, isAuthenticated, token, authenticatedFetch, handleApiError]);
 
+  useEffect(() => {
+    if (requestedView === "all") {
+      setSelectedProjectIdState(null);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(`${PROJECT_SELECTION_KEY}_${selectedAccountId}`);
+      }
+    }
+  }, [requestedView, selectedAccountId]);
+
   const fetchUserCredits = useCallback(async () => {
     if (!isAuthenticated) return;
     let url = `${apiUrl}/account/balance`;
@@ -286,6 +301,7 @@ function DashboardContent() {
       const loadedProjects = (data || []) as Project[];
       setProjects(loadedProjects);
       setSelectedProjectIdState((current) => {
+        if (requestedView === "all") return null;
         const stored = typeof window !== "undefined"
           ? localStorage.getItem(`${PROJECT_SELECTION_KEY}_${selectedAccountId}`)
           : null;
@@ -293,7 +309,7 @@ function DashboardContent() {
         if (preferred && loadedProjects.some((project) => project._id === preferred)) {
           return preferred;
         }
-        return loadedProjects[0]?._id || null;
+        return null;
       });
     } catch (error) {
       console.error("Failed to fetch projects:", error);
@@ -305,7 +321,7 @@ function DashboardContent() {
     } finally {
       setIsProjectLoading(false);
     }
-  }, [isAuthenticated, accountInitialized, apiUrl, selectedAccountId, requestedProjectId, authenticatedFetch, handleApiError]);
+  }, [isAuthenticated, accountInitialized, apiUrl, selectedAccountId, requestedProjectId, requestedView, authenticatedFetch, handleApiError]);
 
   const fetchProjectStats = useCallback(async (projectId: string | null) => {
     if (!isAuthenticated || !apiUrl || !projectId) {
@@ -1135,46 +1151,67 @@ function DashboardContent() {
     return rawStatus;
   }, [currentUserInfo]);
 
+  if (isInitialLoading) {
+    return <LoadingScreen />;
+  }
+
   return (
     <div className="min-h-screen bg-background font-InterVar text-foreground">
-      {isInitialLoading && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background">
-          <LoadingScreen />
-        </div>
-      )}
-
       <div className="min-h-screen pt-20 md:pt-0">
         <main className="flex min-w-0 flex-col">
-          <ProjectSwitcher
-            projects={filteredProjects}
-            selectedProjectId={selectedProjectId}
-            projectSearch={projectSearch}
-            isProjectLoading={isProjectLoading}
-            isProjectDialogOpen={isProjectDialogOpen}
-            newProjectName={newProjectName}
-            newProjectDescription={newProjectDescription}
-            isCreatingProject={isCreatingProject}
-            onSelectProject={setSelectedProjectId}
-            onProjectSearchChange={setProjectSearch}
-            onProjectDialogChange={setIsProjectDialogOpen}
-            onProjectNameChange={setNewProjectName}
-            onProjectDescriptionChange={setNewProjectDescription}
-            onCreateProject={handleCreateProject}
-          />
-
+          {selectedProjectId && (
+            <div className="border-b border-border px-6 py-2.5 md:px-8 bg-muted/20">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+                <button onClick={() => setSelectedProjectId(null)} className="hover:text-foreground transition-colors">
+                  Projects
+                </button>
+                <ChevronRight className="h-4 w-4" />
+                <span className="text-foreground">{selectedProject?.name}</span>
+              </div>
+            </div>
+          )}
           <header className="border-b border-border p-6 md:p-8">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="min-w-0">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <span className="truncate">{selectedProject ? 'Project Dashboard' : 'Account Dashboard'}</span>
-                  {selectedProject && <span className="truncate">{selectedProject.ownerType}</span>}
+                <div className="flex items-center gap-2 text-xs font-medium">
+                  {selectedAccountId === "personal" ? (
+                    <Badge variant="outline" className="gap-1.5 rounded-full font-normal text-muted-foreground">
+                      <User className="h-3 w-3" />
+                      Personal workspace
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="gap-1.5 rounded-full font-normal text-muted-foreground">
+                      <Building2 className="h-3 w-3" />
+                      Account workspace
+                    </Badge>
+                  )}
+                  {selectedProject && (
+                    <Badge variant="secondary" className="gap-1.5 rounded-full font-normal text-muted-foreground bg-muted/50 hover:bg-muted/50">
+                      <span className="capitalize">{selectedProject.ownerType}</span> project
+                    </Badge>
+                  )}
                 </div>
-                <h1 className="mt-1 truncate text-3xl font-bold text-foreground">
-                  {selectedProject ? selectedProject.name : "Projects"}
-                </h1>
-                <p className="mt-1 max-w-2xl truncate text-sm text-muted-foreground">
-                  {selectedProject?.description || "Project-centered contracts, roles, ingestion, and readiness."}
-                </p>
+                {!selectedProjectId ? (
+                  <h1 className="mt-2 truncate text-3xl font-bold text-foreground">
+                    All projects
+                  </h1>
+                ) : (
+                  <div className="flex items-center gap-2 mt-2">
+                    <h1 className="truncate text-3xl font-bold text-foreground">
+                      {selectedProject?.name}
+                    </h1>
+                    <TooltipProvider delayDuration={100}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="mt-1 h-5 w-5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">{selectedProject?.description || "Project-centered contracts, roles, ingestion, and readiness."}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -1237,34 +1274,31 @@ function DashboardContent() {
             )}
           </header>
 
-          <div className="flex h-10 items-center border-b border-border px-6 md:px-8">
-            <div className="flex flex-1 items-center gap-5 h-full">
-              {(selectedProjectId
-                ? [
-                    { id: "contracts", label: "Contracts" },
-                    { id: "kpis", label: "KPIs" },
-                    { id: "reviews", label: "Reviews" },
-                    { id: "playbooks", label: "Playbooks" },
-                    { id: "assistant", label: "Assistant" },
-                  ]
-                : [{ id: "overview", label: "Overview" }]
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setProjectTab(tab.id as ProjectTab)}
-                  className={cx(
-                    "text-xs transition-colors h-full px-1 border-b-2",
-                    projectTab === tab.id ? "font-bold text-foreground border-[#015CA9]" : "border-transparent text-muted-foreground hover:text-foreground/80 hover:border-border",
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-            {selectedProject && (
+          {selectedProjectId && (
+            <div className="flex h-10 items-center border-b border-border px-6 md:px-8">
+              <div className="flex flex-1 items-center gap-5 h-full">
+                {[
+                  { id: "contracts", label: "Contracts" },
+                  { id: "kpis", label: "KPIs" },
+                  { id: "reviews", label: "Reviews" },
+                  { id: "playbooks", label: "Playbooks" },
+                  { id: "assistant", label: "Assistant" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setProjectTab(tab.id as ProjectTab)}
+                    className={cx(
+                      "text-xs transition-colors h-full px-1 border-b-2",
+                      projectTab === tab.id ? "font-bold text-foreground border-[#015CA9]" : "border-transparent text-muted-foreground hover:text-foreground/80 hover:border-border",
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
               <span className="text-xs text-muted-foreground">Updated {formatDate(selectedProject.updatedAt)}</span>
-            )}
-          </div>
+            </div>
+          )}
 
           <section className={cx("min-h-0 flex-1 bg-background", projectTab === "assistant" ? "overflow-hidden" : "overflow-y-auto")}>
             {!selectedProjectId ? (
@@ -1272,6 +1306,17 @@ function DashboardContent() {
                 projects={filteredProjects}
                 selectedProject={selectedProject}
                 onSelectProject={setSelectedProjectId}
+                projectSearch={projectSearch}
+                isProjectLoading={isProjectLoading}
+                isProjectDialogOpen={isProjectDialogOpen}
+                newProjectName={newProjectName}
+                newProjectDescription={newProjectDescription}
+                isCreatingProject={isCreatingProject}
+                onProjectSearchChange={setProjectSearch}
+                onProjectDialogChange={setIsProjectDialogOpen}
+                onProjectNameChange={setNewProjectName}
+                onProjectDescriptionChange={setNewProjectDescription}
+                onCreateProject={handleCreateProject}
               />
             ) : projectTab === "kpis" && selectedProject ? (
               <ProjectKPIWorkspace

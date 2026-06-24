@@ -836,3 +836,83 @@ body {
     scroll-behavior: auto !important;
   }
 }
+/* Contract Agent Markdown Styling */
+.contract-agent-markdown {
+  font-size: 0.875rem; /* text-sm */
+  line-height: 1.6; /* leading-relaxed */
+  color: #1f2937; /* text-gray-800 */
+}
+.contract-agent-markdown p {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.contract-agent-markdown h1,
+.contract-agent-markdown h2,
+.contract-agent-markdown h3 {
+  font-weight: 600;
+  color: #111827; /* text-gray-900 */
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+.contract-agent-markdown ul,
+.contract-agent-markdown ol {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1.5rem;
+  list-style-position: outside;
+}
+.contract-agent-markdown ul {
+  list-style-type: disc;
+}
+.contract-agent-markdown ol {
+  list-style-type: decimal;
+}
+.contract-agent-markdown a {
+  color: #015CA9; /* cs-primary */
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.contract-agent-markdown code {
+  background-color: #f3f4f6; /* bg-gray-100 */
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.8125rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+.contract-agent-markdown pre {
+  background-color: #f3f4f6;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.contract-agent-markdown pre code {
+  background-color: transparent;
+  padding: 0;
+  font-size: 0.75rem;
+}
+.contract-agent-markdown blockquote {
+  border-left: 3px solid #e5e7eb;
+  padding-left: 0.75rem;
+  font-style: italic;
+  color: #4b5563;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.contract-agent-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.contract-agent-markdown th,
+.contract-agent-markdown td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem;
+  text-align: left;
+}
+.contract-agent-markdown th {
+  background-color: #f9fafb;
+  font-weight: 600;
+}

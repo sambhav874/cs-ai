@@ -45,6 +45,7 @@ import {
   Play,
   PanelLeftClose,
   PanelLeftOpen,
+  Copy,
 } from "lucide-react";
 
 import { useAccountContext } from '@/app/context/AccountContext';
@@ -4064,7 +4065,7 @@ export function ContractProjectExplorer({
                   if (document._id === currentContractId) onOpenContractDocument();
                 }}
                 className={`group relative flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
-                  isCurrent ? "bg-blue-50 text-blue-600" : "text-muted-foreground hover:bg-muted/50 hover:text-gray-600"
+                  isCurrent ? "bg-cs-primary/10 text-cs-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-gray-600"
                 }`}
               >
                 <FileText className="h-4 w-4" />
@@ -4131,10 +4132,10 @@ export function ContractProjectExplorer({
                     if (document._id === currentContractId) onOpenContractDocument();
                   }}
                   className={`flex min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-sm transition-colors ${
-                    isCurrent ? "bg-gray-100 text-gray-950" : "text-gray-600 hover:bg-muted/50 hover:text-gray-950"
+                    isCurrent ? "bg-cs-primary/10 text-cs-primary" : "text-gray-600 hover:bg-muted/50 hover:text-gray-950"
                   }`}
                 >
-                  <FileText className={`h-4 w-4 shrink-0 ${isCurrent ? "text-blue-600" : "text-rose-500"}`} />
+                  <FileText className={`h-4 w-4 shrink-0 ${isCurrent ? "text-cs-primary" : "text-rose-500"}`} />
                   <span className="truncate">{truncateMiddle(document.contract_name, 34)}</span>
                 </Link>
               );
@@ -4145,17 +4146,25 @@ export function ContractProjectExplorer({
         <div className="mt-5 border-t border-border pt-4">
           <div className="mb-2 flex items-center justify-between gap-2 px-1">
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Agent documents</div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 px-2 text-xs text-gray-600 hover:text-gray-950"
-              onClick={onCreateEditableCopy}
-              disabled={isCreatingEditableCopy}
-            >
-              {isCreatingEditableCopy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardEdit className="h-3.5 w-3.5" />}
-              Copy
-            </Button>
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-gray-500 hover:text-gray-900"
+                    onClick={onCreateEditableCopy}
+                    disabled={isCreatingEditableCopy}
+                  >
+                    {isCreatingEditableCopy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Copy</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
 
           {isAgentDocumentsLoading && !agentDocuments.length ? (

@@ -2736,22 +2736,20 @@ export default function ContractView() {
                 </div>
               )}
 
-              <div className="flex min-h-12 shrink-0 items-center gap-3 border-b border-border bg-card px-4 py-2 md:px-6">
-                <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground" title="Back">
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
+              <div className="flex min-h-[52px] shrink-0 items-center gap-3 border-b border-border bg-muted/20 px-6 py-2.5 md:px-8">
                 <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-sm font-medium text-muted-foreground">
-                  <Link href="/dashboard" className="hidden shrink-0 hover:text-foreground transition-colors sm:inline">
+                  <Link href="/dashboard?view=all" className="shrink-0 hover:text-foreground transition-colors">
                     Projects
                   </Link>
-                  <ChevronRight className="hidden h-4 w-4 shrink-0 sm:inline" />
-                  <span className="truncate hover:text-foreground transition-colors cursor-default">
-                    {workspaceProjectName}{workspaceProjectId ? ` (#${workspaceProjectId.slice(-6)})` : ""}
-                  </span>
                   <ChevronRight className="h-4 w-4 shrink-0" />
-                  <span className="hidden shrink-0 hover:text-foreground transition-colors cursor-default md:inline">Assistant</span>
-                  <ChevronRight className="hidden h-4 w-4 shrink-0 md:inline" />
-                  <span className="truncate text-foreground font-semibold" title={contract.contract_name}>
+                  <Link 
+                    href={workspaceProjectId ? `/dashboard?project_id=${workspaceProjectId}` : "/dashboard"} 
+                    className="truncate hover:text-foreground transition-colors"
+                  >
+                    {workspaceProjectName || "Unknown Project"}
+                  </Link>
+                  <ChevronRight className="h-4 w-4 shrink-0" />
+                  <span className="truncate text-foreground font-medium" title={contract.contract_name}>
                     {truncateMiddle(contract.contract_name, 34)}
                   </span>
                 </div>
@@ -2862,12 +2860,7 @@ export default function ContractView() {
                     </>
                   )}
 
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="New assistant chat">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Clear chat">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+
                 </div>
               </div>
 
@@ -2925,7 +2918,7 @@ export default function ContractView() {
                       onValueChange={setActiveTab}
                       className="flex-1 flex flex-col h-full"
                     >
-                      <div className="flex min-h-12 flex-col gap-2 border-b border-border bg-card px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-h-12 flex-col gap-2 border-b border-border bg-card px-4 py-2 sm:h-12 sm:flex-row sm:items-center sm:justify-between sm:py-0">
                         <div>
                           <div className="text-sm font-medium text-foreground/90">Document Viewer</div>
                         </div>

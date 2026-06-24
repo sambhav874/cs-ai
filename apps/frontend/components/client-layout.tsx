@@ -58,7 +58,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
       <main id="main-content" className={`
         transition-[margin]
         duration-100
-        ${shouldShowSidebar ? (isExpanded ? 'md:ml-80' : 'md:ml-16') : ''}
+        ${shouldShowSidebar ? (isExpanded ? 'md:ml-72' : 'md:ml-16') : ''}
       `}>
         {children}
       </main>
