@@ -29,7 +29,7 @@ import type { KpiSourceFieldMapping } from "@/lib/kpi-source-fields";
 import { apiDownload, apiFetch, apiUploadWithProgress } from "@/lib/apiClient";
 import {
   FileText, AlertCircle, Clock, RefreshCw, Check, X, Send, ArrowLeft, Loader2,
-  ClipboardEdit, ClipboardCheck, ClipboardX, Search, Upload, ChevronUp, ChevronDown,
+  ClipboardEdit, ClipboardCheck, ClipboardX, Search, Upload, ChevronUp, ChevronDown, ChevronRight,
   Download,
   Eye,
   FolderOpen,
@@ -605,9 +605,9 @@ interface UserInDB {
 const PDFViewerDynamic = dynamic(() => import('@/components/PDFViewer/Sample'), {
   ssr: false, // This is the key part! It disables server-side rendering for this component.
   loading: () => (
-    <div className="flex h-96 w-full items-center justify-center rounded-lg bg-gray-200">
-      <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
-      <p className="ml-2 text-gray-600">Loading PDF Viewer...</p>
+    <div className="flex h-96 w-full items-center justify-center rounded-lg bg-muted">
+      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <p className="ml-2 text-muted-foreground">Loading PDF Viewer...</p>
     </div>
   ), // Optional: Show a loading message while the component loads.
 });
@@ -720,7 +720,7 @@ function buildClientKpiSummary(kpis: ContractKPI[]): ContractKPISummary {
 function kpiStatusClass(status?: string) {
   switch (status) {
     case "approved": return "border-green-200 bg-green-50 text-green-700";
-    case "ignored": return "border-gray-200 bg-gray-50 text-gray-500";
+    case "ignored": return "border-border bg-muted/30 text-muted-foreground";
     case "needs_review": return "border-amber-200 bg-amber-50 text-amber-700";
     default: return "border-blue-100 bg-blue-50 text-blue-700";
   }
@@ -2648,7 +2648,7 @@ export default function ContractView() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-card">
         <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <ContractLoadingScreen />
         </main>
@@ -2658,7 +2658,7 @@ export default function ContractView() {
 
   if (error || !contract) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen bg-card">
         <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -2706,7 +2706,7 @@ export default function ContractView() {
   );
 
   return (
-    <div className="h-screen overflow-hidden bg-white font-InterVar text-gray-900">
+    <div className="h-screen overflow-hidden bg-card font-InterVar text-foreground">
       <main className="h-screen">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -2722,7 +2722,7 @@ export default function ContractView() {
           )}
 
           {contract && currentUserInfo && (
-            <motion.div layout className="flex min-h-0 flex-1 flex-col bg-white">
+            <motion.div layout className="flex min-h-0 flex-1 flex-col bg-card">
               {/* Re-edit Request Notification Banner */}
               {canDecideOnReEdit && contract.reEditRequest && (
                 <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 md:px-10">
@@ -2730,28 +2730,28 @@ export default function ContractView() {
                   <p className="text-sm text-amber-700 mt-1">
                     The editor has requested to re-open this contract for editing for the following reason:
                   </p>
-                  <blockquote className="mt-2 border-l-4 border-amber-300 pl-3 text-sm italic text-gray-700">
+                  <blockquote className="mt-2 border-l-4 border-amber-300 pl-3 text-sm italic text-muted-foreground">
                     "{contract.reEditRequest.reason}"
                   </blockquote>
                 </div>
               )}
 
-              <div className="flex min-h-16 shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 md:px-6">
-                <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-8 w-8 shrink-0 text-gray-500 hover:text-gray-900" title="Back">
+              <div className="flex min-h-12 shrink-0 items-center gap-3 border-b border-border bg-card px-4 py-2 md:px-6">
+                <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground" title="Back">
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-sm text-gray-500">
-                  <Link href="/dashboard" className="hidden shrink-0 font-serif text-2xl font-light text-gray-700 hover:text-gray-950 sm:inline">
+                <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-sm font-medium text-muted-foreground">
+                  <Link href="/dashboard" className="hidden shrink-0 hover:text-foreground transition-colors sm:inline">
                     Projects
                   </Link>
-                  <span className="hidden shrink-0 text-gray-300 sm:inline">›</span>
-                  <span className="truncate font-serif text-2xl font-light text-gray-700">
+                  <ChevronRight className="hidden h-4 w-4 shrink-0 sm:inline" />
+                  <span className="truncate hover:text-foreground transition-colors cursor-default">
                     {workspaceProjectName}{workspaceProjectId ? ` (#${workspaceProjectId.slice(-6)})` : ""}
                   </span>
-                  <span className="shrink-0 text-gray-300">›</span>
-                  <span className="hidden shrink-0 font-serif text-2xl font-light text-gray-700 md:inline">Assistant</span>
-                  <span className="hidden shrink-0 text-gray-300 md:inline">›</span>
-                  <span className="truncate font-serif text-2xl font-light text-gray-950" title={contract.contract_name}>
+                  <ChevronRight className="h-4 w-4 shrink-0" />
+                  <span className="hidden shrink-0 hover:text-foreground transition-colors cursor-default md:inline">Assistant</span>
+                  <ChevronRight className="hidden h-4 w-4 shrink-0 md:inline" />
+                  <span className="truncate text-foreground font-semibold" title={contract.contract_name}>
                     {truncateMiddle(contract.contract_name, 34)}
                   </span>
                 </div>
@@ -2776,7 +2776,7 @@ export default function ContractView() {
 
                   {canDecideOnReEdit && (
                     <>
-                      <Button size="sm" onClick={handleApproveReEdit} disabled={isApprovingReEdit} className="hidden bg-gray-900 text-white hover:bg-gray-800 lg:inline-flex">
+                      <Button size="sm" onClick={handleApproveReEdit} disabled={isApprovingReEdit} className="hidden bg-primary text-primary-foreground hover:bg-primary/90 lg:inline-flex">
                         {isApprovingReEdit && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         <Check className="mr-1 h-4 w-4" /> Approve Re-edit
                       </Button>
@@ -2795,7 +2795,7 @@ export default function ContractView() {
                   )}
 
                   {contractStatus === 'Re-edit Denied' && isAssignedEditor && (
-                    <Button size="sm" onClick={handleAcknowledgeDenial} disabled={isAcknowledging} className="hidden bg-gray-900 text-white hover:bg-gray-800 lg:inline-flex">
+                    <Button size="sm" onClick={handleAcknowledgeDenial} disabled={isAcknowledging} className="hidden bg-primary text-primary-foreground hover:bg-primary/90 lg:inline-flex">
                       {isAcknowledging && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Acknowledge
                     </Button>
@@ -2808,7 +2808,7 @@ export default function ContractView() {
                           <Tooltip open={isViewingLastSave ? undefined : false}>
                             <TooltipTrigger asChild>
                               <span tabIndex={0} className="hidden lg:inline-flex">
-                                <Button size="sm" onClick={handleSubmitForApproval} disabled={isSubmittingApproval || isSavingDraft || isSubmittingVersion || !canSubmit} className="bg-gray-900 text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60">
+                                <Button size="sm" onClick={handleSubmitForApproval} disabled={isSubmittingApproval || isSavingDraft || isSubmittingVersion || !canSubmit} className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
                                   {isSubmittingApproval && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                   <Send className="mr-1 h-4 w-4" /> Submit
                                 </Button>
@@ -2820,7 +2820,7 @@ export default function ContractView() {
                       )}
 
                       {canApprove && (
-                        <Button size="sm" onClick={handleApprove} disabled={isApproving} className="hidden bg-gray-900 text-white hover:bg-gray-800 lg:inline-flex">
+                        <Button size="sm" onClick={handleApprove} disabled={isApproving} className="hidden bg-primary text-primary-foreground hover:bg-primary/90 lg:inline-flex">
                           {isApproving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} <Check className="mr-1 h-4 w-4" /> Approve
                         </Button>
                       )}
@@ -2840,7 +2840,7 @@ export default function ContractView() {
                       )}
 
                       {canMarkComplete && (
-                        <Button size="sm" onClick={handleMarkComplete} disabled={isCompleting} className="hidden bg-gray-900 text-white hover:bg-gray-800 lg:inline-flex">
+                        <Button size="sm" onClick={handleMarkComplete} disabled={isCompleting} className="hidden bg-primary text-primary-foreground hover:bg-primary/90 lg:inline-flex">
                           {isCompleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                           <Check className="mr-1 h-4 w-4" /> Complete
                         </Button>
@@ -2862,10 +2862,10 @@ export default function ContractView() {
                     </>
                   )}
 
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-gray-900" title="New assistant chat">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="New assistant chat">
                     <Plus className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-gray-900" title="Clear chat">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Clear chat">
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -2919,35 +2919,35 @@ export default function ContractView() {
                 <ResizablePanelGroup direction="horizontal" className="h-full w-full">
 
                   {/* Left Compartment: Document/PDF Workspace */}
-                  <ResizablePanel defaultSize={isKpiWorkspace ? 54 : 66} minSize={42} className="flex h-full flex-col overflow-hidden border-r border-gray-200 bg-gray-50">
+                  <ResizablePanel defaultSize={isKpiWorkspace ? 54 : 66} minSize={42} className="flex h-full flex-col overflow-hidden border-r border-border bg-muted/30">
                     <Tabs
                       value={documentTabsValue}
                       onValueChange={setActiveTab}
                       className="flex-1 flex flex-col h-full"
                     >
-                      <div className="flex min-h-12 flex-col gap-2 border-b border-gray-200 bg-white px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-h-12 flex-col gap-2 border-b border-border bg-card px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <div className="text-sm font-medium text-gray-800">Document Viewer</div>
+                          <div className="text-sm font-medium text-foreground/90">Document Viewer</div>
                         </div>
-                        <TabsList className="grid h-9 w-full grid-cols-3 rounded-md bg-gray-100 p-1 sm:w-auto">
-                          <TabsTrigger value="default" className="rounded px-2 text-xs data-[state=active]:bg-white data-[state=active]:text-gray-900">
+                        <TabsList className="grid h-9 w-full grid-cols-3 rounded-md bg-muted p-1 sm:w-auto">
+                          <TabsTrigger value="default" className="rounded px-2 text-xs data-[state=active]:bg-card data-[state=active]:text-foreground">
                             <FileText className="h-4 w-4 mr-1 sm:mr-2" />PDF View
                           </TabsTrigger>
-                          <TabsTrigger value="docx" disabled={!selectedAgentDocument} className="rounded px-2 text-xs data-[state=active]:bg-white data-[state=active]:text-gray-900">
+                          <TabsTrigger value="docx" disabled={!selectedAgentDocument} className="rounded px-2 text-xs data-[state=active]:bg-card data-[state=active]:text-foreground">
                             DOCX
                           </TabsTrigger>
                           <button
                             type="button"
                             title="Open KPI management"
                             onClick={() => router.push(`/contracts/${contract._id}/kpis`)}
-                            className="inline-flex items-center justify-center whitespace-nowrap rounded px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:text-gray-900"
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                           >
                             <BarChart3 className="mr-1 h-4 w-4 sm:mr-2" />KPIs
                           </button>
                         </TabsList>
                       </div>
 
-                      <TabsContent value="default" className=" overflow-auto bg-gray-50 rounded-b-lg h-full">
+                      <TabsContent value="default" className=" overflow-auto bg-muted/30 rounded-b-lg h-full">
                         {token && (pdfViewerContractId || contractId) && (
                           <div className="flex h-full w-full flex-col">
                             {pdfViewerContractId && pdfViewerContractId !== contractId && (
@@ -2981,7 +2981,7 @@ export default function ContractView() {
                         )}
                       </TabsContent>
 
-                      <TabsContent value="docx" className="h-full overflow-auto rounded-b-lg bg-gray-100">
+                      <TabsContent value="docx" className="h-full overflow-auto rounded-b-lg bg-muted">
                         <AgentDocumentPreviewPane
                           document={selectedAgentDocumentSummary}
                           preview={agentDocumentPreview}
@@ -3002,16 +3002,16 @@ export default function ContractView() {
                     </Tabs>
                   </ResizablePanel>
 
-                  <ResizableHandle withHandle className="bg-gray-200" />
+                  <ResizableHandle withHandle className="bg-muted" />
 
                   {/* Right Compartment: KPI tracking console in KPI mode, assistant otherwise */}
-                  <ResizablePanel defaultSize={isKpiWorkspace ? 46 : 34} minSize={isKpiWorkspace ? 36 : 26} className="flex h-full flex-col overflow-hidden bg-white">
+                  <ResizablePanel defaultSize={isKpiWorkspace ? 46 : 34} minSize={isKpiWorkspace ? 36 : 26} className="flex h-full flex-col overflow-hidden bg-card">
                     {isKpiWorkspace ? (
                       <div className="flex h-full min-h-0 flex-col">
-                        <div className="flex h-12 shrink-0 items-center justify-between border-b border-gray-200 bg-white px-3">
+                        <div className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-3">
                           <div>
-                            <p className="text-sm font-semibold text-gray-950">Tracking Console</p>
-                            <p className="text-[11px] text-gray-500">Review, sources, flags, logs</p>
+                            <p className="text-sm font-semibold text-foreground">Tracking Console</p>
+                            <p className="text-[11px] text-muted-foreground">Review, sources, flags, logs</p>
                           </div>
                           <Button
                             type="button"
@@ -3072,13 +3072,13 @@ export default function ContractView() {
                 {isKpiWorkspace && isKpiAgentOpen && (
                   <div className="fixed inset-0 z-[120] bg-black/20" onClick={() => setIsKpiAgentOpen(false)}>
                     <div
-                      className="absolute inset-y-0 right-0 flex w-full max-w-[460px] flex-col bg-white shadow-2xl"
+                      className="absolute inset-y-0 right-0 flex w-full max-w-[460px] flex-col bg-card shadow-2xl"
                       onClick={(event) => event.stopPropagation()}
                     >
-                      <div className="flex h-12 shrink-0 items-center justify-between border-b border-gray-200 px-3">
+                      <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
                         <div>
-                          <p className="text-sm font-semibold text-gray-950">Contract Assistant</p>
-                          <p className="text-[11px] text-gray-500">Collapsed while tracking console is active</p>
+                          <p className="text-sm font-semibold text-foreground">Contract Assistant</p>
+                          <p className="text-[11px] text-muted-foreground">Collapsed while tracking console is active</p>
                         </div>
                         <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsKpiAgentOpen(false)} title="Close assistant">
                           <X className="h-4 w-4" />

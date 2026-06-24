@@ -413,7 +413,7 @@ body {
     --color-CLPrimary: 0 132 199;
     --color-CLBackground: 245 244 242;
     --color-CLForeground: 237 236 234;
-    --background: 0 0% 100%;
+    --background: 240 100% 98.8%; /* #F9F9FF */
     --foreground: 20 14.3% 4.1%;
     --card: 0 0% 100%;
     --card-foreground: 20 14.3% 4.1%;

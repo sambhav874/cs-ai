@@ -54,13 +54,13 @@ export const ContractExplorer = memo(function ContractExplorer({
   return (
     <div className="overflow-x-auto">
       <div className="min-w-[980px]">
-        <div className="flex h-8 items-center border-b border-border text-xs font-medium text-muted-foreground">
-          <div className="w-[340px] shrink-0 pl-2">Name</div>
-          <div className="w-44 shrink-0">Status</div>
-          <div className="w-64 shrink-0">Roles</div>
-          <div className="w-20 shrink-0">Pages</div>
-          <div className="w-32 shrink-0">Uploaded</div>
-          <div className="ml-auto w-48 shrink-0 pr-2 text-right">Actions</div>
+        <div className="grid grid-cols-[2fr_1fr_1.5fr_0.5fr_1fr_0.5fr] gap-4 p-4 border-b border-border text-[10px] uppercase tracking-wider font-bold text-muted-foreground bg-muted/30">
+          <div className="hover:text-foreground hover:underline transition-all duration-300 cursor-pointer">Name</div>
+          <div className="hover:text-foreground hover:underline transition-all duration-300 cursor-pointer">Status</div>
+          <div className="hover:text-foreground hover:underline transition-all duration-300 cursor-pointer">Roles</div>
+          <div className="hover:text-foreground hover:underline transition-all duration-300 cursor-pointer">Pages</div>
+          <div className="hover:text-foreground hover:underline transition-all duration-300 cursor-pointer">Uploaded</div>
+          <div className="text-right hover:text-foreground hover:underline transition-all duration-300 cursor-pointer">Actions</div>
         </div>
         {documents.map((doc) => {
           const displayStatus = displayStatusForDoc(doc);
@@ -78,19 +78,19 @@ export const ContractExplorer = memo(function ContractExplorer({
           const canProcess = doc.status === "Uploaded" || doc.status === "error" || doc.error;
 
           return (
-            <div key={doc._id} className="group flex min-h-14 items-center border-b border-border/50 text-sm transition-colors hover:bg-muted/50">
-              <div className="flex w-[340px] shrink-0 items-center gap-2 pl-2 pr-4">
-                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <div key={doc._id} className="group grid grid-cols-[2fr_1fr_1.5fr_0.5fr_1fr_0.5fr] gap-4 p-4 items-center border-b border-border/50 text-sm transition-colors hover:bg-muted/30">
+              <div className="flex items-start gap-3 min-w-0">
+                <FileText className="h-4 w-4 shrink-0 text-destructive/80 mt-0.5 transition-transform duration-300 group-hover:scale-110" />
                 <div className="min-w-0">
-                  <Link href={`/contracts/${doc._id}`} className="block truncate font-medium text-foreground hover:text-primary">
+                  <Link href={`/contracts/${doc._id}`} className="block truncate font-medium text-foreground group-hover:text-primary transition-colors duration-300">
                     {truncateMiddle(doc.contract_name)}
                   </Link>
-                  <div className="truncate text-xs text-muted-foreground">
+                  <div className="truncate text-xs text-muted-foreground mt-0.5">
                     Uploaded by {doc.uploader_name || truncateMiddle(doc.uploaded_by, 12)}
                   </div>
                 </div>
               </div>
-              <div className="w-44 shrink-0">
+              <div>
                 {isActive ? (
                   <ProcessingPill doc={doc} />
                 ) : (
@@ -107,7 +107,7 @@ export const ContractExplorer = memo(function ContractExplorer({
                   </span>
                 )}
               </div>
-              <div className="flex w-64 shrink-0 flex-wrap gap-1 pr-4">
+              <div className="flex gap-1.5 flex-wrap">
                 {isUploader && <RolePill label="Uploader" />}
                 {isEditor && <RolePill label="Editor" />}
                 {isApprover && <RolePill label="Approver" />}
@@ -116,9 +116,9 @@ export const ContractExplorer = memo(function ContractExplorer({
                 )}
                 {doc.ownerType === "user" && <span className="text-xs text-muted-foreground/80">Personal</span>}
               </div>
-              <div className="w-20 shrink-0 text-muted-foreground">{doc.page_count || 0}</div>
-              <div className="w-32 shrink-0 text-muted-foreground">{formatDate(doc.uploaded_at)}</div>
-              <div className="ml-auto flex w-48 shrink-0 justify-end gap-2 pr-2">
+              <div className="text-sm text-muted-foreground">{doc.page_count || 0}</div>
+              <div className="text-sm text-muted-foreground font-medium lowercase">{formatDate(doc.uploaded_at)}</div>
+              <div className="flex items-center justify-end gap-2">
                 {canEditRoles && (
                   <Button
                     variant="ghost"
@@ -133,7 +133,7 @@ export const ContractExplorer = memo(function ContractExplorer({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 gap-1 px-2 text-xs"
+                    className="h-8 gap-1 px-2 text-xs shadow-sm hover:-translate-y-0.5 transition-all duration-300"
                     onClick={() => onProcess(doc._id)}
                     disabled={!!currentlyProcessing}
                   >
@@ -141,7 +141,7 @@ export const ContractExplorer = memo(function ContractExplorer({
                     {doc.error ? "Retry" : "Process"}
                   </Button>
                 ) : (
-                  <Button asChild variant="outline" size="sm" className="h-8 px-2 text-xs">
+                  <Button asChild variant="outline" size="sm" className="px-3 py-1.5 h-auto rounded border border-border text-xs font-medium text-foreground hover:bg-muted transition-all duration-300 bg-background shadow-sm hover:shadow-md hover:-translate-y-0.5">
                     <Link href={`/contracts/${doc._id}`}>View</Link>
                   </Button>
                 )}

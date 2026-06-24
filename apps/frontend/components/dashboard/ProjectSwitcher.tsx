@@ -41,8 +41,8 @@ export function ProjectSwitcher({
     <section className="border-b border-border bg-muted/30 p-6 md:p-8">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 items-center gap-2">
-          <FolderOpen className="h-5 w-5 shrink-0 text-muted-foreground" />
-          <span className="font-serif text-3xl font-bold text-foreground">Projects</span>
+          <FolderOpen className="h-8 w-8 shrink-0 text-muted-foreground" />
+          <span className="text-3xl font-bold text-foreground">Projects</span>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -52,13 +52,13 @@ export function ProjectSwitcher({
               value={projectSearch}
               onChange={(event) => onProjectSearchChange(event.target.value)}
               placeholder="Search projects..."
-              className="h-10 border-border bg-background pl-9 text-sm"
+              className="h-10 border-border bg-card pl-9 text-sm"
             />
           </div>
 
           <Dialog open={isProjectDialogOpen} onOpenChange={onProjectDialogChange}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="h-10 gap-2">
+              <Button variant="outline" size="sm" className="h-10 gap-2 bg-card hover:bg-muted">
                 <FolderPlus className="h-4 w-4" />
                 New project
               </Button>
@@ -101,8 +101,8 @@ export function ProjectSwitcher({
             className={cx(
               "flex h-10 items-center rounded-md border px-4 text-sm transition-colors",
               !selectedProjectId
-                ? "border-primary bg-background text-foreground shadow-sm ring-1 ring-primary/20"
-                : "border-border bg-background/50 text-muted-foreground hover:bg-background hover:text-foreground",
+                ? "border-primary bg-card text-foreground shadow-sm ring-1 ring-primary/20"
+                : "border-border bg-card/50 text-muted-foreground hover:bg-card hover:text-foreground",
             )}
           >
             All projects
@@ -125,8 +125,8 @@ export function ProjectSwitcher({
                 className={cx(
                   "flex h-10 max-w-[220px] items-center gap-2 rounded-md border px-4 text-left text-sm transition-colors",
                   selectedProjectId === project._id
-                    ? "border-primary bg-background text-foreground shadow-sm ring-1 ring-primary/20"
-                    : "border-border bg-background/50 text-muted-foreground hover:bg-background hover:text-foreground",
+                    ? "border-primary bg-card text-foreground shadow-sm ring-1 ring-primary/20"
+                    : "border-border bg-card/50 text-muted-foreground hover:bg-card hover:text-foreground",
                 )}
               >
                 <span className="truncate font-medium">{project.name}</span>

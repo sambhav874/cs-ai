@@ -1178,7 +1178,7 @@ function DashboardContent() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <div className="flex h-9 items-center gap-2 rounded-full border border-border bg-muted/50 px-3 text-sm">
+                <div className="flex h-9 items-center gap-2 rounded-full border border-border bg-card px-3 text-sm">
                   <CreditCard className="h-4 w-4 text-muted-foreground" />
                   {isCreditLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <span>{userCredits?.page_credits ?? 0}</span>}
                 </div>
@@ -1187,7 +1187,7 @@ function DashboardContent() {
                   onClick={handleManualRefresh}
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-2"
+                  className="h-9 gap-2 bg-card hover:bg-muted"
                   disabled={isRefreshing || isCreditLoading}
                 >
                   <RefreshCw className={cx("h-4 w-4", (isRefreshing || isCreditLoading) && "animate-spin")} />
@@ -1197,7 +1197,7 @@ function DashboardContent() {
                 {process.env.NEXT_PUBLIC_BRANCH_ENV === "development" && (
                   <Dialog>
                     <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-9 gap-2">
+                      <Button variant="outline" size="sm" className="h-9 gap-2 bg-card hover:bg-muted">
                         <Settings className="h-4 w-4" />
                         Settings
                       </Button>
@@ -1222,7 +1222,7 @@ function DashboardContent() {
                   onFocus={preloadFileUploadModal}
                   onClick={() => setIsUploadModalOpen(true)}
                   onMouseEnter={preloadFileUploadModal}
-                  className="h-9 gap-2 bg-gray-900 text-white hover:bg-gray-800"
+                  className="h-9 gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
                   disabled={!selectedProjectId}
                 >
                   <UploadCloud className="h-4 w-4" />
@@ -1410,9 +1410,9 @@ function DashboardContent() {
               </div>
             ) : (
               <div className="p-6 md:p-8">
-                <div className="rounded-xl border border-border bg-card shadow-sm">
-                  <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-1 rounded-lg bg-muted/30 p-1">
+                <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden animate-slide-up">
+                  <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between bg-muted/50">
+                    <div className="flex items-center gap-1 rounded-lg bg-background shadow-sm border border-border p-1">
                     {[
                       { id: "all", label: "All" },
                       { id: "mine", label: "Mine" },
@@ -1423,7 +1423,7 @@ function DashboardContent() {
                         onClick={() => setContractView(view.id as ContractView)}
                         className={cx(
                           "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
-                          contractView === view.id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                          contractView === view.id ? "bg-card text-foreground shadow-sm border border-border" : "text-muted-foreground hover:text-foreground hover:bg-card/50",
                         )}
                       >
                         {view.label}
@@ -1440,7 +1440,7 @@ function DashboardContent() {
                           setPagination((prev) => ({ ...prev, currentPage: 1 }));
                         }}
                         placeholder="Search contracts..."
-                        className="h-9 w-64 border-border pl-8"
+                        className="h-9 w-64 border-border bg-card pl-8"
                       />
                       {contractSearch && (
                         <button
@@ -1457,7 +1457,7 @@ function DashboardContent() {
                         setStatusFilter(event.target.value);
                         setPagination((prev) => ({ ...prev, currentPage: 1 }));
                       }}
-                      className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground/70"
+                      className="h-9 rounded-md border border-border bg-card px-2 text-sm text-foreground/70"
                     >
                       <option value="all">All statuses</option>
                       <option value="uploaded">Uploaded</option>
