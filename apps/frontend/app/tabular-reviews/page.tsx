@@ -15,12 +15,14 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 import LoadingScreen from "@/components/loader";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useAccountContext } from "@/app/context/AccountContext";
 import { TABULAR_REVIEW_TEMPLATES } from "@/lib/tabularReviewTemplates";
+import { useBreadcrumbs } from "@/app/context/BreadcrumbContext";
 import {
   createTabularReview,
   deleteTabularReview,
@@ -65,6 +67,14 @@ function cloneColumns(columns: TabularColumnConfig[]) {
   }));
 }
 
+function ProjectPill({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+      {label}
+    </span>
+  );
+}
+
 function TabularReviewsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -73,6 +83,7 @@ function TabularReviewsContent() {
   const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL ?? "";
   const { isAuthenticated, authenticatedFetch } = useAuth();
   const { selectedAccountId, isInitialized: accountInitialized } = useAccountContext();
+  const { setBreadcrumbs } = useBreadcrumbs();
 
   const [reviews, setReviews] = useState<TabularReview[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -89,6 +100,11 @@ function TabularReviewsContent() {
   const [rowActionsOpen, setRowActionsOpen] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    itemsPerPage: 10,
+  });
 
   const [newTitle, setNewTitle] = useState("");
   const [underProject, setUnderProject] = useState(Boolean(initialProjectId));
@@ -174,6 +190,20 @@ function TabularReviewsContent() {
   }, [shouldOpenNewReview]);
 
   useEffect(() => {
+    const project = projects.find((p) => p._id === projectFilter);
+    if (projectFilter && project) {
+      setBreadcrumbs([
+        { label: project.name, href: `/dashboard?project_id=${project._id}` },
+        { label: "Reviews" }
+      ]);
+    } else {
+      setBreadcrumbs([
+        { label: "Reviews" }
+      ]);
+    }
+  }, [projectFilter, projects, setBreadcrumbs]);
+
+  useEffect(() => {
     setSelectedReviewIds([]);
   }, [activeTab, projectFilter, search]);
 
@@ -202,8 +232,18 @@ function TabularReviewsContent() {
       .filter((review) => !q || (review.title ?? "").toLowerCase().includes(q));
   }, [activeTab, projectFilter, reviews, search]);
 
-  const allSelected = filteredReviews.length > 0 && filteredReviews.every((review) => selectedReviewIds.includes(review.id));
-  const someSelected = !allSelected && filteredReviews.some((review) => selectedReviewIds.includes(review.id));
+  useEffect(() => {
+    setPagination((prev) => ({ ...prev, currentPage: 1 }));
+  }, [activeTab, projectFilter, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredReviews.length / pagination.itemsPerPage));
+  const paginatedReviews = filteredReviews.slice(
+    (pagination.currentPage - 1) * pagination.itemsPerPage,
+    pagination.currentPage * pagination.itemsPerPage
+  );
+
+  const allSelected = paginatedReviews.length > 0 && paginatedReviews.every((review) => selectedReviewIds.includes(review.id));
+  const someSelected = !allSelected && paginatedReviews.some((review) => selectedReviewIds.includes(review.id));
   const selectedTemplate = TABULAR_REVIEW_TEMPLATES.find((template) => template.id === selectedTemplateId);
   const selectedProjectFilter = projects.find((project) => project._id === projectFilter);
   const selectedModalProject = projects.find((project) => project._id === newProjectId);
@@ -262,7 +302,7 @@ function TabularReviewsContent() {
   }
 
   function toggleAllReviews() {
-    setSelectedReviewIds(allSelected ? [] : filteredReviews.map((review) => review.id));
+    setSelectedReviewIds(allSelected ? [] : paginatedReviews.map((review) => review.id));
   }
 
   function toggleDocument(documentId: string) {
@@ -367,158 +407,142 @@ function TabularReviewsContent() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-white text-gray-950">
-      <div className="mb-1 flex items-center justify-between px-4 py-3 md:px-10">
-        <h1 className="font-serif text-2xl font-medium text-gray-900">Tabular Reviews</h1>
-        <div className="flex items-center gap-2">
-          <div className="relative hidden sm:block">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search reviews..."
-              className="h-8 w-56 rounded-lg border border-gray-100 bg-white pl-8 pr-3 text-sm text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-300"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              void resetCreateForm();
-              setCreateOpen(true);
-            }}
-            disabled={creating}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-gray-900 px-3 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-40"
-            aria-label="New tabular review"
-          >
-            {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-            New Review
-          </button>
+    <main className="flex min-h-screen flex-col bg-background text-foreground pb-20">
+      <div className="p-6 md:p-8">
+        <div className="mb-6 flex flex-col gap-1">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Reviews</h1>
+          <p className="text-sm text-muted-foreground">Manage your tabular reviews and extract structured data from contracts.</p>
         </div>
-      </div>
-
-      <div className="flex h-10 items-center justify-between border-y border-gray-100 px-4 md:px-10">
-        <div className="flex h-full items-center gap-5">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`h-full border-b-2 text-sm transition-colors ${
-                activeTab === tab.id
-                  ? "border-gray-900 text-gray-900"
-                  : "border-transparent text-gray-400 hover:text-gray-700"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-4">
-          {selectedReviewIds.length > 0 && (
-            <div ref={actionsRef} className="relative">
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setActionsOpen((open) => !open);
-                }}
-                className="flex items-center gap-1 text-xs font-medium text-gray-700 transition-colors hover:text-gray-900"
-              >
-                Actions
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-              {actionsOpen && (
-                <div className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-lg border border-gray-100 bg-white shadow-lg">
+        <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden animate-slide-up">
+          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between bg-muted/50">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 rounded-lg bg-background shadow-sm border border-border p-1">
+                {TABS.map((tab) => (
                   <button
-                    type="button"
-                    onClick={() => void handleDeleteReviews(selectedReviewIds)}
-                    className="w-full px-3 py-1.5 text-left text-xs text-red-600 transition-colors hover:bg-red-50"
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                      activeTab === tab.id
+                        ? "bg-card text-foreground shadow-sm border border-border"
+                        : "text-muted-foreground hover:text-foreground hover:bg-card/50"
+                    }`}
                   >
-                    Delete
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div ref={filterRef} className="relative">
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setFilterOpen((open) => !open);
-              }}
-              className={`flex items-center gap-1 text-xs font-medium transition-colors ${
-                projectFilter ? "text-gray-700 hover:text-gray-900" : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {selectedProjectFilter ? selectedProjectFilter.name : "Filter by project"}
-              <ChevronDown className="h-3 w-3" />
-            </button>
-            {filterOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1.5 max-h-64 w-52 overflow-y-auto rounded-xl border border-gray-100 bg-white shadow-lg">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProjectFilter("");
-                    setFilterOpen(false);
-                  }}
-                  className="flex w-full items-center justify-between px-3 py-2 text-xs text-gray-600 transition-colors hover:bg-gray-50"
-                >
-                  All Projects
-                  {!projectFilter && <Check className="h-3.5 w-3.5 text-gray-400" />}
-                </button>
-                {projects.length > 0 && <div className="border-t border-gray-100" />}
-                {projects.map((project) => (
-                  <button
-                    key={project._id}
-                    type="button"
-                    onClick={() => {
-                      setProjectFilter(project._id);
-                      setFilterOpen(false);
-                    }}
-                    className="flex w-full items-center justify-between px-3 py-2 text-xs text-gray-600 transition-colors hover:bg-gray-50"
-                  >
-                    <span className="truncate pr-2">{project.name}</span>
-                    {projectFilter === project._id && <Check className="h-3.5 w-3.5 shrink-0 text-gray-400" />}
+                    {tab.label}
                   </button>
                 ))}
               </div>
-            )}
+
+              <div ref={filterRef} className="relative">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setFilterOpen((open) => !open);
+                  }}
+                  className={`flex h-8 items-center gap-2 rounded-md border border-border px-3 text-xs font-medium transition-colors hover:bg-muted/30 bg-background ${
+                    projectFilter ? "text-foreground" : "text-foreground/80"
+                  }`}
+                >
+                  {selectedProjectFilter ? selectedProjectFilter.name : "Filter by project"}
+                  <ChevronDown className="h-4 w-4 text-foreground/80" />
+                </button>
+                {filterOpen && (
+                  <div className="absolute right-0 top-full z-[100] mt-1.5 max-h-64 w-52 overflow-y-auto rounded-xl border border-border bg-card shadow-lg">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProjectFilter("");
+                        setFilterOpen(false);
+                      }}
+                      className="flex w-full items-center justify-between px-3 py-2 text-xs text-foreground/80 transition-colors hover:bg-muted/50 hover:text-foreground"
+                    >
+                      All Projects
+                      {!projectFilter && <Check className="h-3.5 w-3.5 text-foreground/80" />}
+                    </button>
+                    {projects.length > 0 && <div className="border-t border-border" />}
+                    {projects.map((project) => (
+                      <button
+                        key={project._id}
+                        type="button"
+                        onClick={() => {
+                          setProjectFilter(project._id);
+                          setFilterOpen(false);
+                        }}
+                        className="flex w-full items-center justify-between px-3 py-2 text-xs text-foreground/80 transition-colors hover:bg-muted/50 hover:text-foreground"
+                      >
+                        <span className="truncate pr-2">{project.name}</span>
+                        {projectFilter === project._id && <Check className="h-3.5 w-3.5 shrink-0 text-foreground/80" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {selectedReviewIds.length > 0 && (
+                <div ref={actionsRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setActionsOpen((open) => !open);
+                    }}
+                    className="flex h-8 items-center gap-2 text-xs font-medium text-foreground/80 transition-colors hover:text-foreground rounded-md border border-border bg-background px-3"
+                  >
+                    Actions
+                    <ChevronDown className="h-4 w-4 text-foreground/80" />
+                  </button>
+                  {actionsOpen && (
+                    <div className="absolute left-0 top-full z-[100] mt-1 w-36 overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteReviews(selectedReviewIds)}
+                        className="w-full px-3 py-1.5 text-left text-xs text-destructive transition-colors hover:bg-destructive/10"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search reviews..."
+                  className="h-8 w-56 rounded-md border border-border bg-card pl-8 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-border"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground/70"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void resetCreateForm();
+                  setCreateOpen(true);
+                }}
+                disabled={creating}
+                className="flex h-8 items-center gap-2 rounded-md bg-cs-primary px-3 text-xs font-medium text-white shadow-sm transition-colors hover:bg-cs-primary/90 disabled:opacity-40"
+              >
+                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                New Review
+              </button>
+            </div>
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              void resetCreateForm();
-              setCreateOpen(true);
-            }}
-            disabled={creating}
-            className="flex h-7 items-center gap-1 rounded-full bg-gray-900 px-3 text-xs font-medium text-white shadow-sm transition-colors hover:bg-gray-700 disabled:opacity-40"
-          >
-            {creating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-            New Review
-          </button>
-        </div>
-      </div>
-
-      <div className="block px-4 py-2 sm:hidden">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search reviews..."
-            className="h-8 w-full rounded-lg border border-gray-100 bg-white pl-8 pr-3 text-sm text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-300"
-          />
-        </div>
-      </div>
-
-      <div className="w-full overflow-x-auto">
-        <div className="min-w-max">
-          <div className="flex h-8 items-center border-b border-gray-200 pr-3 text-xs font-medium text-gray-500 select-none md:pr-10">
-            <div className={`sticky left-0 z-[60] ${CHECK_W} flex self-stretch bg-white`}>
+          <div className="w-full overflow-x-auto">
+            <div className="min-w-max">
+          <div className="flex h-12 items-center border-b border-border bg-muted/30 px-2 pr-3 text-[10px] uppercase tracking-wider font-bold text-muted-foreground select-none md:pr-10">
+            <div className={`sticky left-0 z-[60] ${CHECK_W} flex self-stretch bg-muted/30`}>
               <label className="flex h-full w-full items-center justify-center">
                 <input
                   type="checkbox"
@@ -532,44 +556,57 @@ function TabularReviewsContent() {
                 />
               </label>
             </div>
-            <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-white pl-2 text-left`}>Name</div>
-            <div className="ml-auto w-24 shrink-0">Columns</div>
-            <div className="w-24 shrink-0">Documents</div>
-            <div className="w-40 shrink-0">Project</div>
-            <div className="w-32 shrink-0">Created</div>
-            <div className="w-8 shrink-0" />
+            <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-muted/30 pl-2 text-left transition-all duration-300 hover:text-foreground hover:underline cursor-pointer`}>
+              Name
+            </div>
+            <div className="ml-auto w-24 shrink-0 transition-all duration-300 hover:text-foreground hover:underline cursor-pointer">
+              Columns
+            </div>
+            <div className="w-24 shrink-0 transition-all duration-300 hover:text-foreground hover:underline cursor-pointer">
+              Documents
+            </div>
+            <div className="w-40 shrink-0 transition-all duration-300 hover:text-foreground hover:underline cursor-pointer">
+              Project
+            </div>
+            <div className="w-32 shrink-0 transition-all duration-300 hover:text-foreground hover:underline cursor-pointer">
+              Created
+            </div>
+            <div className="w-8 shrink-0 text-right transition-all duration-300 hover:text-foreground hover:underline cursor-pointer">
+              Actions
+            </div>
           </div>
 
           {filteredReviews.length === 0 ? (
-            <div className="mx-auto flex w-full max-w-xs flex-col items-start py-24">
-              {activeTab === "all" && !projectFilter && !search ? (
-                <>
-                  <Table2 className="mb-4 h-8 w-8 text-gray-300" />
-                  <p className="font-serif text-2xl font-medium text-gray-900">Tabular Reviews</p>
-                  <p className="mt-1 max-w-xs text-left text-xs text-gray-400">
-                    Extract data from documents into tables using AI.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void resetCreateForm();
-                      setCreateOpen(true);
-                    }}
-                    disabled={creating}
-                    className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white shadow-md transition-colors hover:bg-gray-700 disabled:opacity-40"
-                  >
-                    + Create New
-                  </button>
-                </>
-              ) : (
-                <p className="text-sm text-gray-400">No reviews found</p>
-              )}
-            </div>
+            activeTab === "all" && !projectFilter && !search ? (
+              <div className="flex h-64 flex-col items-center justify-center text-center">
+                <Table2 className="h-10 w-10 text-muted-foreground/50" />
+                <p className="mt-3 text-sm font-medium text-foreground/80">No tabular reviews yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">Extract data from documents into tables using AI.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void resetCreateForm();
+                    setCreateOpen(true);
+                  }}
+                  disabled={creating}
+                  className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:bg-muted disabled:opacity-40"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Create New
+                </button>
+              </div>
+            ) : (
+              <div className="flex h-64 flex-col items-center justify-center text-center">
+                <Search className="h-10 w-10 text-muted-foreground/50" />
+                <p className="mt-3 text-sm font-medium text-foreground/80">No reviews found</p>
+                <p className="mt-1 text-sm text-muted-foreground">Try a different search or filter.</p>
+              </div>
+            )
           ) : (
-            filteredReviews.map((review) => {
+            <>
+            {paginatedReviews.map((review) => {
               const project = projects.find((item) => item._id === review.project_id);
               const selected = selectedReviewIds.includes(review.id);
-              const rowBg = selected ? "bg-gray-50" : "bg-white";
 
               return (
                 <div
@@ -578,10 +615,12 @@ function TabularReviewsContent() {
                     if (renamingId === review.id) return;
                     router.push(`/tabular-reviews/${review.id}`);
                   }}
-                  className="group flex h-10 cursor-pointer items-center border-b border-gray-50 pr-3 transition-colors hover:bg-gray-50 md:pr-10"
+                  className={`group flex min-h-[48px] cursor-pointer items-center border-b border-border/50 px-2 pr-3 text-sm transition-colors hover:bg-muted/30 md:pr-10 ${
+                    selected ? "bg-muted/30" : ""
+                  }`}
                 >
                   <div
-                    className={`sticky left-0 z-[60] ${CHECK_W} flex items-center justify-center p-2 ${rowBg} group-hover:bg-gray-50`}
+                    className={`sticky left-0 z-[60] ${CHECK_W} flex items-center justify-center p-2 bg-transparent`}
                     onClick={(event) => event.stopPropagation()}
                   >
                     <input
@@ -592,36 +631,43 @@ function TabularReviewsContent() {
                       aria-label={`Select ${review.title || "review"}`}
                     />
                   </div>
-                  <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-white p-2 group-hover:bg-gray-50`}>
-                    {renamingId === review.id ? (
-                      <input
-                        autoFocus
-                        value={renameValue}
-                        onChange={(event) => setRenameValue(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") void handleRenameSubmit(review.id);
-                          if (event.key === "Escape") setRenamingId(null);
-                        }}
-                        onBlur={() => void handleRenameSubmit(review.id)}
-                        onClick={(event) => event.stopPropagation()}
-                        className="w-full bg-transparent text-sm text-gray-800 outline-none"
-                      />
-                    ) : (
-                      <span className="block truncate text-sm text-gray-800">
-                        {review.title || "Untitled Review"}
-                      </span>
-                    )}
+                  <div className={`sticky left-8 z-[60] ${NAME_COL_W} flex items-start gap-3 p-2 bg-transparent min-w-0`}>
+                    <Table2 className="mt-0.5 h-4 w-4 shrink-0 text-cs-primary/80 transition-transform duration-300 group-hover:scale-110" />
+                    <div className="min-w-0 flex-1">
+                      {renamingId === review.id ? (
+                        <input
+                          autoFocus
+                          value={renameValue}
+                          onChange={(event) => setRenameValue(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") void handleRenameSubmit(review.id);
+                            if (event.key === "Escape") setRenamingId(null);
+                          }}
+                          onBlur={() => void handleRenameSubmit(review.id)}
+                          onClick={(event) => event.stopPropagation()}
+                          className="w-full bg-transparent text-sm text-foreground outline-none"
+                        />
+                      ) : (
+                        <span className="block truncate font-medium text-foreground transition-colors duration-300 group-hover:text-cs-primary">
+                          {review.title || "Untitled Review"}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="ml-auto w-24 shrink-0 truncate text-sm text-gray-500">
+                  <div className="ml-auto w-24 shrink-0 truncate text-sm text-muted-foreground">
                     {review.columns_config?.length ?? 0}
                   </div>
-                  <div className="w-24 shrink-0 truncate text-sm text-gray-500">
+                  <div className="w-24 shrink-0 truncate text-sm text-muted-foreground">
                     {review.document_count ?? review.document_ids.length}
                   </div>
-                  <div className="w-40 shrink-0 truncate pr-2 text-sm text-gray-500">
-                    {project ? project.name : <span className="text-gray-300">—</span>}
+                  <div className="w-40 shrink-0 truncate pr-2">
+                    {project ? (
+                      <ProjectPill label={project.name} />
+                    ) : (
+                      <span className="text-sm text-muted-foreground/50">—</span>
+                    )}
                   </div>
-                  <div className="w-32 shrink-0 truncate text-sm text-gray-500">{formatDate(review.created_at)}</div>
+                  <div className="w-32 shrink-0 truncate text-sm text-muted-foreground">{formatDate(review.created_at)}</div>
                   <div
                     className="relative flex w-8 shrink-0 justify-end"
                     onClick={(event) => event.stopPropagation()}
@@ -632,13 +678,13 @@ function TabularReviewsContent() {
                         event.stopPropagation();
                         setRowActionsOpen((open) => (open === review.id ? null : review.id));
                       }}
-                      className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-300 opacity-0 transition-colors hover:bg-gray-100 hover:text-gray-700 group-hover:opacity-100"
+                      className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-muted-foreground opacity-0 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-border hover:bg-background hover:text-foreground group-hover:opacity-100"
                       aria-label={`Review actions for ${review.title || "review"}`}
                     >
                       <MoreHorizontal className="h-4 w-4" />
                     </button>
                     {rowActionsOpen === review.id && (
-                      <div className="absolute right-0 top-7 z-50 w-32 overflow-hidden rounded-lg border border-gray-100 bg-white shadow-lg">
+                      <div className="absolute right-0 top-9 z-50 w-32 overflow-hidden rounded-lg border border-border bg-background shadow-lg">
                         <button
                           type="button"
                           onClick={() => {
@@ -650,7 +696,7 @@ function TabularReviewsContent() {
                             setRenamingId(review.id);
                             setRowActionsOpen(null);
                           }}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-gray-600 transition-colors hover:bg-gray-50"
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                           Rename
@@ -658,7 +704,7 @@ function TabularReviewsContent() {
                         <button
                           type="button"
                           onClick={() => void handleDeleteReviews([review.id])}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-600 transition-colors hover:bg-red-50"
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-destructive transition-colors hover:bg-destructive/10"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           Delete
@@ -668,11 +714,44 @@ function TabularReviewsContent() {
                   </div>
                 </div>
               );
-            })
+            })}
+            
+            {filteredReviews.length > 0 && (
+              <div className="flex items-center justify-between border-t border-border bg-muted/20 px-4 py-3 sm:px-6">
+                <span className="text-sm text-muted-foreground">
+                  Showing {paginatedReviews.length} of {filteredReviews.length} reviews
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8" 
+                    onClick={() => setPagination(p => ({ ...p, currentPage: Math.max(1, p.currentPage - 1) }))} 
+                    disabled={pagination.currentPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm font-medium text-foreground">
+                    Page {pagination.currentPage} of {Math.max(totalPages, 1)}
+                  </span>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8" 
+                    onClick={() => setPagination(p => ({ ...p, currentPage: Math.min(totalPages, p.currentPage + 1) }))} 
+                    disabled={pagination.currentPage === totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+            </>
           )}
+            </div>
+          </div>
         </div>
       </div>
-
       {createOpen && (
         <div className="fixed inset-0 z-[101] flex items-center justify-center bg-black/20 px-3 backdrop-blur-[2px]">
           <div className="flex h-[600px] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-2xl">

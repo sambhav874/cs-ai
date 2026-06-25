@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Sidebar } from '@/components/Sidebar'
 import { ColabsHeader } from "./new/header"
+import { BreadcrumbProvider } from '@/app/context/BreadcrumbContext'
 
 interface ClientLayoutProps {
   children: React.ReactNode
@@ -39,29 +40,28 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
   const isDashboardPage = pathname === '/dashboard'
 
   return (
-    <div className="min-h-screen overflow-x-hidden">
-      {shouldShowSidebar && (
-        <>
-          {!isContractWorkspace && (
-            <div className={isDashboardPage ? 'md:hidden' : undefined}>
-              <ColabsHeader onMobileMenuClick={handleMobileMenuClick} onUploadSuccess={handleUploadSuccess} />
-            </div>
-          )}
-          <Sidebar
-            isExpanded={isExpanded}
-            setIsExpanded={setIsExpanded}
-            isMobileOpen={isMobileOpen}
-            setIsMobileOpen={setIsMobileOpen}
-          />
-        </>
-      )}
-      <main id="main-content" className={`
-        transition-[margin]
-        duration-100
-        ${shouldShowSidebar ? (isExpanded ? 'md:ml-72' : 'md:ml-16') : ''}
-      `}>
-        {children}
-      </main>
-    </div>
+    <BreadcrumbProvider>
+      <div className="min-h-screen overflow-x-hidden">
+        {shouldShowSidebar && (
+          <>
+            <ColabsHeader onMobileMenuClick={handleMobileMenuClick} onUploadSuccess={handleUploadSuccess} isExpanded={isExpanded} />
+            <Sidebar
+              isExpanded={isExpanded}
+              setIsExpanded={setIsExpanded}
+              isMobileOpen={isMobileOpen}
+              setIsMobileOpen={setIsMobileOpen}
+            />
+          </>
+        )}
+        <main id="main-content" className={`
+          transition-[margin]
+          duration-100
+          ${shouldShowSidebar ? 'pt-16' : ''}
+          ${shouldShowSidebar ? (isExpanded ? 'md:ml-72' : 'md:ml-16') : ''}
+        `}>
+          {children}
+        </main>
+      </div>
+    </BreadcrumbProvider>
   )
 }

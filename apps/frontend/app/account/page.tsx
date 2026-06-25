@@ -13,6 +13,7 @@ import { User, Crown, Loader2, AlertCircle, SettingsIcon, Users as TeamIcon } fr
 // import { Loader2 as Loader } from 'lucide-react'; 
 
 import { useAccountContext } from '@/app/context/AccountContext';
+import { useBreadcrumbs } from '@/app/context/BreadcrumbContext';
 import { apiFetch } from '@/lib/apiClient';
 
 // --- Interface Definitions ---
@@ -53,6 +54,11 @@ export default function AccountPage() {
     const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL;
     
     const { selectedAccountId, setSelectedAccount, isInitialized } = useAccountContext();
+    const { setBreadcrumbs } = useBreadcrumbs();
+
+    useEffect(() => {
+        setBreadcrumbs([{ label: "Account Settings" }]);
+    }, [setBreadcrumbs]);
 
     // --- Fetch Current User Data ---
     const fetchCurrentUser = useCallback(async () => {

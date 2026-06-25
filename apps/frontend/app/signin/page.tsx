@@ -47,7 +47,7 @@ export default function SignIn() {
         setError(data.detail || "Invalid username or password")
       }
     } catch (err) {
-      console.error("Sign-in error:", err)
+      console.warn("Sign-in error:", err)
       setError("Something went wrong. Please try again.")
     } finally {
       setIsLoading(false)

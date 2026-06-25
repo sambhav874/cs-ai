@@ -4,34 +4,11 @@ import { Suspense, memo, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { ReactNode } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import {
-  AlertCircle,
-  BarChart3,
-  BookOpen,
-  ChevronDown,
-  ChevronRight,
-  CheckCircle2,
-  CreditCard,
-  Download,
-  FileText,
-  FolderOpen,
-  FolderPlus,
-  Loader2,
-  Play,
-  Plus,
-  RefreshCw,
-  Search,
-  Settings,
-  UploadCloud,
-  X,
-  Table2,
-  Info,
-  User,
-  Building2,
-} from "lucide-react";
+import { CreditCard, FileUp, Filter, Info, LayoutGrid, List, Loader2, Play, RefreshCw, Settings, Search, X, CheckCircle, Clock, FileText, Bot, Building2, User, ChevronDown, ChevronRight, BarChart3, BookOpen, CheckCircle2, Download, FolderOpen, FolderPlus, Table2, Plus, AlertCircle, UploadCloud } from "lucide-react";
+import { useBreadcrumbs } from "@/app/context/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -109,6 +86,7 @@ export default function Dashboard() {
 }
 
 function DashboardContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedProjectId = searchParams.get("project_id");
   const requestedTab = searchParams.get("tab");
@@ -159,6 +137,7 @@ function DashboardContent() {
   const [hasInitialized, setHasInitialized] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isProjectDialogOpen, setIsProjectDialogOpen] = useState(false);
+  const { setBreadcrumbs } = useBreadcrumbs();
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [isCreatingProject, setIsCreatingProject] = useState(false);
@@ -1052,6 +1031,18 @@ function DashboardContent() {
     fetchDocuments(1);
   }, [selectedProjectId, selectedProject, contractSearch, statusFilter, sortConfig, fetchDocuments]);
 
+  // Set breadcrumbs globally
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setBreadcrumbs([{ label: "Projects" }]);
+    } else {
+      setBreadcrumbs([
+        { label: "Projects", href: "/dashboard?view=all" },
+        { label: selectedProject?.name || "Project" },
+      ]);
+    }
+  }, [selectedProjectId, selectedProject, setBreadcrumbs]);
+
   useEffect(() => {
     if (!selectedProjectId || projectTab !== "assistant") return;
     void fetchProjectAgentDocuments();
@@ -1159,123 +1150,31 @@ function DashboardContent() {
     <div className="min-h-screen bg-background font-InterVar text-foreground">
       <div className="min-h-screen pt-20 md:pt-0">
         <main className="flex min-w-0 flex-col">
-          {selectedProjectId && (
-            <div className="border-b border-border px-6 py-2.5 md:px-8 bg-muted/20">
-              <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
-                <button onClick={() => setSelectedProjectId(null)} className="hover:text-foreground transition-colors">
-                  Projects
-                </button>
-                <ChevronRight className="h-4 w-4" />
-                <span className="text-foreground">{selectedProject?.name}</span>
-              </div>
-            </div>
-          )}
-          <header className="border-b border-border p-6 md:p-8">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-xs font-medium">
-                  {selectedAccountId === "personal" ? (
-                    <Badge variant="outline" className="gap-1.5 rounded-full font-normal text-muted-foreground">
-                      <User className="h-3 w-3" />
-                      Personal workspace
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="gap-1.5 rounded-full font-normal text-muted-foreground">
-                      <Building2 className="h-3 w-3" />
-                      Account workspace
-                    </Badge>
-                  )}
-                  {selectedProject && (
-                    <Badge variant="secondary" className="gap-1.5 rounded-full font-normal text-muted-foreground bg-muted/50 hover:bg-muted/50">
-                      <span className="capitalize">{selectedProject.ownerType}</span> project
-                    </Badge>
-                  )}
-                </div>
-                {!selectedProjectId ? (
-                  <h1 className="mt-2 truncate text-3xl font-bold text-foreground">
-                    All projects
-                  </h1>
-                ) : (
-                  <div className="flex items-center gap-2 mt-2">
-                    <h1 className="truncate text-3xl font-bold text-foreground">
-                      {selectedProject?.name}
-                    </h1>
-                    <TooltipProvider delayDuration={100}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="mt-1 h-5 w-5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">{selectedProject?.description || "Project-centered contracts, roles, ingestion, and readiness."}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex h-9 items-center gap-2 rounded-full border border-border bg-card px-3 text-sm">
-                  <CreditCard className="h-4 w-4 text-muted-foreground" />
-                  {isCreditLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <span>{userCredits?.page_credits ?? 0}</span>}
-                </div>
-
-                <Button
-                  onClick={handleManualRefresh}
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-2 bg-card hover:bg-muted"
-                  disabled={isRefreshing || isCreditLoading}
-                >
-                  <RefreshCw className={cx("h-4 w-4", (isRefreshing || isCreditLoading) && "animate-spin")} />
-                  Refresh
-                </Button>
-
-                {process.env.NEXT_PUBLIC_BRANCH_ENV === "development" && (
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-9 gap-2 bg-card hover:bg-muted">
-                        <Settings className="h-4 w-4" />
-                        Settings
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Processing Settings</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4 py-4">
-                        <div className="flex items-center gap-2">
-                          <Checkbox id="use-local-marker" checked={useLocalMarker} onCheckedChange={handleToggleLocalMarker} />
-                          <Label htmlFor="use-local-marker">Use local marker for processing</Label>
-                        </div>
-                        <p className="text-sm text-muted-foreground">Local marking can be faster but may differ from the standard pipeline.</p>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                )}
-
-                <Button
-                  size="sm"
-                  onFocus={preloadFileUploadModal}
-                  onClick={() => setIsUploadModalOpen(true)}
-                  onMouseEnter={preloadFileUploadModal}
-                  className="h-9 gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
-                  disabled={!selectedProjectId}
-                >
-                  <UploadCloud className="h-4 w-4" />
-                  Upload
-                </Button>
-              </div>
-            </div>
-            {creditError && (
-              <button onClick={fetchUserCredits} className="mt-2 text-xs text-red-600 hover:text-red-700">
+          {creditError && (
+            <div className="px-6 md:px-8 py-2">
+              <button onClick={fetchUserCredits} className="text-xs text-red-600 hover:text-red-700">
                 Credit load failed. Retry.
               </button>
-            )}
-          </header>
+            </div>
+          )}
 
           {selectedProjectId && (
-            <div className="flex h-10 items-center border-b border-border px-6 md:px-8">
+            <>
+              <div className="px-6 md:px-8 pt-5 pb-2">
+                <div className="flex items-center gap-2.5">
+                  <FolderOpen className="h-5 w-5 text-muted-foreground/70" />
+                  <h1 className="text-2xl font-bold text-foreground tracking-tight">{selectedProject?.name || "Project"}</h1>
+                  {selectedProject && (
+                    <span className="ml-2 inline-flex items-center rounded-full border border-border bg-muted/30 px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
+                      {selectedProject.ownerType === "team" ? "Team Project" : "Personal Project"}
+                    </span>
+                  )}
+                </div>
+                {selectedProject?.description && (
+                  <p className="mt-1 text-sm text-muted-foreground pl-[30px]">{selectedProject.description}</p>
+                )}
+              </div>
+              <div className="flex h-10 items-center border-b border-border px-6 md:px-8">
               <div className="flex flex-1 items-center gap-5 h-full">
                 {[
                   { id: "contracts", label: "Contracts" },
@@ -1286,7 +1185,13 @@ function DashboardContent() {
                 ].map((tab) => (
                   <button
                     key={tab.id}
-                    onClick={() => setProjectTab(tab.id as ProjectTab)}
+                    onClick={() => {
+                      if (tab.id === "reviews") {
+                        router.push(`/tabular-reviews?project_id=${encodeURIComponent(selectedProject?._id || selectedProjectId || "")}`);
+                      } else {
+                        setProjectTab(tab.id as ProjectTab);
+                      }
+                    }}
                     className={cx(
                       "text-xs transition-colors h-full px-1 border-b-2",
                       projectTab === tab.id ? "font-bold text-foreground border-[#015CA9]" : "border-transparent text-muted-foreground hover:text-foreground/80 hover:border-border",
@@ -1296,8 +1201,9 @@ function DashboardContent() {
                   </button>
                 ))}
               </div>
-              <span className="text-xs text-muted-foreground">Updated {formatDate(selectedProject.updatedAt)}</span>
-            </div>
+              <span className="text-xs text-muted-foreground">Updated {formatDate(selectedProject?.updatedAt || undefined)}</span>
+              </div>
+            </>
           )}
 
           <section className={cx("min-h-0 flex-1 bg-background", projectTab === "assistant" ? "overflow-hidden" : "overflow-y-auto")}>
@@ -1317,6 +1223,10 @@ function DashboardContent() {
                 onProjectNameChange={setNewProjectName}
                 onProjectDescriptionChange={setNewProjectDescription}
                 onCreateProject={handleCreateProject}
+                onRefresh={handleManualRefresh}
+                isRefreshing={isRefreshing || isCreditLoading}
+                useLocalMarker={useLocalMarker}
+                onToggleLocalMarker={handleToggleLocalMarker}
               />
             ) : projectTab === "kpis" && selectedProject ? (
               <ProjectKPIWorkspace
@@ -1372,8 +1282,8 @@ function DashboardContent() {
                     <h2 className="text-3xl font-bold text-foreground">Playbooks</h2>
                     <p className="mt-1 text-sm text-muted-foreground">Project rule sets for clause review, fallback positions, and redline-style guidance.</p>
                   </div>
-                  <Button asChild className="rounded-lg bg-gray-950 text-white hover:bg-gray-800">
-                    <Link href={`/playbooks?project_id=${encodeURIComponent(selectedProject._id)}`}>
+                  <Button asChild className="rounded-lg bg-cs-primary text-white hover:bg-cs-primary/90">
+                    <Link href={`/playbooks?project_id=${encodeURIComponent(selectedProject?._id || selectedProjectId || "")}`}>
                       <Plus className="h-4 w-4" />
                       New Playbook
                     </Link>
@@ -1418,7 +1328,7 @@ function DashboardContent() {
                     <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
                       Create a reusable rule set from a reference document or template.
                     </p>
-                    <Button asChild className="mt-5 rounded-lg bg-gray-950 text-white hover:bg-gray-800">
+                    <Button asChild className="mt-5 rounded-lg bg-cs-primary text-white hover:bg-cs-primary/90">
                       <Link href={`/playbooks?project_id=${encodeURIComponent(selectedProject._id)}`}>
                         <BookOpen className="h-4 w-4" />
                         Create Playbook
@@ -1438,7 +1348,7 @@ function DashboardContent() {
                     Extract comparable terms from this project&apos;s indexed contracts into Mike-style review tables.
                   </p>
                   <div className="mt-5 flex flex-wrap gap-2">
-                    <Button asChild className="rounded-lg bg-gray-950 text-white hover:bg-gray-800">
+                    <Button asChild className="rounded-lg bg-cs-primary text-white hover:bg-cs-primary/90">
                       <Link href={`/tabular-reviews?project_id=${encodeURIComponent(selectedProject._id)}`}>
                         <Table2 className="h-4 w-4" />
                         Open Reviews
@@ -1457,75 +1367,105 @@ function DashboardContent() {
               <div className="p-6 md:p-8">
                 <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden animate-slide-up">
                   <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between bg-muted/50">
-                    <div className="flex items-center gap-1 rounded-lg bg-background shadow-sm border border-border p-1">
-                    {[
-                      { id: "all", label: "All" },
-                      { id: "mine", label: "Mine" },
-                      { id: "needs-action", label: "Needs action" },
-                    ].map((view) => (
-                      <button
-                        key={view.id}
-                        onClick={() => setContractView(view.id as ContractView)}
-                        className={cx(
-                          "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
-                          contractView === view.id ? "bg-card text-foreground shadow-sm border border-border" : "text-muted-foreground hover:text-foreground hover:bg-card/50",
-                        )}
-                      >
-                        {view.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="relative">
-                      <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        value={contractSearch}
-                        onChange={(event) => {
-                          setContractSearch(event.target.value);
-                          setPagination((prev) => ({ ...prev, currentPage: 1 }));
-                        }}
-                        placeholder="Search contracts..."
-                        className="h-9 w-64 border-border bg-card pl-8"
-                      />
-                      {contractSearch && (
-                        <button
-                          onClick={() => setContractSearch("")}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground/70"
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1 rounded-lg bg-background shadow-sm border border-border p-1">
+                        {[
+                          { id: "all", label: "All" },
+                          { id: "mine", label: "Mine" },
+                          { id: "needs-action", label: "Needs action" },
+                        ].map((view) => (
+                          <button
+                            key={view.id}
+                            onClick={() => setContractView(view.id as ContractView)}
+                            className={cx(
+                              "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
+                              contractView === view.id ? "bg-card text-foreground shadow-sm border border-border" : "text-muted-foreground hover:text-foreground hover:bg-card/50",
+                            )}
+                          >
+                            {view.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="relative">
+                        <select
+                          value={statusFilter}
+                          onChange={(event) => {
+                            setStatusFilter(event.target.value);
+                            setPagination((prev) => ({ ...prev, currentPage: 1 }));
+                          }}
+                          className="h-8 appearance-none rounded-md border border-border bg-background pl-3 pr-8 text-xs font-medium text-foreground/80 outline-none transition-colors hover:bg-muted/30"
                         >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                          <option value="all">All statuses</option>
+                          <option value="uploaded">Uploaded</option>
+                          <option value="processing">Processing</option>
+                          <option value="ready_to_edit">Ready to edit</option>
+                          <option value="editing">Editing</option>
+                          <option value="pending_approval">Pending approval</option>
+                          <option value="rejected">Rejected</option>
+                          <option value="completed">Completed</option>
+                          <option value="error">Error</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/80" />
+                      </div>
+
+                      <button
+                        onClick={() => setSortConfig((prev) => ({
+                          field: "uploaded_at",
+                          direction: prev.direction === "desc" ? "asc" : "desc",
+                        }))}
+                        className="flex h-8 items-center gap-2 rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground/80 transition-colors hover:bg-muted/30"
+                      >
+                        Date
+                        <ChevronDown className={cx("h-4 w-4 transition-transform text-foreground/80", sortConfig.direction === "asc" && "rotate-180")} />
+                      </button>
                     </div>
-                    <select
-                      value={statusFilter}
-                      onChange={(event) => {
-                        setStatusFilter(event.target.value);
-                        setPagination((prev) => ({ ...prev, currentPage: 1 }));
-                      }}
-                      className="h-9 rounded-md border border-border bg-card px-2 text-sm text-foreground/70"
-                    >
-                      <option value="all">All statuses</option>
-                      <option value="uploaded">Uploaded</option>
-                      <option value="processing">Processing</option>
-                      <option value="ready_to_edit">Ready to edit</option>
-                      <option value="editing">Editing</option>
-                      <option value="pending_approval">Pending approval</option>
-                      <option value="rejected">Rejected</option>
-                      <option value="completed">Completed</option>
-                      <option value="error">Error</option>
-                    </select>
-                    <button
-                      onClick={() => setSortConfig((prev) => ({
-                        field: "uploaded_at",
-                        direction: prev.direction === "desc" ? "asc" : "desc",
-                      }))}
-                      className="flex h-9 items-center gap-1 rounded-md border border-border px-2 text-sm text-muted-foreground/80 hover:bg-muted/50"
-                    >
-                      Date
-                      <ChevronDown className={cx("h-4 w-4 transition-transform", sortConfig.direction === "asc" && "rotate-180")} />
-                    </button>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        onClick={handleManualRefresh}
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-2 bg-card hover:bg-muted border-border"
+                        disabled={isRefreshing || isCreditLoading}
+                      >
+                        <RefreshCw className={cx("h-3.5 w-3.5", (isRefreshing || isCreditLoading) && "animate-spin")} />
+                        Refresh
+                      </Button>
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={contractSearch}
+                          onChange={(event) => {
+                            setContractSearch(event.target.value);
+                            setPagination((prev) => ({ ...prev, currentPage: 1 }));
+                          }}
+                          placeholder="Search contracts..."
+                          className="h-8 w-56 rounded-md border border-border bg-card pl-8 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-border"
+                        />
+                        {contractSearch && (
+                          <button
+                            onClick={() => setContractSearch("")}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground/70"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <Button
+                        size="sm"
+                        onFocus={preloadFileUploadModal}
+                        onClick={() => setIsUploadModalOpen(true)}
+                        onMouseEnter={preloadFileUploadModal}
+                        className="flex h-8 items-center gap-2 rounded-md bg-cs-primary px-3 text-xs font-medium text-white shadow-sm transition-colors hover:bg-cs-primary/90 disabled:opacity-40"
+                        disabled={!selectedProjectId}
+                      >
+                        <UploadCloud className="h-4 w-4" />
+                        Upload
+                      </Button>
+                    </div>
                   </div>
-                </div>
 
                 <ContractExplorer
                   documents={visibleDocuments}

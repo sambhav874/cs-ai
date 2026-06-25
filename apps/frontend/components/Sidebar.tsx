@@ -1,7 +1,8 @@
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import {
   BookOpen,
   ChevronDown,
@@ -17,7 +18,8 @@ import {
   Settings,
   Table2,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  LogOut
 } from "lucide-react"
 import { useAccountContext } from "@/app/context/AccountContext"
 import { useAuth } from "@/hooks/useAuth"
@@ -103,7 +105,8 @@ function assistantSessionHref(session: AssistantSessionSummary) {
 export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOpen }: SidebarProps) {
   const pathname = usePathname()
   const { selectedAccountId, setSelectedAccount, isInitialized: accountInitialized } = useAccountContext()
-  const { isAuthenticated, authenticatedFetch } = useAuth()
+  const { isAuthenticated, authenticatedFetch, logout } = useAuth()
+  const router = useRouter()
   const [isMobile, setIsMobile] = React.useState(false)
   const [recentProjects, setRecentProjects] = React.useState<ProjectSummary[]>([])
   const [recentAssistantSessions, setRecentAssistantSessions] = React.useState<AssistantSessionSummary[]>([])
@@ -173,7 +176,6 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
     { href: "/playbooks", label: "Playbooks", icon: BookOpen },
     { href: "/integrations", label: "Integrations", icon: Plug },
     { href: "/support", label: "Support", icon: MessageSquare },
-    { href: "/history", label: "History", icon: HistoryIcon },
   ]
 
   const isSettingsActive = pathname === "/account"
@@ -242,16 +244,10 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
           </Link>
         </div>
 
-        {sidebarExpanded && (
-          <div className="shrink-0 px-3 pb-3">
-            <AccountSwitcher
-              onAccountChange={(id) => setSelectedAccount(id)}
-              initialAccountId={selectedAccountId}
-            />
-          </div>
-        )}
 
-        <nav className={sidebarExpanded ? "shrink-0 px-3 pb-5" : "flex shrink-0 flex-col items-center gap-2 py-4"}>
+        <div className="h-px bg-border mx-4 mb-4" />
+
+        <nav className={sidebarExpanded ? "shrink-0 px-3 pb-2" : "flex shrink-0 flex-col items-center gap-2 pb-4"}>
           {navItems.map((item) => {
             const Icon = item.icon
             const active = isNavItemActive(item.href)
@@ -279,8 +275,8 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
                 onClick={() => setIsMobileOpen(false)}
                 className={`mb-1 flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors ${
                   active 
-                    ? "bg-primary/10 text-primary border-l-2 border-primary" 
-                    : "text-foreground/80 hover:bg-muted hover:text-foreground border-l-2 border-transparent"
+                    ? "bg-primary/10 text-primary" 
+                    : "text-foreground/80 hover:bg-muted hover:text-foreground"
                 }`}
               >
                 <Icon className="h-4 w-4 shrink-0" />
@@ -289,6 +285,8 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
             )
           })}
         </nav>
+
+        {sidebarExpanded && <div className="h-px bg-border mx-4 mb-4 mt-2" />}
 
         <AnimatePresence>
           {sidebarExpanded && (
@@ -377,35 +375,71 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
           )}
         </AnimatePresence>
 
-        <Link
-          href="/account"
-          onClick={() => setIsMobileOpen(false)}
-          className={`
-            mt-auto shrink-0 border-t border-border transition-colors hover:bg-muted
-            ${sidebarExpanded ? "flex h-16 items-center gap-3 px-4" : "flex h-16 items-center justify-center"}
-            ${isSettingsActive ? "bg-muted text-foreground" : "text-muted-foreground"}
-          `}
-        >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-card text-sm font-semibold text-foreground shadow-sm">
-            {accountInitial}
-          </span>
-          <AnimatePresence>
-            {sidebarExpanded && (
-              <motion.div
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: "auto" }}
-                exit={{ opacity: 0, width: 0 }}
-                className="flex min-w-0 flex-1 items-center justify-between overflow-hidden"
-              >
-                <span className="flex flex-col min-w-0 pr-2">
-                  <span className="block truncate text-sm font-medium text-foreground">{username}</span>
-                  <span className="block text-xs text-muted-foreground">Manage account</span>
-                </span>
-                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground opacity-50" />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </Link>
+        <div className="mt-auto shrink-0 border-t border-border">
+          <div className={`flex items-center ${sidebarExpanded ? "justify-between px-4 py-3" : "justify-center py-3"}`}>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={`flex items-center gap-3 transition-colors hover:bg-muted/50 rounded-md ${sidebarExpanded ? "flex-1 px-2 py-1.5" : ""}`}
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-card text-sm font-semibold text-foreground shadow-sm">
+                    {accountInitial}
+                  </span>
+                  <AnimatePresence>
+                    {sidebarExpanded && (
+                      <motion.div
+                        initial={{ opacity: 0, width: 0 }}
+                        animate={{ opacity: 1, width: "auto" }}
+                        exit={{ opacity: 0, width: 0 }}
+                        className="flex min-w-0 flex-1 flex-col items-start overflow-hidden text-left pr-2"
+                      >
+                        <span className="block truncate text-sm font-medium text-foreground max-w-full">{username}</span>
+                        <span className="block text-xs text-muted-foreground">Account Options</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 rounded-lg border border-border bg-white z-[100] shadow-xl p-1" align="end" side="top" sideOffset={12}>
+                <button
+                  onClick={() => router.push('/account')}
+                  className="w-full flex items-center gap-2 rounded-sm px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors"
+                >
+                  <Settings className="h-4 w-4 text-muted-foreground" />
+                  Settings
+                </button>
+                <button
+                  onClick={() => logout()}
+                  className="w-full flex items-center gap-2 rounded-sm px-3 py-2 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Log out
+                </button>
+              </PopoverContent>
+            </Popover>
+
+            <AnimatePresence>
+              {sidebarExpanded && (
+                <motion.div
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: "auto" }}
+                  exit={{ opacity: 0, width: 0 }}
+                  className="shrink-0 overflow-hidden"
+                >
+                  <Link
+                    href="/account"
+                    onClick={() => setIsMobileOpen(false)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    title="Settings"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Link>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
       </motion.aside>
     </>
   )

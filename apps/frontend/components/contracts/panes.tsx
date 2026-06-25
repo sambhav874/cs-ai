@@ -1097,7 +1097,7 @@ export function ContractPerformanceDashboardPane({
                 <RefreshCw className={`h-3.5 w-3.5 ${isLoading || isMonitoringLoading ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
-              <Button type="button" size="sm" className="h-8 gap-1.5 bg-gray-950 text-xs text-white hover:bg-gray-800" onClick={activePanel === "review" ? onExtract : () => setActivePanel("integrations")} disabled={isExtracting || (activePanel !== "review" && !trackedKpis.length)}>
+              <Button type="button" size="sm" className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90" onClick={activePanel === "review" ? onExtract : () => setActivePanel("integrations")} disabled={isExtracting || (activePanel !== "review" && !trackedKpis.length)}>
                 {isExtracting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : activePanel === "review" ? <BarChart3 className="h-3.5 w-3.5" /> : <FolderOpen className="h-3.5 w-3.5" />}
                 {activePanel === "review" ? "Extract KPIs" : "Sources"}
               </Button>
@@ -1297,7 +1297,7 @@ function KpiReviewDashboardView({
         <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
           Extract contract KPIs to populate the review grid, tracking decisions, source setup, and compliance checks.
         </p>
-        <Button type="button" className="mt-4 gap-2 bg-gray-950 text-white hover:bg-gray-800" onClick={onExtract} disabled={isExtracting}>
+        <Button type="button" className="mt-4 gap-2 bg-cs-primary text-white hover:bg-cs-primary/90" onClick={onExtract} disabled={isExtracting}>
           {isExtracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <BarChart3 className="h-4 w-4" />}
           Extract KPIs
         </Button>
@@ -1804,7 +1804,7 @@ function KpiActualSourcesWorkspace({
                       <CheckCircle2 className="h-3.5 w-3.5" />
                       Test
                     </Button>
-                    <Button type="button" size="sm" className="h-8 gap-1.5 bg-gray-950 text-xs text-white hover:bg-gray-800" onClick={() => onFetchSourceConfig(selectedSourceConfig)} disabled={isSourceLoading}>
+                    <Button type="button" size="sm" className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90" onClick={() => onFetchSourceConfig(selectedSourceConfig)} disabled={isSourceLoading}>
                       {isSourceLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                       Fetch Now
                     </Button>
@@ -2844,7 +2844,7 @@ export function KpiRegisterPane({
               <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
-            <Button type="button" size="sm" className="h-8 gap-1 bg-gray-950 text-xs text-white hover:bg-gray-800" onClick={onExtract} disabled={isExtracting}>
+            <Button type="button" size="sm" className="h-8 gap-1 bg-cs-primary text-xs text-white hover:bg-cs-primary/90" onClick={onExtract} disabled={isExtracting}>
               {isExtracting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BarChart3 className="h-3.5 w-3.5" />}
               Extract KPIs
             </Button>
@@ -2912,7 +2912,7 @@ export function KpiRegisterPane({
           <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
             Extract KPIs for this contract to review obligations, dates, values, penalties, contacts, and exact source citations.
           </p>
-          <Button type="button" className="mt-4 gap-2 bg-gray-950 text-white hover:bg-gray-800" onClick={onExtract} disabled={isExtracting}>
+          <Button type="button" className="mt-4 gap-2 bg-cs-primary text-white hover:bg-cs-primary/90" onClick={onExtract} disabled={isExtracting}>
             {isExtracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <BarChart3 className="h-4 w-4" />}
             Extract KPIs
           </Button>
@@ -3224,7 +3224,7 @@ export function KpiRegisterPane({
                       <Button
                         type="button"
                         onClick={handleSaveEdit}
-                        className="h-8 px-4 bg-gray-950 text-white hover:bg-gray-800 text-xs gap-1"
+                        className="h-8 px-4 bg-cs-primary text-white hover:bg-cs-primary/90 text-xs gap-1"
                       >
                         <Check className="h-3.5 w-3.5" /> Save Changes
                       </Button>
@@ -4456,7 +4456,7 @@ export function ContractProjectExplorer({
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         Test Fetch
                       </Button>
-                      <Button type="button" size="sm" className="h-8 gap-1 bg-gray-950 text-[11px] text-white hover:bg-gray-800" onClick={() => onFetchSourceConfig(selectedSourceConfig)} disabled={isSourceLoading}>
+                      <Button type="button" size="sm" className="h-8 gap-1 bg-cs-primary text-[11px] text-white hover:bg-cs-primary/90" onClick={() => onFetchSourceConfig(selectedSourceConfig)} disabled={isSourceLoading}>
                         {isSourceLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                         Fetch Now
                       </Button>

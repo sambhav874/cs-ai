@@ -96,7 +96,7 @@ export default function TeamsPage() {
           </div>
           <Button
              onClick={() => setIsCreateDialogOpen(true)}
-             className="h-9 gap-2 bg-gray-900 text-white hover:bg-gray-800"
+             className="h-9 gap-2 bg-gray-900 text-white hover:bg-cs-primary/90"
              size="sm"
            >
              <Plus className="h-4 w-4" />
