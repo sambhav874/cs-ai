@@ -3,24 +3,22 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict
 from pathlib import Path
-import time
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 from langchain_core.documents import Document
 
 from core.config import settings
 from models.contract_types import QuestionAnswer
 from utils.secure_logger import log_exception
-from utils.text_cleanup import clean_text_encoding
+from utils.text_cleanup import clean_text_encoding, get_formatted_citations
 
-from .agent import AgentRunTrace, ContractAgentRunner, ContractEvidenceLoop, EvidenceLoopResult
-from .citations import fallback_extracted_answer, normalize_model_answers
-from .llm_client import ProviderLLMClient, StructuredLLMClient
+
+from .agent import ContractEvidenceLoop, EvidenceLoopResult
+from .llm_client import ProviderLLMClient
 from .prompts import ContractPromptBuilder, ContractTaskType, detect_task_type
 from .retrieval import PromptContextSelector
-from .schemas import CitationInfo, ExtractedAnswer, Reference, TextSegment
+from .schemas import CitationInfo, Reference, TextSegment
 from .segmentation import DocumentSegmenter
 from .verifier import ContractAnswerVerifier
 from .vector_store import VectorStoreManager
@@ -124,9 +122,6 @@ class ContractRAGSystem:
     @property
     def embeddings(self):
         return self.vector_manager.embeddings
-
-    def _contract_agent_runner(self) -> ContractAgentRunner:
-        return ContractAgentRunner(self)
 
     def _prepare_segments_for_document(
         self,
@@ -238,121 +233,6 @@ class ContractRAGSystem:
         """Compatibility wrapper for Plain LLM Client."""
         return ProviderLLMClient(self).query_plain_markdown(prompt)
 
-    def _process_response(self, content: str) -> Optional[List[Dict[str, Any]]]:
-        """Compatibility wrapper for response parsing."""
-        return ProviderLLMClient(self).process_response(content)
-
-    def _answer_from_extracted(self, question: str, extracted: ExtractedAnswer) -> QuestionAnswer:
-        segment_ids = extracted.reference.segment_ids if extracted.reference else []
-        return QuestionAnswer(
-            question=question,
-            answer=extracted.value,
-            confidence=extracted.confidence if extracted.confidence in {"high", "medium", "low"} else "low",
-            citation=", ".join(segment_ids),
-            reason=extracted.reference.justification if extracted.reference else "",
-            citation_details={
-                "cited_segments": segment_ids,
-                "reference": extracted.reference.model_dump() if extracted.reference else {},
-            },
-        )
-
-    def _legacy_answer_agent_question(
-        self,
-        *,
-        contract_text: str,
-        contract_name: str,
-        contract_id: str,
-        question: str,
-        project_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        vector_namespace: Optional[str] = None,
-        vector_backend: Optional[str] = None,
-        memory_context: str = "",
-    ) -> QuestionAnswer:
-        del project_id, user_id, vector_namespace, vector_backend
-        clean_text, segments = self.segmenter.segment_text_with_page_markers(contract_text)
-        prepared = self._prepare_segments_for_document(
-            segments,
-            contract_id=contract_id,
-            contract_name=contract_name,
-        )
-        self.document_segments[contract_name] = prepared
-        retrieved_docs = self._keyword_segment_documents(prepared, question, top_k=getattr(settings, "max_segments_in_prompt", 18))
-        answers = self.query_model(
-            question,
-            contract_name,
-            retrieved_docs,
-            memory_context=memory_context,
-            prefer_full_context=len(clean_text) <= getattr(settings, "agent_full_context_chars", 28000),
-        )
-        if answers:
-            return self._answer_from_extracted(question, answers[0])
-        return QuestionAnswer(
-            question=question,
-            answer="I could not answer that from the available contract evidence.",
-            confidence="low",
-            reason="No extracted answer was produced.",
-        )
-
-    def _legacy_answer_project_question(
-        self,
-        *,
-        project_documents: List[Dict[str, Any]],
-        project_id: str,
-        question: str,
-        user_id: Optional[str] = None,
-        displayed_document: Optional[Dict[str, str]] = None,
-        attached_documents: Optional[List[Dict[str, str]]] = None,
-        memory_context: str = "",
-    ) -> QuestionAnswer:
-        del project_id, user_id, displayed_document, attached_documents
-        all_docs: List[Document] = []
-        contract_names: List[str] = []
-        for doc in project_documents:
-            contract_id = str(doc.get("_id") or doc.get("contract_id") or doc.get("document_id") or "")
-            contract_name = doc.get("contract_name") or doc.get("filename") or contract_id or "Document"
-            contract_text = ((doc.get("index") or {}).get("content") or doc.get("content") or "")
-            if not contract_text.strip():
-                continue
-            _clean_text, segments = self.segmenter.segment_text_with_page_markers(contract_text)
-            prepared = self._prepare_segments_for_document(
-                segments,
-                contract_id=contract_id,
-                contract_name=contract_name,
-            )
-            self.document_segments[contract_name] = prepared
-            contract_names.append(contract_name)
-            all_docs.extend(self._keyword_segment_documents(prepared, question, top_k=6))
-
-        if not contract_names:
-            return QuestionAnswer(
-                question=question,
-                answer="I could not answer that from the available project documents.",
-                confidence="low",
-                reason="No project document text was available.",
-            )
-
-        synthetic_name = "Project Documents"
-        self.document_segments[synthetic_name] = [
-            segment
-            for name in contract_names
-            for segment in self.document_segments.get(name, [])
-        ]
-        answers = self.query_model(
-            question,
-            synthetic_name,
-            all_docs,
-            memory_context=memory_context,
-        )
-        if answers:
-            return self._answer_from_extracted(question, answers[0])
-        return QuestionAnswer(
-            question=question,
-            answer="I could not answer that from the available project evidence.",
-            confidence="low",
-            reason="No extracted answer was produced.",
-        )
-
     def answer_agent_question(
         self,
         *,
@@ -365,6 +245,7 @@ class ContractRAGSystem:
         vector_namespace: Optional[str] = None,
         vector_backend: Optional[str] = None,
         memory_context: str = "",
+        on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     ) -> QuestionAnswer:
         # Route directly to the unified DeepContractAgentRunner
         from services.contract_agent.graph import AgentContext, AgentRunState, DeepContractAgentRunner
@@ -400,7 +281,7 @@ class ContractRAGSystem:
         runner = DeepContractAgentRunner(
             tool_executor=_in_memory_react_tool_executor(documents) if documents else _mongo_react_tool_executor
         )
-        response = runner.run(state)
+        response = runner.run(state, on_event=on_event)
 
         # Populate last_agent_trace for backward compatibility
         self.last_agent_trace = {
@@ -427,6 +308,7 @@ class ContractRAGSystem:
         displayed_document: Optional[Dict[str, str]] = None,
         attached_documents: Optional[List[Dict[str, str]]] = None,
         memory_context: str = "",
+        on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     ) -> QuestionAnswer:
         # Route directly to the unified DeepContractAgentRunner
         from services.contract_agent.graph import AgentContext, AgentRunState, DeepContractAgentRunner
@@ -466,7 +348,7 @@ class ContractRAGSystem:
         runner = DeepContractAgentRunner(
             tool_executor=_in_memory_react_tool_executor(documents) if documents else _mongo_react_tool_executor
         )
-        response = runner.run(state)
+        response = runner.run(state, on_event=on_event)
 
         # Populate last_agent_trace for backward compatibility
         self.last_agent_trace = {
@@ -481,249 +363,6 @@ class ContractRAGSystem:
             citation=response.citation_details.get("source_pages_display") or "",
             reason=response.reason,
             citation_details=response.citation_details,
-        )
-
-    def query_model(
-        self,
-        questions: Union[str, List[str]],
-        contract_name: str,
-        retrieved_docs: List[Document],
-        memory_context: str = "",
-        context_char_budget: Optional[int] = None,
-        max_segments_in_prompt: Optional[int] = None,
-        segment_excerpt_chars: Optional[int] = None,
-        prefer_full_context: bool = False,
-    ) -> List[ExtractedAnswer]:
-        if isinstance(questions, str):
-            questions = [questions]
-        questions = [clean_text_encoding(question) for question in questions]
-
-        segments_for_contract = self.document_segments.get(contract_name, [])
-        if not segments_for_contract:
-            logger.warning("No segments found for contract %s in query_model.", contract_name)
-            return [
-                fallback_extracted_answer(question, "No document segments available for context.")
-                for question in questions
-            ]
-
-        retrieval_question = " ".join(questions)
-        max_segments = max_segments_in_prompt or getattr(settings, "max_segments_in_prompt", 18)
-        selector = PromptContextSelector(self)
-        prompt_segments = selector.select_segments(
-            contract_name=contract_name,
-            retrieved_docs=retrieved_docs,
-            question=retrieval_question,
-            max_segments=max_segments,
-            context_char_budget=context_char_budget,
-            segment_excerpt_chars=segment_excerpt_chars,
-            prefer_full_context=prefer_full_context,
-        )
-        segment_map = self.create_reference_map(segments_for_contract)
-        document_count = len({segment.contract_id or segment.contract_name or contract_name for segment in segments_for_contract})
-        active_task = getattr(self, "_active_agent_task", None)
-        task_type = active_task if isinstance(active_task, ContractTaskType) else detect_task_type(retrieval_question, document_count=document_count)
-        builder = ContractPromptBuilder()
-        llm_client = StructuredLLMClient(self)
-        verifier = ContractAnswerVerifier()
-        retrieval_hints = selector.retrieval_hints(retrieved_docs, max_segments)
-
-        max_retries = 3
-        pending_questions = list(questions)
-        extracted_answers: Dict[str, ExtractedAnswer] = {}
-        trace = getattr(self, "_active_agent_trace", None)
-        if trace is not None:
-            trace.retrieval_count = len(retrieved_docs or [])
-            loop_result = self._run_evidence_loop(
-                question=retrieval_question,
-                task_type=task_type,
-                all_segments=segments_for_contract,
-                initial_segments=prompt_segments,
-                memory_context=memory_context,
-                max_segments=max_segments,
-            )
-            prompt_segments = loop_result.segments
-            if loop_result.observations:
-                retrieval_hints = f"{retrieval_hints}\n\nAgent tool observations:\n{loop_result.observations}"
-            trace.iterations = max(1, loop_result.iterations + 1)
-            trace.retrieval_count = len(prompt_segments)
-            trace.tools = loop_result.tools_used or trace.tools
-            if loop_result.fallback_reason:
-                trace.fallback_reason = loop_result.fallback_reason
-
-        prompt_segments = self._prompt_ready_segments(
-            prompt_segments,
-            question=retrieval_question,
-            segment_excerpt_chars=segment_excerpt_chars,
-        )
-
-        for attempt in range(max_retries + 1):
-            if not pending_questions:
-                break
-            prompt = builder.build_structured_answer_prompt(
-                questions=pending_questions,
-                contract_name=contract_name,
-                prompt_segments=prompt_segments,
-                retrieved_context=retrieval_hints,
-                memory_context=memory_context,
-                task_type=task_type,
-            )
-            if trace is not None:
-                trace.prompt_chars = len(prompt)
-
-            try:
-                model_items = llm_client.query_answers(prompt)
-                if model_items is None:
-                    logger.warning("Attempt %s: model call failed; retrying.", attempt + 1)
-                    time.sleep(2 ** attempt)
-                    continue
-                if isinstance(model_items, list) and not model_items:
-                    logger.warning("Attempt %s: model returned no answers; retrying.", attempt + 1)
-                    time.sleep(2 ** attempt)
-                    continue
-
-                newly_extracted, still_missing = normalize_model_answers(
-                    questions=pending_questions,
-                    model_items=model_items,
-                    segment_map=segment_map,
-                )
-                verified_extracted = {}
-                verification_issues: List[str] = []
-                for question, answer in newly_extracted.items():
-                    verification = verifier.verify(
-                        answer=answer,
-                        segment_map=segment_map,
-                        task_type=task_type,
-                        memory_context=memory_context,
-                    )
-                    verified_extracted[question] = verification.answer
-                    verification_issues.extend(verification.issues)
-                extracted_answers.update(newly_extracted)
-                extracted_answers.update(verified_extracted)
-                if trace is not None and verification_issues:
-                    trace.fallback_reason = (
-                        f"{trace.fallback_reason}; verifier issues: {', '.join(sorted(set(verification_issues)))}"
-                        if trace.fallback_reason
-                        else f"verifier issues: {', '.join(sorted(set(verification_issues)))}"
-                    )
-                pending_questions = still_missing
-                logger.info(
-                    "Attempt %s: processed %s answers; %s remaining.",
-                    attempt + 1,
-                    len(newly_extracted),
-                    len(pending_questions),
-                )
-            except Exception as exc:
-                log_exception(logger, f"Error in query_model on attempt {attempt + 1}", exc)
-                if attempt >= max_retries:
-                    break
-                time.sleep(2 ** attempt)
-
-        if pending_questions and trace is not None:
-            trace.fallback_reason = "model did not return valid answers for all questions"
-
-        for question in pending_questions:
-            extracted_answers[question] = fallback_extracted_answer(question)
-
-        return [extracted_answers[question] for question in questions if question in extracted_answers]
-
-    def _streaming_prompt_for_segments(
-        self,
-        *,
-        question: str,
-        contract_name: str,
-        retrieved_docs: List[Document],
-        displayed_document: Optional[Dict[str, str]] = None,
-        attached_documents: Optional[List[Dict[str, str]]] = None,
-        memory_context: str = "",
-        context_char_budget: Optional[int] = None,
-        max_segments_in_prompt: Optional[int] = None,
-        segment_excerpt_chars: Optional[int] = None,
-        prefer_full_context: bool = False,
-    ):
-        selector = PromptContextSelector(self)
-        prompt_segments = selector.select_segments(
-            contract_name=contract_name,
-            retrieved_docs=retrieved_docs,
-            question=question,
-            max_segments=max_segments_in_prompt,
-            context_char_budget=context_char_budget,
-            segment_excerpt_chars=segment_excerpt_chars,
-            prefer_full_context=prefer_full_context,
-        )
-        document_count = len({segment.contract_id or segment.contract_name or contract_name for segment in prompt_segments}) or 1
-        active_task = getattr(self, "_active_agent_task", None)
-        task_type = active_task if isinstance(active_task, ContractTaskType) else detect_task_type(question, document_count=document_count)
-        trace = getattr(self, "_active_agent_trace", None)
-        if trace is not None:
-            segments_for_contract = self.document_segments.get(contract_name, [])
-            loop_result = self._run_evidence_loop(
-                question=question,
-                task_type=task_type,
-                all_segments=segments_for_contract,
-                initial_segments=prompt_segments,
-                memory_context=memory_context,
-                max_segments=max_segments_in_prompt or getattr(settings, "max_segments_in_prompt", 18),
-            )
-            prompt_segments = loop_result.segments
-            trace.iterations = max(1, loop_result.iterations + 1)
-            trace.retrieval_count = len(prompt_segments)
-            trace.tools = loop_result.tools_used or trace.tools
-            if loop_result.fallback_reason:
-                trace.fallback_reason = loop_result.fallback_reason
-
-        prompt_segments = self._prompt_ready_segments(
-            prompt_segments,
-            question=question,
-            segment_excerpt_chars=segment_excerpt_chars,
-        )
-        prompt = ContractPromptBuilder().build_streaming_prompt(
-            question=question,
-            contract_name=contract_name,
-            prompt_segments=prompt_segments,
-            focus_note=self._document_focus_note(displayed_document, attached_documents or []),
-            memory_context=memory_context,
-            task_type=task_type,
-        )
-        if trace is not None:
-            trace.prompt_chars = len(prompt)
-            trace.retrieval_count = len(prompt_segments)
-        return prompt, prompt_segments
-
-    def _document_focus_note(
-        self,
-        displayed_document: Optional[Dict[str, str]],
-        attached_documents: List[Dict[str, str]],
-    ) -> str:
-        lines: List[str] = []
-        if displayed_document:
-            display_name = displayed_document.get("filename") or displayed_document.get("name") or "Current document"
-            display_id = displayed_document.get("document_id") or displayed_document.get("id") or ""
-            lines.append(
-                f"- Current open document: {display_name}"
-                + (f" ({display_id})" if display_id else "")
-                + ". Treat it as the user's likely focus, but not as the only truth source."
-            )
-        if attached_documents:
-            lines.append("- User-referred documents for this turn are the primary focus unless the question clearly asks broader project coverage:")
-            for document in attached_documents:
-                name = document.get("filename") or document.get("name") or "Referenced document"
-                document_id = document.get("document_id") or document.get("id") or ""
-                lines.append(f"  - {name}" + (f" ({document_id})" if document_id else ""))
-        else:
-            lines.append("- No explicit referenced document set was selected, so consider every relevant indexed project document.")
-        return "\n".join(lines)
-
-    def _project_chat_prompt_without_documents(
-        self,
-        *,
-        project_name: str,
-        question: str,
-        memory_context: str = "",
-    ) -> str:
-        return ContractPromptBuilder().build_no_document_prompt(
-            project_name=project_name,
-            question=question,
-            memory_context=memory_context,
         )
 
     def stream_agent_question(self, **kwargs: Any) -> Iterator[Dict[str, Any]]:
@@ -755,7 +394,7 @@ class ContractRAGSystem:
             "citation": qa.citation,
             "reason": qa.reason,
             "citation_details": qa.citation_details,
-            "citation_annotations": qa.citation_details.get("annotations", []) if isinstance(qa.citation_details, dict) else [],
+            "citation_annotations": get_formatted_citations(qa.citation_details),
             "agent_trace": getattr(qa, "agent_trace", None) or getattr(self, "last_agent_trace", None),
             "vector_namespace": getattr(self.vector_manager, "current_namespace", None),
             "vector_backend": getattr(self.vector_manager, "current_vector_backend", None),
@@ -788,7 +427,7 @@ class ContractRAGSystem:
             "citation": qa.citation,
             "reason": qa.reason,
             "citation_details": qa.citation_details,
-            "citation_annotations": qa.citation_details.get("annotations", []) if isinstance(qa.citation_details, dict) else [],
+            "citation_annotations": get_formatted_citations(qa.citation_details),
             "agent_trace": getattr(qa, "agent_trace", None) or getattr(self, "last_agent_trace", None),
             "vector_namespace": getattr(self.vector_manager, "current_namespace", None),
             "vector_backend": getattr(self.vector_manager, "current_vector_backend", None),
@@ -844,7 +483,6 @@ __all__ = [
     "CitationInfo",
     "ContractRAGSystem",
     "DocumentSegmenter",
-    "ExtractedAnswer",
     "Reference",
     "TextSegment",
 ]

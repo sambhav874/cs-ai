@@ -14,12 +14,16 @@ type CitedSegment = {
 
 type QuoteEntry = {
   page?: number | null;
+  page_start?: number | null;
+  page_end?: number | null;
   quote: string;
 };
 
 type RawQuoteEntry = {
   page?: number | string | null;
   page_number?: number | string | null;
+  page_start?: number | null;
+  page_end?: number | null;
   quote?: string;
   text?: string;
 };
@@ -52,7 +56,7 @@ const MAX_DEVICE_PIXEL_RATIO = 1.5;
 const STANDARD_FONT_DATA_URL = "https://unpkg.com/pdfjs-dist@4.10.38/standard_fonts/";
 const HIGHLIGHT_CLASS = "pdf-text-highlight";
 const ORIGINAL_TEXT_ATTR = "data-original-text";
-const HIGHLIGHT_STYLE = "background-color: rgba(37, 99, 235, 0.24); border-radius: 2px; color: transparent;";
+const HIGHLIGHT_STYLE = "background-color: rgba(245, 158, 11, 0.45) !important; border-radius: 2px; color: transparent !important;";
 const PAGE_BREAK_SENTINEL = "[[PAGE_BREAK]]";
 
 async function getPdfJs() {
@@ -66,7 +70,10 @@ async function getPdfJs() {
 }
 
 function onlyLetters(value: string) {
-  return value.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  return value
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toLowerCase();
 }
 
 function escapeHtml(value: string) {
@@ -101,6 +108,13 @@ function clearHighlights(textDivs: HTMLElement[]) {
   }
 }
 
+function clearPageHighlights(pageWrapper: HTMLDivElement) {
+  const highlightLayer = pageWrapper.querySelector(".highlight-layer");
+  if (highlightLayer) {
+    highlightLayer.innerHTML = "";
+  }
+}
+
 function pageToNumber(value: number | string | null | undefined) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -111,11 +125,24 @@ function pageToNumber(value: number | string | null | undefined) {
 }
 
 function quoteSearchKeys(quote: string) {
-  return quote
+  const segments = quote
     .split(/\.{3}|…/)
     .map((segment) => onlyLetters(segment))
-    .filter((segment) => segment.length > 0)
-    .map((segment) => segment.slice(0, Math.min(segment.length, 48)));
+    .filter((segment) => segment.length > 0);
+
+  const keys: string[] = [];
+  for (const seg of segments) {
+    if (seg.length <= 48) {
+      keys.push(seg);
+    } else {
+      keys.push(seg.slice(0, 48));
+      keys.push(seg.slice(seg.length - 48));
+      if (seg.length > 120) {
+        keys.push(seg.slice(Math.floor(seg.length / 2) - 24, Math.floor(seg.length / 2) + 24));
+      }
+    }
+  }
+  return keys.filter((k) => k.length > 0);
 }
 
 function quoteMatchesPageText(pageText: string, quote: string) {
@@ -123,13 +150,81 @@ function quoteMatchesPageText(pageText: string, quote: string) {
   return searchKeys.length > 0 && searchKeys.some((key) => pageText.includes(key));
 }
 
-async function highlightQuote(textDivs: HTMLElement[], quote: string) {
+function debugLog(message: string, data?: any) {
+  const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL || "http://localhost:8000/api/v1";
+  fetch(`${apiUrl}/contracts/debug_log`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, data: data ? JSON.stringify(data) : "" }),
+  }).catch(() => {});
+}
+
+function findLongestCommonSubstring(segment: string, fullStripped: string): { matchPos: number; matchLength: number } {
+  const directIdx = fullStripped.indexOf(segment);
+  if (directIdx !== -1) {
+    return { matchPos: directIdx, matchLength: segment.length };
+  }
+
+  let bestPos = -1;
+  let bestLen = 0;
+
+  const m = segment.length;
+  const n = fullStripped.length;
+  if (m === 0 || n === 0) return { matchPos: -1, matchLength: 0 };
+
+  let prevRow = new Array(n + 1).fill(0);
+  let currRow = new Array(n + 1).fill(0);
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (segment[i - 1] === fullStripped[j - 1]) {
+        currRow[j] = prevRow[j - 1] + 1;
+        if (currRow[j] > bestLen) {
+          bestLen = currRow[j];
+          bestPos = j - bestLen;
+        }
+      } else {
+        currRow[j] = 0;
+      }
+    }
+    for (let j = 0; j <= n; j++) {
+      prevRow[j] = currRow[j];
+    }
+  }
+
+  return { matchPos: bestPos, matchLength: bestLen };
+}
+
+async function highlightQuote(textDivs: HTMLElement[], pageWrapper: HTMLDivElement, quote: string) {
+  const logPrefix = "[PDFHighlight]";
+  console.log(logPrefix, "highlightQuote entry", { quote: quote.slice(0, 80), divsCount: textDivs.length });
+  debugLog("highlightQuote entry", { quote: quote.slice(0, 120), divsCount: textDivs.length });
+
   const segments = quote
     .split(/\.{3}|…/)
     .map((segment) => onlyLetters(segment))
     .filter((segment) => segment.length > 0);
 
-  if (!segments.length) return false;
+  if (!segments.length) {
+    console.log(logPrefix, "empty segments");
+    debugLog("highlightQuote empty segments");
+    return false;
+  }
+
+  // Ensure highlight-layer exists inside the pageWrapper
+  let highlightLayer = pageWrapper.querySelector(".highlight-layer") as HTMLDivElement | null;
+  if (!highlightLayer) {
+    highlightLayer = document.createElement("div");
+    highlightLayer.className = "highlight-layer";
+    highlightLayer.style.position = "absolute";
+    highlightLayer.style.left = "0";
+    highlightLayer.style.top = "0";
+    highlightLayer.style.width = "100%";
+    highlightLayer.style.height = "100%";
+    highlightLayer.style.pointerEvents = "none";
+    highlightLayer.style.zIndex = "3";
+    pageWrapper.appendChild(highlightLayer);
+  }
 
   const divOrigTexts: string[] = [];
   const divStripped: string[] = [];
@@ -145,14 +240,21 @@ async function highlightQuote(textDivs: HTMLElement[], quote: string) {
     fullStripped += stripped;
   }
 
+  console.log(logPrefix, "fullStripped length:", fullStripped.length, "first80:", fullStripped.slice(0, 80));
+
   const divHighlightRanges = new Map<number, [number, number]>();
 
   for (const segment of segments) {
-    const searchKey = segment.slice(0, Math.min(segment.length, 48));
-    const matchPos = fullStripped.indexOf(searchKey);
-    if (matchPos === -1) continue;
+    const { matchPos, matchLength } = findLongestCommonSubstring(segment, fullStripped);
 
-    const matchEnd = matchPos + segment.length;
+    console.log(logPrefix, "Segment match:", { matchPos, matchLength, segLen: segment.length });
+    debugLog("Segment match info", { matchPos, matchLength, segmentLen: segment.length, fullStrippedLen: fullStripped.length });
+    if (matchPos === -1 || matchLength < 20) {
+      debugLog("Segment NOT found in fullStripped (no high-quality match)", { segment: segment.slice(0, 80), fullStrippedStart: fullStripped.slice(0, 80) });
+      continue;
+    }
+
+    const matchEnd = matchPos + matchLength;
 
     for (let i = 0; i < textDivs.length; i++) {
       const divStart = divStartInFull[i];
@@ -166,20 +268,38 @@ async function highlightQuote(textDivs: HTMLElement[], quote: string) {
   }
 
   if (divHighlightRanges.size === 0) {
+    console.log(logPrefix, "divHighlightRanges was 0, running fallback");
+    debugLog("divHighlightRanges was 0, running fallback");
     for (const segment of segments) {
-      const searchKey = segment.slice(0, Math.min(segment.length, 48));
-      for (let i = 0; i < textDivs.length; i++) {
-        const pos = divStripped[i].indexOf(searchKey);
-        if (pos !== -1) {
-          const end = pos + segment.length;
-          divHighlightRanges.set(i, [pos, Math.min(end, divStripped[i].length)]);
-          break;
+      const candidates = [
+        segment.slice(0, Math.min(segment.length, 120)),
+        segment.slice(0, Math.min(segment.length, 80)),
+        segment.slice(0, Math.min(segment.length, 48)),
+        segment.slice(0, Math.min(segment.length, 32)),
+      ].filter((c, idx, arr) => arr.indexOf(c) === idx);
+
+      for (const candidate of candidates) {
+        let found = false;
+        for (let i = 0; i < textDivs.length; i++) {
+          const pos = divStripped[i].indexOf(candidate);
+          if (pos !== -1) {
+            const end = pos + candidate.length;
+            divHighlightRanges.set(i, [pos, Math.min(end, divStripped[i].length)]);
+            found = true;
+            break;
+          }
         }
+        if (found) break;
       }
+      if (divHighlightRanges.size > 0) break;
     }
   }
 
+  console.log(logPrefix, "Final divHighlightRanges size:", divHighlightRanges.size);
+  debugLog("Final divHighlightRanges size", { size: divHighlightRanges.size });
   if (divHighlightRanges.size === 0) return false;
+
+  const pageWrapperRect = pageWrapper.getBoundingClientRect();
 
   for (const [index, [strippedStart, strippedEnd]] of divHighlightRanges) {
     const div = textDivs[index];
@@ -187,13 +307,49 @@ async function highlightQuote(textDivs: HTMLElement[], quote: string) {
     const originalStart = strippedPosToOriginal(original, strippedStart);
     const originalEnd = strippedPosToOriginal(original, strippedEnd);
 
-    div.setAttribute(ORIGINAL_TEXT_ATTR, original);
-    div.innerHTML =
-      escapeHtml(original.slice(0, originalStart)) +
-      `<span class="${HIGHLIGHT_CLASS}" style="${HIGHLIGHT_STYLE}">${escapeHtml(original.slice(originalStart, originalEnd))}</span>` +
-      escapeHtml(original.slice(originalEnd));
+    // Get the Text Node inside the div
+    let textNode: Node | null = null;
+    for (let child = div.firstChild; child; child = child.nextSibling) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        textNode = child;
+        break;
+      }
+    }
+    if (!textNode) continue;
+
+    try {
+      const range = document.createRange();
+      range.setStart(textNode, originalStart);
+      range.setEnd(textNode, originalEnd);
+
+      const rects = range.getClientRects();
+      for (let r = 0; r < rects.length; r++) {
+        const clientRect = rects[r];
+        
+        // Calculate coords relative to the pageWrapper
+        const left = clientRect.left - pageWrapperRect.left;
+        const top = clientRect.top - pageWrapperRect.top;
+        const width = clientRect.width;
+        const height = clientRect.height;
+
+        // Skip invalid/empty rectangles
+        if (width <= 0 || height <= 0) continue;
+
+        const overlay = document.createElement("div");
+        overlay.className = "highlight-overlay pdf-text-highlight";
+        overlay.style.left = `${left}px`;
+        overlay.style.top = `${top}px`;
+        overlay.style.width = `${width}px`;
+        overlay.style.height = `${height}px`;
+        
+        highlightLayer.appendChild(overlay);
+      }
+    } catch (err) {
+      console.warn("Failed to create DOM range highlight", err);
+    }
   }
 
+  debugLog("highlightQuote returning true");
   return true;
 }
 
@@ -202,17 +358,26 @@ function expandQuoteEntry(entry: RawQuoteEntry): QuoteEntry[] {
   if (!rawQuote) return [];
 
   const page = pageToNumber(entry.page ?? entry.page_number);
+  const pageStart = entry.page_start ?? page;
+  const pageEnd = entry.page_end ?? pageStart;
   const quoteParts = rawQuote
     .split(PAGE_BREAK_SENTINEL)
     .map((part) => part.replace(/\s+/g, " ").trim())
     .filter(Boolean);
 
   if (quoteParts.length <= 1) {
-    return [{ page, quote: rawQuote.replace(PAGE_BREAK_SENTINEL, " ").trim() }];
+    return [{
+      page,
+      page_start: pageStart,
+      page_end: pageEnd,
+      quote: rawQuote.replace(PAGE_BREAK_SENTINEL, " ").trim(),
+    }];
   }
 
   return quoteParts.map((quote, index) => ({
     page: page ? page + index : null,
+    page_start: pageStart,
+    page_end: pageEnd,
     quote,
   }));
 }
@@ -291,6 +456,32 @@ export default function PDFViewer({
   const [numPages, setNumPages] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [highlightMarkers, setHighlightMarkers] = useState<number[]>([]);
+
+  const updateHighlightMarkers = useCallback(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    const highlights = scrollContainer.querySelectorAll<HTMLElement>(".pdf-text-highlight");
+    const scrollHeight = scrollContainer.scrollHeight;
+    if (scrollHeight === 0) return;
+
+    const positions: number[] = [];
+    const scrollContainerRect = scrollContainer.getBoundingClientRect();
+
+    highlights.forEach((el) => {
+      const rect = el.getBoundingClientRect();
+      const relativeTop = rect.top - scrollContainerRect.top + scrollContainer.scrollTop;
+      const percent = (relativeTop / scrollHeight) * 100;
+      positions.push(percent);
+    });
+
+    const uniquePositions = positions.filter((pos, idx, arr) => {
+      return arr.findIndex((p) => Math.abs(p - pos) < 1) === idx;
+    });
+
+    setHighlightMarkers(uniquePositions);
+  }, []);
 
   const quoteList = useMemo(() => parseSearchValue(searchValue), [searchValue]);
   const quoteKey = useMemo(
@@ -307,6 +498,7 @@ export default function PDFViewer({
     pdfDocRef.current = null;
     pageSlotsRef.current = [];
     pageTextCacheRef.current.clear();
+    setHighlightMarkers([]);
     if (containerRef.current) {
       containerRef.current.innerHTML = "";
     }
@@ -322,23 +514,36 @@ export default function PDFViewer({
   }, []);
 
   const clearRenderedHighlights = useCallback(() => {
-    pageSlotsRef.current.forEach((slot) => clearHighlights(slot.textDivs));
+    pageSlotsRef.current.forEach((slot) => {
+      clearHighlights(slot.textDivs);
+      clearPageHighlights(slot.wrapper);
+    });
+    setHighlightMarkers([]);
   }, []);
 
-  const highlightRenderedPage = useCallback(async (pageNumber: number, list: QuoteEntry[]) => {
+  const highlightRenderedPage = useCallback(async (pageNumber: number, list: QuoteEntry[], force = false) => {
     const slot = pageSlotsRef.current[pageNumber - 1];
     if (!slot?.textDivs.length) return false;
 
     clearHighlights(slot.textDivs);
+    clearPageHighlights(slot.wrapper);
 
     let found = false;
-    const pageEntries = list.filter((entry) => !entry.page || entry.page === pageNumber);
+    const pageEntries = force
+      ? list
+      : list.filter((entry) => {
+          if (entry.page_start != null && entry.page_end != null) {
+            return pageNumber >= entry.page_start && pageNumber <= entry.page_end;
+          }
+          return !entry.page || entry.page === pageNumber;
+        });
     for (const entry of pageEntries) {
-      const hit = await highlightQuote(slot.textDivs, entry.quote);
+      const hit = await highlightQuote(slot.textDivs, slot.wrapper, entry.quote);
       found = found || hit;
     }
+    setTimeout(updateHighlightMarkers, 50);
     return found;
-  }, []);
+  }, [updateHighlightMarkers]);
 
   const getPageText = useCallback(async (pageNumber: number) => {
     const cached = pageTextCacheRef.current.get(pageNumber);
@@ -546,20 +751,50 @@ export default function PDFViewer({
     let firstHitPage: number | null = null;
 
     for (const entry of list) {
+      // Find all matching pages for this quote
+      const matchingPages: number[] = [];
+      const numPages = pageSlotsRef.current.length;
+      for (let p = 1; p <= numPages; p++) {
+        const pageText = await getPageText(p);
+        if (quoteMatchesPageText(pageText, entry.quote)) {
+          matchingPages.push(p);
+        }
+      }
+
+      if (matchingPages.length > 0) {
+        entry.page_start = Math.min(...matchingPages);
+        entry.page_end = Math.max(...matchingPages);
+        entry.page = entry.page_start;
+      }
+
       let hitPage: number | null = null;
 
-      if (entry.page) {
-        const hintedPage = clampPage(entry.page, pageSlotsRef.current.length);
+      // Render and highlight all matching pages in the range
+      if (entry.page_start != null && entry.page_end != null) {
+        for (let p = entry.page_start; p <= entry.page_end && p <= numPages; p++) {
+          const pageNum = clampPage(p, numPages);
+          await renderPage(pageNum);
+          const found = await highlightRenderedPage(pageNum, [entry], true);
+          if (found && hitPage === null) {
+            hitPage = pageNum;
+          }
+        }
+      }
+
+      // Fallback: if hinted page is not in the identified range
+      if (hitPage === null && entry.page) {
+        const hintedPage = clampPage(entry.page, numPages);
         await renderPage(hintedPage);
-        const found = await highlightRenderedPage(hintedPage, [entry]);
+        const found = await highlightRenderedPage(hintedPage, [entry], true);
         if (found) hitPage = hintedPage;
       }
 
       if (hitPage === null) {
         const foundPage = await findQuotePage(entry.quote, entry.page);
         if (foundPage) {
+          entry.page = foundPage;
           await renderPage(foundPage);
-          const found = await highlightRenderedPage(foundPage, [entry]);
+          const found = await highlightRenderedPage(foundPage, [entry], true);
           if (found) hitPage = foundPage;
         }
       }
@@ -570,7 +805,7 @@ export default function PDFViewer({
     }
 
     return firstHitPage;
-  }, [clearRenderedHighlights, findQuotePage, highlightRenderedPage, renderPage]);
+  }, [clearRenderedHighlights, findQuotePage, getPageText, highlightRenderedPage, renderPage]);
 
   const observePageSlots = useCallback(() => {
     observerRef.current?.disconnect();
@@ -790,11 +1025,12 @@ export default function PDFViewer({
     const timer = setTimeout(() => {
       if (pdfDocRef.current) {
         initializePdfLayout(pdfDocRef.current, quoteListRef.current, currentPageRef.current);
+        setTimeout(updateHighlightMarkers, 300);
       }
     }, 150);
 
     return () => clearTimeout(timer);
-  }, [containerWidth, initializePdfLayout]);
+  }, [containerWidth, initializePdfLayout, updateHighlightMarkers]);
 
   useEffect(() => {
     if (!pdfDocRef.current) return;
@@ -891,6 +1127,29 @@ export default function PDFViewer({
             </button>
           </div>
         </>
+      )}
+
+      {highlightMarkers.length > 0 && (
+        <div className="absolute right-0 top-0 bottom-0 w-2.5 z-20 bg-black/[0.02] border-l border-black/[0.04]">
+          {highlightMarkers.map((pos, idx) => (
+            <button
+              key={idx}
+              onClick={() => {
+                const container = scrollContainerRef.current;
+                if (container) {
+                  const targetTop = (pos / 100) * container.scrollHeight - container.clientHeight / 2;
+                  container.scrollTo({
+                    top: Math.max(0, targetTop),
+                    behavior: "smooth"
+                  });
+                }
+              }}
+              className="absolute left-0 right-0 h-1.5 bg-amber-500 hover:bg-amber-600 rounded-sm opacity-90 shadow-sm border border-amber-600/30 cursor-pointer transition-all hover:scale-y-150"
+              style={{ top: `${pos}%` }}
+              title="Click to scroll to highlight"
+            />
+          ))}
+        </div>
       )}
     </div>
   );

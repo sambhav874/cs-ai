@@ -27,30 +27,30 @@ READ_TOOL_REPEAT_LIMITS = {
 
 
 class ProjectInput(BaseModel):
-    project_id: str = Field(default="", description="Optional project scope ID.")
+    project_id: str = Field(default="", description="Optional project scope ID. Leave blank to use the current authorized scope.")
 
 
 class DocumentIdInput(BaseModel):
-    document_id: str = Field(default="", description="Unique ID of the target document.")
+    document_id: str = Field(default="", description="Unique ID of the target document. Leave blank for the current scoped document.")
 
 
 class FetchDocumentsInput(BaseModel):
-    document_ids: Any = Field(default_factory=list, description="Optional document IDs to fetch.")
+    document_ids: Any = Field(default_factory=list, description="Optional document IDs to fetch; leave blank to inspect scoped documents.")
 
 
 class SearchInput(BaseModel):
-    query: Any = Field(..., description="Concise retrieval query rewritten from the user's evidence need.")
-    queries: Any = Field(default_factory=list, description="Optional additional rewritten retrieval queries for related evidence needs.")
-    document_ids: Any = Field(default_factory=list, description="Optional document IDs to restrict search.")
-    top_k: Any = Field(default=5, description="Maximum evidence snippets to return.")
+    query: Any = Field(..., description="Concise clause/evidence query rewritten from the user's need, e.g. 'governing law', 'change of control', or 'payment deadline'.")
+    queries: Any = Field(default_factory=list, description="Optional related query variants when the issue has aliases or multiple evidence needs.")
+    document_ids: Any = Field(default_factory=list, description="Optional document IDs to restrict search; leave blank to search the authorized scope.")
+    top_k: Any = Field(default=5, description="Maximum evidence snippets to return. Use 5-8 for most legal questions.")
     intent: str = Field(default="", description="Optional retrieval intent: fact, summary, compare, or normal.")
-    must_contain: Any = Field(default_factory=list, description="Optional exact terms or phrases that returned evidence must contain.")
-    section_ref: str = Field(default="", description="Optional section, clause, article, schedule, or exhibit reference.")
+    must_contain: Any = Field(default_factory=list, description="Optional exact terms that evidence must contain; use sparingly when the user requires a phrase.")
+    section_ref: str = Field(default="", description="Optional section, clause, article, schedule, or exhibit reference from the user's request.")
 
 
 class FindInDocumentInput(BaseModel):
-    document_id: str = Field(default="", description="Document to search within.")
-    term: str = Field(default="", description="Keyword, phrase, or clause reference to locate.")
+    document_id: str = Field(default="", description="Document to search within; leave blank for the current scoped document.")
+    term: str = Field(default="", description="Exact keyword, phrase, or clause reference to locate after broad evidence search is too thin.")
     query: str = Field(default="", description="Alias for term.")
 
 
@@ -67,47 +67,8 @@ class KPIExtractionInput(BaseModel):
 
 
 class CalculateInput(BaseModel):
-    expression: str = Field(default="", description="Arithmetic expression grounded in evidence.")
-    context: str = Field(default="", description="Calculation context and source values.")
-
-
-class DraftArtifactInput(BaseModel):
-    document_id: str = Field(default="", description="Document to use as evidence.")
-    draft_type: str = Field(default="memo", description="notice, memo, checklist, summary, or other draft type.")
-    instructions: str = Field(default="", description="Drafting instructions.")
-
-
-class RedlineArtifactInput(BaseModel):
-    source_document_id: str = Field(default="", description="Source document ID.")
-    target_document_id: str = Field(default="", description="Target document ID or editable copy ID.")
-    redline_instructions: str = Field(default="", description="Requested redline changes.")
-
-
-class EditableCopyInput(BaseModel):
-    document_id: str = Field(default="", description="Document to copy.")
-    copy_name: str = Field(default="", description="Name for the editable copy.")
-
-
-class DuplicateDocumentInput(BaseModel):
-    document_id: str = Field(default="", description="Document to duplicate.")
-    new_name: str = Field(default="", description="Name for the new document.")
-
-
-class EditDocumentInput(BaseModel):
-    document_id: str = Field(default="", description="Editable document ID.")
-    section_id: str = Field(default="", description="Section or source span to edit.")
-    new_text: str = Field(default="", description="Replacement text.")
-
-
-class ModifiedCopyInput(BaseModel):
-    document_id: str = Field(default="", description="Source document ID to copy and edit.")
-    edits: Any = Field(default_factory=list, description="List of {find, replace} edit pairs to apply.")
-    reason: str = Field(default="", description="Optional overall reason for the modified copy.")
-
-
-class GenerateDocxInput(BaseModel):
-    content: str = Field(default="", description="Content to export.")
-    filename: str = Field(default="contractsense-draft.docx", description="DOCX filename.")
+    expression: str = Field(default="", description="Arithmetic expression using only values observed in evidence or KPI context.")
+    context: str = Field(default="", description="Calculation context and cited source values that justify the expression.")
 
 
 class CreateTabularReviewInput(BaseModel):
@@ -252,7 +213,7 @@ def build_langchain_tools(
         must_contain: Any = None,
         section_ref: str = "",
     ) -> Dict[str, Any]:
-        """Search scoped contracts and return full clause text with citations. READ-ONLY."""
+        """Search scoped contracts for clause-level evidence with quote, context, page, section, score, and evidence ID. READ-ONLY."""
         payload = _payload_from_react_value(query, "query")
         if queries not in (None, "", [], {}):
             payload["queries"] = queries
@@ -285,7 +246,7 @@ def build_langchain_tools(
 
     @tool("find_in_document", args_schema=FindInDocumentInput)
     def find_in_document(document_id: str = "", term: str = "", query: str = "") -> Dict[str, Any]:
-        """Find a term, phrase, or clause reference inside a scoped document. READ-ONLY."""
+        """Find an exact term, phrase, or formal clause reference inside one scoped document. READ-ONLY."""
         payload = _payload_from_react_value(document_id, "document_id")
         if term:
             payload["term"] = term
@@ -314,73 +275,11 @@ def build_langchain_tools(
 
     @tool("calculate_from_evidence", args_schema=CalculateInput)
     def calculate_from_evidence(expression: str = "", context: str = "") -> Dict[str, Any]:
-        """Calculate values from cited evidence and show source context. READ-ONLY."""
+        """Calculate values only from cited evidence/KPI context and return the evaluated expression. READ-ONLY."""
         payload = _payload_from_react_value(expression, "expression")
         if context:
             payload["context"] = context
         return run_read_tool("calculate_from_evidence", {"expression": payload.get("expression", ""), "context": payload.get("context", "")})
-
-    @tool("create_draft_artifact", args_schema=DraftArtifactInput)
-    def create_draft_artifact(document_id: str = "", draft_type: str = "memo", instructions: str = "") -> Dict[str, Any]:
-        """Propose a draft artifact. Requires human approval before creation."""
-        payload = _payload_from_react_value(document_id, "document_id")
-        payload.setdefault("draft_type", draft_type)
-        if instructions:
-            payload["instructions"] = instructions
-        return run_approval_tool("create_draft_artifact", payload)
-
-    @tool("create_redline_artifact", args_schema=RedlineArtifactInput)
-    def create_redline_artifact(source_document_id: str = "", target_document_id: str = "", redline_instructions: str = "") -> Dict[str, Any]:
-        """Propose a redline artifact. Requires human approval before creation."""
-        payload = _payload_from_react_value(source_document_id, "source_document_id")
-        if target_document_id:
-            payload["target_document_id"] = target_document_id
-        if redline_instructions:
-            payload["redline_instructions"] = redline_instructions
-        return run_approval_tool("create_redline_artifact", payload)
-
-    @tool("create_editable_copy", args_schema=EditableCopyInput)
-    def create_editable_copy(document_id: str = "", copy_name: str = "") -> Dict[str, Any]:
-        """Propose an editable document copy. Requires human approval before creation."""
-        payload = _payload_from_react_value(document_id, "document_id")
-        if copy_name:
-            payload["copy_name"] = copy_name
-        return run_approval_tool("create_editable_copy", payload)
-
-    @tool("duplicate_document_copy", args_schema=DuplicateDocumentInput)
-    def duplicate_document_copy(document_id: str = "", new_name: str = "") -> Dict[str, Any]:
-        """Propose duplicating a document copy. Requires human approval."""
-        payload = _payload_from_react_value(document_id, "document_id")
-        if new_name:
-            payload["new_name"] = new_name
-        return run_approval_tool("duplicate_document_copy", payload)
-
-    @tool("edit_document", args_schema=EditDocumentInput)
-    def edit_document(document_id: str = "", section_id: str = "", new_text: str = "") -> Dict[str, Any]:
-        """Propose a tracked edit to an editable document. Requires human approval."""
-        payload = _payload_from_react_value(document_id, "document_id")
-        if section_id:
-            payload["section_id"] = section_id
-        if new_text:
-            payload["new_text"] = new_text
-        return run_approval_tool("edit_document", payload)
-
-    @tool("create_modified_copy", args_schema=ModifiedCopyInput)
-    def create_modified_copy(document_id: str = "", edits: Any = None, reason: str = "") -> Dict[str, Any]:
-        """Propose creating a modified copy of a document with find/replace edits as tracked changes. Requires human approval."""
-        payload = _payload_from_react_value(document_id, "document_id")
-        if edits not in (None, "", [], {}):
-            payload["edits"] = edits
-        if reason:
-            payload["reason"] = reason
-        return run_approval_tool("create_modified_copy", payload)
-
-    @tool("generate_docx", args_schema=GenerateDocxInput)
-    def generate_docx(content: str = "", filename: str = "contractsense-draft.docx") -> Dict[str, Any]:
-        """Propose exporting content to DOCX. Requires human approval."""
-        payload = _payload_from_react_value(content, "content")
-        payload.setdefault("filename", filename)
-        return run_approval_tool("generate_docx", payload)
 
     @tool("create_tabular_review", args_schema=CreateTabularReviewInput)
     def create_tabular_review(name: str = "ContractSense Review", document_ids: Any = None, columns: Any = None) -> Dict[str, Any]:
@@ -428,16 +327,9 @@ def build_langchain_tools(
         get_kpi_context,
         extract_kpis,
         calculate_from_evidence,
-        create_draft_artifact,
-        create_redline_artifact,
-        create_editable_copy,
-        duplicate_document_copy,
-        edit_document,
-        generate_docx,
         create_tabular_review,
         generate_tabular_review,
         replicate_document,
-        create_modified_copy,
         suggest_tabular_review,
     ]
 
@@ -544,7 +436,7 @@ def _default_read_observation(tool_record: ToolCallRecord, state: AgentRunState)
             "document_id": displayed.get("document_id") or state.context.contract_id or (selected_ids[0] if selected_ids else None),
             "filename": displayed.get("filename"),
         }
-    if tool_record.name in {"search_evidence", "read_evidence", "find_in_document"}:
+    if tool_record.name in {"search_evidence", "find_in_document"}:
         return {"summary": "Evidence retrieval is delegated to the scoped ContractSense RAG executor."}
     if tool_record.name == "get_kpi_context":
         return {"summary": "KPI context requested.", "visible_state": state.context.visible_state}

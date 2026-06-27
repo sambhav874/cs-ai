@@ -1438,3 +1438,10 @@ async def get_contract_stats(
     except Exception as e:
         log_exception(logger, "Error getting contract stats", e)
         raise HTTPException(status_code=500, detail="Unable to retrieve contract statistics.")
+
+
+@contracts_router.post("/contracts/debug_log")
+async def frontend_debug_log(payload: Dict[str, Any]):
+    logger.info(f"[FRONTEND DEBUG] {payload.get('message')} | Data: {payload.get('data')}")
+    return {"status": "ok"}
+

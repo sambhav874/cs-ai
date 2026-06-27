@@ -23,7 +23,7 @@
 }
 
 .pdf-text-layer .pdf-text-highlight {
-  background-color: rgba(37, 99, 235, 0.2);
+  background-color: rgba(245, 158, 11, 0.45) !important;
   border-radius: 2px;
   position: static;
 }

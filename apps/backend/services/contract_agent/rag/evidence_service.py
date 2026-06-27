@@ -103,15 +103,49 @@ STOP_WORDS = {
 
 LEGAL_SYNONYMS = {
     "assignment": ["assign", "transfer"],
+    "audit": ["inspect", "inspection", "records", "books", "access"],
+    "change of control": ["change in control", "control transaction", "merger", "acquisition", "sale of assets"],
     "confidential": ["confidentiality", "non-disclosure", "disclose", "proprietary"],
     "deadline": ["within", "days", "due", "period", "no later", "schedule"],
+    "dispute": ["arbitration", "venue", "jurisdiction", "forum", "governing law"],
+    "effective date": ["commencement date", "start date", "as of", "effective"],
+    "exclusivity": ["exclusive", "non-exclusive", "sole", "territory"],
+    "governing law": ["choice of law", "laws of", "jurisdiction", "venue"],
+    "insurance": ["insured", "policy", "coverage", "liability insurance"],
+    "intellectual property": ["ip", "inventions", "work product", "ownership", "license"],
+    "ip ownership": ["intellectual property ownership", "work product", "inventions", "assignment", "transfer"],
     "liability": ["indemnity", "indemnification", "damages", "loss", "limitation"],
+    "liquidated damages": ["stipulated damages", "penalty", "service credit", "late fee", "damages"],
+    "most favored": ["most favoured", "mfn", "most favored nation", "most favoured nation"],
+    "non compete": ["non-compete", "competition", "competitive"],
+    "non solicit": ["non-solicit", "solicitation", "hire", "employee"],
     "notice": ["notify", "notification", "written notice", "days"],
     "obligation": ["shall", "must", "required", "responsible", "covenant", "agree"],
+    "parties": ["party", "between", "by and between"],
     "payment": ["pay", "paid", "invoice", "fee", "fees", "price", "pricing", "compensation"],
     "rate": ["ratecard", "rate card", "rates", "pricing", "price", "fee", "fees"],
     "renewal": ["renew", "extension", "extend", "term"],
+    "representations": ["warranties", "represents", "warrants"],
     "termination": ["terminate", "terminated", "default", "breach", "cure", "notice"],
+}
+
+
+CLAUSE_ALIASES = {
+    "assignment": ["assignment", "assign", "transfer", "successors and assigns"],
+    "change of control": ["change of control", "change in control", "merger", "acquisition", "sale of substantially all assets"],
+    "governing law": ["governing law", "choice of law", "laws of", "jurisdiction", "venue"],
+    "ip ownership": ["ip ownership", "intellectual property ownership", "work product", "inventions", "assignment of intellectual property"],
+    "intellectual property": ["intellectual property", "ip", "license", "ownership", "work product"],
+    "liquidated damages": ["liquidated damages", "stipulated damages", "service credits", "penalty", "late fee"],
+    "confidentiality": ["confidentiality", "confidential information", "non-disclosure", "proprietary information"],
+    "non compete": ["non-compete", "non compete", "competition", "competitive activities"],
+    "non solicit": ["non-solicit", "non solicit", "solicitation", "hire employees"],
+    "indemnification": ["indemnification", "indemnity", "defend", "hold harmless"],
+    "limitation of liability": ["limitation of liability", "liability cap", "consequential damages", "indirect damages"],
+    "termination": ["termination", "terminate", "default", "breach", "cure period"],
+    "renewal": ["renewal", "automatic renewal", "extension", "successive terms"],
+    "audit": ["audit", "inspection", "books and records", "access to records"],
+    "notice": ["notice", "written notice", "notify", "notification"],
 }
 
 
@@ -152,7 +186,10 @@ class EvidenceHit:
         return (self.document_id or "", digest)
 
     def to_dict(self) -> Dict[str, Any]:
-        page = self.page_start
+        if self.page_start and self.page_end and self.page_end > self.page_start:
+            page = f"{self.page_start}-{self.page_end}"
+        else:
+            page = self.page_start or self.page_end
         return {
             "evidence_id": self.evidence_id,
             "segment_id": self.segment_id,
@@ -202,12 +239,13 @@ class EvidenceRetrievalService:
         section_ref: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any]]:
         normalized_queries = normalize_queries(queries)
+        expanded_queries = expand_legal_queries(normalized_queries)
         normalized_must = normalize_queries(must_contain or [])
         normalized_section = normalize_section_ref(section_ref)
-        resolved_intent = intent or infer_intent(" ".join(normalized_queries))
+        resolved_intent = intent or infer_intent(" ".join(expanded_queries or normalized_queries))
 
         # Check retrieval cache (per-contract + query)
-        combined_query = " ".join(normalized_queries)
+        combined_query = " ".join(expanded_queries or normalized_queries)
         doc_ids = "_".join(sorted(str(d.get("_id", "")) for d in documents))
         cache_key = _retrieval_cache_key(doc_ids, combined_query)
         cached = _retrieval_cache_get(cache_key)
@@ -226,7 +264,7 @@ class EvidenceRetrievalService:
             )
 
         # Optional query decomposition — break compound questions into sub-queries
-        decomposed_queries = normalized_queries
+        decomposed_queries = expanded_queries or normalized_queries
         decomposition_used = False
         if getattr(settings, "query_decomposition_enabled", False):
             from .query_decomposer import decompose_query, is_complex_query
@@ -236,7 +274,7 @@ class EvidenceRetrievalService:
                     provider=ai_provider or "groq",
                 )
                 if decomposed and decomposed != normalized_queries:
-                    decomposed_queries = decomposed
+                    decomposed_queries = expand_legal_queries(decomposed)
                     decomposition_used = True
 
         candidate_k = max(top_k * 4, 20)
@@ -276,7 +314,7 @@ class EvidenceRetrievalService:
                 (fallback_hits, 1.7, "legal_fallback"),
             ],
             top_k=top_k,
-            queries=normalized_queries,
+            queries=expanded_queries or normalized_queries,
             intent=resolved_intent,
             must_contain=normalized_must,
             section_ref=normalized_section,
@@ -308,6 +346,7 @@ class EvidenceRetrievalService:
             "intent": resolved_intent,
             "query_decomposition_used": decomposition_used,
             "decomposed_queries": decomposed_queries if decomposition_used else None,
+            "expanded_queries": expanded_queries if expanded_queries != normalized_queries else None,
             "reranker_used": bool(getattr(settings, "voyage_rerank_enabled", False)),
             "candidate_counts": {
                 "metadata": len(metadata_hits),
@@ -315,89 +354,8 @@ class EvidenceRetrievalService:
                 "legal_fallback": len(fallback_hits),
                 "selected": len(fused),
             },
-            "requires_read_evidence": bool(fused),
         }
         return [hit.to_dict() for hit in fused], backend, trace
-
-    def read_documents(
-        self,
-        collection: Any,
-        documents: Sequence[Dict[str, Any]],
-        evidence_ids: Sequence[str],
-    ) -> List[Dict[str, Any]]:
-        wanted = [str(item) for item in evidence_ids if str(item).strip()]
-        if not wanted:
-            return []
-        wanted_set = set(wanted)
-        by_id: Dict[str, EvidenceHit] = {}
-
-        for document in documents:
-            for hit in self._legal_document_hits(document, requires_read=False):
-                self._register_hit_aliases(by_id, hit)
-
-        # Resolve remaining wanted IDs from executor evidence chunks
-        still_missing = [e for e in wanted if e not in by_id]
-        if still_missing:
-            try:
-                from services.contract_agent.graph.tools.executor import _evidence_chunks as _exec_chunks
-            except Exception:
-                _exec_chunks = None
-            if _exec_chunks:
-                for document in documents:
-                    for chunk in _exec_chunks(document):
-                        eid = str(chunk.get("evidence_id") or "")
-                        if eid not in still_missing:
-                            continue
-                        snippet = str(chunk.get("snippet") or chunk.get("context") or chunk.get("quote") or "")
-                        if not snippet.strip():
-                            continue
-                        hit = EvidenceHit(
-                            evidence_id=eid,
-                            segment_id=str(chunk.get("segment_id") or eid),
-                            document_id=str(chunk.get("document_id") or document.get("_id", "")),
-                            filename=str(chunk.get("filename") or document.get("contract_name") or ""),
-                            quote=str(chunk.get("quote") or snippet[:200]),
-                            context=snippet.strip(),
-                            page_start=coerce_int(chunk.get("page")),
-                            char_start=coerce_int(chunk.get("start")),
-                            char_end=coerce_int(chunk.get("end")),
-                            requires_read=False,
-                        )
-                        self._register_hit_aliases(by_id, hit)
-
-        vector_collection = self._vector_collection(collection)
-        if vector_collection is not None:
-            selectors: List[Dict[str, Any]] = []
-            for evidence_id in wanted:
-                suffix = evidence_id.split(":", 1)[1] if ":" in evidence_id else evidence_id
-                selectors.extend([
-                    {"segment_id": evidence_id},
-                    {"segment_id": suffix},
-                    {"metadata.segment_id": evidence_id},
-                    {"metadata.segment_id": suffix},
-                    {"evidence_id": evidence_id},
-                    {"metadata.evidence_id": evidence_id},
-                ])
-            try:
-                raw_chunks = list(vector_collection.find({"$or": selectors}, None))
-            except Exception:
-                raw_chunks = []
-            document_by_id = {str(document.get("_id")): document for document in documents}
-            for raw in raw_chunks:
-                hit = self._hit_from_vector_chunk(
-                    raw,
-                    document_by_id=document_by_id,
-                    backend="metadata",
-                    queries=wanted,
-                    intent="fact",
-                    must_contain=[],
-                    section_ref=None,
-                    requires_read=False,
-                )
-                if hit:
-                    self._register_hit_aliases(by_id, hit)
-
-        return [by_id[evidence_id].to_dict() for evidence_id in wanted if evidence_id in by_id]
 
     def search_segments(
         self,
@@ -409,7 +367,7 @@ class EvidenceRetrievalService:
         must_contain: Optional[Sequence[str]] = None,
         section_ref: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        queries = normalize_queries([query])
+        queries = expand_legal_queries(normalize_queries([query]))
         normalized_must = normalize_queries(must_contain or [])
         normalized_section = normalize_section_ref(section_ref)
         resolved_intent = intent or infer_intent(query)
@@ -430,22 +388,6 @@ class EvidenceRetrievalService:
             hits.append(hit)
         ranked = self._rerank_hits(hits, queries=queries, intent=resolved_intent, must_contain=normalized_must, section_ref=normalized_section)
         return [hit.to_dict() for hit in ranked[: max(1, min(limit, 20))]]
-
-    def read_segments(self, segments: Sequence[TextSegment], segment_ids: Sequence[str]) -> List[Dict[str, Any]]:
-        by_id: Dict[str, TextSegment] = {}
-        for segment in segments:
-            by_id[segment.id] = segment
-            if segment.contract_id:
-                by_id[f"{segment.contract_id}:{segment.id}"] = segment
-        hits: List[Dict[str, Any]] = []
-        for segment_id in segment_ids:
-            segment = by_id.get(str(segment_id))
-            if not segment:
-                continue
-            hit = self._hit_from_segment(segment, queries=[], intent="fact", requires_read=False)
-            if hit:
-                hits.append(hit.to_dict())
-        return hits
 
     def _metadata_chunk_search(
         self,
@@ -891,19 +833,6 @@ class EvidenceRetrievalService:
                 deduped[key] = hit
         return sorted(deduped.values(), key=rank_key)
 
-    def _register_hit_aliases(self, by_id: Dict[str, EvidenceHit], hit: EvidenceHit) -> None:
-        aliases = {
-            hit.evidence_id,
-            hit.segment_id,
-        }
-        if hit.document_id and hit.segment_id and not str(hit.segment_id).startswith(f"{hit.document_id}:"):
-            aliases.add(f"{hit.document_id}:{hit.segment_id}")
-        if ":" in hit.evidence_id:
-            aliases.add(hit.evidence_id.split(":", 1)[1])
-        for alias in aliases:
-            if alias:
-                by_id[str(alias)] = hit
-
     def _vector_collection(self, collection: Any) -> Any:
         database = getattr(collection, "database", None)
         if database is None:
@@ -1023,6 +952,12 @@ def extract_exact_span(
     clean = clean_text_encoding(text or "").strip()
     if not clean:
         return "", "", "", None, None
+
+    # Strip metadata prefix (e.g. "Document: ...") if present to prevent matching keywords against metadata
+    if clean.startswith("Document:") and "\n" in clean:
+        parts = clean.split("\n", 1)
+        clean = parts[1].strip()
+
     normalized = re.sub(r"[ \t\f\v]+", " ", clean)
     lowered = normalized.lower()
 
@@ -1116,6 +1051,32 @@ def normalize_queries(values: Iterable[Any]) -> List[str]:
         if text and text not in normalized:
             normalized.append(text)
     return normalized[:12]
+
+
+def expand_legal_queries(values: Iterable[Any]) -> List[str]:
+    """Add a small, legal-aware alias set without turning retrieval into a script."""
+    normalized = normalize_queries(values)
+    if not normalized:
+        return []
+
+    expanded: List[str] = list(normalized)
+    lowered = " ".join(normalized).lower()
+
+    for trigger, aliases in CLAUSE_ALIASES.items():
+        trigger_tokens = set(query_terms(trigger))
+        query_token_set = set(query_terms(lowered))
+        triggered = trigger in lowered or bool(trigger_tokens and trigger_tokens <= query_token_set)
+        if not triggered:
+            continue
+        for alias in aliases:
+            if alias and alias not in expanded:
+                expanded.append(alias)
+
+    for term in expanded_query_terms(lowered):
+        if len(term) >= 3 and term not in expanded:
+            expanded.append(term)
+
+    return list(dict.fromkeys(item for item in expanded if str(item).strip()))[:16]
 
 
 def normalize_section_ref(value: Optional[str]) -> Optional[str]:

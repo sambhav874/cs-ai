@@ -189,7 +189,6 @@ Rules:
 - Drafting and redline requests should produce the work product directly, while grounding factual premises in citations.
 - If evidence is missing, state the gap and proceed only with clearly labeled drafting judgment where the user requested drafting.
 - Cite material claims with numeric markers like [1].
-- At the end, append a hidden <CITATIONS> JSON array with objects: {{"ref": 1, "doc_id": "...", "page": 1, "quote": "short exact quote"}}.
 
 Precision contract:
 {precision_contract}
@@ -233,11 +232,11 @@ User request:
     ) -> str:
         action_schema = {
             "thought": "brief reason for the next tool call",
-            "tool": "list_documents | outline_document | search_evidence | read_evidence | get_kpi_context | calculate_from_evidence | final_answer",
+            "tool": "list_documents | outline_document | search_evidence | get_kpi_context | calculate_from_evidence | final_answer",
             "args": {
                 "query": "for search_evidence",
                 "limit": 8,
-                "segment_ids": ["for read_evidence or calculate_from_evidence"],
+                "segment_ids": ["for calculate_from_evidence"],
                 "text": "optional text for calculate_from_evidence",
             },
         }
@@ -255,7 +254,6 @@ Tool rules:
 - Use `outline_document` for structure, headings, article lists, section lists, exhibits, schedules, appendices, and table-of-contents style questions.
 - Use `search_evidence` with concise rewritten retrieval queries when current evidence is not enough. Do not pass long conversational wording when a focused evidence query would be stronger.
 - Use multiple retrieval concepts when the user asks for several evidence families, such as clauses, obligations, definitions, dates, parties, money, tables, KPIs, SLAs, risks, exceptions, remedies, renewal, termination, payment, audit, reporting, and cross-references.
-- Use `read_evidence` when you need exact text for known segment IDs.
 - Use `get_kpi_context` for KPI/SLA/breach/actual/threshold questions.
 - Use `calculate_from_evidence` only for arithmetic from cited evidence.
 - Use `final_answer` when current evidence is enough or no more useful tool calls are needed.

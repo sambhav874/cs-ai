@@ -84,6 +84,16 @@ async def create_audit_log(
     This function is async because fetching names MIGHT become async if you switch to Motor for those collections.
     However, the actual insert into audit_logs is currently synchronous via audit_logs_collection_global.
     """
+    global audit_logs_collection_global, contracts_collection_global, teams_collection_global, users_collection_global
+
+    if audit_logs_collection_global is None:
+        try:
+            logger.info("AUDIT_LOGGER: Global collection is None. Attempting lazy initialization...")
+            from core.database import db
+            init_audit_collections(db)
+        except Exception as e:
+            logger.error(f"AUDIT_LOGGER: Failed to lazily initialize audit collections: {e}")
+
     if audit_logs_collection_global is None: # Explicitly compare with None
         logger.error("Audit log collection (audit_logs_collection_global) is not available. Skipping audit log.")
         return

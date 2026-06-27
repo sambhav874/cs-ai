@@ -23,6 +23,13 @@ client = MongoClient(MONGO_URI)  # SECURITY: TLS is enforced by default. Never u
 # Select the correct database by name
 db = client[DB_NAME]
 
+# Initialize global audit logger collections
+try:
+    from utils.audit_logger import init_audit_collections
+    init_audit_collections(db)
+except Exception as e:
+    logging.error(f"Failed to initialize audit log collections: {e}")
+
 # Do the same for the asynchronous client
 async_client = AsyncIOMotorClient(MONGO_URI)
 async_db = async_client[DB_NAME]

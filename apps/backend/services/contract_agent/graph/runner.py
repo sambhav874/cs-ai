@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Callable, Dict, Optional
+
+from utils.text_cleanup import get_formatted_citations
+
 
 from .middleware import ActiveMiddlewareEngine
 from .persistence import AgentRunStore
@@ -84,6 +88,34 @@ class DeepContractAgentRunner:
 
     def response_from_state(self, state: AgentRunState) -> AgentResponse:
         requires_approval = state.status == AgentStatus.WAITING_APPROVAL
+        if state.answer:
+            state.answer = re.sub(
+                r"【(\d+(?:\s*,\s*\d+)*)】",
+                lambda m: f"[{m.group(1)}]",
+                state.answer
+            )
+        if not state.citation_details:
+            state.citation_details = {}
+
+        # Unify citation annotations using helper
+        state.citation_annotations = get_formatted_citations(state.citation_details, state.citation_annotations)
+
+        if "source_pages_display" not in state.citation_details:
+            annotations = state.citation_annotations
+            pages = set()
+            for ann in annotations:
+                p = ann.get("page") or ann.get("page_number")
+                if p is not None:
+                    pages.add(str(p))
+            if pages:
+                sorted_pages = sorted(list(pages), key=lambda x: int(x) if x.isdigit() else 999)
+                if len(sorted_pages) == 1:
+                    state.citation_details["source_pages_display"] = f"Page {sorted_pages[0]}"
+                else:
+                    state.citation_details["source_pages_display"] = f"Pages {', '.join(sorted_pages)}"
+            else:
+                state.citation_details["source_pages_display"] = ""
+
         return AgentResponse(
             answer=state.answer,
             workflow=state.workflow,
@@ -91,6 +123,8 @@ class DeepContractAgentRunner:
             reason=state.reason,
             citation_details=state.citation_details,
             citation_annotations=state.citation_annotations,
+            citations=state.citation_annotations,
+            tools_called=list(dict.fromkeys([t.name for t in state.tools])),
             artifacts=state.artifacts,
             workflow_id=state.workflow_id,
             workflow_status=state.status,
@@ -115,5 +149,11 @@ class DeepContractAgentRunner:
     def _persist(self, state: AgentRunState) -> None:
         state.add_trace("persist_run", persisted=bool(self.store))
         state.add_trace("final_response", status=state.status.value)
+        if state.answer:
+            state.answer = re.sub(
+                r"【(\d+(?:\s*,\s*\d+)*)】",
+                lambda m: f"[{m.group(1)}]",
+                state.answer
+            )
         if self.store:
             self.store.save(state)

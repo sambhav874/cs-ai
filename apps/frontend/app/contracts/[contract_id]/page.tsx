@@ -82,6 +82,8 @@ interface CitedSegment {
   text: string;
   page_number?: number | null;
   page?: number | string | null;
+  page_start?: number | null;
+  page_end?: number | null;
   type: string;
   contract_id?: string | null;
   contract_name?: string | null;
@@ -2453,6 +2455,8 @@ export default function ContractView() {
     const pdfCitationEntries = allSegments && allSegments.length > 0
       ? allSegments.map((segment) => ({
           page: segment.page ?? segment.page_number,
+          page_start: segment.page_start ?? segment.page_number ?? segment.page ?? undefined,
+          page_end: segment.page_end ?? undefined,
           quote: segment.text || cleanedCitationText,
         }))
       : cleanedCitationText

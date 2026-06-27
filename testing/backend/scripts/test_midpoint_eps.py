@@ -32,7 +32,7 @@ for i, part in enumerate(pages):
 
 # Check the evidence retrieval for this
 print("\n=== Evidence Retrieval ===")
-from services.contract_agent.graph.tools.executor import _search_documents, _evidence_chunks, _read_evidence_ids
+from services.contract_agent.graph.tools.executor import _search_documents, _evidence_chunks
 
 documents = [contract]
 matches, backend, trace = _search_documents(

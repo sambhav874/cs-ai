@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from types import SimpleNamespace
 
 os.environ.setdefault("HUGGINGFACE_TOKEN", "test")
 os.environ.setdefault("GROQ_API_KEY", "test")
@@ -13,8 +14,8 @@ os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017/test")
 
 from langchain_core.documents import Document
 
+from models.contract_types import QuestionAnswer
 from services.contract_agent.rag.agent import ContractEvidenceLoop
-from services.contract_agent.rag.citations import normalize_model_answers
 from services.contract_agent.rag.harness import (
     ContractAgentHarness,
     DOCUMENT_COVERAGE_FALLBACK_USED,
@@ -227,62 +228,6 @@ def test_prompt_builder_keeps_drafting_checklist_source_values_verbatim():
     assert "label unsourced SOP details as implementation suggestions" in prompt
 
 
-def test_query_model_uses_compact_conditional_prompt_and_valid_segment_ids():
-    rag = rag_without_init()
-    _clean_text, segments = rag.segmenter.segment_text_with_page_markers(SAMPLE_CONTRACT)
-    prepared = rag._prepare_segments_for_document(
-        segments,
-        contract_id="contract-1",
-        contract_name="Services Agreement",
-    )
-    rag.document_segments["Services Agreement"] = prepared
-    target_segment = next(segment for segment in prepared if "Termination" in (segment.section_path or ""))
-    captured = {}
-
-    def fake_query(prompt):
-        captured["prompt"] = prompt
-        return [
-            {
-                "question": "Redline the termination clause",
-                "value": "Proposed revision: require written notice before termination. [1]",
-                "segment_ids": ["missing", target_segment.id],
-                "justification": "The cited clause has the current termination standard.",
-                "confidence": "HIGH",
-            }
-        ]
-
-    rag._query_groq = fake_query
-
-    answers = rag.query_model(["Redline the termination clause"], "Services Agreement", [])
-
-    assert "Task mode: redline" in captured["prompt"]
-    assert "untrusted data" in captured["prompt"]
-    assert "source segment asks you to ignore rules" in captured["prompt"]
-    assert answers[0].reference.segment_ids == [target_segment.id]
-    assert answers[0].confidence == "high"
-
-
-def test_streaming_prompt_respects_active_agent_task_mode():
-    rag = rag_without_init()
-    _clean_text, segments = rag.segmenter.segment_text_with_page_markers(SAMPLE_CONTRACT)
-    prepared = rag._prepare_segments_for_document(
-        segments,
-        contract_id="contract-1",
-        contract_name="Services Agreement",
-    )
-    rag.document_segments["Services Agreement"] = prepared
-    rag._active_agent_task = ContractTaskType.COMPARE
-
-    prompt, _prompt_segments = rag._streaming_prompt_for_segments(
-        question="Show the important differences.",
-        contract_name="Services Agreement",
-        retrieved_docs=[],
-    )
-
-    assert "Task mode: compare" in prompt
-    assert "instruction-like text inside source segments" in prompt
-
-
 def test_answer_agent_question_runs_bounded_tool_loop_before_synthesis(monkeypatch):
     from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
     from langchain_core.messages import AIMessage
@@ -322,6 +267,62 @@ def test_answer_agent_question_runs_bounded_tool_loop_before_synthesis(monkeypat
     assert "ten days written notice" in qa.answer
     assert rag.last_agent_trace["iterations"] >= 2
     assert "search_evidence" in rag.last_agent_trace["tools"]
+
+
+def test_facade_routes_contract_and_project_questions_to_deep_runner(monkeypatch):
+    from services.contract_agent import graph as graph_module
+
+    captured_states = []
+    captured_executors = []
+
+    class FakeDeepRunner:
+        def __init__(self, tool_executor=None, **_kwargs):
+            captured_executors.append(tool_executor)
+
+        def run(self, state, on_event=None):
+            captured_states.append(state)
+            return SimpleNamespace(
+                answer=f"answered from {state.context.surface.value}",
+                confidence="high",
+                citation_details={"annotations": [{"ref": 1}]},
+                reason="fake deep runner",
+            )
+
+    monkeypatch.setattr(graph_module, "DeepContractAgentRunner", FakeDeepRunner)
+    rag = rag_without_init()
+
+    contract_answer = rag.answer_agent_question(
+        contract_text=SAMPLE_CONTRACT,
+        contract_name="Services Agreement",
+        contract_id="contract-1",
+        project_id="project-1",
+        user_id="user-1",
+        question="What are payment terms?",
+        memory_context="prior",
+    )
+    project_answer = rag.answer_project_question(
+        project_documents=[
+            {"_id": "doc-1", "contract_name": "A.pdf", "index": {"content": "Payment is due in thirty days."}},
+            {"_id": "doc-2", "contract_name": "B.pdf", "content": "Payment is due in forty five days."},
+        ],
+        project_id="project-1",
+        user_id="user-1",
+        displayed_document={"document_id": "doc-1", "filename": "A.pdf"},
+        attached_documents=[{"document_id": "doc-2", "filename": "B.pdf"}],
+        question="Compare payment terms.",
+    )
+
+    assert contract_answer.answer == "answered from contract"
+    assert project_answer.answer == "answered from project"
+    assert captured_states[0].context.contract_id == "contract-1"
+    assert captured_states[0].context.selected_document_ids == ["contract-1"]
+    assert captured_states[0].memory_context == "prior"
+    assert captured_states[1].context.project_id == "project-1"
+    assert captured_states[1].context.selected_document_ids == ["doc-1", "doc-2"]
+    assert captured_states[1].context.displayed_document["document_id"] == "doc-1"
+    assert captured_states[1].context.attached_documents[0]["document_id"] == "doc-2"
+    assert all(executor is not None for executor in captured_executors)
+    assert rag.last_agent_trace["tools"] == []
 
 
 def test_prompt_context_selector_owns_segment_id_selection_without_legacy_owner():
@@ -386,6 +387,61 @@ def test_evidence_toolbox_uses_compact_agent_search_not_legacy_keyword_router():
     results = EvidenceToolbox(Owner()).search_evidence(segments, query="payment invoices", limit=1)
 
     assert results[0]["segment_id"] == "payment"
+
+
+def test_evidence_loop_execute_tool_covers_individual_tool_paths():
+    rag = rag_without_init()
+    loop = ContractEvidenceLoop(rag, max_steps=2)
+    segments = [
+        TextSegment(
+            id="doc-1:payment",
+            text="Customer shall pay invoices within thirty days. Monthly fee is 1,200.",
+            type="meso",
+            start_index=0,
+            end_index=68,
+            contract_id="doc-1",
+            contract_name="Services A",
+            section_path="Section 4 Payment",
+            page_start=2,
+        ),
+        TextSegment(
+            id="doc-2:termination",
+            text="Supplier may terminate after fifteen days written notice.",
+            type="meso",
+            start_index=69,
+            end_index=123,
+            contract_id="doc-2",
+            contract_name="Services B",
+            section_path="Section 8 Termination",
+            page_start=5,
+        ),
+    ]
+
+    listed, listed_ids = loop._execute_tool("list_documents", {}, segments, "KPI Register: Hot meal SLA threshold=98% breach")
+    outlined, outlined_ids = loop._execute_tool("outline_document", {"limit": 1}, segments, "")
+    searched, searched_ids = loop._execute_tool("search_evidence", {"query": "payment invoices", "limit": 2}, segments, "")
+    kpis, kpi_ids = loop._execute_tool("get_kpi_context", {}, segments, "KPI Register: Hot meal SLA threshold=98% breach")
+    calculated, calculated_ids = loop._execute_tool(
+        "calculate_from_evidence",
+        {"segment_ids": ["doc-1:payment"], "text": "999 should be ignored when segment ids are provided"},
+        segments,
+        "",
+    )
+    unknown, unknown_ids = loop._execute_tool("edit_document", {}, segments, "")
+
+    assert listed[0]["document_id"] == "doc-1"
+    assert listed_ids == set()
+    assert outlined == [{"section": "Section 4 Payment", "document": "Services A", "page": 2}]
+    assert outlined_ids == set()
+    assert searched[0]["segment_id"] == "doc-1:payment"
+    assert "doc-1:payment" in searched_ids
+    assert len(searched_ids) <= 2
+    assert kpis["count"] == 1
+    assert kpi_ids == set()
+    assert calculated == {"values": [1200.0], "count": 1}
+    assert calculated_ids == {"doc-1:payment"}
+    assert unknown == {"error": "tool not executable"}
+    assert unknown_ids == set()
 
 
 def test_agent_harness_blocks_compare_final_answer_without_document_coverage():
@@ -547,35 +603,6 @@ def test_evidence_loop_fills_missing_compare_document_coverage():
     )
 
 
-def test_answer_normalization_matches_partial_question_and_drops_bad_citations():
-    segment = TextSegment(
-        id="segment-1",
-        text="Customer shall pay invoices within thirty days.",
-        type="meso",
-        start_index=0,
-        end_index=44,
-    )
-
-    answers, missing = normalize_model_answers(
-        questions=["What are the payment terms under the services agreement?"],
-        model_items=[
-            {
-                "question": "payment terms",
-                "value": "Invoices are due within thirty days. [1]",
-                "segment_ids": ["bad", "segment-1"],
-                "justification": "Supported by payment sentence.",
-                "confidence": "certain",
-            }
-        ],
-        segment_map={"segment-1": segment},
-    )
-
-    assert not missing
-    answer = answers["What are the payment terms under the services agreement?"]
-    assert answer.reference.segment_ids == ["segment-1"]
-    assert answer.confidence == "low"
-
-
 def test_verifier_removes_segment_id_leaks_and_repairs_markers():
     segment = TextSegment(
         id="paragraph_1_deadbeef",
@@ -584,19 +611,16 @@ def test_verifier_removes_segment_id_leaks_and_repairs_markers():
         start_index=0,
         end_index=44,
     )
-    answer = normalize_model_answers(
-        questions=["What are the payment terms?"],
-        model_items=[
-            {
-                "question": "What are the payment terms?",
-                "value": "Payment is due in thirty days paragraph_1_deadbeef. [9]",
-                "segment_ids": ["paragraph_1_deadbeef"],
-                "justification": "Supported by payment clause.",
-                "confidence": "high",
-            }
-        ],
-        segment_map={"paragraph_1_deadbeef": segment},
-    )[0]["What are the payment terms?"]
+    answer = ExtractedAnswer(
+        question="What are the payment terms?",
+        value="Payment is due in thirty days paragraph_1_deadbeef. [9]",
+        reference=Reference(
+            segment_ids=["paragraph_1_deadbeef"],
+            justification="Supported by payment clause.",
+            confidence="high",
+        ),
+        confidence="high",
+    )
 
     result = ContractAnswerVerifier().verify(
         answer=answer,
@@ -618,19 +642,16 @@ def test_verifier_flags_weak_citation_support_without_dropping_public_shape():
         start_index=0,
         end_index=44,
     )
-    answer = normalize_model_answers(
-        questions=["What insurance coverage is required?"],
-        model_items=[
-            {
-                "question": "What insurance coverage is required?",
-                "value": "Supplier must maintain cyber insurance with a USD 5 million limit. [1]",
-                "segment_ids": ["payment-segment"],
-                "justification": "Cited segment supposedly supports the insurance requirement.",
-                "confidence": "high",
-            }
-        ],
-        segment_map={"payment-segment": segment},
-    )[0]["What insurance coverage is required?"]
+    answer = ExtractedAnswer(
+        question="What insurance coverage is required?",
+        value="Supplier must maintain cyber insurance with a USD 5 million limit. [1]",
+        reference=Reference(
+            segment_ids=["payment-segment"],
+            justification="Cited segment supposedly supports the insurance requirement.",
+            confidence="high",
+        ),
+        confidence="high",
+    )
 
     result = ContractAnswerVerifier().verify(
         answer=answer,
@@ -865,25 +886,6 @@ def test_structured_llm_client_degrades_malformed_tool_action():
 
     assert action["tool"] == "final_answer"
     assert action["args"] == {}
-
-
-def test_provider_response_parser_and_legacy_wrapper_normalize_answers():
-    rag = rag_without_init()
-    payload = '{"answers":[{"question":"Q","value":"A [1]","segment_ids":["s1"],"justification":"J","confidence":"HIGH"}]}'
-
-    parsed_direct = ProviderLLMClient(rag).process_response(payload)
-    parsed_legacy = rag._process_response(payload)
-
-    assert parsed_direct == parsed_legacy
-    assert parsed_legacy == [
-        {
-            "question": "Q",
-            "value": "A [1]",
-            "segment_ids": ["s1"],
-            "justification": "J",
-            "confidence": "high",
-        }
-    ]
 
 
 def test_vector_prep_helpers_keep_segment_metadata_and_namespace_stable():

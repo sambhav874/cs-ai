@@ -1201,7 +1201,9 @@ function DashboardContent() {
                   </button>
                 ))}
               </div>
-              <span className="text-xs text-muted-foreground">Updated {formatDate(selectedProject?.updatedAt || undefined)}</span>
+              {selectedProject && (
+                <span className="text-xs text-muted-foreground">Updated {formatDate(selectedProject.updatedAt)}</span>
+              )}
               </div>
             </>
           )}

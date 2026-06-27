@@ -204,6 +204,8 @@ class AgentResponse(BaseModel):
     reason: str = ""
     citation_details: Dict[str, Any] = Field(default_factory=dict)
     citation_annotations: List[Dict[str, Any]] = Field(default_factory=list)
+    citations: List[Dict[str, Any]] = Field(default_factory=list)
+    tools_called: List[str] = Field(default_factory=list)
     artifacts: List[Dict[str, Any]] = Field(default_factory=list)
     workflow_id: str
     workflow_status: AgentStatus

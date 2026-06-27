@@ -28,15 +28,8 @@ READ_ONLY_TOOLS = {
 }
 
 APPROVAL_REQUIRED_TOOLS = {
-    "create_draft_artifact",
-    "create_editable_copy",
-    "create_modified_copy",
-    "create_redline_artifact",
     "create_tabular_review",
-    "duplicate_document_copy",
-    "edit_document",
     "extract_kpis",
-    "generate_docx",
     "generate_tabular_review",
     "replicate_document",
     "suggest_tabular_review",
@@ -58,23 +51,16 @@ FORBIDDEN_TOOL_NAMES = frozenset({
 
 def tool_specs() -> Dict[str, ToolSpec]:
     descriptions = {
-        "calculate_from_evidence": "Evaluate arithmetic using values found in cited evidence or KPI context.",
-        "fetch_documents": "Fetch scoped indexed document data by IDs.",
-        "find_in_document": "Locate a phrase, clause reference, or keyword inside a scoped document.",
+        "calculate_from_evidence": "Evaluate arithmetic using only values found in cited evidence or KPI context.",
+        "fetch_documents": "Fetch scoped indexed document metadata by IDs.",
+        "find_in_document": "Locate an exact phrase, clause reference, or keyword inside one scoped document.",
         "get_kpi_context": "Retrieve KPI/SLA targets, actuals, breach state, and operational context matching the user query.",
         "list_documents": "List scoped indexed documents available to this agent run.",
         "outline_document": "Read a document outline or high-level structure.",
         "read_document": "Read an excerpt from the current or requested scoped document.",
-        "search_evidence": "Search scoped contracts and return full clause text with citations inline.",
-        "create_draft_artifact": "Create a draft artifact only after human approval.",
-        "create_editable_copy": "Create an editable document copy only after human approval.",
-        "create_modified_copy": "Create a modified copy of a document with find/replace edits applied as tracked changes, only after human approval.",
-        "create_redline_artifact": "Create a redline artifact only after human approval.",
+        "search_evidence": "Search scoped contracts and return clause-level evidence with quote, context, page, section, score, and evidence ID.",
         "create_tabular_review": "Create a tabular review only after human approval.",
-        "duplicate_document_copy": "Duplicate a document copy only after human approval.",
-        "edit_document": "Apply tracked document edits only after human approval.",
         "extract_kpis": "Extract draft KPI/SLA candidates for a scoped ingested contract only after human approval.",
-        "generate_docx": "Export content to DOCX only after human approval.",
         "generate_tabular_review": "Generate tabular review cells only after human approval.",
         "replicate_document": "Replicate a document to another project only after human approval.",
         "suggest_tabular_review": "Suggest an editable tabular review column configuration for human approval.",
