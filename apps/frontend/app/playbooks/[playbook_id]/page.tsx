@@ -829,7 +829,7 @@ function PlaybookDetailContent() {
         <Button
           type="button"
           size="sm"
-          className="h-8 gap-1.5 rounded-lg bg-gray-900 text-xs text-white transition-colors hover:bg-gray-800"
+          className="h-8 gap-1.5 rounded-lg bg-gray-900 text-xs text-white transition-colors hover:bg-cs-primary/90"
           disabled={running || saving || !runReady}
           onClick={() => void handleRun()}
         >
@@ -875,7 +875,7 @@ function PlaybookDetailContent() {
                     <Button
                       type="button"
                       size="sm"
-                      className="h-7 gap-1 rounded-lg bg-gray-900 text-[11px] text-white transition-colors hover:bg-gray-800"
+                      className="h-7 gap-1 rounded-lg bg-gray-900 text-[11px] text-white transition-colors hover:bg-cs-primary/90"
                       disabled={running || saving || !runReady}
                       onClick={() => void handleRun()}
                     >
@@ -967,7 +967,7 @@ function PlaybookDetailContent() {
                             <BookOpen className="mb-3 h-8 w-8 text-gray-200" />
                             <p className="text-sm text-gray-400">No rules created</p>
                             <p className="mt-1 text-xs text-gray-300">Add rules to begin reviewing contracts</p>
-                            <Button type="button" size="sm" className="mt-4 h-8 gap-1.5 rounded-lg bg-gray-900 text-xs text-white transition-colors hover:bg-gray-800" onClick={() => openRuleDialog()}>
+                            <Button type="button" size="sm" className="mt-4 h-8 gap-1.5 rounded-lg bg-gray-900 text-xs text-white transition-colors hover:bg-cs-primary/90" onClick={() => openRuleDialog()}>
                               <Plus className="h-3.5 w-3.5" />
                               Add rule
                             </Button>
@@ -1136,7 +1136,7 @@ function PlaybookDetailContent() {
                                             <p className="text-xs leading-5 text-gray-800">{finding.suggested_revision}</p>
                                             <div className="mt-2 flex justify-end gap-1.5">
                                               <Button type="button" variant="outline" size="sm" className="h-6 rounded-md px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); void handleFindingAction(finding, "dismiss"); }}>Dismiss</Button>
-                                              <Button type="button" size="sm" className="h-6 rounded-md bg-gray-900 px-2 text-[10px] text-white hover:bg-gray-800" onClick={(e) => { e.stopPropagation(); void handleFindingAction(finding, "apply"); }}>Apply</Button>
+                                              <Button type="button" size="sm" className="h-6 rounded-md bg-gray-900 px-2 text-[10px] text-white hover:bg-cs-primary/90" onClick={(e) => { e.stopPropagation(); void handleFindingAction(finding, "apply"); }}>Apply</Button>
                                             </div>
                                           </div>
                                         ) : null}
@@ -1186,7 +1186,7 @@ function PlaybookDetailContent() {
                         <Button
                           type="button"
                           size="sm"
-                          className="mt-5 h-8 gap-1.5 rounded-lg bg-gray-900 text-xs text-white transition-colors hover:bg-gray-800"
+                          className="mt-5 h-8 gap-1.5 rounded-lg bg-gray-900 text-xs text-white transition-colors hover:bg-cs-primary/90"
                           disabled={!runReady}
                           onClick={() => void handleRun()}
                         >
@@ -1235,7 +1235,7 @@ function PlaybookDetailContent() {
                                             <p className="text-xs leading-5 text-gray-800">{finding.suggested_revision}</p>
                                             <div className="mt-2 flex justify-end gap-1.5">
                                               <Button type="button" variant="outline" size="sm" className="h-6 rounded-md px-2 text-[10px]" onClick={(e) => { e.stopPropagation(); void handleFindingAction(finding, "dismiss"); }}>Dismiss</Button>
-                                              <Button type="button" size="sm" className="h-6 rounded-md bg-gray-900 px-2 text-[10px] text-white hover:bg-gray-800" onClick={(e) => { e.stopPropagation(); void handleFindingAction(finding, "apply"); }}>Apply</Button>
+                                              <Button type="button" size="sm" className="h-6 rounded-md bg-gray-900 px-2 text-[10px] text-white hover:bg-cs-primary/90" onClick={(e) => { e.stopPropagation(); void handleFindingAction(finding, "apply"); }}>Apply</Button>
                                             </div>
                                           </div>
                                         ) : null}
@@ -1297,7 +1297,7 @@ function PlaybookDetailContent() {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" className="rounded-lg" onClick={() => setRuleDialogOpen(false)}>Cancel</Button>
-            <Button type="button" className="rounded-lg bg-gray-950 text-white hover:bg-gray-800" onClick={saveRuleDraft}>
+            <Button type="button" className="rounded-lg bg-cs-primary text-white hover:bg-cs-primary/90" onClick={saveRuleDraft}>
               <Save className="h-4 w-4" />
               Save Rule
             </Button>
@@ -1338,7 +1338,7 @@ function PlaybookDetailContent() {
           ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" className="rounded-lg" onClick={() => setFindingDraft(null)}>Cancel</Button>
-            <Button type="button" className="rounded-lg bg-gray-950 text-white hover:bg-gray-800" onClick={() => void saveFindingDraft()}>
+            <Button type="button" className="rounded-lg bg-cs-primary text-white hover:bg-cs-primary/90" onClick={() => void saveFindingDraft()}>
               <Save className="h-4 w-4" />
               Save Finding
             </Button>

@@ -478,12 +478,12 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
               {isDone ? 'Done' : 'Cancel'}
             </Button>
             {(sessionStatus === 'idle' || sessionStatus === 'counting_pages') && (
-              <Button onClick={handleUpload} disabled={!canUpload} className="h-8 rounded-lg bg-gray-900 px-4 text-xs text-white hover:bg-gray-800">
+              <Button onClick={handleUpload} disabled={!canUpload} className="h-8 rounded-lg bg-gray-900 px-4 text-xs text-white hover:bg-cs-primary/90">
                 {uploading ? <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" />Uploading</span> : `Upload ${files.length || ''}`}
               </Button>
             )}
             {sessionStatus === 'assigning' && (
-              <Button onClick={saveAllRoles} disabled={anySaving || allRolesDone} className="h-8 rounded-lg bg-gray-900 px-4 text-xs text-white hover:bg-gray-800">
+              <Button onClick={saveAllRoles} disabled={anySaving || allRolesDone} className="h-8 rounded-lg bg-gray-900 px-4 text-xs text-white hover:bg-cs-primary/90">
                 {anySaving ? <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving</span> : <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" />Save all roles</span>}
               </Button>
             )}

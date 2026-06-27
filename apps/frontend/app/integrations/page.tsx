@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, Cloud, Database, FileSpreadsheet, Loader2, Plug, ShieldCheck, UploadCloud } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { useBreadcrumbs } from '@/app/context/BreadcrumbContext'
 
 interface SourceCatalogItem {
   source_type: string
@@ -47,6 +48,11 @@ export default function IntegrationsPage() {
   const [uploadSources, setUploadSources] = useState<SourceCatalogItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { setBreadcrumbs } = useBreadcrumbs()
+
+  useEffect(() => {
+    setBreadcrumbs([{ label: 'Integrations' }])
+  }, [setBreadcrumbs])
 
   useEffect(() => {
     if (!authChecked) return

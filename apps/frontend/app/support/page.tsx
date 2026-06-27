@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { useBreadcrumbs } from "@/app/context/BreadcrumbContext"
+import { useEffect } from 'react';
 
 interface ApiResponse {
   message: string;
@@ -28,6 +30,11 @@ export default function SupportPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const { setBreadcrumbs } = useBreadcrumbs();
+
+  useEffect(() => {
+    setBreadcrumbs([{ label: "Support" }]);
+  }, [setBreadcrumbs]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -206,7 +213,7 @@ export default function SupportPage() {
                   <Button 
                     type="submit" 
                     disabled={isLoading}
-                    className="w-full bg-gray-900 transition-colors hover:bg-gray-800"
+                    className="w-full bg-gray-900 transition-colors hover:bg-cs-primary/90"
                   >
                     {isLoading ? (
                       <>

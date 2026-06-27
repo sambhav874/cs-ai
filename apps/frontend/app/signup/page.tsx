@@ -45,7 +45,7 @@ export default function SignUp() {
         setError(data.detail || "Failed to create account")
       }
     } catch (err) {
-      console.error("Sign-up error:", err)
+      console.warn("Sign-up error:", err)
       setError("Something went wrong. Please try again.")
     } finally {
       setIsLoading(false)

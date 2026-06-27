@@ -3,7 +3,7 @@ import { AnimatedUploadIcon } from "@/components/animation/animatedUpload"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LogOut, Menu, CreditCard, Loader2, Instagram, Facebook, ChevronDown } from "lucide-react"
+import { LogOut, Menu, CreditCard, Loader2, Instagram, Facebook, ChevronDown, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { LocalMarkerToggle } from "@/components/new/localMarkerToggle"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -12,6 +12,7 @@ import { useEffect, useState } from "react"
 import AccountSwitcher from "../layout/AccountSwitcher"
 import { useAccountContext } from "@/app/context/AccountContext"
 import { useAuth } from "@/hooks/useAuth"
+import { useBreadcrumbs } from "@/app/context/BreadcrumbContext"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,9 +47,10 @@ interface Account {
 interface HeaderProps {
   onMobileMenuClick: () => void
   onUploadSuccess?: () => void
+  isExpanded?: boolean
 }
 
-export function ColabsHeader({ onMobileMenuClick, onUploadSuccess }: HeaderProps) {
+export function ColabsHeader({ onMobileMenuClick, onUploadSuccess, isExpanded = false }: HeaderProps) {
   const router = useRouter()
   const pathname = usePathname()
   const authPages = ["/signin", "/signup"]
@@ -67,6 +69,7 @@ export function ColabsHeader({ onMobileMenuClick, onUploadSuccess }: HeaderProps
   })
   const { selectedAccountId, setSelectedAccount } = useAccountContext()
   const { isAuthenticated, authenticatedFetch, logout, authChecked } = useAuth()
+  const { breadcrumbs, headerActions } = useBreadcrumbs()
   const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL
 
   useEffect(() => {
@@ -197,26 +200,41 @@ export function ColabsHeader({ onMobileMenuClick, onUploadSuccess }: HeaderProps
     )
   }
 
-  if (isDashboardPage && !isMobile) {
-    return null
-  }
-
   return (
     <>
-    <header className="fixed top-0 left-0 right-0 z-50 border-b border-gray-200 bg-white/95 font-InterVar backdrop-blur">
+    <header className={`fixed top-0 right-0 z-50 border-b border-gray-200 bg-white/95 font-InterVar backdrop-blur transition-all duration-100 ${isExpanded ? 'md:left-72' : 'md:left-16'} left-0`}>
       {/* Top row - ContractSense brand centered, user actions on extreme right */}
       <div className="h-16 flex items-center justify-between px-4 sm:px-6 lg:px-8">
-        {/* Left side - Mobile menu button (if needed) */}
-        <div className="flex items-center">
+        {/* Left side - Mobile menu button and Breadcrumbs */}
+        <div className="flex items-center gap-4">
           {!isAuthPage && isMobile && (
-            <button onClick={onMobileMenuClick} className="mr-2 rounded-md border border-gray-200 p-2 transition-colors hover:bg-gray-50">
+            <button onClick={onMobileMenuClick} className="rounded-md border border-gray-200 p-2 transition-colors hover:bg-gray-50">
               <Menu className="h-5 w-5 text-gray-900" />
             </button>
+          )}
+          {!isAuthPage && breadcrumbs.length > 0 && (
+            <nav className="hidden md:flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+              {breadcrumbs.map((crumb, index) => (
+                <div key={index} className="flex items-center gap-1.5">
+                  {crumb.href ? (
+                    <Link href={crumb.href} className="hover:text-foreground transition-colors">
+                      {crumb.label}
+                    </Link>
+                  ) : (
+                    <span className="text-foreground truncate max-w-[300px]" title={crumb.label}>{crumb.label}</span>
+                  )}
+                  {index < breadcrumbs.length - 1 && (
+                    <ChevronRight className="h-4 w-4 shrink-0 opacity-50" />
+                  )}
+                </div>
+              ))}
+            </nav>
           )}
         </div>
 
         {/* Right side - User actions */}
         <div className="flex items-center gap-3">
+          {headerActions}
           {!isAuthPage && isAuthenticated && (
             <>
               {/* Credits display */}
@@ -228,21 +246,6 @@ export function ColabsHeader({ onMobileMenuClick, onUploadSuccess }: HeaderProps
                   <span className="text-sm font-medium text-gray-700">{account.page_credits}</span>
                 </div>
               ) : null}
-
-              {/* Upload button */}
-              {!isDashboardPage && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onFocus={preloadFileUploadModal}
-                  onClick={() => setIsUploadModalOpen(true)}
-                  onMouseEnter={preloadFileUploadModal}
-                  className="h-9 gap-2 bg-gray-900 px-4 text-white hover:bg-gray-800"
-                >
-                  <AnimatedUploadIcon />
-                  <span className={isSmallScreen ? "hidden" : "block"}>Upload</span>
-                </Button>
-              )}
 
               {/* AI Provider Selector */}
               {process.env.NEXT_PUBLIC_BRANCH_ENV === 'development' && (
@@ -278,54 +281,6 @@ export function ColabsHeader({ onMobileMenuClick, onUploadSuccess }: HeaderProps
               <div className="hidden sm:block">
                 <AccountSwitcher onAccountChange={handleAccountChange} initialAccountId={selectedAccountId} />
               </div>
-
-              {/* User profile */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button className="flex items-center gap-2 rounded-full border border-gray-200 bg-white p-1 transition-colors hover:bg-gray-50">
-                    {loading.user ? (
-                      <Loader2 className="h-8 w-8 animate-spin text-gray-600" />
-                    ) : (
-                      <img
-                        src="https://picsum.photos/id/237/200/200"
-                        alt="Profile"
-                        className="h-8 w-8 rounded-full"
-                      />
-                    )}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent
-                  className="w-56 border-gray-200 bg-white"
-                  align="end"
-                  sideOffset={10}
-                >
-                  <div className="flex flex-col space-y-2">
-                    <div className="p-2">
-                      <p className="text-sm font-medium text-gray-900">
-                        {loading.user ? "Loading..." : user?.username || "User"}
-                      </p>
-                      <p className="text-xs text-gray-500">{loading.user ? "Loading..." : user?.email || ""}</p>
-                    </div>
-                    <div className="lg:hidden">
-                      <LocalMarkerToggle />
-                    </div>
-                    <div className="sm:hidden py-2">
-                      <AccountSwitcher
-                        onAccountChange={handleAccountChange}
-                        initialAccountId={selectedAccountId}
-                      />
-                    </div>
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
-                      onClick={handleLogout}
-                    >
-                      <LogOut className="h-4 w-4 mr-2" />
-                      Log Out
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
             </>
           )}  
 

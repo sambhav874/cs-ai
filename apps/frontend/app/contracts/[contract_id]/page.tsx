@@ -45,7 +45,9 @@ import {
   Play,
   PanelLeftClose,
   PanelLeftOpen,
+  XCircle,
 } from "lucide-react";
+import { useBreadcrumbs } from "@/app/context/BreadcrumbContext";
 
 import { useAccountContext } from '@/app/context/AccountContext';
 
@@ -727,6 +729,7 @@ function kpiStatusClass(status?: string) {
 }
 
 export default function ContractView() {
+  const { setBreadcrumbs, setHeaderActions } = useBreadcrumbs();
   const [contract, setContract] = useState<FullContractData | null>(null);
   const [workspaceProject, setWorkspaceProject] = useState<ProjectSummary | null>(null);
   const [workspaceDocuments, setWorkspaceDocuments] = useState<WorkspaceDocumentSummary[]>([]);
@@ -812,12 +815,8 @@ export default function ContractView() {
   }, [contractId]);
 
   const workspaceProjectId = useMemo(() => (
-    contract?.projectId ||
-    contract?.project_id ||
-    contract?.project?._id ||
-    storedProjectId ||
-    null
-  ), [contract?.projectId, contract?.project_id, contract?.project?._id, storedProjectId]);
+    workspaceProject?._id || contract?.projectId || contract?.project_id || contract?.project?._id || null
+  ), [contract, workspaceProject]);
 
   const contractProjectId = useMemo(() => (
     contract?.projectId ||
@@ -827,11 +826,20 @@ export default function ContractView() {
   ), [contract?.projectId, contract?.project_id, contract?.project?._id]);
 
   const workspaceProjectName = useMemo(() => (
-    workspaceProject?.name ||
-    contract?.project?.name ||
-    contract?.project_name ||
-    "Contracts"
-  ), [workspaceProject?.name, contract?.project?.name, contract?.project_name]);
+    workspaceProject?.name || contract?.project_name || contract?.project?.name || "Contracts"
+  ), [contract, workspaceProject]);
+
+  useEffect(() => {
+    if (contract) {
+      setBreadcrumbs([
+        { label: "Projects", href: "/dashboard?view=all" },
+        { label: workspaceProjectName || "Project", href: workspaceProjectId ? `/dashboard?project_id=${workspaceProjectId}` : "/dashboard?view=all" },
+        { label: contract.contract_name || "Contract" }
+      ]);
+    } else {
+      setBreadcrumbs([{ label: "Projects", href: "/dashboard?view=all" }]);
+    }
+  }, [contract, workspaceProjectId, workspaceProjectName, setBreadcrumbs]);
 
   const explorerDocuments = useMemo(() => {
     if (!contract) return workspaceDocuments;
@@ -2640,6 +2648,33 @@ export default function ContractView() {
       .replace(/(\n)([A-Z][A-Z\s]+[A-Z])(\n)/g, '$1\n## $2$3');
   };
 
+  useEffect(() => {
+    if (!contractId) return;
+    setHeaderActions(
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            const query = new URLSearchParams({ contract_id: contractId as string });
+            if (workspaceProjectId) query.set("project_id", workspaceProjectId);
+            router.push(`/playbooks?${query.toString()}`);
+          }}
+          className="hidden h-8 gap-1.5 rounded-lg text-xs lg:inline-flex"
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          Run Playbook
+        </Button>
+        {contractStatus && (
+          <span className={`hidden items-center rounded-full px-2.5 py-1 text-xs font-medium sm:inline-flex ${getStatusBadgeClass(contractStatus)}`} title={`Current Status: ${contractStatus}`}>
+            {getStatusIcon(contractStatus)} {displayStatus}
+          </span>
+        )}
+      </div>
+    );
+    return () => setHeaderActions(null);
+  }, [setHeaderActions, contractId, workspaceProjectId, router, contractStatus, displayStatus]);
+
   const isLoading = loadingContract || loadingUser;
 
   if (!isClientLoaded) {
@@ -2705,14 +2740,18 @@ export default function ContractView() {
     />
   );
 
+  const hasWorkflowActions = canDecideOnReEdit ||
+    (contractStatus === 'Re-edit Denied' && isAssignedEditor) ||
+    (!canDecideOnReEdit && contractStatus !== 'Re-edit Denied' && (canSubmit || canApprove || canReject || canMarkComplete || canRequestReEdit));
+
   return (
-    <div className="h-screen overflow-hidden bg-card font-InterVar text-foreground">
-      <main className="h-screen">
+    <div className="h-[calc(100vh-4rem)] overflow-hidden bg-card font-InterVar text-foreground">
+      <main className="h-full">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="flex h-screen min-h-0 flex-col"
+          className="flex h-full min-h-0 flex-col"
         >
           {error && (
             <div className="text-center text-red-600 bg-red-100 p-3 rounded-md border border-red-300 shadow-sm mx-auto max-w-2xl text-sm">
@@ -2736,41 +2775,10 @@ export default function ContractView() {
                 </div>
               )}
 
-              <div className="flex min-h-[52px] shrink-0 items-center gap-3 border-b border-border bg-muted/20 px-6 py-2.5 md:px-8">
-                <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-sm font-medium text-muted-foreground">
-                  <Link href="/dashboard?view=all" className="shrink-0 hover:text-foreground transition-colors">
-                    Projects
-                  </Link>
-                  <ChevronRight className="h-4 w-4 shrink-0" />
-                  <Link 
-                    href={workspaceProjectId ? `/dashboard?project_id=${workspaceProjectId}` : "/dashboard"} 
-                    className="truncate hover:text-foreground transition-colors"
-                  >
-                    {workspaceProjectName || "Unknown Project"}
-                  </Link>
-                  <ChevronRight className="h-4 w-4 shrink-0" />
-                  <span className="truncate text-foreground font-medium" title={contract.contract_name}>
-                    {truncateMiddle(contract.contract_name, 34)}
-                  </span>
-                </div>
+              {hasWorkflowActions && (
+                <div className="flex min-h-[52px] shrink-0 items-center justify-end gap-3 border-b border-border bg-muted/20 px-6 py-2.5 md:px-8">
 
-                <div className="ml-auto flex shrink-0 items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      const query = new URLSearchParams({ contract_id: contract._id });
-                      if (workspaceProjectId) query.set("project_id", workspaceProjectId);
-                      router.push(`/playbooks?${query.toString()}`);
-                    }}
-                    className="hidden h-8 gap-1.5 rounded-lg text-xs lg:inline-flex"
-                  >
-                    <BookOpen className="h-3.5 w-3.5" />
-                    Run Playbook
-                  </Button>
-                  <span className={`hidden items-center rounded-full px-2.5 py-1 text-xs font-medium sm:inline-flex ${getStatusBadgeClass(contractStatus)}`} title={`Current Status: ${contractStatus}`}>
-                    {getStatusIcon(contractStatus)} {displayStatus}
-                  </span>
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
 
                   {canDecideOnReEdit && (
                     <>
@@ -2860,9 +2868,9 @@ export default function ContractView() {
                     </>
                   )}
 
-
+                  </div>
                 </div>
-              </div>
+              )}
 
               {contractStatus === 'Rejected' && contract.rejectedReason && (
                 <div className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-700 md:px-6">

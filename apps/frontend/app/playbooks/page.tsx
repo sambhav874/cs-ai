@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { useAccountContext } from "@/app/context/AccountContext";
+import { useBreadcrumbs } from "@/app/context/BreadcrumbContext";
 import { useAuth } from "@/hooks/useAuth";
 import {
   createPlaybook,
@@ -67,6 +68,11 @@ function PlaybooksContent() {
   const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL ?? "";
   const { isAuthenticated, authenticatedFetch } = useAuth();
   const { selectedAccountId } = useAccountContext();
+  const { setBreadcrumbs } = useBreadcrumbs();
+
+  useEffect(() => {
+    setBreadcrumbs([{ label: "Playbooks" }]);
+  }, [setBreadcrumbs]);
 
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [templates, setTemplates] = useState<PlaybookTemplate[]>([]);
@@ -380,7 +386,7 @@ function PlaybooksContent() {
               <Button
                 type="button"
                 size="sm"
-                className="mt-4 h-8 gap-1.5 rounded-lg bg-gray-950 text-xs text-white hover:bg-gray-800"
+                className="mt-4 h-8 gap-1.5 rounded-lg bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
                 onClick={() => {
                   resetCreateForm(initialContractId ? "reference" : "template");
                   setCreateOpen(true);
@@ -416,7 +422,7 @@ function PlaybooksContent() {
                   onClick={() => setMode(item.id as CreateMode)}
                   className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all ${
                     active
-                      ? "border-gray-950 bg-gray-50 shadow-sm"
+                      ? "border-cs-primary bg-gray-50 shadow-sm"
                       : "border-gray-100 bg-white text-gray-500 hover:border-gray-200 hover:text-gray-700"
                   }`}
                 >
@@ -467,7 +473,7 @@ function PlaybooksContent() {
                       }`}
                     >
                       <span className={`mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                        active ? "border-gray-950 bg-gray-950" : "border-gray-200"
+                        active ? "border-cs-primary bg-cs-primary" : "border-gray-200"
                       }`}>
                         {active ? <Check className="h-2.5 w-2.5 text-white" /> : null}
                       </span>
@@ -531,7 +537,7 @@ function PlaybooksContent() {
                           }`}
                         >
                           <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                            checked ? "border-gray-950 bg-gray-950 text-white" : "border-gray-200"
+                            checked ? "border-cs-primary bg-cs-primary text-white" : "border-gray-200"
                           }`}>
                             {checked ? <Check className="h-3 w-3" /> : null}
                           </span>
@@ -571,7 +577,7 @@ function PlaybooksContent() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} className="rounded-lg">Cancel</Button>
-            <Button onClick={() => void handleCreate()} disabled={saving} className="rounded-lg bg-gray-950 text-white hover:bg-gray-800">
+            <Button onClick={() => void handleCreate()} disabled={saving} className="rounded-lg bg-cs-primary text-white hover:bg-cs-primary/90">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {mode === "reference" ? "Generate Rules" : "Create Playbook"}
             </Button>

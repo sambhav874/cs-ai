@@ -59,7 +59,7 @@ export const useAuth = () => {
 
         return response.ok;
       } catch (err) {
-        console.error("Token verification failed:", err);
+        console.warn("Token verification failed (backend might be waking up):", err);
         return false;
       }
     })();

@@ -1161,7 +1161,7 @@ export default function ContractKpiManagementPage() {
                 <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
-              <Button type="button" size="sm" className="h-9 gap-1.5 bg-gray-950 text-xs text-white hover:bg-gray-800" onClick={extractKpis} disabled={isExtracting}>
+              <Button type="button" size="sm" className="h-9 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90" onClick={extractKpis} disabled={isExtracting}>
                 {isExtracting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BarChart3 className="h-3.5 w-3.5" />}
                 Extract KPIs
               </Button>
@@ -1193,7 +1193,7 @@ export default function ContractKpiManagementPage() {
               type="button"
               onClick={() => setActivePanel(item.id as PanelKey)}
               className={`mb-1 flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors ${
-                activePanel === item.id ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-950'
+                activePanel === item.id ? 'bg-cs-primary text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-950'
               }`}
             >
               <span className="flex min-w-0 items-center gap-2">
@@ -1654,7 +1654,7 @@ function ReviewPanel({
                           {editing ? 'Done Editing' : 'Edit KPI'}
                         </Button>
                         {kpi.status !== 'approved' && (
-                          <Button type="button" size="sm" className="h-8 gap-1.5 bg-gray-950 text-xs text-white hover:bg-gray-800" onClick={() => onUpdateKpi(kpi, { status: 'approved' })}>
+                          <Button type="button" size="sm" className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90" onClick={() => onUpdateKpi(kpi, { status: 'approved' })}>
                             <CheckCircle2 className="h-3.5 w-3.5" />
                             Accept KPI
                           </Button>
@@ -1796,7 +1796,7 @@ function FlagDonut({ open, clear }: { open: number; clear: number }) {
         <div className="absolute inset-7 flex items-center justify-center rounded-full bg-white text-lg font-semibold text-gray-950">{open}</div>
       </div>
       <div className="space-y-2 text-xs text-gray-600">
-        <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-gray-950" /> Open flags <strong>{open}</strong></div>
+        <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-cs-primary" /> Open flags <strong>{open}</strong></div>
         <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-gray-300" /> Clear tracked <strong>{clear}</strong></div>
       </div>
     </div>
@@ -2465,7 +2465,7 @@ function SourcesPanel({
                           type="button"
                           onClick={() => onApplyIngestionMode(selectedSource, mode)}
                           disabled={isSavingSource}
-                          className={`rounded-md border px-3 py-2 text-left text-xs font-semibold transition-colors ${active ? 'border-gray-950 bg-gray-950 text-white' : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-white'}`}
+                          className={`rounded-md border px-3 py-2 text-left text-xs font-semibold transition-colors ${active ? 'border-cs-primary bg-cs-primary text-white' : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-white'}`}
                         >
                           {label}
                         </button>
@@ -2591,7 +2591,7 @@ function SourcesPanel({
                         {isRunningSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                         Validate
                       </Button>
-                      <Button type="button" size="sm" className="h-7 gap-1.5 bg-gray-950 px-2 text-xs text-white hover:bg-gray-800" onClick={() => onRunSourceAction(selectedSource, 'fetch')} disabled={isRunningSource}>
+                      <Button type="button" size="sm" className="h-7 gap-1.5 bg-cs-primary px-2 text-xs text-white hover:bg-cs-primary/90" onClick={() => onRunSourceAction(selectedSource, 'fetch')} disabled={isRunningSource}>
                         {isRunningSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                         Fetch
                       </Button>
@@ -2729,7 +2729,7 @@ function FlagsPanel({
                   <div className="grid gap-3 p-4 lg:grid-cols-[minmax(280px,1fr)_150px_130px_130px_170px] lg:items-center">
                     <button type="button" onClick={() => setExpandedFlagId(expanded ? null : breach.breach_id)} className="min-w-0 text-left">
                       <div className="flex items-center gap-2">
-                        <span className={`h-2.5 w-2.5 rounded-full ${breach.is_breach ? 'bg-gray-950' : 'bg-gray-300'}`} />
+                        <span className={`h-2.5 w-2.5 rounded-full ${breach.is_breach ? 'bg-cs-primary' : 'bg-gray-300'}`} />
                         <p className="truncate text-sm font-semibold text-gray-950">{kpi?.name || breach.source_kpi?.name || breach.kpi_id}</p>
                       </div>
                       <p className="mt-1 truncate pl-4 text-xs text-gray-400">{breach.kpi_id} · {formatDateTime(breach.created_at || breach.timestamp)}</p>
@@ -2744,7 +2744,7 @@ function FlagsPanel({
                         Details
                         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
                       </Button>
-                      <Button type="button" size="sm" className="h-8 gap-1.5 bg-gray-950 text-xs text-white hover:bg-gray-800" onClick={() => void openEscalation(breach, kpi)} disabled={!breach.is_breach}>
+                      <Button type="button" size="sm" className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90" onClick={() => void openEscalation(breach, kpi)} disabled={!breach.is_breach}>
                         <Mail className="h-3.5 w-3.5" />
                         Escalate
                       </Button>
@@ -2780,7 +2780,7 @@ function FlagsPanel({
                           <Info className="h-3.5 w-3.5" />
                           Ask AI to Analyze
                         </Button>
-                        <Button type="button" size="sm" className="h-8 gap-1.5 bg-gray-950 text-xs text-white hover:bg-gray-800" onClick={() => void openEscalation(breach, kpi)} disabled={!breach.is_breach}>
+                        <Button type="button" size="sm" className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90" onClick={() => void openEscalation(breach, kpi)} disabled={!breach.is_breach}>
                           <Send className="h-3.5 w-3.5" />
                           Send Escalation Alert Email
                         </Button>
@@ -2815,7 +2815,7 @@ function FlagsPanel({
             </div>
             <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-4">
               <Button type="button" variant="ghost" onClick={() => setAlertDraft(null)}>Cancel</Button>
-              <Button type="button" className="bg-gray-950 text-white hover:bg-gray-800" disabled={!alertDraft.to} onClick={() => {
+              <Button type="button" className="bg-cs-primary text-white hover:bg-cs-primary/90" disabled={!alertDraft.to} onClick={() => {
                 toast({ title: 'Escalation alert dispatched', description: 'The breach alert has been marked for supplier follow-up.' })
                 setAlertDraft(null)
               }}>

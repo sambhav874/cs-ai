@@ -266,7 +266,7 @@ export function PlaybookTwoPane({
               className={cn(
                 "h-6 rounded-md px-2 text-[10px] font-medium transition-colors",
                 statusFilter === status
-                  ? "bg-gray-950 text-white"
+                  ? "bg-cs-primary text-white"
                   : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
               )}
             >
