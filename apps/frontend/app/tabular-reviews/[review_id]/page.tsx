@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Download,
   FileText,
+  FolderOpen,
   Loader2,
   MessageSquare,
   MoreHorizontal,
@@ -34,6 +35,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { useAccountContext } from "@/app/context/AccountContext";
+import { useBreadcrumbs } from "@/app/context/BreadcrumbContext";
 import { useAuth } from "@/hooks/useAuth";
 import { downloadCsv } from "@/lib/exportCsv";
 import {
@@ -106,12 +108,14 @@ export default function TabularReviewDetailPage() {
   const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL ?? "";
   const { isAuthenticated, authenticatedFetch } = useAuth();
   const { selectedAccountId } = useAccountContext();
+  const { setBreadcrumbs } = useBreadcrumbs();
 
   const [review, setReview] = useState<TabularReview | null>(null);
   const [documents, setDocuments] = useState<TabularDocument[]>([]);
   const [availableDocuments, setAvailableDocuments] = useState<DocumentSummary[]>([]);
   const [cells, setCells] = useState<TabularCell[]>([]);
   const [title, setTitle] = useState("");
+  const [projectName, setProjectName] = useState<string | null>(null);
   const [columns, setColumns] = useState<TabularColumnConfig[]>([]);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [selectedRowDocumentIds, setSelectedRowDocumentIds] = useState<string[]>([]);
@@ -159,6 +163,21 @@ export default function TabularReviewDetailPage() {
       setColumns(detail.review.columns_config || []);
       setSelectedDocumentIds(detail.review.document_ids || []);
       setSelectedRowDocumentIds([]);
+      
+      if (detail.review.project_id) {
+        authenticatedFetch(`${apiUrl}/projects/${detail.review.project_id}`)
+          .then((res: any) => {
+            if (res.error) throw new Error(res.error);
+            return res.data;
+          })
+          .then((data: any) => {
+            if (data && data.name) setProjectName(data.name);
+          })
+          .catch((error) => console.error("Could not fetch project name:", error));
+      } else {
+        setProjectName(null);
+      }
+
       await loadAvailableDocuments(detail.review.project_id || null);
     } catch (error) {
       toast({
@@ -170,6 +189,17 @@ export default function TabularReviewDetailPage() {
       setLoading(false);
     }
   }, [apiUrl, authenticatedFetch, isAuthenticated, loadAvailableDocuments, reviewId]);
+
+  useEffect(() => {
+    if (review) {
+      setBreadcrumbs([
+        { label: "Reviews", href: "/tabular-reviews" },
+        { label: review.title || "Untitled Review" }
+      ]);
+    } else {
+      setBreadcrumbs([{ label: "Reviews", href: "/tabular-reviews" }]);
+    }
+  }, [review, setBreadcrumbs]);
 
   useEffect(() => {
     void loadReview();
@@ -484,11 +514,11 @@ export default function TabularReviewDetailPage() {
 
   if (!review) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-gray-50 px-6 text-center">
+      <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background px-6 text-center">
         <div>
-          <Table2 className="mx-auto mb-3 h-8 w-8 text-gray-300" />
-          <h1 className="text-lg font-semibold text-gray-950">Review not found</h1>
-          <Button asChild className="mt-4 rounded-lg">
+          <Table2 className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+          <h1 className="text-lg font-semibold text-foreground">Review not found</h1>
+          <Button asChild className="mt-4">
             <Link href="/tabular-reviews">Back to reviews</Link>
           </Button>
         </div>
@@ -497,166 +527,137 @@ export default function TabularReviewDetailPage() {
   }
 
   return (
-    <main className="flex h-[calc(100vh-56px)] min-h-0 overflow-hidden bg-white text-gray-950">
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
-        <div className="mb-1 flex shrink-0 items-start justify-between gap-4 bg-white px-4 py-3 md:px-10">
-          <div className="flex min-w-0 items-center gap-1.5 font-serif text-2xl font-medium">
-            <button
-              type="button"
-              onClick={() => router.push("/tabular-reviews")}
-              className="shrink-0 text-gray-500 transition-colors hover:text-gray-700"
-            >
-              Tabular Reviews
-            </button>
-            <span className="shrink-0 text-gray-300">›</span>
+    <main className="flex flex-col h-[calc(100vh-4rem)] min-h-0 bg-background text-foreground">
+      <div className="flex shrink-0 flex-col gap-4 border-b border-border bg-background px-6 py-4 md:px-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               onBlur={() => {
                 if (layoutDirty) void persistLayout(false);
               }}
-              className="min-w-0 flex-1 bg-transparent text-gray-900 outline-none"
+              placeholder="Review title"
+              className="text-3xl font-bold tracking-tight text-foreground bg-transparent border-none outline-none focus:ring-0 p-0 m-0 w-full placeholder:text-muted-foreground/50"
             />
-            {review.project_id && (
-              <Badge variant="outline" className="ml-2 shrink-0 rounded-full border-gray-200 bg-white px-2.5 py-0.5 text-xs font-sans text-gray-500">
-                Project
-              </Badge>
+            {projectName && (
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground ml-0.5">
+                <FolderOpen className="h-4 w-4 shrink-0" />
+                <span className="font-medium text-foreground/80">Project:</span>
+                <span className="truncate">{projectName}</span>
+              </div>
             )}
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={normalizedColumns.length === 0 || tableDocuments.length === 0}
-              className={`flex h-8 items-center justify-center gap-1.5 px-3 text-sm transition-colors ${
-                normalizedColumns.length === 0 || tableDocuments.length === 0
-                  ? "cursor-default text-gray-300"
-                  : "cursor-pointer text-gray-700 hover:text-gray-900"
-              }`}
-              title="Export to CSV"
-            >
-              <Download className="h-4 w-4" />
-              Export
-            </button>
-          </div>
-        </div>
-
-        <div className="flex h-10 shrink-0 items-center gap-4 border-b border-gray-200 px-4 md:px-10">
-          <button
-            type="button"
-            disabled
-            className="flex cursor-default items-center gap-1 text-xs font-medium text-gray-300"
-            title="Tabular assistant is not wired in ContractSense yet"
-          >
-            <MessageSquare className="h-3.5 w-3.5" />
-            Assistant in Tabular Review
-          </button>
-
-          <div className="ml-auto flex items-center gap-5">
-            {selectedRowDocumentIds.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 text-xs font-medium text-gray-600 transition-colors hover:text-gray-900"
-                  >
-                    Actions
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-36 rounded-lg border-gray-100 bg-white p-0 shadow-lg">
-                  <DropdownMenuItem
-                    onClick={() => void handleDeleteSelectedDocuments()}
-                    className="cursor-pointer px-3 py-1.5 text-xs text-red-600 focus:bg-red-50 focus:text-red-600"
-                  >
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+          <div className="flex flex-wrap items-center gap-2">
             {saving && (
-              <span className="flex items-center gap-1 text-xs text-gray-300">
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground mr-2">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Saving
               </span>
             )}
-            <button
-              type="button"
-              onClick={() => void handleGenerate(false)}
-              disabled={generating || normalizedColumns.length === 0 || tableDocuments.length === 0 || saving}
-              className={`inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold shadow-sm transition-colors ${
-                generating || normalizedColumns.length === 0 || tableDocuments.length === 0 || saving
-                  ? "cursor-default bg-gray-200 text-gray-400 shadow-none"
-                  : "bg-gray-950 text-white hover:bg-gray-800"
-              }`}
-              title="Start tabular review"
-            >
-              {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-              {generating ? "Starting..." : "Start"}
-            </button>
-            <button
-              type="button"
+
+            {selectedRowDocumentIds.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5 bg-card">
+                    Actions
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-36">
+                  <DropdownMenuItem
+                    onClick={() => void handleDeleteSelectedDocuments()}
+                    className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
+                  >
+                    Delete Selected
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            <Button
+              variant="outline"
+              size="sm"
               onClick={openDocumentsDialog}
               disabled={saving}
-              className={`flex items-center gap-1 text-xs font-medium transition-colors ${
-                saving ? "cursor-default text-gray-300" : "text-gray-700 hover:text-gray-900"
-              }`}
+              className="h-8 gap-1.5 bg-card"
             >
               <Upload className="h-3.5 w-3.5" />
-              Add Documents
-            </button>
-            <button
-              type="button"
+              Documents
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => openColumnDialog()}
               disabled={saving}
-              className={`flex items-center gap-1 text-xs font-medium transition-colors ${
-                saving ? "cursor-default text-gray-300" : "text-gray-700 hover:text-gray-900"
-              }`}
+              className="h-8 gap-1.5 bg-card"
             >
               <Plus className="h-3.5 w-3.5" />
-              Add Columns
-            </button>
+              Columns
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={normalizedColumns.length === 0 || tableDocuments.length === 0}
+              className="h-8 gap-1.5 bg-card"
+              title="Export to CSV"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export
+            </Button>
+
+            <Button
+              size="sm"
+              onClick={() => void handleGenerate(false)}
+              disabled={generating || normalizedColumns.length === 0 || tableDocuments.length === 0 || saving}
+              className="h-8 gap-1.5"
+            >
+              {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+              {generating ? "Starting..." : "Start Review"}
+            </Button>
           </div>
         </div>
+      </div>
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {normalizedColumns.length === 0 && tableDocuments.length === 0 ? (
             <div className="flex flex-1 flex-col overflow-hidden">
-              <div className="flex items-center border-b border-gray-200">
-                <div className={`${CHECK_W} border-r border-gray-200`} />
-                <div className={`${DOC_COL_W} border-r border-gray-200 p-2 text-xs font-medium text-gray-500 select-none`}>
+              <div className="flex items-center border-b border-border bg-muted/30 h-12">
+                <div className={`${CHECK_W} border-r border-border h-full`} />
+                <div className={`${DOC_COL_W} border-r border-border p-4 text-xs uppercase tracking-wider font-bold text-muted-foreground select-none h-full flex items-center`}>
                   Document
                 </div>
                 <div className="flex-1" />
               </div>
-              <div className="mx-auto flex w-full max-w-xs flex-1 flex-col items-start justify-center">
-                <Table2 className="mb-4 h-8 w-8 text-gray-300" />
-                <p className="font-serif text-2xl font-medium text-gray-900">Tabular Review</p>
-                <p className="mt-1 text-left text-xs text-gray-400">Add columns and documents to get started.</p>
-                <div className="mt-4 flex items-center gap-2">
-                  <button
-                    type="button"
+              <div className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center text-center">
+                <Table2 className="mb-4 h-12 w-12 text-muted-foreground/50" />
+                <h2 className="text-xl font-semibold text-foreground">Tabular Review</h2>
+                <p className="mt-2 text-sm text-muted-foreground">Add columns and documents to get started with your review.</p>
+                <div className="mt-6 flex flex-wrap justify-center gap-3">
+                  <Button
                     onClick={() => openColumnDialog()}
-                    className="inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white shadow-md transition-colors hover:bg-gray-700"
                   >
-                    + Add Columns
-                  </button>
-                  <button
-                    type="button"
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Columns
+                  </Button>
+                  <Button
+                    variant="outline"
                     onClick={openDocumentsDialog}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600 shadow-sm transition-colors hover:bg-gray-50"
                   >
-                    <Upload className="h-3.5 w-3.5" />
+                    <Upload className="h-4 w-4 mr-2" />
                     Add Documents
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
           ) : (
             <div className="flex flex-1 flex-col overflow-auto">
-              <div className="sticky top-0 z-20 flex h-8 bg-white" style={{ minWidth: totalContentWidth }}>
-                <div className={`sticky left-0 z-30 ${CHECK_W} flex items-center justify-center border-b border-r border-gray-200 bg-white select-none`}>
+              <div className="sticky top-0 z-20 flex h-12 bg-muted border-b border-border text-xs uppercase tracking-wider font-bold text-foreground" style={{ minWidth: totalContentWidth }}>
+                <div className={`sticky left-0 z-30 ${CHECK_W} flex items-center justify-center border-r border-border bg-muted select-none`}>
                   <input
                     type="checkbox"
                     checked={allRowsSelected}
@@ -667,15 +668,15 @@ export default function TabularReviewDetailPage() {
                     className="h-2.5 w-2.5 cursor-pointer rounded border-gray-200 accent-black"
                   />
                 </div>
-                <div className={`sticky left-8 z-30 ${DOC_COL_W} border-b border-r border-gray-200 bg-white p-2 text-left text-xs font-medium text-gray-500 select-none`}>
+                <div className={`sticky left-8 z-30 ${DOC_COL_W} border-r border-border bg-muted p-4 text-left select-none hover:text-foreground hover:underline transition-all duration-300 cursor-pointer`}>
                   Document
                 </div>
                 {normalizedColumns.map((column, position) => (
                   <div
                     key={column.index}
-                    className={`${DATA_COL_W} border-b border-r border-gray-200 p-2 text-left text-xs font-medium text-gray-500 select-none`}
+                    className={`${DATA_COL_W} border-r border-border p-4 text-left select-none`}
                   >
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center justify-between gap-3 hover:text-foreground hover:underline transition-all duration-300 cursor-pointer">
                       <span className="truncate">{column.name}</span>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -705,7 +706,7 @@ export default function TabularReviewDetailPage() {
                     </div>
                   </div>
                 ))}
-                <div className="flex min-w-8 flex-1 items-center justify-start border-b border-gray-200 p-2">
+                <div className="flex min-w-8 flex-1 items-center justify-start p-4">
                   <button
                     type="button"
                     onClick={() => openColumnDialog()}
@@ -720,12 +721,12 @@ export default function TabularReviewDetailPage() {
               <div className="relative min-h-0 flex-1">
                 {tableDocuments.map((document, documentIndex) => {
                   const documentId = getDocumentId(document);
-                  const baseRowBg = documentIndex % 2 === 0 ? "bg-white" : "bg-gray-50";
-                  const rowBg = selectedRowDocumentIds.includes(documentId) ? "bg-gray-100" : baseRowBg;
+                  const baseRowBg = "bg-card transition-colors hover:bg-muted";
+                  const rowBg = selectedRowDocumentIds.includes(documentId) ? "bg-muted" : baseRowBg;
 
                   return (
-                    <div key={documentId} className={`flex ${rowBg}`} style={{ minWidth: totalContentWidth }}>
-                      <div className={`sticky left-0 z-[60] ${CHECK_W} flex items-center justify-center border-b border-r border-gray-200 p-2 ${rowBg}`}>
+                    <div key={documentId} className={`group flex min-h-[48px] items-stretch border-b border-border text-sm ${rowBg}`} style={{ minWidth: totalContentWidth }}>
+                      <div className={`sticky left-0 z-30 ${CHECK_W} flex items-center justify-center border-r border-border p-2 ${selectedRowDocumentIds.includes(documentId) ? "bg-muted" : "bg-card group-hover:bg-muted transition-colors"}`}>
                         <input
                           type="checkbox"
                           checked={selectedRowDocumentIds.includes(documentId)}
@@ -733,17 +734,17 @@ export default function TabularReviewDetailPage() {
                           className="h-2.5 w-2.5 shrink-0 cursor-pointer rounded border-gray-200 accent-black"
                         />
                       </div>
-                      <div className={`sticky left-8 z-[60] ${DOC_COL_W} flex items-center border-b border-r border-gray-200 p-2 text-xs text-gray-800 ${baseRowBg}`}>
+                      <div className={`sticky left-8 z-30 ${DOC_COL_W} flex items-center border-r border-border p-4 font-medium text-foreground ${selectedRowDocumentIds.includes(documentId) ? "bg-muted" : "bg-card group-hover:bg-muted transition-colors"}`}>
                         <span className="line-clamp-1" title={documentLabel(document)}>
                           {documentLabel(document)}
                         </span>
                       </div>
                       {normalizedColumns.map((column) => (
-                        <div key={column.index} className={`${DATA_COL_W} border-b border-r border-gray-200`}>
+                        <div key={column.index} className={`${DATA_COL_W} border-r border-border`}>
                           {renderCell(getCell(documentId, column.index), column, documentId)}
                         </div>
                       ))}
-                      <div className="min-h-8 min-w-8 flex-1 border-b border-gray-200" />
+                      <div className="min-h-8 min-w-8 flex-1" />
                     </div>
                   );
                 })}
@@ -751,14 +752,13 @@ export default function TabularReviewDetailPage() {
             </div>
           )}
         </div>
-      </div>
 
       <Dialog open={documentsDialogOpen} onOpenChange={setDocumentsDialogOpen}>
-        <DialogContent className="max-w-2xl rounded-2xl">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="font-serif text-2xl font-medium">Add Documents</DialogTitle>
+            <DialogTitle className="text-xl font-semibold">Add Documents</DialogTitle>
           </DialogHeader>
-          <div className="max-h-96 overflow-y-auto rounded-xl border border-gray-100">
+          <div className="max-h-96 overflow-y-auto rounded-xl border border-border">
             {availableDocuments.length > 0 ? (
               availableDocuments.map((document) => {
                 const checked = draftDocumentIds.includes(document._id);
@@ -767,16 +767,16 @@ export default function TabularReviewDetailPage() {
                     key={document._id}
                     type="button"
                     onClick={() => toggleDraftDocument(document._id)}
-                    className="flex w-full items-start gap-3 border-b border-gray-50 px-3 py-2 text-left transition-colors last:border-0 hover:bg-gray-50"
+                    className="flex w-full items-start gap-3 border-b border-border/50 px-3 py-2 text-left transition-colors last:border-0 hover:bg-muted/30"
                   >
                     <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                      checked ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white"
+                      checked ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"
                     }`}>
                       {checked && <Check className="h-3 w-3" />}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm text-gray-800">{document.contract_name}</span>
-                      <span className="mt-0.5 flex items-center gap-1 text-xs text-gray-400">
+                      <span className="block truncate text-sm text-foreground">{document.contract_name}</span>
+                      <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
                         <FileText className="h-3.5 w-3.5" />
                         {document.status}
                       </span>
@@ -785,12 +785,12 @@ export default function TabularReviewDetailPage() {
                 );
               })
             ) : (
-              <div className="px-3 py-8 text-center text-sm text-gray-400">No indexed documents found</div>
+              <div className="px-3 py-8 text-center text-sm text-muted-foreground">No indexed documents found</div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDocumentsDialogOpen(false)} className="rounded-lg">Cancel</Button>
-            <Button onClick={() => void handleSaveDocuments()} className="rounded-lg bg-gray-950 text-white hover:bg-gray-800">
+            <Button variant="outline" onClick={() => setDocumentsDialogOpen(false)}>Cancel</Button>
+            <Button onClick={() => void handleSaveDocuments()}>
               Add Documents
             </Button>
           </DialogFooter>
@@ -798,9 +798,9 @@ export default function TabularReviewDetailPage() {
       </Dialog>
 
       <Dialog open={columnDialogOpen} onOpenChange={setColumnDialogOpen}>
-        <DialogContent className="max-w-2xl rounded-2xl">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="font-serif text-2xl font-medium">
+            <DialogTitle className="text-xl font-semibold">
               {editingColumnPosition === null ? "New column" : "Edit column"}
             </DialogTitle>
           </DialogHeader>
@@ -809,19 +809,18 @@ export default function TabularReviewDetailPage() {
               value={columnDraft.name}
               onChange={(event) => setColumnDraft((current) => ({ ...current, name: event.target.value }))}
               placeholder="Column name"
-              className="h-11 rounded-lg text-base"
             />
             <Textarea
               value={columnDraft.prompt}
               onChange={(event) => setColumnDraft((current) => ({ ...current, prompt: event.target.value }))}
               placeholder="Extraction prompt"
-              className="min-h-40 rounded-lg text-sm leading-6"
+              className="min-h-40"
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setColumnDialogOpen(false)} className="rounded-lg">Cancel</Button>
-            <Button onClick={() => void handleSaveColumn()} className="rounded-lg bg-gray-950 text-white hover:bg-gray-800">
-              {editingColumnPosition === null ? <Plus className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+            <Button variant="outline" onClick={() => setColumnDialogOpen(false)}>Cancel</Button>
+            <Button onClick={() => void handleSaveColumn()}>
+              {editingColumnPosition === null ? <Plus className="h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
               {editingColumnPosition === null ? "Add Column" : "Save Column"}
             </Button>
           </DialogFooter>
@@ -829,23 +828,23 @@ export default function TabularReviewDetailPage() {
       </Dialog>
 
       <Dialog open={Boolean(editingCell)} onOpenChange={(open) => !open && setEditingCell(null)}>
-        <DialogContent className="max-w-3xl rounded-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle className="font-serif text-2xl font-medium">Cell details</DialogTitle>
+            <DialogTitle className="text-xl font-semibold">Cell details</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Summary</label>
-              <Textarea value={editSummary} onChange={(event) => setEditSummary(event.target.value)} className="min-h-32 rounded-lg" />
+              <label className="mb-1.5 block text-sm font-medium text-foreground">Summary</label>
+              <Textarea value={editSummary} onChange={(event) => setEditSummary(event.target.value)} className="min-h-32" />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">Reasoning and citations</label>
-              <Textarea value={editReasoning} onChange={(event) => setEditReasoning(event.target.value)} className="min-h-36 rounded-lg" />
+              <label className="mb-1.5 block text-sm font-medium text-foreground">Reasoning and citations</label>
+              <Textarea value={editReasoning} onChange={(event) => setEditReasoning(event.target.value)} className="min-h-36" />
             </div>
             {editingCell?.citations?.length ? (
               <div className="flex flex-wrap gap-1">
                 {editingCell.citations.slice(0, 6).map((citation, citationIndex) => (
-                  <Badge key={`${citation.page}-${citationIndex}`} variant="outline" className="rounded-full px-2 py-0 text-[10px] text-gray-500">
+                  <Badge key={`${citation.page}-${citationIndex}`} variant="outline" className="rounded-full px-2 py-0 text-[10px] text-muted-foreground">
                     Page {citation.page || "?"}
                   </Badge>
                 ))}
@@ -859,19 +858,18 @@ export default function TabularReviewDetailPage() {
                 if (editingCell) void handleRegenerateCell(editingCell.document_id, editingCell.column_index);
               }}
               disabled={!editingCell || regeneratingKey === `${editingCell.document_id}:${editingCell.column_index}`}
-              className="rounded-lg"
             >
               {editingCell && regeneratingKey === `${editingCell.document_id}:${editingCell.column_index}` ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : (
-                <RefreshCw className="h-4 w-4" />
+                <RefreshCw className="h-4 w-4 mr-2" />
               )}
               Regenerate
             </Button>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setEditingCell(null)} className="rounded-lg">Cancel</Button>
-              <Button onClick={handleSaveCell} className="rounded-lg bg-gray-950 text-white hover:bg-gray-800">
-                <Save className="h-4 w-4" />
+              <Button variant="outline" onClick={() => setEditingCell(null)}>Cancel</Button>
+              <Button onClick={handleSaveCell}>
+                <Save className="h-4 w-4 mr-2" />
                 Save Cell
               </Button>
             </div>

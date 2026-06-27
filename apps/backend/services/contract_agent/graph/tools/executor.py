@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from bson import ObjectId
 
-from services.contract_agent.rag.evidence_service import EvidenceRetrievalService
+from services.contract_agent.rag.evidence_service import EvidenceRetrievalService, expand_legal_queries
 
 from ..state import AgentRunState, ToolCallRecord
 
@@ -16,7 +16,7 @@ from ..state import AgentRunState, ToolCallRecord
 def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentRunState) -> Dict[str, Any]:
     """Execute scoped, read-only document tools against indexed contract content."""
     scoped_docs = _load_scoped_documents(collection, state)
-    scoped_docs = _restrict_documents(scoped_docs, tool)
+    scoped_docs = _restrict_documents(scoped_docs, tool, state)
     if tool.name in {"list_documents", "fetch_documents"}:
         return {
             "summary": f"Loaded {len(scoped_docs)} scoped indexed document(s).",
@@ -57,7 +57,7 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
         }
     if tool.name == "search_evidence":
         queries = _coerce_queries(tool.args.get("queries") or tool.args.get("query") or state.message)
-        top_k = _coerce_int(tool.args.get("top_k"), 5)
+        top_k = _coerce_int(tool.args.get("top_k"), 12)
         matches, backend, trace = _search_documents(
             collection,
             scoped_docs,
@@ -70,6 +70,9 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
         )
         state.add_trace("retrieval_v2", **trace)
 
+        # Apply semantic/hybrid score threshold to filter out weak matches
+        matches = [m for m in matches if float(m.get("score") or 0.0) >= 40.0]
+
         results_block = _format_search_results_as_text(matches, scoped_docs, queries[0] if queries else state.message)
 
         return {
@@ -79,6 +82,8 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
             "retrieval_backend": backend,
             "trace": trace,
             "matches": matches,
+            "rewritten_queries": queries,
+            "rewritten_query": queries[0] if queries else "",
         }
     if tool.name == "find_in_document":
         document = _select_document(tool, state, scoped_docs)
@@ -148,14 +153,35 @@ def _load_scoped_documents(collection: Any, state: AgentRunState) -> List[Dict[s
     ))
 
 
-def _restrict_documents(documents: List[Dict[str, Any]], tool: ToolCallRecord) -> List[Dict[str, Any]]:
+def _restrict_documents(documents: List[Dict[str, Any]], tool: ToolCallRecord, state: AgentRunState) -> List[Dict[str, Any]]:
     requested = set(_coerce_list(tool.args.get("document_ids")))
     requested_id = str(tool.args.get("document_id") or "")
     if requested_id:
         requested.add(requested_id)
     if not requested:
         return documents
-    return [document for document in documents if str(document["_id"]) in requested]
+
+    # Map doc-i labels to actual document IDs using state
+    doc_index = {}
+    attached = state.context.attached_documents or []
+    for i, doc in enumerate(attached):
+        doc_id = doc.get("document_id") or doc.get("id") or ""
+        if doc_id:
+            doc_index[f"doc-{i}"] = str(doc_id)
+    selected_ids = state.context.selected_document_ids or []
+    for i, doc_id in enumerate(selected_ids):
+        if doc_id:
+            doc_index.setdefault(f"doc-{i}", str(doc_id))
+
+    resolved_requested = set()
+    for req in requested:
+        req_str = str(req).strip()
+        if req_str in doc_index:
+            resolved_requested.add(doc_index[req_str])
+        else:
+            resolved_requested.add(req_str)
+
+    return [document for document in documents if str(document["_id"]) in resolved_requested]
 
 
 def _select_document(
@@ -168,7 +194,23 @@ def _select_document(
         or (state.context.displayed_document or {}).get("document_id")
         or state.context.contract_id
         or ""
-    )
+    ).strip()
+
+    # Map doc-i labels to actual document IDs using state
+    doc_index = {}
+    attached = state.context.attached_documents or []
+    for i, doc in enumerate(attached):
+        doc_id = doc.get("document_id") or doc.get("id") or ""
+        if doc_id:
+            doc_index[f"doc-{i}"] = str(doc_id)
+    selected_ids = state.context.selected_document_ids or []
+    for i, doc_id in enumerate(selected_ids):
+        if doc_id:
+            doc_index.setdefault(f"doc-{i}", str(doc_id))
+
+    if requested_id in doc_index:
+        requested_id = doc_index[requested_id]
+
     for document in documents:
         if str(document["_id"]) == requested_id:
             return document
@@ -446,16 +488,22 @@ def _match_from_langchain_document(source_document: Dict[str, Any], doc: Any, *,
     doc_id = metadata_doc_id or source_doc_id
     segment_id = str(metadata.get("segment_id") or metadata.get("id") or "")
     evidence_id = _stable_evidence_id(doc_id, segment_id, text)
+    page_start = metadata.get("page_start") or metadata.get("page_number")
+    page_end = metadata.get("page_end")
+    quote = text[:500]
+    page = _estimate_page_for_quote(text, quote, page_start=page_start, page_end=page_end)
     return {
         "evidence_id": evidence_id,
         "segment_id": segment_id or evidence_id,
         "document_id": doc_id,
         "filename": metadata.get("contract_name") or source_document.get("contract_name") or doc_id,
-        "page": metadata.get("page_start") or metadata.get("page_number"),
+        "page": page,
+        "page_start": page_start,
+        "page_end": page_end,
         "section": metadata.get("section_path"),
         "start": metadata.get("char_start") or 0,
         "end": metadata.get("char_end") or 0,
-        "quote": text[:500],
+        "quote": quote,
         "context": text[:1800],
         "snippet": text[:1800],
         "retrieval_backend": backend,
@@ -482,16 +530,22 @@ def _match_from_vector_chunk(
     filename = str(_metadata_value(raw, "contract_name") or source_document.get("contract_name") or doc_id)
     segment_id = str(_metadata_value(raw, "segment_id") or "")
     evidence_id = str(_metadata_value(raw, "evidence_id") or "") or _stable_evidence_id(doc_id, segment_id, text)
+    page_start = _metadata_value(raw, "page_start") or _metadata_value(raw, "page_number")
+    page_end = _metadata_value(raw, "page_end")
+    quote = text[:500]
+    page = _estimate_page_for_quote(text, quote, page_start=page_start, page_end=page_end)
     return {
         "evidence_id": evidence_id,
         "segment_id": segment_id or evidence_id,
         "document_id": doc_id,
         "filename": filename,
-        "page": _metadata_value(raw, "page_start") or _metadata_value(raw, "page_number"),
+        "page": page,
+        "page_start": page_start,
+        "page_end": page_end,
         "section": _metadata_value(raw, "section_path"),
         "start": _metadata_value(raw, "char_start") or 0,
         "end": _metadata_value(raw, "char_end") or 0,
-        "quote": text[:500],
+        "quote": quote,
         "context": text[:1800],
         "snippet": text[:1800],
         "retrieval_backend": backend,
@@ -506,6 +560,51 @@ def _metadata_value(raw: Dict[str, Any], key: str) -> Any:
         return raw.get(key)
     metadata = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
     return metadata.get(key)
+
+
+def _estimate_page_for_quote(
+    text: str,
+    quote: str,
+    *,
+    page_start: Optional[int],
+    page_end: Optional[int],
+) -> Optional[int]:
+    """Estimate which page a quote falls on within a multi-page chunk.
+
+    If the chunk spans only one page, or page bounds are unknown, returns page_start.
+    Otherwise interpolates linearly: finds where the quote first appears in the chunk
+    text and maps that character offset to the page range [page_start, page_end].
+    """
+    if not page_start:
+        return page_start
+    if not page_end or page_end <= page_start:
+        return page_start
+    if not text or not quote:
+        return page_start
+
+    cleaned_text = " ".join(text.split())
+    cleaned_quote = " ".join(quote.split())
+
+    # Try matching with a few different prefix lengths to be robust
+    pos = -1
+    for prefix_len in (120, 80, 40, 20):
+        if len(cleaned_quote) >= prefix_len:
+            pos = cleaned_text.find(cleaned_quote[:prefix_len])
+            if pos >= 0:
+                break
+    
+    if pos < 0:
+        pos = cleaned_text.find(cleaned_quote)
+
+    if pos < 0:
+        # Fall back to end page if not found
+        return page_end
+
+    total_len = max(len(cleaned_text), 1)
+    ratio = pos / total_len  # 0.0 = start of chunk, 1.0 = end of chunk
+    page_span = page_end - page_start
+    estimated = page_start + round(ratio * page_span)
+    return max(page_start, min(page_end, estimated))
 
 
 def _score_against_queries(queries: Sequence[str], text: str) -> float:
@@ -714,8 +813,6 @@ def _outline_from_vector_chunks(collection: Any, document: Dict[str, Any]) -> Li
     return outline
 
 
-def _read_evidence_ids(collection: Any, documents: List[Dict[str, Any]], evidence_ids: List[str]) -> List[Dict[str, Any]]:
-    return EvidenceRetrievalService().read_documents(collection, documents, evidence_ids)
 
 
 def _evidence_chunks(document: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -947,7 +1044,7 @@ def _expand_retrieval_queries(queries: Sequence[str]) -> List[str]:
             continue
         expanded.append(query)
         expanded.extend(_formal_reference_query_variants(query))
-    return list(dict.fromkeys(item for item in expanded if item.strip()))[:10]
+    return expand_legal_queries(item for item in expanded if item.strip())[:12]
 
 
 def _formal_reference_query_variants(query: str) -> List[str]:
@@ -1015,7 +1112,7 @@ def _format_search_results_as_text(matches: List[Dict[str, Any]], documents: Lis
         return f"No contract sections matched the query \"{query}\"."
 
     lines: List[str] = []
-    for index, match in enumerate(matches[:8], start=1):
+    for index, match in enumerate(matches, start=1):
         doc_id = str(match.get("document_id") or "")
         doc_name = match.get("filename") or ""
         if not doc_name and doc_id:
@@ -1028,12 +1125,21 @@ def _format_search_results_as_text(matches: List[Dict[str, Any]], documents: Lis
         section = match.get("section") or ""
         page = match.get("page")
         evidence_id = match.get("evidence_id") or match.get("segment_id") or ""
-        text = match.get("context") or match.get("snippet") or match.get("quote") or ""
+        quote = str(match.get("quote") or "").strip()
+        text = str(match.get("context") or match.get("snippet") or quote or "").strip()
+        score = match.get("score")
 
         lines.append(f"[{index}] {doc_name}" + (f", {section}" if section else "") + (f", p.{page}" if page else ""))
         if evidence_id:
             lines.append(f"    Evidence ID: {evidence_id}")
-        lines.append(f"    {text[:2500]}")
+        if score not in (None, ""):
+            lines.append(f"    Score: {score}")
+        if quote:
+            lines.append(f"    Quote: {quote[:700]}")
+        if text and text != quote:
+            lines.append(f"    Context: {text[:1400]}")
+        elif text:
+            lines.append(f"    Context: {text[:900]}")
         lines.append("")
 
     return "\n".join(lines).strip()

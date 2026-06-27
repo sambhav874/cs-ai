@@ -70,7 +70,7 @@ export function ApprovalInput({ suggestion, busy, onApprove, onReject, onCustom 
           <button
             type="submit"
             disabled={busy}
-            className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cs-primary/90 disabled:opacity-50"
           >
             <ArrowRight className="h-3.5 w-3.5" />
           </button>

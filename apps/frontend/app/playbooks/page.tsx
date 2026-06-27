@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { useAccountContext } from "@/app/context/AccountContext";
+import { useBreadcrumbs } from "@/app/context/BreadcrumbContext";
 import { useAuth } from "@/hooks/useAuth";
 import {
   createPlaybook,
@@ -67,6 +68,11 @@ function PlaybooksContent() {
   const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL ?? "";
   const { isAuthenticated, authenticatedFetch } = useAuth();
   const { selectedAccountId } = useAccountContext();
+  const { setBreadcrumbs } = useBreadcrumbs();
+
+  useEffect(() => {
+    setBreadcrumbs([{ label: "Playbooks" }]);
+  }, [setBreadcrumbs]);
 
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);
   const [templates, setTemplates] = useState<PlaybookTemplate[]>([]);
@@ -269,34 +275,36 @@ function PlaybooksContent() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-white pt-16 text-gray-950">
-      <div className="flex items-center justify-between px-4 py-3 md:px-10">
+    <main className="flex min-h-screen flex-col bg-background pt-16 text-foreground">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center justify-between p-6 md:p-8 border-b border-border">
         <div className="min-w-0">
-          <h1 className="font-serif text-2xl font-medium text-gray-900">Playbooks</h1>
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground mb-1">
+            <span className="truncate">Playbooks</span>
+          </div>
+          <h1 className="text-3xl font-bold text-foreground">Playbooks</h1>
           {initialContractId ? (
-            <p className="mt-1 text-xs text-gray-500">Choose or create a playbook to run against the opened contract.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Choose or create a playbook to run against the opened contract.</p>
           ) : null}
         </div>
         <div className="flex items-center gap-2">
           <div className="relative hidden sm:block">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search playbooks..."
-              className="h-8 w-56 rounded-lg border border-gray-100 bg-white pl-8 pr-3 text-sm text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-gray-300"
+              className="h-9 w-56 rounded-md border border-input bg-transparent pl-8 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
             />
           </div>
           <Button
             type="button"
-            size="sm"
-            className="h-8 gap-1.5 rounded-lg bg-gray-950 px-3 text-xs text-white hover:bg-gray-800"
+            className="h-9 gap-1.5"
             onClick={() => {
               resetCreateForm(initialContractId ? "reference" : "template");
               setCreateOpen(true);
             }}
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus className="h-4 w-4" />
             New Playbook
           </Button>
         </div>
@@ -378,7 +386,7 @@ function PlaybooksContent() {
               <Button
                 type="button"
                 size="sm"
-                className="mt-4 h-8 gap-1.5 rounded-lg bg-gray-950 text-xs text-white hover:bg-gray-800"
+                className="mt-4 h-8 gap-1.5 rounded-lg bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
                 onClick={() => {
                   resetCreateForm(initialContractId ? "reference" : "template");
                   setCreateOpen(true);
@@ -414,7 +422,7 @@ function PlaybooksContent() {
                   onClick={() => setMode(item.id as CreateMode)}
                   className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all ${
                     active
-                      ? "border-gray-950 bg-gray-50 shadow-sm"
+                      ? "border-cs-primary bg-gray-50 shadow-sm"
                       : "border-gray-100 bg-white text-gray-500 hover:border-gray-200 hover:text-gray-700"
                   }`}
                 >
@@ -465,7 +473,7 @@ function PlaybooksContent() {
                       }`}
                     >
                       <span className={`mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                        active ? "border-gray-950 bg-gray-950" : "border-gray-200"
+                        active ? "border-cs-primary bg-cs-primary" : "border-gray-200"
                       }`}>
                         {active ? <Check className="h-2.5 w-2.5 text-white" /> : null}
                       </span>
@@ -529,7 +537,7 @@ function PlaybooksContent() {
                           }`}
                         >
                           <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                            checked ? "border-gray-950 bg-gray-950 text-white" : "border-gray-200"
+                            checked ? "border-cs-primary bg-cs-primary text-white" : "border-gray-200"
                           }`}>
                             {checked ? <Check className="h-3 w-3" /> : null}
                           </span>
@@ -569,7 +577,7 @@ function PlaybooksContent() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} className="rounded-lg">Cancel</Button>
-            <Button onClick={() => void handleCreate()} disabled={saving} className="rounded-lg bg-gray-950 text-white hover:bg-gray-800">
+            <Button onClick={() => void handleCreate()} disabled={saving} className="rounded-lg bg-cs-primary text-white hover:bg-cs-primary/90">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {mode === "reference" ? "Generate Rules" : "Create Playbook"}
             </Button>

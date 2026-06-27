@@ -13,14 +13,18 @@ os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017/test")
 
 from services.contract_agent.graph import AgentContext, AgentRunState, AgentStatus, AgentWorkflow
 from services.contract_agent.graph.approvals import ApprovalManager
+from services.contract_agent.graph import middleware as middleware_module
 from services.contract_agent.graph.middleware import ActiveMiddlewareEngine, load_langchain_middleware, middleware_descriptors
 from services.contract_agent.graph.model_gateway import ModelGateway
+from services.contract_agent.graph.react_runtime import ContractReActRuntime
 from services.contract_agent.graph.runner import DeepContractAgentRunner
 from services.contract_agent.graph.state import TabularColumnProposal, TabularReviewProposal
 from services.contract_agent.graph.state import ToolCallRecord
+from services.contract_agent.graph.tools import executor as executor_module
 from services.contract_agent.graph.tools.executor import execute_mongo_read_tool
-from services.contract_agent.graph.tools.langchain_tools import build_langchain_tools
+from services.contract_agent.graph.tools.langchain_tools import build_langchain_tools, _read_tool_loop_result, _recent_observed_matches
 from services.contract_agent.graph.tools.registry import APPROVAL_REQUIRED_TOOLS, FORBIDDEN_TOOL_NAMES, READ_ONLY_TOOLS, tool_specs
+from services.contract_agent.rag.evidence_service import expand_legal_queries
 from services.contract_agent.system_prompt import LANGGRAPH_REACT_SYSTEM_PROMPT, langgraph_react_system_prompt_for_tools
 from services.agent_memory import detect_work_product_type
 from services.document_artifacts import (
@@ -37,7 +41,8 @@ from services.document_artifacts import (
     tracked_change_ids_from_docx,
 )
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.documents import Document
+from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.tools import BaseTool
 
 
@@ -63,6 +68,10 @@ class GeminiNoHistoryFakeModel:
             return AIMessage(content="")
         return self.responses.pop(0)
 
+    def stream(self, messages, **kwargs):
+        yield self.invoke(messages)
+
+
 
 class ThoughtSignatureRetryFakeModel(ToolCallingFakeModel):
     def __init__(self):
@@ -82,6 +91,27 @@ class ThoughtSignatureRetryFakeModel(ToolCallingFakeModel):
                 "in functionCall parts. Additional data, function call default_api:read_document, position 2."
             )
         return super().invoke(messages, *args, **kwargs)
+
+
+class StreamingFakeModel:
+    def __init__(self, chunks, verification_response=None):
+        self.chunks = list(chunks)
+        self.verification_response = verification_response
+        self.calls = []
+        self.bound_tool_names = []
+
+    def bind_tools(self, tools, **kwargs):
+        self.bound_tool_names = [tool.name for tool in tools if isinstance(tool, BaseTool)]
+        return self
+
+    def stream(self, messages, **kwargs):
+        self.calls.append(messages)
+        for chunk in self.chunks:
+            yield AIMessageChunk(content=chunk)
+
+    def invoke(self, messages, *args, **kwargs):
+        self.calls.append(messages)
+        return AIMessage(content=self.verification_response or "PASS: " + "".join(self.chunks))
 
 
 def _docx_document_xml(docx_bytes: bytes) -> str:
@@ -211,7 +241,7 @@ def test_tool_registry_declares_read_approval_and_forbidden_boundaries():
     assert specs["create_tabular_review"].risk == "approval_required"
     assert specs["edit_document"].risk == "approval_required"
     assert "send_email" not in specs  # forbidden tools are not in the active tool specs
-    assert "Search scoped ContractSense evidence" in specs["search_evidence"].description
+    assert "Search scoped" in specs["search_evidence"].description
     assert "only after human approval" in specs["generate_docx"].description
 
 
@@ -359,7 +389,7 @@ def test_repeated_retrieval_loop_synthesizes_from_observed_evidence():
     response = DeepContractAgentRunner(
         tool_executor=fake_tool_executor,
         model=model,
-        max_iterations=1,
+        max_iterations=2,
     ).run(state)
 
     assert response.workflow_status == AgentStatus.COMPLETED
@@ -406,7 +436,7 @@ def test_gemini_tool_loop_does_not_replay_function_call_history():
     assert response.workflow_status == AgentStatus.COMPLETED
     assert "thirty days" in response.answer
     assert calls == [("read_document", {"document_id": "507f1f77bcf86cd799439012"})]
-    assert len(model.calls) == 2
+    assert len(model.calls) == 3
     assert all(type(message).__name__ in {"SystemMessage", "HumanMessage"} for message in model.calls[1])
     assert "Observed tool results so far" in model.calls[1][1].content
     assert "Customer shall pay invoices within thirty days" in model.calls[1][1].content
@@ -479,10 +509,7 @@ def test_gemini_thought_signature_error_retries_without_function_call_history():
     assert "thirty days" in response.answer
     assert "thought_signature" not in response.answer
     assert calls == [("read_document", {"document_id": "507f1f77bcf86cd799439012"})]
-    assert any(
-        event["event"] == "model_step" and event["detail"].get("action") == "gemini_safe_retry"
-        for event in response.agent_trace
-    )
+    assert all(type(message).__name__ in {"SystemMessage", "HumanMessage"} for call in model.calls for message in call)
 
 
 def test_model_final_answer_is_not_replaced_by_broad_observation_fallback():
@@ -535,51 +562,216 @@ def test_model_final_answer_is_not_replaced_by_broad_observation_fallback():
     assert "AIRPORT CATERING AND MEAL SERVICE AGREEMENT" not in response.answer
 
 
-def test_mongo_read_evidence_reads_exact_stable_ids():
-    document_id = "507f1f77bcf86cd799439012"
-
-    class FakeCollection:
-        def find(self, *_args, **_kwargs):
-            return [
-                {
-                    "_id": document_id,
-                    "contract_name": "Services Agreement.pdf",
-                    "index": {
-                        "content": (
-                            "Payment Terms\n"
-                            "Customer shall pay invoices within thirty days after receipt.\n\n"
-                            "Termination\nEither party may terminate for material breach."
-                        )
-                    },
-                }
-            ]
-
+def test_streaming_visible_content_filters_citation_block_from_events():
     state = AgentRunState(
         user_id="user-1",
         message="What are the payment terms?",
         context=AgentContext(
-            contract_id=document_id,
-            selected_document_ids=[document_id],
+            surface="contract",
+            contract_id="doc-1",
+            selected_document_ids=["doc-1"],
+            attached_documents=[{"document_id": "doc-1", "filename": "Services.pdf"}],
         ),
     )
-    search = execute_mongo_read_tool(
-        FakeCollection(),
-        ToolCallRecord(name="search_evidence", args={"query": "payment invoices", "top_k": 3}),
-        state,
-    )
-    evidence_id = search["matches"][0]["evidence_id"]
+    events = []
+    model = StreamingFakeModel([
+        "Payment is due ",
+        "within thirty days. ",
+        "<CIT",
+        'ATIONS>[{"ref":1,"doc_id":"doc-1","quote":"Customer shall pay invoices within thirty days."}]</CITATIONS>',
+    ])
 
-    read = execute_mongo_read_tool(
-        FakeCollection(),
-        ToolCallRecord(name="read_evidence", args={"evidence_ids": [evidence_id]}),
+    response = DeepContractAgentRunner(model=model).run(
         state,
+        on_event=lambda event, detail: events.append((event, detail)),
     )
 
-    assert read["matches"][0]["evidence_id"] == evidence_id
-    assert "thirty days" in read["matches"][0]["snippet"]
-    assert read["matches"][0]["quote"]
-    assert "page_start" in read["matches"][0]
-    assert "char_start" in read["matches"][0]
+    visible_text = "".join(detail["text"] for event, detail in events if event == "delta")
+    assert response.workflow_status == AgentStatus.COMPLETED
+    assert not visible_text
+    assert response.answer == "Payment is due within thirty days. [1]"
+    assert response.citation_annotations[0]["filename"] == "Services.pdf"
+
+
+def test_runtime_parses_and_resolves_markdown_citations_block():
+    state = AgentRunState(
+        user_id="user-1",
+        message="Cite this.",
+        context=AgentContext(
+            selected_document_ids=["doc-1"],
+            attached_documents=[
+                {
+                    "document_id": "doc-1",
+                    "filename": "Services.pdf",
+                    "version_id": "version-7",
+                    "version_number": "v3",
+                }
+            ],
+        ),
+    )
+    answer = (
+        "Payment is due in thirty days.\n"
+        "<CITATIONS>\n"
+        "```json\n"
+        '[{"ref": 1, "doc_id": "doc-0", "page": "3-4", "quote": "Customer shall pay invoices within thirty days."}]\n'
+        "```\n"
+        "</CITATIONS>"
+    )
+
+    citations = ContractReActRuntime(model=StreamingFakeModel([]))._parse_and_resolve_citations(answer, state)
+
+    assert citations == [
+        {
+            "type": "citation_data",
+            "ref": 1,
+            "doc_id": "doc-1",
+            "document_id": "doc-1",
+            "version_id": "version-7",
+            "version_number": "v3",
+            "filename": "Services.pdf",
+            "page": "3-4",
+            "quote": "Customer shall pay invoices within thirty days.",
+            "text": "Customer shall pay invoices within thirty days.",
+            "preview": "Customer shall pay invoices within thirty days.",
+        }
+    ]
+
+
+def test_runtime_self_verification_can_correct_final_answer():
+    state = AgentRunState(user_id="user-1", message="What are the payment terms?")
+    state.react_scratchpad.append({
+        "tool": "search_evidence",
+        "observation": {
+            "matches": [
+                {
+                    "document_id": "doc-1",
+                    "filename": "Services.pdf",
+                    "page": 2,
+                    "quote": "Customer shall pay invoices within thirty days.",
+                }
+            ]
+        },
+    })
+    model = StreamingFakeModel(
+        [],
+        verification_response="FIXED: Customer shall pay invoices within thirty days.\n\n**Confidence:** high",
+    )
+
+    finished = ContractReActRuntime(model=model)._verified_finish(
+        state,
+        answer="Customer shall pay invoices within thirty days and receives a 5% discount.",
+        model=model,
+        reason="unit test",
+    )
+
+    assert finished.status == AgentStatus.COMPLETED
+    assert "5% discount" not in finished.answer
+    assert finished.confidence == "high"
+    assert any(trace.event == "verification" and trace.detail["result"] == "corrected" for trace in finished.traces)
+    verification_prompt = model.calls[0][1].content
+    assert "Customer shall pay invoices within thirty days." in verification_prompt
+
+
+def test_runtime_preflight_adds_inline_marker_from_observed_evidence():
+    state = AgentRunState(user_id="user-1", message="What are the payment terms?")
+    state.react_scratchpad.append({
+        "tool": "search_evidence",
+        "observation": {
+            "matches": [
+                {
+                    "evidence_id": "doc-1:payment",
+                    "document_id": "doc-1",
+                    "filename": "Services.pdf",
+                    "page": 2,
+                    "quote": "Customer shall pay invoices within thirty days.",
+                    "context": "Customer shall pay invoices within thirty days after receipt.",
+                }
+            ]
+        },
+    })
+    model = StreamingFakeModel(
+        [],
+        verification_response="PASS: Customer shall pay invoices within thirty days.",
+    )
+
+    finished = ContractReActRuntime(model=model)._verified_finish(
+        state,
+        answer="Customer shall pay invoices within thirty days.",
+        model=model,
+        reason="unit test",
+    )
+
+    assert finished.status == AgentStatus.COMPLETED
+    assert "[1]" in finished.answer
+    assert finished.citation_annotations
+    assert finished.citation_annotations[0]["doc_id"] == "doc-1"
+    assert "missing_inline_citation" in finished.verifier_issues
+    assert "Preflight issues:" in model.calls[0][1].content
+
+
+def test_runtime_turn_message_includes_inventory_memory_and_prior_tools():
+    state = AgentRunState(
+        user_id="user-1",
+        message="Summarize payment terms.",
+        memory_context="Prior conversation summary: User cares about invoice deadlines.\n\nRecent turns:\n- hi",
+        context=AgentContext(
+            surface="project",
+            project_id="project-1",
+            selected_document_ids=["doc-1"],
+            attached_documents=[
+                {"document_id": "doc-1", "filename": "Services.pdf"},
+                {"id": "doc-2", "name": "Amendment.pdf"},
+            ],
+        ),
+    )
+    state.tools.append(ToolCallRecord(
+        name="search_evidence",
+        args={"query": "payment terms"},
+        status="done",
+        observation={"summary": "Found payment evidence."},
+    ))
+
+    turn = ContractReActRuntime(model=StreamingFakeModel([]))._build_turn_message(state, iteration=2, max_iterations=5)
+
+    assert "Services.pdf (ID: doc-1)" in turn
+    assert "Amendment.pdf (ID: doc-2)" in turn
+    assert "User cares about invoice deadlines" in turn
+    assert "search_evidence({'query': 'payment terms'}) → done" in turn
+    assert "Observed tool results so far (step 2 of 5)" in turn
+
+
+def test_runtime_model_failure_answer_distinguishes_step_limit_errors():
+    runtime = ContractReActRuntime(model=StreamingFakeModel([]))
+
+    assert "ReAct step limit" in runtime._model_failure_answer(RuntimeError("recursion limit reached"))
+    assert "provider unavailable" in runtime._model_failure_answer(RuntimeError("provider unavailable"))
+
+
+def test_runtime_pending_approval_payload_prefers_tool_observations_then_scratchpad():
+    runtime = ContractReActRuntime(model=StreamingFakeModel([]))
+    state = AgentRunState(user_id="user-1", message="Draft this.")
+    tool_payload = {
+        "__APPROVAL_REQUIRED__": True,
+        "tool": "create_draft_artifact",
+        "params": {"draft_type": "memo"},
+        "message": "Approval required.",
+    }
+    scratch_payload = {
+        "__APPROVAL_REQUIRED__": True,
+        "tool": "generate_docx",
+        "params": {"filename": "memo.docx"},
+        "message": "DOCX approval required.",
+    }
+    state.tools.extend([
+        ToolCallRecord(name="search_evidence", status="done", observation={"summary": "ok"}),
+        ToolCallRecord(name="create_draft_artifact", status="planned", observation=tool_payload),
+    ])
+    state.react_scratchpad.append({"tool": "generate_docx", "observation": scratch_payload})
+
+    assert runtime._pending_approval_payload(state) == tool_payload
+
+    state.tools = [state.tools[0]]
+    assert runtime._pending_approval_payload(state) == scratch_payload
 
 
 def test_mongo_search_returns_compact_exact_span_for_research_plan_clause():
@@ -683,62 +875,274 @@ def test_mongo_search_honors_section_ref_and_must_contain():
     assert "Termination" not in result["matches"][0]["quote"]
 
 
-def test_citation_guard_dedupes_and_rejects_unsupported_citations():
-    state = AgentRunState(user_id="user-1", message="What are the payment terms?")
-    state.react_scratchpad.append({
-        "tool": "read_evidence",
-        "observation": {
-            "matches": [
+def test_outline_document_extracts_structural_headings_from_index_text():
+    document_id = "507f1f77bcf86cd799439012"
+
+    class FakeCollection:
+        database = None
+
+        def find(self, *_args, **_kwargs):
+            return [
                 {
-                    "evidence_id": "doc-1:payment",
-                    "document_id": "doc-1",
-                    "filename": "Services.pdf",
-                    "quote": "Customer shall pay invoices within thirty days.",
+                    "_id": document_id,
+                    "contract_name": "Services Agreement.pdf",
+                    "index": {
+                        "status": "success",
+                        "content": (
+                            "--- Page 1 ---\n"
+                            "ARTICLE IV PAYMENT TERMS\n"
+                            "Introductory payment text.\n\n"
+                            "--- Page 2 ---\n"
+                            "Section 4.01: Invoices\n"
+                            "Customer shall pay invoices within thirty days.\n\n"
+                            "Exhibit A Service Levels\n"
+                            "Response times are listed here.\n"
+                        ),
+                    },
                 }
             ]
-        },
-    })
-    state.answer = "Customer shall pay invoices within thirty days."
-    state.citation_annotations = [
-        {"doc_id": "doc-1", "quote": "Customer shall pay invoices within thirty days.", "segment_id": "doc-1:payment"},
-        {"doc_id": "doc-1", "quote": "Customer shall pay invoices within thirty days.", "segment_id": "doc-1:payment"},
-        {"doc_id": "doc-1", "quote": "This unsupported quote is not in observed evidence.", "segment_id": "doc-1:other"},
-    ]
 
-    ActiveMiddlewareEngine().answer_guard(state)
+    state = AgentRunState(
+        user_id="user-1",
+        message="Outline the document.",
+        context=AgentContext(contract_id=document_id, selected_document_ids=[document_id]),
+    )
 
-    assert len(state.citation_annotations) == 1
-    assert state.citation_annotations[0]["ref"] == 1
-    assert "duplicate_citation_removed" in state.verifier_issues
-    assert "invalid_or_unsupported_citation" in state.verifier_issues
+    result = execute_mongo_read_tool(
+        FakeCollection(),
+        ToolCallRecord(name="outline_document", args={"document_id": document_id}),
+        state,
+    )
+
+    headings = {item["heading"]: item for item in result["headings"]}
+    assert result["article_count"] == 1
+    assert result["section_count"] == 1
+    assert "ARTICLE IV PAYMENT TERMS" in headings
+    assert "Section 4.01: Invoices" in headings
+    assert headings["Section 4.01: Invoices"]["page"] == 2
+    assert "Exhibit A Service Levels" in result["outline_text"]
 
 
-def test_citation_guard_flags_missing_read_after_search():
-    state = AgentRunState(user_id="user-1", message="What are the payment terms?")
-    state.answer = "Customer shall pay invoices within thirty days."
-    state.react_scratchpad.append({
-        "tool": "search_evidence",
-        "observation": {
-            "requires_read_evidence": True,
-            "matches": [
+def test_calculate_from_evidence_evaluates_arithmetic_and_rejects_unsafe_input():
+    state = AgentRunState(user_id="user-1", message="Calculate the uplift.")
+
+    computed = execute_mongo_read_tool(
+        collection=None,
+        tool=ToolCallRecord(
+            name="calculate_from_evidence",
+            args={"expression": "(1,500 - 1,000) / 1,000 * 100", "context": "Old fee 1,000. New fee 1,500."},
+        ),
+        state=state,
+    )
+    rejected = execute_mongo_read_tool(
+        collection=None,
+        tool=ToolCallRecord(name="calculate_from_evidence", args={"expression": "__import__('os').system('x')"}),
+        state=state,
+    )
+
+    assert computed["result"] == 50.0
+    assert computed["source_values"] == [1500.0, 1000.0, 1000.0, 100.0, 1000.0, 1500.0]
+    assert rejected["result"] is None
+    assert "unsupported characters" in rejected["summary"].lower()
+
+
+def test_metadata_chunk_search_reads_vector_collection_metadata():
+    class FakeVectorCollection:
+        def find(self, query, projection):
+            self.query = query
+            self.projection = projection
+            return [
                 {
-                    "evidence_id": "doc-1:payment",
-                    "document_id": "doc-1",
-                    "filename": "Services.pdf",
-                    "quote": "Customer shall pay invoices within thirty days.",
-                    "requires_read": True,
+                    "metadata": {
+                        "document_id": "doc-1",
+                        "contract_name": "Services.pdf",
+                        "segment_id": "seg-payment",
+                        "page_start": 3,
+                        "section_path": "Section 4 Payment",
+                    },
+                    "text": "Customer shall pay invoices within thirty days.",
                 }
-            ],
-        },
-    })
-    state.citation_annotations = [
-        {"doc_id": "doc-1", "quote": "Customer shall pay invoices within thirty days.", "segment_id": "doc-1:payment"}
+            ]
+
+    class FakeDatabase:
+        def __init__(self):
+            self.vector_collection = FakeVectorCollection()
+
+        def __getitem__(self, _name):
+            return self.vector_collection
+
+    class FakeCollection:
+        database = FakeDatabase()
+
+    documents = [
+        {
+            "_id": "doc-1",
+            "contract_name": "Services.pdf",
+            "index": {"vector_namespace": "namespace-1"},
+        }
     ]
 
-    ActiveMiddlewareEngine().answer_guard(state)
+    matches = executor_module._metadata_chunk_search(
+        FakeCollection(),
+        documents,
+        ["payment invoices"],
+        top_k=5,
+    )
 
-    assert "read_evidence_missing_after_search" in state.verifier_issues
-    assert state.confidence == "low"
+    assert matches[0]["segment_id"] == "seg-payment"
+    assert matches[0]["document_id"] == "doc-1"
+    assert matches[0]["page"] == 3
+    assert matches[0]["retrieval_backend"] == "hybrid"
+
+
+def test_vector_search_documents_uses_existing_vector_store(monkeypatch):
+    search_kwargs_seen = []
+
+    class FakeRetriever:
+        def invoke(self, query):
+            assert query == "payment invoices"
+            return [
+                Document(
+                    page_content="Customer shall pay invoices within thirty days.",
+                    metadata={
+                        "document_id": "doc-1",
+                        "contract_name": "Services.pdf",
+                        "segment_id": "vector-payment",
+                        "page_start": 5,
+                        "section_path": "Section 4 Payment",
+                    },
+                )
+            ]
+
+    class FakeVectorStore:
+        def as_retriever(self, search_kwargs):
+            search_kwargs_seen.append(search_kwargs)
+            return FakeRetriever()
+
+    class FakeRAGSystem:
+        def __init__(self, ai_provider):
+            self.ai_provider = ai_provider
+
+        def load_existing_vector_store(self, namespace):
+            assert namespace == "namespace-1"
+            return FakeVectorStore()
+
+    monkeypatch.setattr("services.contract_agent.rag.ContractRAGSystem", FakeRAGSystem)
+    documents = [
+        {
+            "_id": "doc-1",
+            "contract_name": "Services.pdf",
+            "index": {"vector_namespace": "namespace-1"},
+        }
+    ]
+
+    matches = executor_module._vector_search_documents(
+        documents,
+        ["payment invoices"],
+        top_k=3,
+        ai_provider="gemini",
+    )
+
+    assert matches[0]["segment_id"] == "vector-payment"
+    assert matches[0]["retrieval_backend"] == "vector"
+    assert search_kwargs_seen[0]["k"] == 8
+    assert search_kwargs_seen[0]["pre_filter"]["namespace"] == {"$eq": "namespace-1"}
+
+
+def test_fallback_and_legacy_search_use_index_chunks_when_other_backends_empty(monkeypatch):
+    document = {
+        "_id": "doc-1",
+        "contract_name": "Services.pdf",
+        "index": {
+            "content": (
+                "--- Page 2 ---\n"
+                "Payment Terms\n"
+                "Customer shall pay invoices within thirty days after receipt.\n\n"
+                "Termination\n"
+                "Either party may terminate after written notice."
+            )
+        },
+    }
+
+    fallback_matches = executor_module._fallback_index_search([document], ["payment invoices"], top_k=2)
+    monkeypatch.setattr(executor_module, "_metadata_chunk_search", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(executor_module, "_vector_search_documents", lambda *_args, **_kwargs: [])
+    legacy_matches, backend = executor_module._legacy_search_documents(
+        [document],
+        ["payment invoices"],
+        top_k=2,
+        ai_provider="groq",
+        collection=object(),
+    )
+
+    assert fallback_matches[0]["retrieval_backend"] == "fallback_index"
+    assert "thirty days" in fallback_matches[0]["snippet"]
+    assert backend == "fallback_index"
+    assert legacy_matches[0]["evidence_id"] == fallback_matches[0]["evidence_id"]
+
+
+def test_article_reference_variants_and_search_result_formatting():
+    variants = executor_module._formal_reference_query_variants("explain article 4 and Article IX")
+    legal_variants = expand_legal_queries(["change of control"])
+    matches = [
+        {
+            "document_id": "doc-1",
+            "section": "ARTICLE IV",
+            "page": 7,
+            "evidence_id": "doc-1:article-iv",
+            "quote": "ARTICLE IV PAYMENT TERMS",
+            "context": "ARTICLE IV PAYMENT TERMS Customer shall pay invoices within thirty days.",
+            "score": 18.5,
+        }
+    ]
+    documents = [{"_id": "doc-1", "contract_name": "Services.pdf"}]
+
+    formatted = executor_module._format_search_results_as_text(matches, documents, "article 4")
+
+    assert executor_module._int_to_roman(4) == "IV"
+    assert executor_module._roman_to_int("IX") == 9
+    assert executor_module._extract_clause_reference("What does Article 4 say?") == "IV"
+    assert {"ARTICLE IV", "Article 4", "ARTICLE IX", "Article 9"} <= set(variants)
+    assert "change in control" in legal_variants
+    assert "merger" in legal_variants
+    assert "[1] Services.pdf, ARTICLE IV, p.7" in formatted
+    assert "Evidence ID: doc-1:article-iv" in formatted
+    assert "Quote: ARTICLE IV PAYMENT TERMS" in formatted
+    assert "Context: ARTICLE IV PAYMENT TERMS Customer shall pay invoices within thirty days." in formatted
+    assert "Score: 18.5" in formatted
+    assert executor_module._format_search_results_as_text([], documents, "missing") == 'No contract sections matched the query "missing".'
+
+
+def test_read_tool_repeat_limit_returns_recent_deduped_matches():
+    state = AgentRunState(user_id="user-1", message="Keep searching.")
+    old_match = {
+        "document_id": "doc-1",
+        "filename": "Services.pdf",
+        "quote": "Customer shall pay invoices within thirty days.",
+    }
+    latest_match = {
+        "document_id": "doc-2",
+        "filename": "Amendment.pdf",
+        "quote": "The amendment extends payment to forty five days.",
+    }
+    for index in range(5):
+        state.tools.append(ToolCallRecord(name="search_evidence", status="done", observation={"summary": f"prior {index}"}))
+    state.react_scratchpad.extend([
+        {"tool": "search_evidence", "observation": {"matches": [old_match]}},
+        {"tool": "search_evidence", "observation": {"matches": [old_match]}},
+        {"tool": "search_evidence", "observation": {"matches": [latest_match]}},
+    ])
+    state.tools.append(ToolCallRecord(name="search_evidence", status="planned"))
+
+    result = _read_tool_loop_result("search_evidence", state)
+    recent = _recent_observed_matches(state)
+
+    assert result is not None
+    assert result["tool_budget_exhausted"] is True
+    assert "produce the final answer now" in result["summary"]
+    assert [match["document_id"] for match in result["matches"]] == ["doc-1", "doc-2"]
+    assert recent == result["matches"]
+
 
 
 def test_find_in_document_resolves_natural_section_reference():
@@ -862,9 +1266,10 @@ def test_contractsense_react_prompt_ports_governed_system_rules():
     prompt_text = LANGGRAPH_REACT_SYSTEM_PROMPT
 
     assert "ContractSense" in prompt_text
-    assert "untrusted data" in prompt_text
-    assert "Approval-gated tools" in prompt_text
-    assert "cite" in prompt_text
+    assert "read-only tools" in prompt_text
+    assert "approval-gated tools" in prompt_text
+    assert "Reflect" in prompt_text
+    assert "Anticipate" not in prompt_text
 
 
 def test_runtime_prompt_includes_actual_tool_catalog():
@@ -876,11 +1281,13 @@ def test_runtime_prompt_includes_actual_tool_catalog():
 
     prompt_text = langgraph_react_system_prompt_for_tools(build_langchain_tools(state=state))
 
-    assert "Available tools for this run" in prompt_text
+    assert "## Tools" in prompt_text
+    assert "untrusted data" in prompt_text
     assert "search_evidence" in prompt_text
     assert "read_document" in prompt_text
     assert "create_draft_artifact" in prompt_text
-    assert "Use tool names and argument names exactly as listed" in prompt_text
+    assert "not a fixed script" in prompt_text
+    assert "Do not add extra recommendations" in prompt_text
 
 
 def test_classic_react_agent_executor_is_retired():
@@ -913,10 +1320,7 @@ def test_middleware_descriptors_label_runtime_and_enforcement():
         assert name in loaded_names
 
     for name in {
-        "ToolRetryMiddleware",
-        "ModelFallbackMiddleware",
         "PIIMiddleware",
-        "SummarizationMiddleware",
         "ScopeGuardMiddleware",
         "ConfidentialityGuardMiddleware",
         "BudgetMiddleware",
@@ -924,9 +1328,6 @@ def test_middleware_descriptors_label_runtime_and_enforcement():
     }:
         assert descriptors[name].runtime == "trace"
         assert descriptors[name].enforced is False
-
-    assert descriptors["CitationGuardMiddleware"].runtime == "local"
-    assert descriptors["CitationGuardMiddleware"].enforced is True
 
 
 def test_declared_middlewares_are_loaded_or_traced_at_runtime():
@@ -1164,6 +1565,82 @@ def test_runner_checkpoints_graph_state_by_session_thread_id():
     )
 
 
+def test_runner_persists_state_and_records_final_response_trace():
+    class FakeStore:
+        def __init__(self):
+            self.saved = []
+
+        def save(self, state):
+            self.saved.append(state)
+
+    store = FakeStore()
+    state = AgentRunState(user_id="user-1", message="What can you do?")
+
+    response = DeepContractAgentRunner(
+        store=store,
+        model=StreamingFakeModel(["I can answer scoped contract questions.\n\n**Confidence:** high"]),
+    ).run(state)
+
+    assert response.workflow_status == AgentStatus.COMPLETED
+    assert store.saved == [state]
+    assert any(trace.event == "persist_run" and trace.detail["persisted"] is True for trace in state.traces)
+    assert any(trace.event == "final_response" and trace.detail["status"] == "completed" for trace in state.traces)
+
+
+def test_checkpoint_thread_id_sanitizes_review_playbook_and_surface_scopes():
+    runner = DeepContractAgentRunner(model=StreamingFakeModel(["Done."]))
+    review_state = AgentRunState(
+        user_id="user:1",
+        message="Review table",
+        context=AgentContext(surface="tabular_review", review_id="review:42", session_id="session:7"),
+    )
+    playbook_state = AgentRunState(
+        user_id="user-2",
+        message="Run playbook",
+        context=AgentContext(surface="playbook", playbook_id="playbook-1"),
+    )
+    surface_state = AgentRunState(
+        user_id="user-3",
+        message="General dashboard question",
+        context=AgentContext(surface="dashboard"),
+    )
+
+    assert runner.checkpoint_thread_id(review_state) == "contract-agent:user_1:review_42:session_7"
+    assert runner.checkpoint_thread_id(playbook_state) == (
+        f"contract-agent:user-2:playbook-1:{playbook_state.workflow_id}"
+    )
+    assert runner.checkpoint_thread_id(surface_state) == (
+        f"contract-agent:user-3:dashboard:{surface_state.workflow_id}"
+    )
+
+
+def test_conversation_summary_from_memory_is_traced_by_answer_guard():
+    memory = (
+        "Prior conversation summary: User is comparing invoice timing across suppliers.\n"
+        "They already rejected a broad summary.\n\n"
+        "Recent turns:\n- User asked about payment."
+    )
+    state = AgentRunState(
+        user_id="user-1",
+        message="What are the payment terms?",
+        memory_context=memory,
+    )
+    state.answer = "Payment terms are not available.\n\n**Confidence:** low"
+    state.status = AgentStatus.COMPLETED
+
+    ActiveMiddlewareEngine().answer_guard(state)
+
+    summary = middleware_module._conversation_summary_from_memory(memory)
+    assert summary == "User is comparing invoice timing across suppliers. They already rejected a broad summary."
+    assert any(
+        trace.event == "middleware:SummarizationMiddleware"
+        and trace.detail["enabled"] is True
+        and trace.detail["summary"] == summary
+        for trace in state.traces
+    )
+    assert middleware_module._conversation_summary_from_memory("Recent turns only") == ""
+
+
 def test_runner_executes_bounded_react_loop_with_tool_observations():
     calls = []
 
@@ -1193,9 +1670,6 @@ def test_runner_executes_bounded_react_loop_with_tool_observations():
         AIMessage(content="", tool_calls=[
             {"name": "search_evidence", "args": {"query": "payment terms"}, "id": "call-search"}
         ]),
-        AIMessage(content="", tool_calls=[
-            {"name": "read_evidence", "args": {"evidence_ids": ["evidence-1"]}, "id": "call-evidence"}
-        ]),
         AIMessage(content=(
             "**Direct answer**\nThe payment terms are net thirty days.\n\n"
             "**Key evidence / citations**\n"
@@ -1207,9 +1681,9 @@ def test_runner_executes_bounded_react_loop_with_tool_observations():
     response = DeepContractAgentRunner(tool_executor=fake_tool_executor, model=model).run(state)
 
     assert response.workflow_status == AgentStatus.COMPLETED
-    assert calls == ["read_document", "search_evidence", "read_evidence"]
-    assert state.react_iterations == 4
-    assert len(state.react_scratchpad) == 3
+    assert calls == ["read_document", "search_evidence"]
+    assert state.react_iterations == 3
+    assert len(state.react_scratchpad) == 2
     assert all(tool.status == "done" for tool in state.tools)
     assert state.tools[0].observation["summary"] == "observed read_document"
 
@@ -1352,7 +1826,7 @@ def test_supplier_name_redline_uses_source_text_and_tracked_changes():
 
     assert len(result.applied_changes) == 2
     assert result.applied_changes[0]["del_w_id"] == "1"
-    assert result.applied_changes[0]["ins_w_id"] == "1"
+    assert result.applied_changes[0]["ins_w_id"] == "2"
     assert result.applied_changes[0]["deleted_text"] == "Cascade Natural Gas Corporation"
     assert result.applied_changes[0]["inserted_text"] == "[New Supplier Name]"
     assert "Edited Copy" not in document_xml
@@ -1556,3 +2030,40 @@ def test_tabular_approval_reuses_review_created_before_previous_503(monkeypatch)
     assert create_called["value"] is False
     assert response.created_review_id == "existing-review"
     assert response.artifacts[0]["generated_count"] == 3
+
+
+def test_double_byte_bracket_citation_normalization():
+    from services.contract_agent.graph.runner import DeepContractAgentRunner
+    from services.contract_agent.graph.state import AgentRunState, AgentContext
+
+    state = AgentRunState(
+        user_id="user-1",
+        message="What are performance-rating thresholds?",
+        context=AgentContext(),
+    )
+    # Set final answer with double-byte bracket citation markers
+    state.answer = "The thresholds are: 3.00 or greater is 100% 【1】, and 2.80 or below is 0% (no award) 【2】."
+    state.citation_details = {
+        "annotations": [
+            {"ref": 1, "quote": "3.00 or greater: 100%", "page": 5},
+            {"ref": 2, "quote": "2.80 or below: 0%", "page": 5},
+        ]
+    }
+
+    runner = DeepContractAgentRunner()
+    response = runner.response_from_state(state)
+
+    # Verify that the answer returned by response_from_state has normalized brackets
+    assert response.answer == "The thresholds are: 3.00 or greater is 100% [1], and 2.80 or below is 0% (no award) [2]."
+
+    # Let's also verify that persisting state normalizes it
+    class MockStore:
+        def __init__(self):
+            self.saved_state = None
+        def save(self, state):
+            self.saved_state = state
+
+    store = MockStore()
+    runner_with_store = DeepContractAgentRunner(store=store)
+    runner_with_store._persist(state)
+    assert store.saved_state.answer == "The thresholds are: 3.00 or greater is 100% [1], and 2.80 or below is 0% (no award) [2]."

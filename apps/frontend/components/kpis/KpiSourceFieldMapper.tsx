@@ -125,7 +125,7 @@ export default function KpiSourceFieldMapper({
                   onClick={() => setSelectedSourceField(fieldName)}
                   className={`flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md border px-2 text-left transition-colors ${
                     selected
-                      ? 'border-gray-950 bg-white text-gray-950'
+                      ? 'border-cs-primary bg-white text-gray-950'
                       : mapped
                         ? 'border-gray-300 bg-white text-gray-800'
                         : 'border-transparent bg-white/70 text-gray-700 hover:border-gray-200 hover:bg-white'

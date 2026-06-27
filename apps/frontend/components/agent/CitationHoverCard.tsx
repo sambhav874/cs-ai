@@ -8,6 +8,8 @@ type CitedSegment = {
   text: string;
   page_number?: number | null;
   page?: number | string | null;
+  page_start?: number | null;
+  page_end?: number | null;
   type: string;
   contract_id?: string | null;
   contract_name?: string | null;
@@ -19,6 +21,8 @@ type CitationAnnotation = {
   document_id?: string | null;
   filename?: string;
   page?: number | string | null;
+  page_start?: number | null;
+  page_end?: number | null;
   quote: string;
   segment_id?: string;
   evidence_id?: string;
@@ -42,6 +46,9 @@ function segmentDocName(segment: CitationAnnotation | CitedSegment): string {
 }
 
 function segmentPage(segment: CitationAnnotation | CitedSegment): number | string | null {
+  if ("page_start" in segment && "page_end" in segment && segment.page_start != null && segment.page_end != null && segment.page_end !== segment.page_start) {
+    return `${segment.page_start}-${segment.page_end}`;
+  }
   if ("page" in segment && segment.page) return segment.page;
   if ("page_number" in segment && segment.page_number) return segment.page_number;
   return null;
@@ -109,6 +116,8 @@ export function renderMarkdownWithCitations(
           doc_id: seg.contract_id,
           filename: seg.contract_name,
           page: seg.page_number || seg.page,
+          page_start: seg.page_start ?? seg.page_number ?? seg.page ?? undefined,
+          page_end: seg.page_end ?? undefined,
           segment_id: seg.id,
         }))
       : [];

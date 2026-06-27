@@ -12,6 +12,7 @@ import {
   Download,
   FileText,
   History,
+  Info,
   Link2,
   PencilLine,
   Plus,
@@ -114,32 +115,13 @@ type AgentStoredMessage = {
   };
 };
 
-type AgentArtifact = {
-  artifact_id: string;
-  document_id?: string;
-  version_id?: string;
-  version_number?: number | null;
-  filename: string;
-  content_type?: string;
-  byte_count?: number;
-  draft_type?: string;
-  download_url?: string;
-  artifact_kind?: string;
-  type?: string;
-  editable?: boolean;
-  contract_id?: string;
-  kpi_count?: number;
-  new_or_updated_count?: number;
-  candidate_count?: number;
-  extraction_method?: string;
-  contract_name?: string;
-  run_id?: string;
-  llm_error?: string | null;
-  summary?: Record<string, unknown>;
-  redline_changes?: RedlineChangePreview[];
-  applied_redline_changes?: RedlineChangePreview[];
-  unmatched_redline_changes?: RedlineChangePreview[];
-  edit_annotations?: AgentEditAnnotation[];
+type RedlineChangePreview = {
+  finding_id?: string;
+  rule_name?: string;
+  matched_text?: string;
+  suggested_revision?: string;
+  rationale?: string;
+  reason?: string;
 };
 
 type AgentEditAnnotation = {
@@ -153,32 +135,32 @@ type AgentEditAnnotation = {
   status?: "pending" | "accepted" | "rejected" | string;
 };
 
-type RedlineChangePreview = {
-  finding_id?: string;
-  rule_name?: string;
-  matched_text?: string;
-  suggested_revision?: string;
-  rationale?: string;
-  reason?: string;
-};
-
-type AgentDraft = {
-  draft_id: string;
-  draft_type?: string;
-  title?: string;
-  content: string;
-  updated_at?: string;
-  metadata?: {
-    confidence?: "high" | "medium" | "low";
-    citation?: string;
-    citation_details?: CitationDetails;
-    citation_annotations?: CitationAnnotation[];
-    artifact?: AgentArtifact;
-    artifacts?: AgentArtifact[];
-    agent_trace?: AgentTraceData;
-    token_usage?: AgentTokenUsage;
-    cost_usd?: number;
-  };
+type AgentArtifact = {
+  artifact_id: string;
+  document_id?: string;
+  version_id?: string;
+  version_number?: number | null;
+  filename: string;
+  content_type?: string;
+  byte_count?: number;
+  download_url?: string;
+  artifact_kind?: string;
+  type?: string;
+  editable?: boolean;
+  contract_id?: string;
+  kpi_count?: number;
+  new_or_updated_count?: number;
+  candidate_count?: number;
+  extraction_method?: string;
+  contract_name?: string;
+  run_id?: string;
+  llm_error?: string | null;
+  summary?: Record<string, unknown>;
+  // Retained for rendering historical responses from removed tools
+  redline_changes?: RedlineChangePreview[];
+  applied_redline_changes?: RedlineChangePreview[];
+  unmatched_redline_changes?: RedlineChangePreview[];
+  edit_annotations?: AgentEditAnnotation[];
 };
 
 type AIProvider = "groq" | "gemini" | "openai" | "claude";
@@ -203,6 +185,8 @@ type CitedSegment = {
   text: string;
   page_number?: number | null;
   page?: number | string | null;
+  page_start?: number | null;
+  page_end?: number | null;
   type: string;
   contract_id?: string | null;
   contract_name?: string | null;
@@ -221,6 +205,8 @@ type CitationAnnotation = {
   contract_id?: string | null;
   filename?: string;
   page?: number | string | null;
+  page_start?: number | null;
+  page_end?: number | null;
   quote: string;
   segment_id?: string;
   verified?: boolean;
@@ -442,6 +428,7 @@ function citationRefs(rawRefs: string) {
 function citationAnnotationsFromDetails(citationDetails: CitationDetails, rawAnnotations: unknown): CitationAnnotation[] {
   if (Array.isArray(rawAnnotations)) return rawAnnotations as CitationAnnotation[];
   if (Array.isArray(citationDetails.annotations)) return citationDetails.annotations as CitationAnnotation[];
+  if (Array.isArray((citationDetails as any).citations)) return (citationDetails as any).citations as CitationAnnotation[];
   if (!Array.isArray(citationDetails.cited_segments)) return [];
 
   return citationDetails.cited_segments.map((segment, index) => ({
@@ -451,6 +438,8 @@ function citationAnnotationsFromDetails(citationDetails: CitationDetails, rawAnn
     document_id: segment.contract_id ?? undefined,
     filename: segment.contract_name ?? undefined,
     page: segment.page_number ?? segment.page ?? undefined,
+    page_start: segment.page_start ?? segment.page_number ?? undefined,
+    page_end: segment.page_end ?? undefined,
     quote: segment.text ?? "",
     segment_id: segment.id,
   }));
@@ -905,7 +894,7 @@ function reasoningSubtitle(items: AgentReasoningItem[]) {
 function storedMessageToAgentMessage(message: AgentStoredMessage, index: number): AgentMessage {
   const metadata = message.metadata ?? {};
   const citationDetails = metadata.citation_details ?? {};
-  const citationAnnotations = citationAnnotationsFromDetails(citationDetails, metadata.citation_annotations);
+  const citationAnnotations = citationAnnotationsFromDetails(citationDetails, metadata.citation_annotations || (metadata as any).citations);
   const normalizedCitations = normalizeCitationPayload(citationAnnotations);
   return {
     id: message.message_id || `${message.role}-${index}-${message.created_at || Date.now()}`,
@@ -926,61 +915,7 @@ function storedMessageToAgentMessage(message: AgentStoredMessage, index: number)
   };
 }
 
-function draftTypeLabel(type?: string) {
-  switch (type) {
-    case "approval_note":
-      return "Approval note";
-    case "edit_suggestions":
-      return "Edit suggestions";
-    case "draft":
-      return "Draft language";
-    default:
-      return "Saved draft";
-  }
-}
 
-function formatDraftDate(value?: string) {
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  return parsed.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function savedDraftToAgentMessage(savedDraft: AgentDraft): AgentMessage {
-  const metadata = savedDraft.metadata ?? {};
-  const artifacts = [
-    ...(Array.isArray(metadata.artifacts) ? metadata.artifacts : []),
-    ...(metadata.artifact ? [metadata.artifact] : []),
-  ];
-  const title = cleanDisplayText(savedDraft.title || draftTypeLabel(savedDraft.draft_type));
-  const typeLabel = draftTypeLabel(savedDraft.draft_type);
-  const citationDetails = metadata.citation_details ?? {};
-  const citationAnnotations = citationAnnotationsFromDetails(citationDetails, metadata.citation_annotations);
-  const normalizedCitations = normalizeCitationPayload(citationAnnotations);
-  const content = normalizeCitationMarkerText([
-    `**${typeLabel}: ${title}**`,
-    cleanDisplayText(savedDraft.content),
-  ].filter(Boolean).join("\n\n"), normalizedCitations.refMap, normalizedCitations.markerMap);
-
-  return {
-    id: `saved-${savedDraft.draft_id}-${Date.now()}`,
-    role: "agent",
-    content,
-    artifacts,
-    citation: metadata.citation,
-    confidence: metadata.confidence,
-    citationDetails,
-    citationAnnotations: normalizedCitations.annotations,
-    agentTrace: normalizeAgentTraceData(metadata.agent_trace),
-    tokenUsage: metadata.token_usage,
-    costUsd: metadata.cost_usd,
-  };
-}
 
 export default function ContractAgentPanel({
   contractId,
@@ -1006,7 +941,6 @@ export default function ContractAgentPanel({
   const [isThinking, setIsThinking] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
-  const [savedDrafts, setSavedDrafts] = useState<AgentDraft[]>([]);
   const [selectedReferenceIds, setSelectedReferenceIds] = useState<string[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<AIProvider>(
     isAIProvider(aiProvider) ? aiProvider : "groq",
@@ -1169,9 +1103,6 @@ export default function ContractAgentPanel({
       if (!cancelled && nextSessionId) {
         await loadSessionMessages(nextSessionId);
       }
-      if (!cancelled) {
-        await refreshDrafts();
-      }
     };
     loadInitialSession();
     return () => {
@@ -1220,17 +1151,6 @@ export default function ContractAgentPanel({
     }
   };
 
-  const refreshDrafts = async () => {
-    if (!agentBasePath || !token) return;
-    const response = await apiFetch(`${agentBasePath}/drafts`);
-    if (!response.ok) return;
-    const payload = await response.json();
-    setSavedDrafts(Array.isArray(payload.drafts) ? payload.drafts as AgentDraft[] : []);
-  };
-
-  const openSavedDraft = (savedDraft: AgentDraft) => {
-    setMessages((current) => [...current, savedDraftToAgentMessage(savedDraft)]);
-  };
 
   const startNewSession = () => {
     streamTextRef.current.clear();
@@ -1313,7 +1233,7 @@ export default function ContractAgentPanel({
     const approval = response.requires_approval ? response.approval_request ?? null : null;
     const proposal = approval?.tabular_review ?? null;
     const citationDetails = (response.citation_details ?? {}) as CitationDetails;
-    const citationAnnotations = citationAnnotationsFromDetails(citationDetails, response.citation_annotations);
+    const citationAnnotations = citationAnnotationsFromDetails(citationDetails, response.citation_annotations || (response as any).citations);
     const normalizedCitations = normalizeCitationPayload(citationAnnotations);
 
     // Build suggestions from the approval request, or use explicit suggestions from backend
@@ -1552,7 +1472,7 @@ export default function ContractAgentPanel({
 
     if (eventName === "citations" || eventName === "citation") {
       const citationDetails = (data.citation_details ?? {}) as CitationDetails;
-      const citationAnnotations = citationAnnotationsFromDetails(citationDetails, data.citation_annotations);
+      const citationAnnotations = citationAnnotationsFromDetails(citationDetails, data.citation_annotations || data.citations);
       const normalizedCitations = normalizeCitationPayload(citationAnnotations);
 
       upsertAgentActivity(agentMessageId, {
@@ -1642,7 +1562,7 @@ export default function ContractAgentPanel({
       stopStreamText(agentMessageId);
       const finalAnswer = typeof data.answer === "string" ? cleanDisplayText(data.answer) : "";
       const citationDetails = (data.citation_details ?? {}) as CitationDetails;
-      const citationAnnotations = citationAnnotationsFromDetails(citationDetails, data.citation_annotations);
+      const citationAnnotations = citationAnnotationsFromDetails(citationDetails, data.citation_annotations || data.citations);
       const normalizedCitations = normalizeCitationPayload(citationAnnotations);
 
       updateAgentMessage(agentMessageId, (message) => ({
@@ -1790,7 +1710,6 @@ export default function ContractAgentPanel({
     } finally {
       setIsThinking(false);
       void refreshSessions();
-      void refreshDrafts();
     }
   };
 
@@ -1898,6 +1817,8 @@ export default function ContractAgentPanel({
           text: citationText,
           page: annotation.page ?? null,
           page_number: Number.isFinite(parsedPage) ? parsedPage : null,
+          page_start: annotation.page_start ?? (Number.isFinite(parsedPage) ? parsedPage : null),
+          page_end: annotation.page_end ?? null,
           type: "citation",
           contract_id: targetContractId,
           contract_name: targetFilename,
@@ -1920,7 +1841,11 @@ export default function ContractAgentPanel({
     variant: "inline" | "source" = "inline",
   ) => {
     const quote = citationQuote(annotation);
-    const page = annotation.page ? `Page ${annotation.page}` : "Page not identified";
+    const page = annotation.page_start != null && annotation.page_end != null && annotation.page_end !== annotation.page_start
+      ? `Page ${annotation.page_start}-${annotation.page_end}`
+      : annotation.page
+        ? `Page ${annotation.page}`
+        : "Page not identified";
     const documentName = citationDocumentName(annotation);
     const isSourceVariant = variant === "source";
     const isUnverified = annotation.verified === false;
@@ -2205,7 +2130,7 @@ export default function ContractAgentPanel({
     });
     if (!visibleEvents.length && !isRunning) return null;
 
-    const steps: Array<{ iteration: number; type: "thought" | "tool_call" | "tool_result" | "answer"; toolName?: string; toolArgs?: Record<string, unknown>; toolResult?: { summary?: string; matches?: Array<Record<string, unknown>>; error?: string }; answerText?: string }> = [];
+    const steps: Array<{ iteration: number; type: "thought" | "tool_call" | "tool_result" | "answer"; toolName?: string; toolArgs?: Record<string, any>; toolResult?: { summary?: string; matches?: Array<Record<string, unknown>>; error?: string }; answerText?: string }> = [];
     visibleEvents.forEach((event) => {
       const name = event.event || "";
       if (name === "react_thought") {
@@ -2215,7 +2140,7 @@ export default function ContractAgentPanel({
           answerText: String(event.detail?.thought || ""),
         });
       } else if (name === "react_model_step" && event.detail?.action === "tool") {
-        steps.push({ iteration: steps.length + 1, type: "tool_call", toolName: String(event.detail?.tool || ""), toolArgs: event.detail as Record<string, unknown> });
+        steps.push({ iteration: steps.length + 1, type: "tool_call", toolName: String(event.detail?.tool || ""), toolArgs: event.detail as Record<string, any> });
       } else if (name === "react_tool_observation") {
         steps.push({ iteration: steps.length + 1, type: "tool_result", toolName: String(event.detail?.tool || ""), toolResult: { summary: String(event.detail?.summary || ""), matches: undefined } });
       } else if (name === "react_model_step" && event.detail?.action === "final") {
@@ -2227,14 +2152,16 @@ export default function ContractAgentPanel({
 
     if (!toolSteps.length && !isRunning) return null;
 
+    const isExpanded = traceExpanded || isRunning;
+
     return (
-      <div className="mb-1.5">
+      <div className="mb-2 rounded-lg border border-gray-100 bg-gray-50/50 p-2">
         {/* Minimal inline tool indicator */}
-        <div className="flex items-center gap-2 text-[10px] text-gray-400">
+        <div className="flex items-center justify-between text-[10px] text-gray-400">
           {isRunning ? (
             <span className="flex items-center gap-1.5">
-              <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-gray-400" />
-              <span>Working</span>
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
+              <span className="font-medium text-gray-500">Agent executing pipeline...</span>
             </span>
           ) : (
             <span>{toolSteps.length} tool call{toolSteps.length !== 1 ? "s" : ""}</span>
@@ -2243,40 +2170,43 @@ export default function ContractAgentPanel({
             <button
               type="button"
               onClick={() => setTraceExpanded(!traceExpanded)}
-              className="inline-flex items-center gap-0.5 text-gray-300 hover:text-gray-500 transition-colors"
+              className="inline-flex items-center gap-0.5 text-gray-400 hover:text-gray-600 transition-colors"
             >
-              {traceExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
             </button>
           ) : null}
         </div>
 
         {/* Expanded detail — clean list, no badges */}
-        {traceExpanded && steps.length > 0 ? (
-          <div className="mt-1.5 space-y-1 pl-0">
+        {isExpanded && steps.length > 0 ? (
+          <div className="mt-2 space-y-1.5 pl-0">
             {steps.map((step, idx) => (
               <div
                 key={idx}
-                className="flex items-start gap-2 text-[10px] leading-4 text-gray-400"
+                className="flex items-start gap-2 text-[10px] leading-4 text-gray-500"
               >
-                <span className="mt-0.5 h-1 w-1 shrink-0 rounded-full bg-gray-200" />
+                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-gray-300" />
                 <span className="min-w-0 flex-1 font-mono">
                   {step.type === "thought" && step.answerText && (
-                    <span className="text-gray-400">{step.answerText.slice(0, 100)}</span>
+                    <span className="text-gray-400 italic">Thinking: {step.answerText.slice(0, 150)}...</span>
                   )}
                   {step.type === "tool_call" && (
-                    <span className="text-gray-500">{step.toolName}()</span>
+                    <span className="text-blue-600 font-semibold flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-ping inline-block shrink-0" />
+                      <span>Calling {step.toolName}{step.toolArgs?.args?.query ? ` (query: "${step.toolArgs.args.query}")` : ""}...</span>
+                    </span>
                   )}
                   {step.type === "tool_result" && (
-                    <span className="text-gray-400">
+                    <span className="text-emerald-600 font-medium">
                       {step.toolResult?.error ? (
-                        <span className="text-red-400">{step.toolResult.error.slice(0, 80)}</span>
+                        <span className="text-red-500">Error: {step.toolResult.error.slice(0, 100)}</span>
                       ) : (
-                        step.toolResult?.summary?.slice(0, 80) || "Done"
+                        `Observed: ${step.toolResult?.summary?.slice(0, 120) || "Executed successfully."}`
                       )}
                     </span>
                   )}
                   {step.type === "answer" && step.answerText && (
-                    <span className="text-gray-300">{step.answerText.slice(0, 80)}</span>
+                    <span className="text-gray-400">Answer synthesis: {step.answerText.slice(0, 100)}</span>
                   )}
                 </span>
               </div>
@@ -2487,6 +2417,14 @@ export default function ContractAgentPanel({
           <div className="truncate text-sm font-semibold text-gray-800">
             {isProjectScope ? "Project Assistant" : "Contract Assistant"}
           </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="h-4 w-4 shrink-0 cursor-help text-gray-400 hover:text-gray-600" />
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="start" className="max-w-[200px] text-center">
+              <p>Search, cite, and decide from the attached contract in one agent thread.</p>
+            </TooltipContent>
+          </Tooltip>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           <DropdownMenu>
@@ -2544,74 +2482,7 @@ export default function ContractAgentPanel({
           >
             <Trash2 className="h-4 w-4" />
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-gray-500 hover:text-gray-900"
-                disabled={isThinking || savedDrafts.length === 0}
-                title="Saved drafts and edits"
-                aria-label="Saved drafts and edits"
-              >
-                <PencilLine className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="max-h-80 w-80 overflow-y-auto">
-              <DropdownMenuLabel className="text-xs text-gray-500">Saved drafts and edits</DropdownMenuLabel>
-              {savedDrafts.map((savedDraft) => (
-                <DropdownMenuItem
-                  key={savedDraft.draft_id}
-                  onClick={() => openSavedDraft(savedDraft)}
-                  className="items-start gap-2"
-                >
-                  <PencilLine className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">
-                      {savedDraft.title || draftTypeLabel(savedDraft.draft_type)}
-                    </span>
-                    <span className="block text-xs text-gray-500">
-                      {draftTypeLabel(savedDraft.draft_type)}
-                      {formatDraftDate(savedDraft.updated_at) ? ` · ${formatDraftDate(savedDraft.updated_at)}` : ""}
-                    </span>
-                  </span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 max-w-[148px] gap-1.5 rounded-md border-gray-200 px-2.5 text-xs"
-                disabled={isThinking}
-                title="Choose model"
-                aria-label={`Choose model, currently ${providerLabel(selectedProvider)}`}
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                <span className="truncate">Model: {providerLabel(selectedProvider)}</span>
-                <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              {modelOptions.map((option) => (
-                <DropdownMenuItem
-                  key={option.value}
-                  onClick={() => handleProviderChange(option.value)}
-                  className="items-start gap-2"
-                >
-                  <Check className={cn("mt-0.5 h-4 w-4", selectedProvider === option.value ? "opacity-100" : "opacity-0")} />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{option.label}</span>
-                    <span className="block text-xs text-gray-500">{option.description}</span>
-                  </span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+
         </div>
       </div>
 
@@ -2624,9 +2495,6 @@ export default function ContractAgentPanel({
             <h2 className="mt-4 text-center font-serif text-2xl font-light text-gray-900">
               Hi, {userName || "there"}
             </h2>
-            <p className="mx-auto mt-2 max-w-sm text-center text-sm leading-6 text-gray-500">
-              {roleSummary} is active for {contractName}.
-            </p>
 
             <div className="mt-6 grid gap-2">
               {quickActions.map((action) => (
@@ -2642,9 +2510,6 @@ export default function ContractAgentPanel({
               ))}
             </div>
 
-            <p className="mx-auto mt-5 max-w-xs text-center text-xs leading-5 text-gray-500">
-              Search, cite, and decide from the attached contract in one agent thread.
-            </p>
           </div>
         ) : (
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 overflow-x-hidden pb-28">
@@ -2688,26 +2553,26 @@ export default function ContractAgentPanel({
                         </div>
                       ) : null}
                       {message.citationAnnotations?.length || message.citation ? (
-                        <div className="mt-2 flex flex-col gap-1 border-t border-gray-100 pt-2 text-[10px] text-gray-500">
+                        <div className="mt-2 flex min-w-0 flex-col gap-1 border-t border-gray-100 pt-2 text-[10px] text-gray-500">
                           {message.citationAnnotations?.length ? (
                             <>
                               <span className="font-semibold uppercase tracking-wider text-gray-400">Sources</span>
-                              <div className="flex flex-col gap-1.5 mt-1">
+                              <div className="mt-1 flex min-w-0 flex-col gap-1.5">
                                 {getUsedAndSortedAnnotations(message).map((annotation) => {
                                   const docName = citationDocumentName(annotation);
                                   const page = annotation.page ? `Page ${annotation.page}` : "Page not identified";
                                   return (
-                                    <div key={annotation.ref} className="flex items-center gap-1.5">
+                                    <div key={annotation.ref} className="flex min-w-0 items-center gap-1.5">
                                       <button
                                         type="button"
                                         onClick={() => handleCitationClick(message, annotation)}
-                                        className="h-4 min-w-4 rounded border border-gray-200 bg-white px-1 text-[9px] font-medium text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                                        className="h-4 min-w-4 shrink-0 rounded border border-gray-200 bg-white px-1 text-[9px] font-medium text-gray-600 hover:border-gray-300 hover:bg-gray-50"
                                       >
                                         {annotation.ref}
                                       </button>
-                                      <span className="font-medium text-gray-700">{docName}</span>
-                                      <span className="text-gray-400">·</span>
-                                      <span className="text-blue-600">{page}</span>
+                                      <span className="truncate font-medium text-gray-700" title={docName}>{docName}</span>
+                                      <span className="shrink-0 text-gray-400">·</span>
+                                      <span className="shrink-0 text-blue-600">{page}</span>
                                     </div>
                                   );
                                 })}
@@ -2808,7 +2673,6 @@ export default function ContractAgentPanel({
                   } finally {
                     setIsThinking(false);
                     void refreshSessions();
-                    void refreshDrafts();
                   }
                 })();
               }}
@@ -2817,8 +2681,8 @@ export default function ContractAgentPanel({
           </div>
         ) : (
           <>
-        <form onSubmit={handleSubmit} className="rounded-2xl border border-gray-300 bg-white shadow-sm transition-colors focus-within:border-gray-400 focus-within:ring-2 focus-within:ring-gray-100">
-          <div className="px-4 pt-2.5">
+        <form onSubmit={handleSubmit} className="rounded-2xl border border-gray-300 bg-white shadow-lg transition-all focus-within:border-gray-400 focus-within:ring-2 focus-within:ring-gray-100 focus-within:shadow-xl">
+          <div className="flex items-end gap-2 px-4 pt-2.5 pb-2">
             <textarea
               rows={1}
               value={draft}
@@ -2830,18 +2694,25 @@ export default function ContractAgentPanel({
                 }
               }}
               placeholder={isProjectScope ? "Ask a question about this project..." : "Ask a question about this contract..."}
-              className="max-h-28 min-h-8 w-full resize-none overflow-hidden bg-transparent p-0 text-sm leading-6 text-gray-900 outline-none placeholder:text-gray-400"
+              className="max-h-28 min-h-8 w-full resize-none overflow-hidden bg-transparent p-0 text-sm leading-6 text-gray-900 outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 placeholder:text-gray-400"
             />
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!draft.trim() || isThinking}
+              className="mb-0.5 h-8 w-8 shrink-0 rounded-[10px] bg-cs-primary text-white hover:bg-cs-primary/90"
+            >
+              <ArrowRight className="h-4 w-4" />
+            </Button>
           </div>
-          <div className="flex items-end justify-between gap-2 px-2 pb-2 pt-1">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 px-3 pb-2 pt-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-7 min-w-0 max-w-[170px] gap-1 rounded-full border-gray-200 bg-gray-50 px-2 text-xs text-gray-500 shadow-none hover:bg-white hover:text-gray-700"
+                    className="h-7 min-w-0 max-w-[170px] gap-1 rounded-full border-transparent bg-cs-primary/10 px-2 text-xs text-cs-primary shadow-none hover:bg-cs-primary/20 hover:text-cs-primary"
                     disabled={isThinking || (isProjectScope ? availableReferenceDocuments.length === 0 : availableReferenceDocuments.length <= 1)}
                     aria-label="Choose documents to refer to"
                     title="Choose documents to refer to"
@@ -2908,15 +2779,38 @@ export default function ContractAgentPanel({
                   })}
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!draft.trim() || isThinking}
-              className="h-8 w-8 shrink-0 rounded-[10px] bg-gradient-to-b from-neutral-700 to-black text-white hover:from-neutral-800 hover:to-black"
-            >
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 min-w-0 max-w-[148px] gap-1 rounded-full border-transparent bg-cs-primary/10 px-2 text-xs text-cs-primary shadow-none hover:bg-cs-primary/20 hover:text-cs-primary"
+                    disabled={isThinking}
+                    title="Choose model"
+                    aria-label={`Choose model, currently ${providerLabel(selectedProvider)}`}
+                  >
+                    <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">Model: {providerLabel(selectedProvider)}</span>
+                    <ChevronDown className="h-3 w-3 shrink-0 text-gray-400" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="start" className="w-56">
+                  {modelOptions.map((option) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      onClick={() => handleProviderChange(option.value)}
+                      className="items-start gap-2"
+                    >
+                      <Check className={cn("mt-0.5 h-4 w-4", selectedProvider === option.value ? "opacity-100" : "opacity-0")} />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium">{option.label}</span>
+                        <span className="block text-xs text-gray-500">{option.description}</span>
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
           </div>
         </form>
         <p className="pt-1.5 text-center text-[11px] leading-4 text-gray-500">AI can make mistakes. Answers are not legal advice.</p>

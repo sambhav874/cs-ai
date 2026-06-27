@@ -652,9 +652,17 @@ def render_redline_docx(
         s, e = int(change["start"]), int(change["end"])
         deleted = cleaned_source[s:e]
         replacement = str(change.get("replacement") or "")
+        context_before = cleaned_source[max(0, s - 80):s]
+        context_after = cleaned_source[e:min(len(cleaned_source), e + 80)]
+        if "\n\n" in context_before:
+            context_before = context_before.split("\n\n")[-1]
+        if "\n\n" in context_after:
+            context_after = context_after.split("\n\n")[0]
         edits.append(EditInput(
             find=deleted,
             replace=replacement,
+            context_before=context_before,
+            context_after=context_after,
             reason=str(change.get("summary", {}).get("rule_name", "Redline edit")),
         ))
 
@@ -663,9 +671,20 @@ def render_redline_docx(
     clean_docx = generate_docx(title, sections)
     result = apply_tracked_edits(clean_docx, edits)
 
+    applied_summaries = []
+    for idx, change in enumerate(applied):
+        summary = dict(change["summary"])
+        if idx < len(result.annotations):
+            anno = result.annotations[idx]
+            summary["del_w_id"] = anno.del_w_id
+            summary["ins_w_id"] = anno.ins_w_id
+            summary["deleted_text"] = anno.deleted_text
+            summary["inserted_text"] = anno.inserted_text
+        applied_summaries.append(summary)
+
     return RedlineRenderResult(
         docx_bytes=result.docx_bytes,
-        applied_changes=[change["summary"] for change in applied],
+        applied_changes=applied_summaries,
         unmatched_changes=[change["summary"] for change in unmatched],
     )
 

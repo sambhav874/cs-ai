@@ -26,13 +26,7 @@ def middleware_descriptors() -> List[MiddlewareDescriptor]:
         MiddlewareDescriptor("HumanInTheLoopMiddleware", True, {"approval_required_tools": [
             "create_tabular_review",
             "generate_tabular_review",
-            "create_draft_artifact",
-            "create_redline_artifact",
-            "create_editable_copy",
-            "duplicate_document_copy",
-            "edit_document",
             "extract_kpis",
-            "generate_docx",
             "replicate_document",
         ]}, runtime="local"),
         MiddlewareDescriptor("ModelRetryMiddleware", True, {"max_retries": 2}, runtime="langchain"),
@@ -42,7 +36,6 @@ def middleware_descriptors() -> List[MiddlewareDescriptor]:
         MiddlewareDescriptor("ContextEditingMiddleware", True, {"mode": "prune_large_tool_results"}, runtime="local"),
         MiddlewareDescriptor("ScopeGuardMiddleware", True, {}, runtime="trace", enforced=False),
         MiddlewareDescriptor("ToolPolicyMiddleware", True, {}, runtime="local"),
-        MiddlewareDescriptor("CitationGuardMiddleware", True, {}, runtime="local", enforced=True),
         MiddlewareDescriptor("ConfidentialityGuardMiddleware", True, {}, runtime="trace", enforced=False),
         MiddlewareDescriptor("PromptInjectionGuardMiddleware", True, {}, runtime="local"),
         MiddlewareDescriptor("BudgetMiddleware", True, {}, runtime="trace", enforced=False),
@@ -178,6 +171,7 @@ class ActiveMiddlewareEngine:
             issues=citation_report["issues"][:8],
             enforced=True,
         )
+
         state.add_trace("middleware:ConfidentialityGuardMiddleware", decision="allow", enforced=False)
         state.add_trace("middleware:ContextEditingMiddleware", mode="prune_large_tool_results")
         memory_summary = _conversation_summary_from_memory(state.memory_context)
@@ -208,7 +202,7 @@ def _conversation_summary_from_memory(memory_context: str) -> str:
 
 
 def _validate_citations(state: AgentRunState) -> Dict[str, Any]:
-    observed_texts, _read_evidence_ids, _requires_read = _observed_evidence(state)
+    observed_texts = _observed_evidence(state)
     answer_tokens = set(_citation_tokens(state.answer))
     issues: List[str] = []
     valid_annotations: List[Dict[str, Any]] = []
@@ -276,6 +270,7 @@ def _validate_citations(state: AgentRunState) -> Dict[str, Any]:
 
         cleaned = dict(annotation)
         cleaned["verified"] = supported
+        cleaned["source_ref"] = annotation.get("ref")
 
         if len(quote) > 520:
             cleaned["quote"] = quote[:520].rsplit(" ", 1)[0].rstrip() + " ..."
@@ -294,7 +289,7 @@ def _validate_citations(state: AgentRunState) -> Dict[str, Any]:
     }
 
 
-def _observed_evidence(state: AgentRunState) -> Tuple[List[str], set, bool]:
+def _observed_evidence(state: AgentRunState) -> List[str]:
     texts: List[str] = []
     for scratch in state.react_scratchpad:
         observation = scratch.get("observation")
@@ -310,7 +305,7 @@ def _observed_evidence(state: AgentRunState) -> Tuple[List[str], set, bool]:
                 value = _normalize_citation_text(str(candidate.get(key) or ""))
                 if value:
                     texts.append(value)
-    return texts, set(), False
+    return texts
 
 
 def _normalize_citation_text(value: str) -> str:

@@ -8,11 +8,9 @@ facade, and relies on compact conditional prompts for synthesis.
 from __future__ import annotations
 
 import logging
-import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
-from models.contract_types import QuestionAnswer
 from utils.secure_logger import log_exception
 
 from .harness import ContractAgentHarness, DOCUMENT_COVERAGE_FALLBACK_USED, EVIDENCE_FALLBACK_USED
@@ -24,95 +22,12 @@ from .verifier import ContractAnswerVerifier
 
 
 @dataclass
-class AgentRunTrace:
-    task_type: str
-    provider: str
-    document_count: int = 1
-    iterations: int = 1
-    retrieval_count: int = 0
-    prompt_chars: int = 0
-    citation_count: int = 0
-    fallback_reason: Optional[str] = None
-    tools: List[str] = field(default_factory=list)
-    duration_ms: int = 0
-
-
-@dataclass
 class EvidenceLoopResult:
     segments: List[TextSegment]
     observations: List[Dict[str, Any]]
     iterations: int
     tools_used: List[str]
     fallback_reason: Optional[str] = None
-
-
-class ContractAgentRunner:
-    def __init__(self, owner: Any):
-        self.owner = owner
-        self.tools = EvidenceToolbox(owner)
-
-    def answer_agent_question(self, **kwargs: Any) -> QuestionAnswer:
-        return self._run_answer(
-            task_question=str(kwargs.get("question") or ""),
-            document_count=1,
-            call=lambda: self.owner._legacy_answer_agent_question(**kwargs),
-        )
-
-    def answer_project_question(self, **kwargs: Any) -> QuestionAnswer:
-        project_documents = kwargs.get("project_documents") or []
-        return self._run_answer(
-            task_question=str(kwargs.get("question") or ""),
-            document_count=len(project_documents) or 1,
-            call=lambda: self.owner._legacy_answer_project_question(**kwargs),
-        )
-
-    def _run_answer(self, *, task_question: str, document_count: int, call: Any) -> QuestionAnswer:
-        started = time.time()
-        task_type = detect_task_type(task_question, document_count=document_count)
-        trace = AgentRunTrace(
-            task_type=task_type.value,
-            provider=str(getattr(self.owner, "ai_provider", "groq") or "groq"),
-            document_count=document_count,
-            tools=[
-                "list_documents",
-                "outline_document",
-                "search_evidence",
-                "read_evidence",
-                "get_kpi_context",
-                "calculate_from_evidence",
-            ],
-        )
-        self.owner._active_agent_task = task_type
-        self.owner._active_agent_trace = trace
-        try:
-            answer = call()
-            trace.duration_ms = int((time.time() - started) * 1000)
-            trace.citation_count = self._citation_count(answer)
-            return self._attach_trace(answer, trace)
-        finally:
-            if trace.duration_ms == 0:
-                trace.duration_ms = int((time.time() - started) * 1000)
-            self.owner.last_agent_trace = asdict(trace)
-            self.owner._active_agent_task = None
-            self.owner._active_agent_trace = None
-
-    def _citation_count(self, answer: QuestionAnswer) -> int:
-        details = getattr(answer, "citation_details", {}) or {}
-        if isinstance(details, dict):
-            annotations = details.get("annotations")
-            if isinstance(annotations, list):
-                return len(annotations)
-            cited_segments = details.get("cited_segments")
-            if isinstance(cited_segments, list):
-                return len(cited_segments)
-        return 0
-
-    def _attach_trace(self, answer: QuestionAnswer, trace: AgentRunTrace) -> QuestionAnswer:
-        try:
-            answer.agent_trace = asdict(trace)
-        except Exception:
-            pass
-        return answer
 
 
 class ContractEvidenceLoop:
@@ -122,7 +37,6 @@ class ContractEvidenceLoop:
         "list_documents",
         "outline_document",
         "search_evidence",
-        "read_evidence",
         "get_kpi_context",
         "calculate_from_evidence",
         "final_answer",
@@ -319,17 +233,13 @@ class ContractEvidenceLoop:
             limit = self._limit(args.get("limit"), default=8, maximum=20)
             result = self.tools.search_evidence(all_segments, query=query, limit=limit)
             return result, {item["segment_id"] for item in result if item.get("segment_id")}
-        if tool_name == "read_evidence":
-            segment_ids = [str(item) for item in args.get("segment_ids") or [] if item]
-            result = self.tools.read_evidence_summary(all_segments, segment_ids)
-            return result, {item["segment_id"] for item in result if item.get("segment_id")}
         if tool_name == "get_kpi_context":
             return self.tools.get_kpi_context(memory_context), set()
         if tool_name == "calculate_from_evidence":
             segment_ids = [str(item) for item in args.get("segment_ids") or [] if item]
             text = str(args.get("text") or "")
             if segment_ids:
-                text = "\n".join(segment.text for segment in self.tools.read_evidence(all_segments, segment_ids))
+                text = "\n".join(segment.text for segment in all_segments if segment.id in segment_ids)
             return self.tools.calculate_from_evidence(text), set(segment_ids)
         return {"error": "tool not executable"}, set()
 

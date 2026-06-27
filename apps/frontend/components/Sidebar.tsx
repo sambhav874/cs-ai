@@ -1,6 +1,8 @@
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
+import { motion, AnimatePresence } from "framer-motion"
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import {
   BookOpen,
   ChevronDown,
@@ -15,6 +17,9 @@ import {
   Plug,
   Settings,
   Table2,
+  ChevronRight,
+  ChevronLeft,
+  LogOut
 } from "lucide-react"
 import { useAccountContext } from "@/app/context/AccountContext"
 import { useAuth } from "@/hooks/useAuth"
@@ -100,13 +105,17 @@ function assistantSessionHref(session: AssistantSessionSummary) {
 export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOpen }: SidebarProps) {
   const pathname = usePathname()
   const { selectedAccountId, setSelectedAccount, isInitialized: accountInitialized } = useAccountContext()
-  const { isAuthenticated, authenticatedFetch } = useAuth()
+  const { isAuthenticated, authenticatedFetch, logout } = useAuth()
+  const router = useRouter()
   const [isMobile, setIsMobile] = React.useState(false)
   const [recentProjects, setRecentProjects] = React.useState<ProjectSummary[]>([])
   const [recentAssistantSessions, setRecentAssistantSessions] = React.useState<AssistantSessionSummary[]>([])
   const [currentUser, setCurrentUser] = React.useState<UserSummary | null>(null)
+  
   const [showRecentProjects, setShowRecentProjects] = React.useState(true)
   const [showAssistantHistory, setShowAssistantHistory] = React.useState(true)
+  const [showAllProjects, setShowAllProjects] = React.useState(false)
+  const [showAllHistory, setShowAllHistory] = React.useState(false)
 
   React.useEffect(() => {
     const handleResize = () => {
@@ -134,12 +143,12 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
         const [projectsResult, userResult, sessionsResult] = await Promise.all([
           authenticatedFetch(`${apiUrl}/projects/?${projectParams.toString()}`),
           authenticatedFetch(`${apiUrl}/users/me/`),
-          authenticatedFetch(`${apiUrl}/agent/sessions/recent?limit=8`),
+          authenticatedFetch(`${apiUrl}/agent/sessions/recent?limit=20`),
         ])
 
         if (!cancelled && !projectsResult.error) {
           const projects = projectsResult.data
-          setRecentProjects(Array.isArray(projects) ? projects.slice(0, 5) : [])
+          setRecentProjects(Array.isArray(projects) ? projects : [])
         }
 
         if (!cancelled && !userResult.error) {
@@ -162,20 +171,20 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
   }, [selectedAccountId, accountInitialized, isAuthenticated, authenticatedFetch])
 
   const navItems = [
-    { href: "/dashboard", label: "Projects", icon: FolderOpen },
+    { href: "/dashboard?view=all", label: "Projects", icon: FolderOpen },
     { href: "/tabular-reviews", label: "Reviews", icon: Table2 },
     { href: "/playbooks", label: "Playbooks", icon: BookOpen },
     { href: "/integrations", label: "Integrations", icon: Plug },
     { href: "/support", label: "Support", icon: MessageSquare },
-    { href: "/history", label: "History", icon: HistoryIcon },
   ]
 
   const isSettingsActive = pathname === "/account"
   const isNavItemActive = (href: string) => {
-    if (href === "/dashboard") {
+    const baseHref = href.split("?")[0]
+    if (baseHref === "/dashboard") {
       return pathname === "/dashboard" || pathname.startsWith("/contracts/")
     }
-    return pathname === href || pathname.startsWith(`${href}/`)
+    return pathname === baseHref || pathname.startsWith(`${baseHref}/`)
   }
 
   const sidebarExpanded = isMobile || isExpanded
@@ -198,114 +207,127 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
         />
       )}
 
-      <aside
-        className={`
-          fixed inset-y-0 left-0 z-[100] border-r border-gray-200 bg-gray-50 font-InterVar
-          transition-[transform,width] duration-100 ease-out
-          ${isMobile ? (isMobileOpen ? "translate-x-0" : "-translate-x-full") : "translate-x-0"}
-          ${sidebarExpanded ? "w-80" : "w-16"}
-        `}
+      <motion.aside
+        initial={false}
+        animate={{
+          width: sidebarExpanded ? 288 : 64,
+          x: isMobile ? (isMobileOpen ? 0 : "-100%") : 0,
+        }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        className="fixed inset-y-0 left-0 z-[100] border-r border-border bg-card font-InterVar flex flex-col shadow-sm"
       >
-        <div className="flex h-full min-h-0 flex-col">
-          <div className={sidebarExpanded ? "flex h-20 shrink-0 items-center justify-between px-5" : "flex h-20 shrink-0 items-center justify-center"}>
-            {sidebarExpanded ? (
-              <Link href="/dashboard" className="flex min-w-0 items-center gap-3" title="ContractSense">
-                <img src="/logo.png" alt="ContractSense" className="h-9 w-9 rounded-[8px]" />
-                <span className="truncate text-2xl font-semibold text-gray-950">ContractSense</span>
-              </Link>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setIsExpanded(true)}
-                className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-300 bg-white text-gray-900 shadow-sm transition-colors hover:bg-gray-100"
-                aria-label="Expand sidebar"
-              >
-                <PanelLeftOpen className="h-5 w-5" aria-hidden="true" />
-              </button>
-            )}
+        {!isMobile && (
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="absolute -right-3 top-6 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm hover:text-foreground transition-transform"
+            aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
+          >
+            {isExpanded ? <ChevronLeft className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </button>
+        )}
 
-            {sidebarExpanded && !isMobile && (
-              <button
-                type="button"
-                onClick={() => setIsExpanded(false)}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-300 bg-white text-gray-900 shadow-sm transition-colors hover:bg-gray-100"
-                aria-label="Collapse sidebar"
-              >
-                <PanelLeftClose className="h-5 w-5" aria-hidden="true" />
-              </button>
-            )}
-          </div>
-
-          {sidebarExpanded && (
-            <div className="shrink-0 px-3 pb-3">
-              <AccountSwitcher
-                onAccountChange={(id) => setSelectedAccount(id)}
-                initialAccountId={selectedAccountId}
-              />
-            </div>
-          )}
-
-          <nav className={sidebarExpanded ? "shrink-0 px-3 pb-5" : "flex shrink-0 flex-col items-center gap-3 py-4"}>
-            {navItems.map((item) => {
-              const Icon = item.icon
-              const active = isNavItemActive(item.href)
-
-              if (!sidebarExpanded) {
-                return (
-                  <Tooltip key={item.href} content={item.label} enabled>
-                    <Link
-                      href={item.href}
-                      aria-label={item.label}
-                      className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
-                        active ? "bg-white text-gray-950 shadow-sm ring-1 ring-gray-200" : "text-gray-500 hover:bg-white hover:text-gray-950"
-                      }`}
-                    >
-                      <Icon className="h-5 w-5" aria-hidden="true" />
-                    </Link>
-                  </Tooltip>
-                )
-              }
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setIsMobileOpen(false)}
-                  className={`mb-1 flex h-12 items-center gap-3 rounded-xl px-4 text-lg font-medium transition-colors ${
-                    active ? "bg-gray-100 text-gray-950" : "text-gray-600 hover:bg-gray-100 hover:text-gray-950"
-                  }`}
+        <div className="flex h-16 shrink-0 items-center px-4 overflow-hidden">
+          <Link href="/dashboard" className="flex min-w-0 items-center gap-3 w-full" title="ContractSense">
+            <img src="/logo.png" alt="ContractSense" className="h-8 w-8 rounded-lg shrink-0" />
+            <AnimatePresence>
+              {sidebarExpanded && (
+                <motion.span
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: "auto" }}
+                  exit={{ opacity: 0, width: 0 }}
+                  className="truncate text-xl font-bold text-foreground"
                 >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  <span className="truncate">{item.label}</span>
-                </Link>
-              )
-            })}
-          </nav>
+                  ContractSense
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </Link>
+        </div>
 
+
+        <div className="h-px bg-border mx-4 mb-4" />
+
+        <nav className={sidebarExpanded ? "shrink-0 px-3 pb-2" : "flex shrink-0 flex-col items-center gap-2 pb-4"}>
+          {navItems.map((item) => {
+            const Icon = item.icon
+            const active = isNavItemActive(item.href)
+
+            if (!sidebarExpanded) {
+              return (
+                <Tooltip key={item.href} content={item.label} enabled>
+                  <Link
+                    href={item.href}
+                    aria-label={item.label}
+                    className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
+                      active ? "bg-primary/10 text-primary" : "text-foreground/80 hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" aria-hidden="true" />
+                  </Link>
+                </Tooltip>
+              )
+            }
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setIsMobileOpen(false)}
+                className={`mb-1 flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors ${
+                  active 
+                    ? "bg-primary/10 text-primary" 
+                    : "text-foreground/80 hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="truncate">{item.label}</span>
+              </Link>
+            )
+          })}
+        </nav>
+
+        {sidebarExpanded && <div className="h-px bg-border mx-4 mb-4 mt-2" />}
+
+        <AnimatePresence>
           {sidebarExpanded && (
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 custom-scrollbar"
+            >
               <SidebarSection
                 title="Recent Projects"
                 isOpen={showRecentProjects}
                 onToggle={() => setShowRecentProjects((value) => !value)}
               >
                 {recentProjects.length > 0 ? (
-                  <div className="space-y-1">
-                    {recentProjects.map((project) => (
-                      <Link
-                        key={project._id}
-                        href={`/dashboard?project_id=${encodeURIComponent(project._id)}`}
-                        onClick={() => selectProject(project._id)}
-                        className="flex h-10 min-w-0 items-center gap-3 rounded-xl px-1 text-sm text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-950"
-                        title={project.name}
+                  <div className="relative">
+                    <div className={`space-y-0.5 ${!showAllProjects && recentProjects.length > 5 ? "[mask-image:linear-gradient(to_bottom,black_80%,transparent_100%)] max-h-[160px] overflow-hidden" : ""}`}>
+                      {recentProjects.slice(0, showAllProjects ? undefined : 6).map((project) => (
+                        <Link
+                          key={project._id}
+                          href={`/dashboard?project_id=${encodeURIComponent(project._id)}`}
+                          onClick={() => selectProject(project._id)}
+                          className="flex h-8 min-w-0 items-center gap-2.5 rounded-md px-2 text-sm text-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
+                          title={project.name}
+                        >
+                          <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+                          <span className="truncate">{project.name}</span>
+                        </Link>
+                      ))}
+                    </div>
+                    {recentProjects.length > 5 && (
+                      <button 
+                        onClick={() => setShowAllProjects(!showAllProjects)} 
+                        className="mt-1 flex items-center text-xs font-medium text-muted-foreground hover:text-primary pl-2 transition-colors"
                       >
-                        <FolderOpen className="h-4 w-4 shrink-0 text-gray-500" />
-                        <span className="truncate">{project.name}</span>
-                      </Link>
-                    ))}
+                        {showAllProjects ? "See less" : `See all (${recentProjects.length})`}
+                      </button>
+                    )}
                   </div>
                 ) : (
-                  <div className="rounded-xl px-1 py-2 text-sm text-gray-400">No recent projects</div>
+                  <div className="rounded-md px-2 py-2 text-xs text-muted-foreground/70">No recent projects</div>
                 )}
               </SidebarSection>
 
@@ -315,60 +337,110 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
                 onToggle={() => setShowAssistantHistory((value) => !value)}
               >
                 {recentAssistantSessions.length > 0 ? (
-                  <div className="space-y-1">
-                    {recentAssistantSessions.map((session, index) => {
-                      const title = assistantSessionTitle(session)
-                      const context = assistantSessionContext(session)
-                      return (
-                        <Link
-                          key={session.session_id}
-                          href={assistantSessionHref(session)}
-                          onClick={() => setIsMobileOpen(false)}
-                          className={`flex min-h-11 min-w-0 items-center justify-between gap-2 rounded-xl px-2 py-2 text-sm transition-colors hover:bg-gray-100 ${
-                            index === 0 ? "bg-gray-100 text-gray-950" : "text-gray-600"
-                          }`}
-                          title={`${context}: ${title}`}
-                        >
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] font-medium text-gray-800">{title}</span>
-                            <span className="block truncate text-xs text-gray-400">{truncateLabel(context, 28)}</span>
-                          </span>
-                          {index === 0 && <MoreHorizontal className="h-4 w-4 shrink-0 text-gray-500" />}
-                        </Link>
-                      )
-                    })}
+                  <div className="relative">
+                    <div className={`space-y-0.5 ${!showAllHistory && recentAssistantSessions.length > 5 ? "[mask-image:linear-gradient(to_bottom,black_80%,transparent_100%)] max-h-[220px] overflow-hidden" : ""}`}>
+                      {recentAssistantSessions.slice(0, showAllHistory ? undefined : 6).map((session, index) => {
+                        const title = assistantSessionTitle(session)
+                        const context = assistantSessionContext(session)
+                        return (
+                          <Link
+                            key={session.session_id}
+                            href={assistantSessionHref(session)}
+                            onClick={() => setIsMobileOpen(false)}
+                            className="flex min-h-10 min-w-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted text-foreground/80"
+                            title={`${context}: ${title}`}
+                          >
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[13px]">{title}</span>
+                              <span className="block truncate text-xs opacity-70">{truncateLabel(context, 28)}</span>
+                            </span>
+                          </Link>
+                        )
+                      })}
+                    </div>
+                    {recentAssistantSessions.length > 5 && (
+                      <button 
+                        onClick={() => setShowAllHistory(!showAllHistory)} 
+                        className="mt-1 flex items-center text-xs font-medium text-muted-foreground hover:text-primary pl-2 transition-colors"
+                      >
+                        {showAllHistory ? "See less" : `See all (${recentAssistantSessions.length})`}
+                      </button>
+                    )}
                   </div>
                 ) : (
-                  <div className="rounded-xl px-1 py-2 text-sm text-gray-400">No recent chats</div>
+                  <div className="rounded-md px-2 py-2 text-xs text-muted-foreground/70">No recent chats</div>
                 )}
               </SidebarSection>
-            </div>
+            </motion.div>
           )}
+        </AnimatePresence>
 
-          <Link
-            href="/account"
-            onClick={() => setIsMobileOpen(false)}
-            className={`
-              mt-auto shrink-0 border-t border-gray-200 bg-white transition-colors hover:bg-gray-50
-              ${sidebarExpanded ? "flex h-20 items-center gap-3 px-5" : "flex h-20 items-center justify-center"}
-              ${isSettingsActive ? "text-gray-950" : "text-gray-600"}
-            `}
-          >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-gray-900 bg-gray-800 text-lg font-medium text-white shadow-sm">
-              {accountInitial}
-            </span>
-            {sidebarExpanded && (
-              <>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-base font-medium text-gray-950">{username}</span>
-                  <span className="block text-sm text-gray-400">Free</span>
-                </span>
-                <Settings className="h-4 w-4 shrink-0 text-gray-400" />
-              </>
-            )}
-          </Link>
+        <div className="mt-auto shrink-0 border-t border-border">
+          <div className={`flex items-center ${sidebarExpanded ? "justify-between px-4 py-3" : "justify-center py-3"}`}>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={`flex items-center gap-3 transition-colors hover:bg-muted/50 rounded-md ${sidebarExpanded ? "flex-1 px-2 py-1.5" : ""}`}
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-card text-sm font-semibold text-foreground shadow-sm">
+                    {accountInitial}
+                  </span>
+                  <AnimatePresence>
+                    {sidebarExpanded && (
+                      <motion.div
+                        initial={{ opacity: 0, width: 0 }}
+                        animate={{ opacity: 1, width: "auto" }}
+                        exit={{ opacity: 0, width: 0 }}
+                        className="flex min-w-0 flex-1 flex-col items-start overflow-hidden text-left pr-2"
+                      >
+                        <span className="block truncate text-sm font-medium text-foreground max-w-full">{username}</span>
+                        <span className="block text-xs text-muted-foreground">Account Options</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 rounded-lg border border-border bg-white z-[100] shadow-xl p-1" align="end" side="top" sideOffset={12}>
+                <button
+                  onClick={() => router.push('/account')}
+                  className="w-full flex items-center gap-2 rounded-sm px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors"
+                >
+                  <Settings className="h-4 w-4 text-muted-foreground" />
+                  Settings
+                </button>
+                <button
+                  onClick={() => logout()}
+                  className="w-full flex items-center gap-2 rounded-sm px-3 py-2 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Log out
+                </button>
+              </PopoverContent>
+            </Popover>
+
+            <AnimatePresence>
+              {sidebarExpanded && (
+                <motion.div
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: "auto" }}
+                  exit={{ opacity: 0, width: 0 }}
+                  className="shrink-0 overflow-hidden"
+                >
+                  <Link
+                    href="/account"
+                    onClick={() => setIsMobileOpen(false)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    title="Settings"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Link>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
-      </aside>
+      </motion.aside>
     </>
   )
 }
@@ -389,12 +461,12 @@ function SidebarSection({
       <button
         type="button"
         onClick={onToggle}
-        className="mb-3 flex w-full items-center justify-between text-sm font-semibold text-gray-500"
+        className="mb-2 flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-foreground/80 transition-colors hover:text-foreground"
         aria-expanded={isOpen}
         aria-controls={title.toLowerCase().replace(/\s+/g, "-")}
       >
         <span>{title}</span>
-        {isOpen ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
+        {isOpen ? <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />}
       </button>
       {isOpen && <div id={title.toLowerCase().replace(/\s+/g, "-")}>{children}</div>}
     </section>

@@ -144,7 +144,6 @@ def score_retrieval_metrics(
 def score_graph_tool_metrics(
     *,
     search_hits: List[Dict[str, Any]],
-    read_hits: List[Dict[str, Any]],
     terms: Iterable[str],
 ) -> Dict[str, Any]:
     terms = list(terms)
@@ -161,24 +160,11 @@ def score_graph_tool_metrics(
         hit for hit in search_hits
         if hit.get("page_start") is not None or hit.get("page") is not None
     ]
-    requested_ids = {
-        str(hit.get("evidence_id") or hit.get("segment_id") or "")
-        for hit in search_hits[:3]
-        if hit.get("evidence_id") or hit.get("segment_id")
-    }
-    read_ids = {
-        str(hit.get("evidence_id") or hit.get("segment_id") or "")
-        for hit in read_hits
-        if hit.get("evidence_id") or hit.get("segment_id")
-    }
-    read_after_search_compliance = 1.0 if not requested_ids or requested_ids <= read_ids else 0.0
     return {
         "citation_quote_precision": round(len(quote_hits) / hit_count, 3) if hit_count else 0.0,
         "exact_span_precision_proxy": round(len(compact_quote_hits) / hit_count, 3) if hit_count else 0.0,
         "page_ready_rate": round(len(page_ready_hits) / hit_count, 3) if hit_count else 0.0,
-        "read_after_search_compliance": read_after_search_compliance,
         "searched_count": hit_count,
-        "read_count": len(read_hits),
     }
 
 
@@ -262,17 +248,8 @@ def evaluate_contract(contract: Dict[str, Any], segmenter: DocumentSegmenter, ra
             query_info["query"],
             limit=6,
         )
-        read_hits = evidence_service.read_segments(
-            prepared_segments,
-            [
-                str(hit.get("evidence_id") or hit.get("segment_id"))
-                for hit in search_hits[:3]
-                if hit.get("evidence_id") or hit.get("segment_id")
-            ],
-        )
         graph_tool_metrics = score_graph_tool_metrics(
             search_hits=search_hits,
-            read_hits=read_hits,
             terms=query_info["terms"],
         )
         retrieval_results.append(
@@ -462,10 +439,7 @@ def build_report(limit: int) -> Dict[str, Any]:
         sum(row["page_ready_rate"] for row in graph_tool_metric_rows) / max(len(graph_tool_metric_rows), 1),
         3,
     )
-    overall["read_after_search_compliance"] = round(
-        sum(row["read_after_search_compliance"] for row in graph_tool_metric_rows) / max(len(graph_tool_metric_rows), 1),
-        3,
-    )
+
 
     return {
         "overall": overall,
@@ -530,7 +504,7 @@ def main() -> None:
     print(f"- citation quote precision: {overall['citation_quote_precision']}")
     print(f"- exact span precision proxy: {overall['exact_span_precision_proxy']}")
     print(f"- page ready rate: {overall['page_ready_rate']}")
-    print(f"- read-after-search compliance: {overall['read_after_search_compliance']}")
+
     print(f"- metadata failures: {overall['metadata_failures']}")
     print(f"- tiny meso chunks: {overall['tiny_meso']} ({overall['tiny_meso_rate']})")
     if output.get("project_eval"):

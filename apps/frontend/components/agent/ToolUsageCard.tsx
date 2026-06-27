@@ -24,7 +24,6 @@ type EvidenceMatch = {
 
 const TOOL_ICONS: Record<string, typeof Search> = {
   search_evidence: Search,
-  read_evidence: Quote,
   find_in_document: Search,
   read_document: FileText,
   outline_document: FileText,
@@ -36,7 +35,6 @@ const TOOL_ICONS: Record<string, typeof Search> = {
 
 const TOOL_LABELS: Record<string, string> = {
   search_evidence: "Searching evidence",
-  read_evidence: "Reading evidence",
   find_in_document: "Finding in document",
   read_document: "Reading document",
   outline_document: "Outlining document",
@@ -44,12 +42,6 @@ const TOOL_LABELS: Record<string, string> = {
   fetch_documents: "Fetching documents",
   get_kpi_context: "Loading KPI context",
   calculate_from_evidence: "Calculating",
-  create_draft_artifact: "Drafting artifact",
-  create_redline_artifact: "Creating redline",
-  create_editable_copy: "Creating copy",
-  duplicate_document_copy: "Duplicating",
-  edit_document: "Editing document",
-  generate_docx: "Generating DOCX",
   create_tabular_review: "Creating review",
   generate_tabular_review: "Generating review",
   replicate_document: "Replicating document",

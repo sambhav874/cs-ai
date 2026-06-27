@@ -1,5 +1,7 @@
 import html
 import re
+from typing import Any, Dict, List, Optional
+
 
 
 _HTML_BREAK_RE = re.compile(r"(?:&lt;|<)\s*br\s*/?\s*(?:&gt;|>)", re.IGNORECASE)
@@ -216,3 +218,37 @@ def clean_text_encoding(text: str) -> str:
     month_pattern = r"\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)[- ]?(\d{1,2})\b"
     cleaned = re.sub(month_pattern, expand_month_day, cleaned, flags=re.IGNORECASE)
     return cleaned.strip()
+
+
+def get_formatted_citations(
+    citation_details: Any,
+    existing_annotations: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """Format citations to show the actual chunks/quotes that were cited.
+
+    Matches the formatting and fallback logic used in run_llm_qa.py,
+    while preserving other keys in the annotations to avoid test regressions.
+    """
+    if not isinstance(citation_details, dict):
+        citation_details = {}
+    citations_list = []
+
+    # Try annotations from citation_details first, or fall back to existing_annotations
+    annotations = citation_details.get("annotations") or existing_annotations or []
+    for ann in annotations:
+        if isinstance(ann, dict):
+            ann_copy = dict(ann)
+            ann_copy["quote"] = ann_copy.get("quote") or ann_copy.get("text") or ""
+            ann_copy["page"] = ann_copy.get("page") or ann_copy.get("page_number")
+            citations_list.append(ann_copy)
+
+    if not citations_list and citation_details.get("cited_segments"):
+        for index, seg in enumerate(citation_details["cited_segments"], start=1):
+            if isinstance(seg, dict):
+                seg_copy = dict(seg)
+                seg_copy["ref"] = index
+                seg_copy["quote"] = seg_copy.get("quote") or seg_copy.get("text") or ""
+                seg_copy["page"] = seg_copy.get("page") or seg_copy.get("page_number")
+                citations_list.append(seg_copy)
+    return citations_list
+

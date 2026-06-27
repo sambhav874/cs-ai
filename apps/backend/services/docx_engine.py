@@ -280,6 +280,7 @@ def generate_docx(
                     continue
                 # Detect markdown-like lists
                 lines = para_text.split("\n")
+                p = None
                 for line in lines:
                     line = line.strip()
                     if not line:
@@ -297,8 +298,11 @@ def generate_docx(
                         run.font.name = DOCX_FONT
                         run.font.size = DOCX_FONT_SIZE
                     else:
-                        p = doc.add_paragraph()
-                        run = p.add_run(_clean_inline_markdown(line))
+                        if p is None or p.style.name.startswith("List"):
+                            p = doc.add_paragraph()
+                            run = p.add_run(_clean_inline_markdown(line))
+                        else:
+                            run = p.add_run("\n" + _clean_inline_markdown(line))
                         run.font.name = DOCX_FONT
                         run.font.size = DOCX_FONT_SIZE
 

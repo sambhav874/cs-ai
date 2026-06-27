@@ -48,6 +48,8 @@ from services.contract_agent.graph import (
 from services.contract_agent.graph.approvals import ApprovalManager
 from services.contract_agent.graph.persistence import AgentRunStore
 from services.contract_agent.graph.state import ApprovalRequest, ToolCallRecord
+from utils.text_cleanup import get_formatted_citations
+
 from services.contract_agent.graph.tools.executor import execute_mongo_read_tool
 from services.contract_agent.rag.facade import ContractRAGSystem
 from utils.secure_logger import log_exception
@@ -88,6 +90,8 @@ class AgentQueryResponse(BaseModel):
     reason: str = ""
     citation_details: Dict[str, Any] = Field(default_factory=dict)
     citation_annotations: List[Dict[str, Any]] = Field(default_factory=list)
+    citations: List[Dict[str, Any]] = Field(default_factory=list)
+    tools_called: List[str] = Field(default_factory=list)
     artifacts: List[Dict[str, Any]] = Field(default_factory=list)
     session_id: Optional[str] = None
     vector_namespace: Optional[str] = None
@@ -2127,6 +2131,8 @@ def query_contract_agent(
                 reason=direct_response.reason,
                 citation_details=direct_response.citation_details,
                 citation_annotations=direct_response.citation_annotations,
+                citations=direct_response.citation_annotations,
+                tools_called=direct_response.tools_called,
                 agent_trace=direct_response.agent_trace,
                 token_usage=direct_response.token_usage.model_dump(mode="json"),
                 cost_usd=direct_response.cost_usd,
@@ -2295,6 +2301,8 @@ def query_contract_agent(
                 reason=str(validated_payload.get("reason") or ""),
                 citation_details=validated_payload.get("citation_details", {}),
                 citation_annotations=validated_payload.get("citation_annotations", []),
+                citations=validated_payload.get("citation_annotations", []),
+                tools_called=list(dict.fromkeys(rag_system.last_agent_trace.get("tools", []))) if getattr(rag_system, "last_agent_trace", None) else [],
                 artifacts=[],
                 session_id=session_id,
                 vector_namespace=None,
@@ -2358,6 +2366,8 @@ def query_contract_agent(
             reason=deep_agent_response.reason,
             citation_details=deep_agent_response.citation_details,
             citation_annotations=deep_agent_response.citation_annotations,
+            citations=deep_agent_response.citation_annotations,
+            tools_called=deep_agent_response.tools_called,
             agent_trace=deep_agent_response.agent_trace,
             token_usage=deep_agent_response.token_usage.model_dump(mode="json"),
             cost_usd=deep_agent_response.cost_usd,
@@ -2430,7 +2440,7 @@ def query_contract_agent(
             "citation": qa.citation,
             "reason": qa.reason,
             "citation_details": qa.citation_details,
-            "citation_annotations": qa.citation_details.get("annotations", []) if isinstance(qa.citation_details, dict) else [],
+            "citation_annotations": get_formatted_citations(qa.citation_details),
             "vector_namespace": vector_namespace,
             "vector_backend": vector_backend,
         }
@@ -2484,6 +2494,7 @@ def query_contract_agent(
             artifact=created_artifact,
         )
 
+        tools_called = list(dict.fromkeys(rag_system.last_agent_trace.get("tools", []))) if getattr(rag_system, "last_agent_trace", None) else []
         return AgentQueryResponse(
             answer=str(validated_payload.get("answer") or ""),
             confidence=str(validated_payload.get("confidence") or "low"),
@@ -2491,6 +2502,8 @@ def query_contract_agent(
             reason=str(validated_payload.get("reason") or ""),
             citation_details=validated_payload.get("citation_details", {}),
             citation_annotations=validated_payload.get("citation_annotations", []),
+            citations=validated_payload.get("citation_annotations", []),
+            tools_called=tools_called,
             artifacts=artifacts,
             session_id=session_id,
             vector_namespace=vector_namespace,

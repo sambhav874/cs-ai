@@ -72,12 +72,6 @@ class EvidenceToolbox:
     def search_evidence(self, segments: List[TextSegment], query: str, limit: int = 8) -> List[Dict[str, Any]]:
         return self.evidence_service.search_segments(segments, query, limit=limit)
 
-    def read_evidence(self, segments: List[TextSegment], segment_ids: List[str]) -> List[TextSegment]:
-        segment_map = {segment.id: segment for segment in segments}
-        return [segment_map[segment_id] for segment_id in segment_ids if segment_id in segment_map]
-
-    def read_evidence_summary(self, segments: List[TextSegment], segment_ids: List[str]) -> List[Dict[str, Any]]:
-        return self.evidence_service.read_segments(segments, segment_ids)
 
     def get_kpi_context(self, memory_context: str) -> Dict[str, Any]:
         lines = [
@@ -109,7 +103,7 @@ class EvidenceToolbox:
             "segment_id": segment.id,
             "document_id": segment.contract_id,
             "document": segment.contract_name,
-            "page": segment.page_start or segment.page_number,
+            "page": f"{segment.page_start}-{segment.page_end}" if segment.page_start and segment.page_end and segment.page_end > segment.page_start else (segment.page_start or segment.page_number),
             "page_start": segment.page_start or segment.page_number,
             "page_end": segment.page_end or segment.page_start or segment.page_number,
             "section": segment.section_path,
