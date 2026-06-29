@@ -10,6 +10,7 @@ import { ShimmerButton } from "@/components/magicui/shimmer-button"
 import { BorderBeam } from "@/components/magicui/border-beam"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { getGaClientId } from "@/lib/gtag"
 
 export default function SignUp() {
   const [username, setUsername] = useState("")
@@ -33,7 +34,13 @@ export default function SignUp() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username, email, password, coupon_code: couponCode }),
+        body: JSON.stringify({
+          username,
+          email,
+          password,
+          coupon_code: couponCode,
+          ga_client_id: getGaClientId(),
+        }),
       })
 
       const data = await response.json()

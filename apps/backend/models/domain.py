@@ -57,6 +57,7 @@ class UserCreate(BaseModel):
     password: str
     tokens: int = 0
     coupon_code: Optional[str] = None
+    ga_client_id: Optional[str] = None
 
 class ContractAccess(BaseModel):
     contract_id: str

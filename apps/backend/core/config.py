@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     
 
     support_email_address: str = Field(..., env="SUPPORT_EMAIL_ADDRESS")
+    ga_measurement_id: Optional[str] = Field(default="", env="GA_MEASUREMENT_ID")
+    ga_api_secret: Optional[str] = Field(default="", env="GA_API_SECRET")
     
     # Database Configuration
     mongodb_uri: str = Field(default="", env="MONGODB_URI")

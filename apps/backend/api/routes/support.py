@@ -1,6 +1,6 @@
 # Update your existing support router file
 
-from fastapi import APIRouter, HTTPException, status, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr, Field
 from core.rate_limiter import limiter
 from enum import Enum
@@ -15,6 +15,7 @@ from worker.tasks import send_contact_and_demo_confirmation
 from core.database import db
 from datetime import datetime
 from utils.secure_logger import log_exception
+from services.analytics import track_ga_event
 
 settings = Settings()
 
@@ -54,6 +55,7 @@ class ContactRequest(BaseModel):
     message: str | None = Field(None, max_length=5000)
     demo_date: str | None = Field(None, description="Demo date in YYYY-MM-DD format")
     demo_time: str | None = Field(None, description="Demo time in HH:MM format (UK timezone)")
+    ga_client_id: str | None = Field(None, max_length=128)
 
 class ContactResponse(BaseModel):
     message: str
@@ -96,7 +98,7 @@ def create_feedback_endpoint(request: Request, feedback: FeedbackRequest):
 # NEW: Contact endpoint
 @support_sub_router.post("/contact", status_code=status.HTTP_202_ACCEPTED, response_model=ContactResponse)
 @limiter.limit("3/minute")
-def create_contact_endpoint(request: Request, contact: ContactRequest):
+def create_contact_endpoint(request: Request, contact: ContactRequest, background_tasks: BackgroundTasks):
     """
     Accepts contact/demo requests, stores them in MongoDB, and emails support + user confirmation.
     """
@@ -143,11 +145,24 @@ def create_contact_endpoint(request: Request, contact: ContactRequest):
     except Exception as e:
         logger.warning("Failed to queue contact email task (broker may be unavailable): %s", e)
 
+    submission_status = "queued" if task_id else "pending_retry"
+    background_tasks.add_task(
+        track_ga_event,
+        "generate_lead",
+        client_id=contact.ga_client_id,
+        params={
+            "source": "landing_modal",
+            "status": submission_status,
+            "lead_type": "request_demo",
+            "demo_scheduled": bool(contact.demo_date and contact.demo_time),
+        },
+    )
+
     return {
         "message": "Thanks! Your request has been received.",
         "details": {
             "task_id": task_id,
-            "status": "queued" if task_id else "pending_retry",
+            "status": submission_status,
             "id": str(insert_result.inserted_id)
         }
     }
