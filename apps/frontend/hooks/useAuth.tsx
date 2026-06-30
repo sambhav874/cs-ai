@@ -55,7 +55,13 @@ export const useAuth = () => {
 
     const validationPromise = (async () => {
       try {
-        const response = await apiFetch(`${apiUrl}/users/me/`);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+
+        const response = await apiFetch(`${apiUrl}/users/me/`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
 
         return response.ok;
       } catch (err) {

@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Response, Request, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, Request, Query, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 from jose import JWTError, jwt
@@ -35,6 +35,7 @@ from models.domain import (
     AccessibleAccountInfo,
 )
 from utils.audit_logger import create_audit_log
+from services.analytics import track_ga_event
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ auth_router = APIRouter()
 
 @auth_router.post("/signup/", response_model=Token)
 @limiter.limit("3/minute")
-async def signup(request: Request, response: Response, user: UserCreate):
+async def signup(request: Request, response: Response, user: UserCreate, background_tasks: BackgroundTasks):
     """
     Registers a new user, applies a coupon for free credits if provided,
     and initializes their account.
@@ -145,6 +146,17 @@ async def signup(request: Request, response: Response, user: UserCreate):
         raise HTTPException(status_code=500, detail="User registered, but failed to create access token.")
 
     set_auth_cookies(response, access_token)
+    background_tasks.add_task(
+        track_ga_event,
+        "sign_up",
+        client_id=user.ga_client_id,
+        user_id=str(user_oid),
+        params={
+            "method": "email_password",
+            "status": "success",
+            "coupon_applied": bool(user.coupon_code),
+        },
+    )
 
     return Token(access_token=AUTH_COOKIE_SENTINEL, token_type="cookie")
 

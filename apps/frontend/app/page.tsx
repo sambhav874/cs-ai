@@ -11,6 +11,8 @@ import RequestDemoModal from "@/components/modals/RequestDemoModal";
 import AssessmentCTA from "@/components/AssessmentCTA";
 import { AnalyzerPlayground } from "@/components/AnalyzerPlayground";
 import { Pillars, ProcessSteps, Connectivity, Suite, Compliance, Questionnaire } from "@/components/FeatureGrids";
+import { ValueProposition } from "@/components/ValueProposition";
+
 
 const instrument = Instrument_Serif({
   subsets: ["latin"],
@@ -229,6 +231,9 @@ export default function Home() {
           </div>
         </div>
 
+        <ValueProposition />
+
+
         {/* Contract Analyzer Playground */}
         <div ref={analyzerRef}>
           <AnalyzerPlayground />
@@ -237,7 +242,7 @@ export default function Home() {
         {/* Pillars */}
         <Pillars />
 
-        {/* Demo Section */}
+        {/* Demo Section
         <section ref={demoRef} id="demo" className="py-24 md:py-40 bg-background">
           <div className="max-w-[1240px] mx-auto px-6 md:px-12 text-center">
             <span className="text-[10px] tracking-[0.3em] uppercase text-primary mb-8 block reveal">In Action</span>
@@ -269,6 +274,7 @@ export default function Home() {
             </div>
           </div>
         </section>
+        */}
 
         {/* Process Steps */}
         <ProcessSteps />

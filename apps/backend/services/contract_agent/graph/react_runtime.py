@@ -10,6 +10,7 @@ No manual Thought/Observation prompt engineering. No streaming accumulation.
 No separate verification pass. The model handles all reasoning internally.
 """
 
+
 from __future__ import annotations
 
 import json
@@ -31,6 +32,7 @@ from services.contract_agent.react_agent import ApprovalRequiredError
 from services.contract_agent.system_prompt import build_adaptive_system_prompt
 
 from .approvals import ApprovalManager
+from .model_factory import build_chat_model
 from .state import (
     AgentRunState,
     AgentStatus,
@@ -106,7 +108,7 @@ class ContractReActRuntime:
 
         model: Any = None
         try:
-            model = self.model or _build_chat_model(state)
+            model = self.model or build_chat_model(state)
             return self._tool_call_loop(
                 state, model=model, tools=tools, system_prompt=system_prompt, on_event=on_event
             )
@@ -135,6 +137,7 @@ class ContractReActRuntime:
         system_prompt: str,
         on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     ) -> AgentRunState:
+        self._on_event = on_event  # stored so finish helpers can emit events
         tools_by_name: Dict[str, BaseTool] = {t.name: t for t in tools}
         tool_model = model.bind_tools(tools) if hasattr(model, "bind_tools") else model
 
@@ -150,7 +153,6 @@ class ContractReActRuntime:
                 on_event("status", {"message": f"Thinking (step {iteration})", "iteration": iteration})
 
             # Format the messages (prompts and chunks) for debugging
-            import json
             prompt_str = ""
             for idx, msg in enumerate(messages):
                 role = msg.__class__.__name__
@@ -159,8 +161,7 @@ class ContractReActRuntime:
                     content += f"\nTool Calls: {json.dumps(msg.tool_calls, default=str, indent=2)}"
                 prompt_str += f"\n--- Message {idx + 1} ({role}) ---\n{content}\n"
 
-            response = tool_model.invoke(messages)
-            self._add_token_usage_from_message(state, response)
+            response = self._invoke_tool_call(tool_model, messages, state)
             state.react_iterations = max(state.react_iterations, iteration)
 
             # Format the raw response for debugging
@@ -172,8 +173,19 @@ class ContractReActRuntime:
 
             _append_agent_debug_log(state.workflow_id, iteration, prompt_str, raw_response_str)
 
-            # Emit reasoning/thinking content if present (e.g. Claude extended thinking)
-            reasoning = getattr(response, "reasoning_content", None)
+            # ── Emit thinking / reasoning content ──────────────────────────
+            # Different providers surface reasoning in different ways:
+            #
+            # • Claude (extended thinking): response.content is a list of blocks.
+            #   Thinking blocks have {"type": "thinking", "thinking": "..."}.
+            #   We must NOT include these in the final answer text.
+            #
+            # • Groq gpt-oss (reasoning_format="parsed"): top-level
+            #   response.reasoning_content attribute.
+            #
+            # • OpenAI o-series: reasoning tokens are internal and not exposed
+            #   in the message content, so nothing to extract here.
+            reasoning = _extract_reasoning(response)
             if reasoning and on_event:
                 on_event("thinking", {"message": reasoning, "iteration": iteration})
 
@@ -222,17 +234,10 @@ class ContractReActRuntime:
                             content += f"\nTool Calls: {json.dumps(msg.tool_calls, default=str, indent=2)}"
                         synth_prompt_str += f"\n--- Message {idx + 1} ({role}) ---\n{content}\n"
 
-                    # Call with plain model (no tools bound) — forces text-only synthesis
-                    synthesis_response = model.invoke(messages)
-                    self._add_token_usage_from_message(state, synthesis_response)
-
-                    # Log synthesis response
-                    synth_raw = f"Content: {synthesis_response.content}\n"
-                    if hasattr(synthesis_response, "response_metadata") and synthesis_response.response_metadata:
-                        synth_raw += f"Response Metadata: {json.dumps(synthesis_response.response_metadata, default=str, indent=2)}\n"
-                    _append_agent_debug_log(state.workflow_id, synth_iteration, synth_prompt_str, synth_raw)
-
-                    answer = _message_text(synthesis_response).strip()
+                    if on_event:
+                        on_event("status", {"message": "Writing answer…", "iteration": synth_iteration})
+                    answer = self._stream_text_response(model, messages, state, on_event, synth_iteration)
+                    _append_agent_debug_log(state.workflow_id, synth_iteration, synth_prompt_str, answer)
                     if answer:
                         state.react_iterations = max(state.react_iterations, iteration + 1)
                         return self._finish_answer(
@@ -243,8 +248,11 @@ class ContractReActRuntime:
                 continue  # next iteration
 
             # No tool calls → this is the final answer
+            # _message_text correctly strips thinking blocks from Claude responses
             answer = _message_text(response).strip()
             if answer:
+                if on_event:
+                    on_event("delta", {"text": answer, "iteration": iteration})
                 state.add_trace(
                     "model_step",
                     iteration=iteration,
@@ -290,6 +298,63 @@ class ContractReActRuntime:
             f"- selected_document_ids: {selected_ids}\n\n"
             "Use the available tools to gather evidence, then provide a cited final answer."
         )
+
+    def _invoke_tool_call(self, tool_model: Any, messages: list, state: "AgentRunState") -> Any:
+        response = tool_model.invoke(messages)
+        self._add_token_usage_from_message(state, response)
+        return response
+
+    def _stream_text_response(
+        self,
+        model: Any,
+        messages: list,
+        state: "AgentRunState",
+        on_event: Optional[Callable[[str, Dict[str, Any]], None]],
+        iteration: int,
+    ) -> str:
+        """Stream a text-only model call, emitting SSE delta events per chunk.
+        Falls back to invoke() for models that don't support streaming."""
+        if not hasattr(model, "stream"):
+            response = model.invoke(messages)
+            self._add_token_usage_from_message(state, response)
+            return _message_text(response).strip()
+
+        assembled: list[str] = []
+        try:
+            for chunk in model.stream(messages):
+                self._add_token_usage_from_message(state, chunk)
+
+                reasoning = _extract_reasoning(chunk)
+                if reasoning and on_event:
+                    on_event("thinking", {"message": reasoning, "iteration": iteration})
+
+                chunk_text = _message_text(chunk)
+                if not chunk_text:
+                    continue
+
+                assembled.append(chunk_text)
+                if on_event:
+                    on_event("delta", {"text": chunk_text, "iteration": iteration})
+
+        except Exception as exc:
+            exc_str = str(exc)
+            # Groq: reasoning_format=parsed incompatible with streaming
+            # Groq: tool_choice=none conflict — both are known limitations, fall back silently
+            if "tool choice is none" in exc_str.lower() or "reasoning_format" in exc_str.lower():
+                pass  # silent fallback
+            else:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "model.stream() failed (%s); falling back to invoke()", exc
+                )
+            response = model.invoke(messages)
+            self._add_token_usage_from_message(state, response)
+            text = _message_text(response).strip()
+            if text and on_event:
+                on_event("delta", {"text": text, "iteration": iteration})
+            return text
+
+        return "".join(assembled).strip()
 
     def _execute_tool_calls(
         self,
@@ -481,6 +546,8 @@ class ContractReActRuntime:
 
         # Log final answer and citations to debug log
         _log_final_answer_debug(state.workflow_id, state.answer, state.citation_annotations)
+
+        
 
         return state
 
@@ -747,17 +814,65 @@ class ContractReActRuntime:
             state.answer = _ensure_inline_citation_marker(state.answer, state.citation_annotations)
 
     def _add_token_usage_from_message(self, state: AgentRunState, message: Any) -> None:
-        usage = (
-            getattr(message, "usage_metadata", None)
-            or (getattr(message, "response_metadata", None) or {}).get("token_usage")
-            or {}
+        """Accumulate token usage from a model response into state.
+
+        Handles all providers and the additional fields now available via
+        stream_usage=True / stream_usage=True:
+
+        • Standard LangChain usage_metadata keys: input_tokens, output_tokens,
+          plus cache_read_input_tokens (Claude prompt caching) and
+          reasoning_tokens / thinking_tokens (Claude / OpenAI o-series).
+        • Fallback: response_metadata.token_usage (OpenAI non-streaming legacy).
+        """
+        usage: Dict[str, Any] = {}
+
+        # Primary: LangChain normalised usage_metadata (all providers with streaming)
+        raw_usage = getattr(message, "usage_metadata", None)
+        if isinstance(raw_usage, dict):
+            usage = raw_usage
+
+        # Fallback: OpenAI / Groq non-streaming token_usage in response_metadata
+        if not usage:
+            usage = (getattr(message, "response_metadata", None) or {}).get("token_usage") or {}
+
+        input_tokens = int(
+            usage.get("input_tokens")
+            or usage.get("prompt_tokens")
+            or 0
         )
-        input_tokens = int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0)
-        output_tokens = int(usage.get("output_tokens") or usage.get("completion_tokens") or 0)
+        output_tokens = int(
+            usage.get("output_tokens")
+            or usage.get("completion_tokens")
+            or 0
+        )
+
+        # Additional fields exposed when stream_usage / stream_usage is True
+        cache_read_tokens = int(
+            usage.get("cache_read_input_tokens")          # Claude prompt cache hits
+            or usage.get("input_token_details", {}).get("cache_read")  # nested form
+            or 0
+        )
+        reasoning_tokens = int(
+            usage.get("reasoning_tokens")                 # Groq gpt-oss parsed
+            or usage.get("thinking_tokens")               # Claude extended thinking
+            or (usage.get("output_token_details") or {}).get("reasoning")  # OpenAI o-series
+            or 0
+        )
+
         if input_tokens or output_tokens:
             state.token_usage.input_tokens += input_tokens
             state.token_usage.output_tokens += output_tokens
             state.token_usage.total_tokens += input_tokens + output_tokens
+
+        # Store extended fields if the state schema supports them (best-effort)
+        if cache_read_tokens and hasattr(state.token_usage, "cache_read_tokens"):
+            state.token_usage.cache_read_tokens = (
+                getattr(state.token_usage, "cache_read_tokens", 0) + cache_read_tokens
+            )
+        if reasoning_tokens and hasattr(state.token_usage, "reasoning_tokens"):
+            state.token_usage.reasoning_tokens = (
+                getattr(state.token_usage, "reasoning_tokens", 0) + reasoning_tokens
+            )
 
     def _record_rejected_tool_call(
         self, state: AgentRunState, *, name: str, args: Dict[str, Any], iteration: int
@@ -782,104 +897,76 @@ class ContractReActRuntime:
         return f"I cannot answer because the agent failed before producing a final response: {text[:300]}"
 
 
+# ── Reasoning / thinking extraction ───────────────────────────────────────
 
 
+def _extract_reasoning(message: Any) -> Optional[str]:
+    """Extract internal reasoning / thinking text from a model response.
 
-# ── Model factory ──────────────────────────────────────────────────────────
+    Handles all providers:
 
+    • Claude extended thinking (Claude 3.7 / 4.x with thinking enabled):
+      response.content is a list of blocks. Thinking blocks have the shape
+      {"type": "thinking", "thinking": "<text>"}.  We concatenate all of them.
 
-def _build_chat_model(state: AgentRunState, *, task_type: str = "default") -> Any:
-    provider = _normalize_provider_name(state.ai_provider or getattr(settings, "ai_provider", None) or "groq")
-    temperature = 0.1
-    allowed = getattr(settings, "temperature", None)
-    if allowed is not None:
-        temperature = float(allowed)
-    max_tokens = int(getattr(settings, "max_tokens", 2048) or 2048)
+    • Groq gpt-oss (reasoning_format="parsed"):
+      Exposed as a top-level ``reasoning_content`` string attribute.
 
-    if provider == "gemini":
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        return ChatGoogleGenerativeAI(
-            model=getattr(settings, "gemini_model_name", None) or "gemini-2.0-flash",
-            google_api_key=getattr(settings, "gemini_api_key", None),
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-        )
-    if provider == "openai":
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            model=getattr(settings, "openai_model_name", None) or "gpt-4o-mini",
-            api_key=getattr(settings, "openai_api_key", None),
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-    if provider == "claude":
-        from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(
-            model=getattr(settings, "anthropic_model_name", None) or getattr(settings, "claude_model_name", None),
-            api_key=getattr(settings, "anthropic_api_key", None),
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-    from langchain_groq import ChatGroq
-    model_name = getattr(settings, "model_name", None) or "llama-3.3-70b-versatile"
-    kwargs: Dict[str, Any] = {
-        "model": model_name,
-        "groq_api_key": getattr(settings, "groq_api_key", None),
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
-    reasoning_effort = _groq_reasoning_effort(state.message, task_type=task_type, model_name=model_name)
-    if reasoning_effort:
-        kwargs["reasoning_effort"] = reasoning_effort
-    return ChatGroq(**kwargs)
+    • OpenAI o-series:
+      Reasoning tokens are consumed internally and NOT exposed in the message
+      content — nothing to extract here.
 
+    Returns None if no reasoning content is found.
+    """
+    # 1. Groq parsed reasoning (top-level attribute)
+    groq_reasoning = getattr(message, "reasoning_content", None)
+    if groq_reasoning and isinstance(groq_reasoning, str):
+        return groq_reasoning.strip() or None
 
-def _normalize_provider_name(provider: Any) -> str:
-    value = str(provider or "").strip().lower().replace("-", "_")
-    if not value:
-        return ""
-    if "gemini" in value or "google_genai" in value or value in {"google", "genai"}:
-        return "gemini"
-    if value in {"openai", "gpt"} or value.startswith("gpt_"):
-        return "openai"
-    if value in {"anthropic", "claude"}:
-        return "claude"
-    return value
+    # 2. Claude thinking blocks (content is a list of typed dicts)
+    content = getattr(message, "content", None)
+    if isinstance(content, list):
+        thinking_parts: List[str] = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            block_type = block.get("type", "")
+            if block_type == "thinking":
+                # Claude 3.7 / Claude 4 extended thinking
+                text = block.get("thinking") or block.get("text") or ""
+                if text:
+                    thinking_parts.append(str(text))
+            elif block_type == "redacted_thinking":
+                # Claude may redact some thinking blocks; surface a placeholder
+                thinking_parts.append("<thinking redacted>")
+        if thinking_parts:
+            return "\n\n".join(thinking_parts)
 
-
-def _groq_reasoning_effort(message: str, *, task_type: str, model_name: str) -> Optional[str]:
-    """Return a Groq GPT-OSS reasoning effort without affecting non-reasoning models."""
-    if "gpt-oss" not in str(model_name or "").lower():
-        return None
-
-    configured = str(getattr(settings, "groq_reasoning_effort", "medium") or "").strip().lower()
-    if configured in {"", "none", "off", "disabled", "false"}:
-        return None
-    if configured in {"low", "medium", "high"}:
-        return configured
-    if configured != "auto":
-        return "medium"
-
-    normalized = f"{task_type or ''} {message or ''}".lower()
-    complex_terms = (
-        "compare", "comparison", "across", "risk", "extract", "kpi", "sla",
-        "table", "tabular", "governing law", "change of control", "ip ownership",
-        "liquidated damages", "assignment", "termination", "indemnification",
-    )
-    return "high" if any(term in normalized for term in complex_terms) else "medium"
+    return None
 
 
 # ── Text helpers ───────────────────────────────────────────────────────────
 
 
 def _stringify_content(content: Any) -> str:
+    """Convert a message content value to a plain string.
+
+    When content is a list of typed blocks (Claude extended thinking, tool use,
+    etc.) only ``text`` blocks are included.  Thinking / redacted_thinking /
+    tool_use / tool_result blocks are deliberately excluded so they don't
+    pollute the final answer text.
+    """
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts = []
+        parts: List[str] = []
         for item in content:
             if isinstance(item, dict):
-                parts.append(str(item.get("text") or item.get("content") or ""))
+                # Only include plain text blocks; skip thinking/tool blocks
+                block_type = item.get("type", "text")
+                if block_type == "text":
+                    parts.append(str(item.get("text") or item.get("content") or ""))
+                # Explicitly skip: thinking, redacted_thinking, tool_use, tool_result
             else:
                 parts.append(str(item))
         return "\n".join(part for part in parts if part)
@@ -1544,7 +1631,11 @@ def _coerce_string_list(value: Any) -> list[str]:
 
 def _append_agent_debug_log(workflow_id: str, iteration: int, prompt_str: str, raw_response_str: str):
     import datetime
-    log_file_path = "/Users/sambhavjain/Desktop/Codes/extractor/extractor/apps/backend/agent_debug.log"
+    import os
+    log_file_path = os.environ.get(
+        "AGENT_DEBUG_LOG",
+        "/Users/sambhavjain/Desktop/Codes/extractor/extractor/apps/backend/agent_debug.log",
+    )
     try:
         with open(log_file_path, "a", encoding="utf-8") as f:
             f.write("=" * 80 + "\n")
@@ -1562,7 +1653,11 @@ def _append_agent_debug_log(workflow_id: str, iteration: int, prompt_str: str, r
 
 def _log_final_answer_debug(workflow_id: str, answer: str, citations: list):
     import json
-    log_file_path = "/Users/sambhavjain/Desktop/Codes/extractor/extractor/apps/backend/agent_debug.log"
+    import os
+    log_file_path = os.environ.get(
+        "AGENT_DEBUG_LOG",
+        "/Users/sambhavjain/Desktop/Codes/extractor/extractor/apps/backend/agent_debug.log",
+    )
     try:
         with open(log_file_path, "a", encoding="utf-8") as f:
             f.write("=" * 80 + "\n")

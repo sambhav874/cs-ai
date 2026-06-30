@@ -2641,6 +2641,9 @@ def stream_project_agent(
                         break
                     elif event_type == "error":
                         raise payload
+                    elif event_type == "delta":
+                        # Token chunks from _stream_text_response — forward immediately
+                        yield format_sse_event("delta", payload)
                     else:
                         yield format_sse_event(event_type, payload)
                 except queue.Empty:
@@ -2665,20 +2668,20 @@ def stream_project_agent(
                 except Exception as memory_error:
                     log_exception(logger, f"Failed to persist deep agent gate for project {project_id}", memory_error)
 
-                answer_text = deep_agent_response.answer
-                if answer_text:
-                    yield format_sse_event("content_done", {})
+                answer_text = deep_agent_response.answer or ""
+                yield format_sse_event("content_done", {})   # always emit, not gated on answer_text
 
-                yield format_sse_event("citations", {
-                    "citation": getattr(deep_agent_response, "citation", "") or "",
-                    "citation_details": deep_agent_response.citation_details,
-                    "citation_annotations": deep_agent_response.citation_annotations,
-                })
-                yield format_sse_event("citation", {
-                    "citation": getattr(deep_agent_response, "citation", "") or "",
-                    "citation_details": deep_agent_response.citation_details,
-                    "citation_annotations": deep_agent_response.citation_annotations,
-                })
+                if not deep_agent_response.citation_annotations:
+                    yield format_sse_event("citations", {
+                        "citation": getattr(deep_agent_response, "citation", "") or "",
+                        "citation_details": deep_agent_response.citation_details,
+                        "citation_annotations": [],
+                    })
+                    yield format_sse_event("citation", {
+                        "citation": getattr(deep_agent_response, "citation", "") or "",
+                        "citation_details": deep_agent_response.citation_details,
+                        "citation_annotations": deep_agent_response.citation_annotations,
+                    })
 
                 event_name = "approval_required" if deep_agent_response.requires_approval else "final"
                 yield format_sse_event(event_name, deep_agent_response.model_dump(mode="json"))
@@ -2692,7 +2695,6 @@ def stream_project_agent(
                 yield format_sse_event("thinking", {"message": "Reading ContractSense KPI register."})
                 for index in range(0, len(answer_text), 48):
                     yield format_sse_event("delta", {"text": answer_text[index:index + 48]})
-                    yield format_sse_event("text", {"text": answer_text[index:index + 48]})
                 yield format_sse_event("content_done", {})
                 final_payload = {**dict(operational_payload), "artifacts": []}
                 yield format_sse_event("citations", {
@@ -3168,6 +3170,10 @@ def stream_contract_agent(
                         break
                     elif event_type == "error":
                         raise payload
+                    elif event_type == "delta":
+                        # Token chunks from _stream_text_response — forward immediately
+                        yield format_sse_event("delta", payload)
+                        yield format_sse_event("text", payload)
                     else:
                         yield format_sse_event(event_type, payload)
                 except queue.Empty:
@@ -3192,9 +3198,8 @@ def stream_contract_agent(
                 except Exception as memory_error:
                     log_exception(logger, f"Failed to persist deep agent gate for contract {contract_id}", memory_error)
 
-                answer_text = deep_agent_response.answer
-                if answer_text:
-                    yield format_sse_event("content_done", {})
+                answer_text = deep_agent_response.answer or ""
+                yield format_sse_event("content_done", {})   # always emit, not gated on answer_text
 
                 yield format_sse_event("citations", {
                     "citation": getattr(deep_agent_response, "citation", "") or "",
@@ -3219,7 +3224,6 @@ def stream_contract_agent(
                 yield format_sse_event("thinking", {"message": "Reading ContractSense KPI register."})
                 for index in range(0, len(answer_text), 48):
                     yield format_sse_event("delta", {"text": answer_text[index:index + 48]})
-                    yield format_sse_event("text", {"text": answer_text[index:index + 48]})
                 yield format_sse_event("content_done", {})
                 final_payload = {**dict(operational_payload), "artifacts": []}
                 yield format_sse_event("citations", {

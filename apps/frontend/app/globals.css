@@ -826,6 +826,63 @@ body {
   color: #3b82f6;
 }
 
+/* Chat message animations */
+@keyframes messageSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes thoughtPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@layer utilities {
+  .animate-message-up {
+    animation: messageSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .animate-message-in {
+    animation: messageSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .animate-thought-pulse {
+    animation: thoughtPulse 1.6s ease-in-out infinite;
+  }
+
+  .animate-content-in {
+    animation: contentFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

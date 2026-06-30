@@ -9,6 +9,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { AccountProvider } from "./context/AccountContext"
 import SecureApiProvider from "@/components/auth/SecureApiProvider"
 import QueryProvider from "@/providers/QueryProvider"
+import GoogleAnalytics from "@/components/GoogleAnalytics"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -73,6 +74,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${cormorantGaramond.variable} ${dmMono.variable} ${syne.variable}`} suppressHydrationWarning>
       <body className="min-h-screen bg-background">
+        <GoogleAnalytics />
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[200] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:text-primary-foreground focus:shadow-md"

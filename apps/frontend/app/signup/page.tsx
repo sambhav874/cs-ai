@@ -10,6 +10,7 @@ import { ShimmerButton } from "@/components/magicui/shimmer-button"
 import { BorderBeam } from "@/components/magicui/border-beam"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { getGaClientId } from "@/lib/gtag"
 
 export default function SignUp() {
   const [username, setUsername] = useState("")
@@ -33,14 +34,20 @@ export default function SignUp() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username, email, password, coupon_code: couponCode }),
+        body: JSON.stringify({
+          username,
+          email,
+          password,
+          coupon_code: couponCode,
+          ga_client_id: getGaClientId(),
+        }),
       })
 
       const data = await response.json()
 
       if (response.ok) {
         localStorage.setItem("token", "cookie")
-        router.push("/dashboard")
+        router.push("/agent")
       } else {
         setError(data.detail || "Failed to create account")
       }
@@ -58,14 +65,14 @@ export default function SignUp() {
       subtitle="Create your account"
       isSignIn={false}
     >
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         className="relative w-full max-w-md"
       >
         {error && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg"
@@ -96,7 +103,7 @@ export default function SignUp() {
               className="h-11 text-base border-gray-300 focus:border-[#0084C7] focus:ring-2 focus:ring-[#0084C7]/50 rounded-lg shadow-sm transition-all"
             />
           </div>
-          
+
           <div className="space-y-3">
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
               Email
@@ -128,7 +135,7 @@ export default function SignUp() {
               className="h-11 text-base border-gray-300 focus:border-[#0084C7] focus:ring-2 focus:ring-[#0084C7]/50 rounded-lg shadow-sm transition-all"
             />
           </div>
-          
+
           <div className="space-y-3">
             <label htmlFor="password" className="block text-sm font-medium text-gray-700">
               Password

@@ -7,6 +7,7 @@ import { X, Check, Calendar, Clock, User, Building2, ChevronRight, ChevronLeft, 
 import { Button } from "@/components/ui/button";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { getGaClientId } from "@/lib/gtag";
 
 interface RequestDemoModalProps {
   isOpen: boolean;
@@ -116,6 +117,7 @@ export default function RequestDemoModal({ isOpen, onClose }: RequestDemoModalPr
         message: formData.message,
         demo_date: formatDateForAPI(formData.demo_date),
         demo_time: formData.demo_time,
+        ga_client_id: getGaClientId(),
       };
 
       const res = await fetch(`${baseUrl}/contact`, {

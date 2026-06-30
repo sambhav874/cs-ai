@@ -16,12 +16,12 @@ const apiOrigin = (() => {
 const cspDirectives = [
   "default-src 'self'",
   // 'unsafe-eval' needed by Next.js HMR in dev; 'unsafe-inline' required by Next.js App Router for RSC streaming/hydration
-  `script-src 'self'${isDev ? " 'unsafe-eval'" : ""} 'unsafe-inline'`,
+  `script-src 'self'${isDev ? " 'unsafe-eval'" : ""} 'unsafe-inline' https://www.googletagmanager.com`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://www.google-analytics.com https://www.googletagmanager.com",
   // In dev, allow localhost websocket (HMR) and all localhost HTTP origins
-  `connect-src 'self'${apiOrigin ? " " + apiOrigin : ""}${isDev ? " ws://localhost:* http://localhost:*" : ""} https://api.stripe.com wss:`,
+  `connect-src 'self'${apiOrigin ? " " + apiOrigin : ""}${isDev ? " ws://localhost:* http://localhost:*" : ""} https://api.stripe.com https://www.google-analytics.com https://region1.google-analytics.com https://analytics.google.com wss:`,
   "frame-src https://js.stripe.com",
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",
@@ -31,16 +31,14 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   reactStrictMode: true,
   serverExternalPackages: ["@react-pdf/renderer"],
-  images: {
-    remotePatterns: [
-      { protocol: "https", hostname: "picsum.photos" },
-    ],
-  },
   webpack: (config) => {
     config.resolve.alias.canvas = false;
     return config;
   },
   outputFileTracingRoot: __dirname,
+  images: {
+    unoptimized: true,
+  },
   turbopack: {
     resolveAlias: {
       canvas: './empty-module.ts',
