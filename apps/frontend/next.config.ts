@@ -31,16 +31,14 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   reactStrictMode: true,
   serverExternalPackages: ["@react-pdf/renderer"],
-  images: {
-    remotePatterns: [
-      { protocol: "https", hostname: "picsum.photos" },
-    ],
-  },
   webpack: (config) => {
     config.resolve.alias.canvas = false;
     return config;
   },
   outputFileTracingRoot: __dirname,
+  images: {
+    unoptimized: true,
+  },
   turbopack: {
     resolveAlias: {
       canvas: './empty-module.ts',

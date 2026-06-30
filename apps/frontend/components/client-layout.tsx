@@ -16,16 +16,21 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
   const pathname = usePathname()
   const isContractWorkspace = pathname.startsWith('/contracts/')
   const isPlaybookWorkspace = pathname.startsWith('/playbooks/')
+  const isAgentPage = pathname === '/agent'
   const shouldHideLayout = noLayoutPages.includes(pathname)
-  const [isExpanded, setIsExpanded] = useState(!isContractWorkspace && !isPlaybookWorkspace)
+
+  // Agent page: sidebar always collapsed; contract/playbook workspaces also collapsed
+  const [isExpanded, setIsExpanded] = useState(
+    !isContractWorkspace && !isPlaybookWorkspace && !isAgentPage
+  )
   const [isMobileOpen, setIsMobileOpen] = useState(false)
 
   useEffect(() => {
-    if (isContractWorkspace || isPlaybookWorkspace) {
+    if (isContractWorkspace || isPlaybookWorkspace || isAgentPage) {
       setIsExpanded(false)
       setIsMobileOpen(false)
     }
-  }, [isContractWorkspace, isPlaybookWorkspace])
+  }, [isContractWorkspace, isPlaybookWorkspace, isAgentPage])
 
   const handleMobileMenuClick = () => {
     setIsMobileOpen(!isMobileOpen)
@@ -37,14 +42,17 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
   }
 
   const shouldShowSidebar = !shouldHideLayout
-  const isDashboardPage = pathname === '/dashboard'
+  // On /agent page, hide the top header entirely
+  const shouldShowHeader = shouldShowSidebar && !isAgentPage
 
   return (
     <BreadcrumbProvider>
       <div className="min-h-screen overflow-x-hidden">
         {shouldShowSidebar && (
           <>
-            <ColabsHeader onMobileMenuClick={handleMobileMenuClick} onUploadSuccess={handleUploadSuccess} isExpanded={isExpanded} />
+            {shouldShowHeader && (
+              <ColabsHeader onMobileMenuClick={handleMobileMenuClick} onUploadSuccess={handleUploadSuccess} isExpanded={isExpanded} />
+            )}
             <Sidebar
               isExpanded={isExpanded}
               setIsExpanded={setIsExpanded}
@@ -56,7 +64,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
         <main id="main-content" className={`
           transition-[margin]
           duration-100
-          ${shouldShowSidebar ? 'pt-16' : ''}
+          ${shouldShowSidebar ? (shouldShowHeader ? 'pt-16' : '') : ''}
           ${shouldShowSidebar ? (isExpanded ? 'md:ml-72' : 'md:ml-16') : ''}
         `}>
           {children}

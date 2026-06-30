@@ -42,7 +42,7 @@ export default function SignIn() {
 
       if (response.ok) {
         localStorage.setItem("token", "cookie")
-        router.push("/dashboard")
+        router.push("/agent")
       } else {
         setError(data.detail || "Invalid username or password")
       }

@@ -407,7 +407,6 @@ function createPagePlaceholder(pageNumber: number, width: number, height: number
   wrapper.style.margin = "0 auto 12px";
   wrapper.style.width = `${width}px`;
   wrapper.style.height = `${height}px`;
-  wrapper.style.maxWidth = "100%";
   wrapper.style.overflow = "hidden";
   wrapper.style.background = "#fff";
   wrapper.style.boxShadow = "0 4px 12px rgba(15, 23, 42, 0.12)";
@@ -1057,21 +1056,33 @@ export default function PDFViewer({
     };
   }, []);
 
-  function handleZoomIn() {
+  async function handleZoomIn() {
     const next = Math.min(ZOOM_MAX, Math.round((zoomRef.current + ZOOM_STEP) * 100) / 100);
     zoomRef.current = next;
     setZoom(next);
     if (pdfDocRef.current) {
-      initializePdfLayout(pdfDocRef.current, quoteListRef.current, currentPageRef.current);
+      const scrollEl = scrollContainerRef.current;
+      const scrollRatio = scrollEl ? scrollEl.scrollTop / Math.max(1, scrollEl.scrollHeight - scrollEl.clientHeight) : 0;
+      await initializePdfLayout(pdfDocRef.current, quoteListRef.current, currentPageRef.current);
+      if (scrollEl) {
+        const newScrollMax = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+        scrollEl.scrollTop = scrollRatio * newScrollMax;
+      }
     }
   }
 
-  function handleZoomOut() {
+  async function handleZoomOut() {
     const next = Math.max(ZOOM_MIN, Math.round((zoomRef.current - ZOOM_STEP) * 100) / 100);
     zoomRef.current = next;
     setZoom(next);
     if (pdfDocRef.current) {
-      initializePdfLayout(pdfDocRef.current, quoteListRef.current, currentPageRef.current);
+      const scrollEl = scrollContainerRef.current;
+      const scrollRatio = scrollEl ? scrollEl.scrollTop / Math.max(1, scrollEl.scrollHeight - scrollEl.clientHeight) : 0;
+      await initializePdfLayout(pdfDocRef.current, quoteListRef.current, currentPageRef.current);
+      if (scrollEl) {
+        const newScrollMax = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+        scrollEl.scrollTop = scrollRatio * newScrollMax;
+      }
     }
   }
 

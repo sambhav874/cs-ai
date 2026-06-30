@@ -251,6 +251,7 @@ interface ContractAgentPanelProps {
     targetContractId?: string | null,
     targetFilename?: string | null,
   ) => void;
+  initialDraft?: string;
 }
 
 const quickActions = [
@@ -935,8 +936,9 @@ export default function ContractAgentPanel({
   onAiProviderChange,
   onArtifactCreated,
   onCitationClick,
+  initialDraft = "",
 }: ContractAgentPanelProps) {
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialDraft);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);

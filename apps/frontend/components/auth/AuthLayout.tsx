@@ -105,7 +105,7 @@ export function AuthLayout({ children, title, subtitle, isSignIn = true }: AuthL
       </div>
 
       {/* Image Section */}
-      <div className="hidden lg:block w-[70%] relative">
+      <div className="hidden lg:block w-[70%] h-screen relative">
         <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-white/30 z-10" />
         <Image
           src="/greet.jpeg"

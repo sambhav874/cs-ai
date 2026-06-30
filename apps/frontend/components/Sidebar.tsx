@@ -19,7 +19,8 @@ import {
   Table2,
   ChevronRight,
   ChevronLeft,
-  LogOut
+  LogOut,
+  Sparkles
 } from "lucide-react"
 import { useAccountContext } from "@/app/context/AccountContext"
 import { useAuth } from "@/hooks/useAuth"
@@ -172,6 +173,7 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
 
   const navItems = [
     { href: "/dashboard?view=all", label: "Projects", icon: FolderOpen },
+    { href: "/agent", label: "AI Agent", icon: Sparkles },
     { href: "/tabular-reviews", label: "Reviews", icon: Table2 },
     { href: "/playbooks", label: "Playbooks", icon: BookOpen },
     { href: "/integrations", label: "Integrations", icon: Plug },
