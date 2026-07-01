@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import Link from 'next/link'
 import { BorderBeam } from '../magicui/border-beam'
 import { motion } from 'framer-motion'
+import Image from 'next/image'
 import { Home } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -25,7 +26,7 @@ interface AuthFooterProps {
 
 function AuthFooter({ isSignIn }: AuthFooterProps) {
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3 }}
@@ -52,15 +53,15 @@ export function AuthLayout({ children, title, subtitle, isSignIn = true }: AuthL
     <div className={`min-h-screen flex ${inter.className}`}>
       {/* Auth Form Section */}
       <div className="w-full lg:w-[30%] flex items-center justify-center bg-gradient-to-br from-gray-50 to-white px-4 py-8 relative overflow-hidden">
-        
+
         <div className="w-full max-w-md relative z-10">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
             className="bg-white rounded-xl border border-gray-100 p-8 shadow-sm relative overflow-hidden"
           >
-            <BorderBeam 
+            <BorderBeam
               size={300}
               duration={12}
               delay={5}
@@ -68,9 +69,9 @@ export function AuthLayout({ children, title, subtitle, isSignIn = true }: AuthL
               className="absolute inset-0 pointer-events-none"
             />
 
-            
+
             <div className="flex flex-col space-y-8 relative z-10">
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.2 }}
@@ -83,18 +84,18 @@ export function AuthLayout({ children, title, subtitle, isSignIn = true }: AuthL
                   {subtitle}
                 </p>
               </motion.div>
-              
+
               {children}
-              
+
               <AuthFooter isSignIn={isSignIn} />
             </div>
           </motion.div>
         </div>
       </div>
       <div className="absolute top-4 left-4">
-        <Button 
-          variant="ghost" 
-          size="sm" 
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => router.push("/")}
           className="flex items-center gap-1 text-gray-600 hover:text-[#0084C7]"
         >
@@ -106,12 +107,14 @@ export function AuthLayout({ children, title, subtitle, isSignIn = true }: AuthL
       {/* Image Section */}
       <div className="hidden lg:block w-[70%] h-screen relative">
         <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-white/30 z-10" />
-        <img
+        <Image
           src="/greet.jpeg"
           alt="Authentication background"
-          className="absolute inset-0 w-full h-full object-cover"
+          fill
+          priority
+          className="object-cover"
         />
-        
+
       </div>
     </div>
   )

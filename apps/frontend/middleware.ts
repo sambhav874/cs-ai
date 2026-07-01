@@ -12,7 +12,8 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/static") ||
     pathname.startsWith("/fonts") ||
     pathname === "/favicon.ico" ||
-    pathname === "/logo.png";
+    pathname === "/logo.png" ||
+    /\.(png|jpe?g|gif|svg|webp|ico)$/i.test(pathname);
 
   if (isPublic) return NextResponse.next();
 
