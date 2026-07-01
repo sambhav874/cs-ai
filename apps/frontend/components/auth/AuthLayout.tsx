@@ -3,7 +3,6 @@ import { Inter } from 'next/font/google'
 import Link from 'next/link'
 import { BorderBeam } from '../magicui/border-beam'
 import { motion } from 'framer-motion'
-import Image from 'next/image'
 import { Home } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -107,13 +106,10 @@ export function AuthLayout({ children, title, subtitle, isSignIn = true }: AuthL
       {/* Image Section */}
       <div className="hidden lg:block w-[70%] h-screen relative">
         <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-white/30 z-10" />
-        <Image
+        <img
           src="/greet.jpeg"
           alt="Authentication background"
-          fill
-          priority
-          className="object-cover"
-          quality={100}
+          className="absolute inset-0 w-full h-full object-cover"
         />
         
       </div>
