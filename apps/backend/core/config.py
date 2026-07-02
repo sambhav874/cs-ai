@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     voyageai_api_key: str = Field(default="", env="VOYAGEAI_API_KEY")
     voyageai_model_name: str = Field(default="voyage-law-2", env="VOYAGEAI_MODEL_NAME")
     voyageai_embedding_dimension: int = Field(default=1024, env="VOYAGEAI_EMBEDDING_DIMENSION")
+    voyageai_auto_chunking: bool = Field(default=False, env="VOYAGEAI_AUTO_CHUNKING")
 
     # Reranker (VoyageAI direct HTTP — optional, config-gated)
     voyage_rerank_enabled: bool = Field(default=False, env="VOYAGE_RERANK_ENABLED")

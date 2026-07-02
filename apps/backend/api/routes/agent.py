@@ -2981,7 +2981,6 @@ def stream_contract_agent(
                     elif event_type == "delta":
                         # Token chunks from _stream_text_response — forward immediately
                         yield format_sse_event("delta", payload)
-                        yield format_sse_event("text", payload)
                     else:
                         yield format_sse_event(event_type, payload)
                 except queue.Empty:

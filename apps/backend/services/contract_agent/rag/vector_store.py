@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pinecone
 from pinecone import ServerlessSpec
 from pymongo.operations import SearchIndexModel
+from langchain_core.embeddings import Embeddings
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
@@ -32,6 +33,44 @@ from .schemas import TextSegment
 from .segmentation import DocumentSegmenter
 
 logger = logging.getLogger(__name__)
+
+
+class PrecalculatedEmbeddings(Embeddings):
+    """LangChain-compatible embeddings wrapper that returns pre-computed embeddings."""
+
+    def __init__(
+        self,
+        texts: List[str],
+        embeddings: List[List[float]],
+        fallback_embeddings: Optional[Embeddings] = None
+    ):
+        self.text_to_embedding = {text: emb for text, emb in zip(texts, embeddings)}
+        self.fallback_embeddings = fallback_embeddings
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        results = []
+        for text in texts:
+            if text in self.text_to_embedding:
+                results.append(self.text_to_embedding[text])
+            elif self.fallback_embeddings:
+                results.append(self.fallback_embeddings.embed_documents([text])[0])
+            else:
+                logger.warning("Precalculated embedding not found for text, generating zero fallback")
+                # Fallback to zero vectors if not found and no fallback provided
+                results.append([0.0] * 1024)
+        return results
+
+    def embed_query(self, text: str) -> List[float]:
+        if self.fallback_embeddings:
+            return self.fallback_embeddings.embed_query(text)
+        raise NotImplementedError("embed_query not supported directly on PrecalculatedEmbeddings without a fallback")
+
+    async def aembed_documents(self, texts: List[str]) -> List[List[float]]:
+        return self.embed_documents(texts)
+
+    async def aembed_query(self, text: str) -> List[float]:
+        return self.embed_query(text)
+
 
 
 @dataclass
@@ -89,6 +128,7 @@ def get_singleton_embeddings() -> Any:
             _global_embeddings = VoyageAIEmbeddings(
                 model=settings.voyageai_model_name,
                 voyage_api_key=settings.voyageai_api_key,
+                output_dimension=getattr(settings, "voyageai_embedding_dimension", 1024),
             )
             _global_embedding_backend = "voyageai"
         elif settings.embeddings_model_name:
@@ -325,6 +365,7 @@ class VectorStoreManager:
                 self.embeddings = VoyageAIEmbeddings(
                     model=settings.voyageai_model_name,
                     voyage_api_key=self.voyageai_api_key,
+                    output_dimension=getattr(settings, "voyageai_embedding_dimension", 1024),
                 )
                 self.embedding_backend = "voyageai"
                 self.embedding_model = settings.voyageai_model_name
@@ -675,54 +716,218 @@ class VectorStoreManager:
         replace_existing: bool = True,
         require_mongodb: bool = True,
     ) -> Dict[str, Any]:
+        namespace = namespace or default_vector_namespace(contract_name, contract_id)
+        
+        # Check if the vector store already exists for this namespace (do not reembed)
+        existing_store = self.load_existing_vector_store(namespace)
+        if existing_store is not None:
+            logger.info(f"Skipping embedding for contract {contract_name} in namespace {namespace} as it is already indexed.")
+            schema_version = getattr(settings, "chunk_schema_version", 2)
+            cached_segs = get_cached_segments(contract_id, schema_version)
+            segment_count = len(cached_segs) if cached_segs else 0
+            
+            return {
+                "namespace": self.current_namespace,
+                "backend": self.current_vector_backend,
+                "collection": f"{settings.mongodb_db_name}.{settings.mongodb_collection_name}"
+                    if self.current_vector_backend == "mongodb" else None,
+                "chunk_count": self.current_vector_count,
+                "segment_count": segment_count,
+                "chunk_schema_version": schema_version,
+                "embedding_backend": self.embedding_backend,
+                "embedding_model": self.embedding_model,
+                "embedding_dimension": self.embedding_dimension or embedding_dimension(self.embedding_backend),
+            }
+
         clean_content, segments = self.segmenter.segment_text_with_page_markers(contract_text)
         if not clean_content.strip():
             raise ValueError("No extracted contract text available to embed.")
 
-        segments = prepare_segments_for_document(
-            segments,
-            contract_id=contract_id,
-            contract_name=contract_name,
-            token_counter=self.segmenter._estimated_tokens,
-        )
-        namespace = namespace or default_vector_namespace(contract_name, contract_id)
-        index_documents = segments_to_index_documents(
-            segments,
-            contract_name=contract_name,
-            contract_id=contract_id,
-            project_id=project_id,
-            user_id=user_id,
-        )
-        if not index_documents:
-            index_documents = [
-                Document(
-                    page_content=f"Contract Content:\n{clean_content}",
-                    metadata={
-                        "source": "mongodb:index.content",
-                        "contract_name": contract_name,
-                        "contract_id": contract_id,
-                        "project_id": project_id,
-                        "user_id": user_id,
-                        "is_pdf": False,
-                    }
-                )
-            ]
-        chunk_count = len(documents_for_vector_store(index_documents, self.text_splitter))
-
-        # Persist segments to contract document for fallback retrieval caching
         schema_version = getattr(settings, "chunk_schema_version", 2)
-        segments_dicts = [segment.model_dump(mode="json") for segment in segments]
-        cache_segments(contract_id, segments_dicts, schema_version)
 
-        vector_store = self.create_vector_store(
-            index_documents,
-            contract_name,
-            namespace=namespace,
-            contract_id=contract_id,
-            project_id=project_id,
-            user_id=user_id,
-            replace_existing=replace_existing,
+        # Check if we should use Voyage auto-chunking
+        is_voyage_autochunk = (
+            self.embedding_backend == "voyageai"
+            and getattr(settings, "voyageai_auto_chunking", False)
+            and bool(self.embedding_model and self.embedding_model.startswith("voyage-context-"))
         )
+
+        if is_voyage_autochunk:
+            logger.info(f"Using Voyage auto-chunking for contract {contract_name} with model {self.embedding_model}")
+            vo_client = self.embeddings._client
+            res = vo_client.contextualized_embed(
+                model=self.embedding_model,
+                inputs=[clean_content],
+                input_type="document",
+                enable_auto_chunking=True,
+                output_dimension=self.embedding_dimension,
+            )
+            if not res.results:
+                raise RuntimeError("Voyage auto-chunking returned no results.")
+                
+            result_obj = res.results[0]
+            chunk_texts = result_obj.chunk_texts
+            embeddings = result_obj.embeddings
+
+            # Function to find chunk offsets and pages
+            def find_chunk_offsets_and_pages(
+                chunk_text_str: str,
+                clean_content_str: str,
+                original_segments: List[TextSegment],
+                search_start_idx: int = 0
+            ) -> Tuple[int, int, Optional[int]]:
+                idx = clean_content_str.find(chunk_text_str, search_start_idx)
+                if idx == -1:
+                    idx = clean_content_str.find(chunk_text_str[:100], search_start_idx)
+                
+                char_start = idx if idx != -1 else search_start_idx
+                char_end = char_start + len(chunk_text_str)
+                
+                overlapping_pages = []
+                for seg in original_segments:
+                    if seg.page_number is not None and seg.start_index <= char_end and seg.end_index >= char_start:
+                        overlapping_pages.append((seg.end_index - seg.start_index, seg.page_number))
+                
+                if overlapping_pages:
+                    overlapping_pages.sort()
+                    page_number = overlapping_pages[0][1]
+                else:
+                    page_number = None
+                return char_start, char_end, page_number
+
+            voyage_segments = []
+            index_documents = []
+            search_start = 0
+
+            for i, (chunk_text, embedding) in enumerate(zip(chunk_texts, embeddings)):
+                char_start, char_end, page_num = find_chunk_offsets_and_pages(
+                    chunk_text,
+                    clean_content,
+                    segments,
+                    search_start
+                )
+                search_start = char_start
+
+                seg_id = f"{contract_id}:voyage-chunk-{i}"
+                token_count = self.segmenter._estimated_tokens(chunk_text)
+
+                seg = TextSegment(
+                    id=seg_id,
+                    text=chunk_text,
+                    type="voyage-chunk",
+                    start_index=char_start,
+                    end_index=char_end,
+                    page_number=page_num,
+                    contract_id=contract_id,
+                    contract_name=contract_name,
+                    chunk_schema_version=schema_version,
+                    chunk_level="voyage-chunk",
+                    page_start=page_num,
+                    page_end=page_num,
+                    char_start=char_start,
+                    char_end=char_end,
+                    token_count=token_count,
+                )
+                voyage_segments.append(seg)
+
+                index_documents.append(
+                    Document(
+                        page_content=chunk_text,
+                        metadata={
+                            "source": "mongodb:index.content",
+                            "contract_name": contract_name,
+                            "contract_id": contract_id,
+                            "document_id": contract_id,
+                            "project_id": project_id,
+                            "user_id": user_id,
+                            "segment_id": seg.id,
+                            "segment_type": seg.type,
+                            "chunk_schema_version": seg.chunk_schema_version,
+                            "chunk_level": seg.chunk_level,
+                            "page_number": seg.page_number,
+                            "page_start": seg.page_start,
+                            "page_end": seg.page_end,
+                            "char_start": seg.char_start,
+                            "char_end": seg.char_end,
+                            "token_count": seg.token_count,
+                            "is_pdf": False,
+                        }
+                    )
+                )
+
+            chunk_count = len(index_documents)
+            segment_count = len(voyage_segments)
+
+            # Persist segments to contract document for fallback retrieval caching
+            segments_dicts = [segment.model_dump(mode="json") for segment in voyage_segments]
+            cache_segments(contract_id, segments_dicts, schema_version)
+
+            precalc_embeddings = PrecalculatedEmbeddings(
+                chunk_texts,
+                embeddings,
+                fallback_embeddings=self.embeddings
+            )
+
+            orig_embeddings = self.embeddings
+            try:
+                self.embeddings = precalc_embeddings
+                vector_store = self.create_vector_store(
+                    index_documents,
+                    contract_name,
+                    namespace=namespace,
+                    contract_id=contract_id,
+                    project_id=project_id,
+                    user_id=user_id,
+                    replace_existing=replace_existing,
+                )
+            finally:
+                self.embeddings = orig_embeddings
+
+        else:
+            segments = prepare_segments_for_document(
+                segments,
+                contract_id=contract_id,
+                contract_name=contract_name,
+                token_counter=self.segmenter._estimated_tokens,
+            )
+            index_documents = segments_to_index_documents(
+                segments,
+                contract_name=contract_name,
+                contract_id=contract_id,
+                project_id=project_id,
+                user_id=user_id,
+            )
+            if not index_documents:
+                index_documents = [
+                    Document(
+                        page_content=f"Contract Content:\n{clean_content}",
+                        metadata={
+                            "source": "mongodb:index.content",
+                            "contract_name": contract_name,
+                            "contract_id": contract_id,
+                            "project_id": project_id,
+                            "user_id": user_id,
+                            "is_pdf": False,
+                        }
+                    )
+                ]
+            chunk_count = len(documents_for_vector_store(index_documents, self.text_splitter))
+            segment_count = len(segments)
+
+            # Persist segments to contract document for fallback retrieval caching
+            segments_dicts = [segment.model_dump(mode="json") for segment in segments]
+            cache_segments(contract_id, segments_dicts, schema_version)
+
+            vector_store = self.create_vector_store(
+                index_documents,
+                contract_name,
+                namespace=namespace,
+                contract_id=contract_id,
+                project_id=project_id,
+                user_id=user_id,
+                replace_existing=replace_existing,
+            )
+
         if not vector_store:
             raise RuntimeError("Vector store creation failed.")
 
@@ -735,8 +940,8 @@ class VectorStoreManager:
             "collection": f"{settings.mongodb_db_name}.{settings.mongodb_collection_name}"
                 if self.current_vector_backend == "mongodb" else None,
             "chunk_count": self.current_vector_count or chunk_count,
-            "segment_count": len(segments),
-            "chunk_schema_version": getattr(settings, "chunk_schema_version", 2),
+            "segment_count": segment_count,
+            "chunk_schema_version": schema_version,
             "embedding_backend": self.embedding_backend,
             "embedding_model": self.embedding_model,
             "embedding_dimension": embedding_dimension(self.embedding_backend),

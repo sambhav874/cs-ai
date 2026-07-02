@@ -80,4 +80,9 @@ ContractSense_Performance_Monitoring_Technical_Spec.pdf
 spec_text.txt
 celerybeat-schedule*
 final_evaluation/
-
+# Local debug logs & bundles
+apps/backend/agent_debug.log
+cookies.txt
+kpi_review_bundle.txt
+rag_review_bundle.txt
+testing/backend/tests/test_voyage_autochunking.py

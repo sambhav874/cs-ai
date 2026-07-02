@@ -504,7 +504,7 @@ class ContractReActRuntime:
         # Unify double-byte bracket citation markers
         if answer:
             answer = re.sub(
-                r"【(\d+(?:\s*,\s*\d+)*)】",
+                r"【(\d+(?:\s*,\s*\d+)*)(?:†[^】\n]*)?】",
                 lambda m: f"[{m.group(1)}]",
                 answer,
             )
@@ -1250,7 +1250,7 @@ def _ensure_inline_citation_marker(answer: str, annotations: list[Dict[str, Any]
         stripped = line.strip()
         if not stripped:
             continue
-        if stripped.startswith(("#", "-", "*", "<")):
+        if stripped.startswith(("#", "-", "*", "<", "|")):
             continue
         if stripped.lower().startswith("**confidence"):
             continue

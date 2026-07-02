@@ -40,11 +40,13 @@ import {
   History,
   MessageSquare,
   Copy,
+  Maximize2,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAccountContext } from "@/app/context/AccountContext";
 import dynamic from "next/dynamic";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { ThinkingDisplay } from "@/components/ThinkingDisplay";
 
 const PDFViewerDynamic = dynamic(
@@ -173,6 +175,80 @@ function citationRefs(rawRefs: string) {
     .split(",")
     .map((value) => Number(value.trim()))
     .filter((value) => Number.isInteger(value) && value > 0);
+}
+
+function MarkdownTable({ children }: { children: ReactNode }) {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isFullscreen]);
+
+  return (
+    <>
+      <div className="relative group my-3">
+        <button
+          onClick={() => setIsFullscreen(true)}
+          className="absolute top-2 right-2 p-1.5 rounded-lg border border-gray-200 bg-white/95 text-gray-500 hover:text-gray-900 shadow-md opacity-0 group-hover:opacity-100 transition-all duration-200 z-10 flex items-center justify-center cursor-pointer hover:bg-gray-50 active:scale-95"
+          title="Open in fullscreen"
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
+        </button>
+        <div className="max-w-full overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <table className="min-w-[540px] table-auto divide-y divide-gray-200 text-left text-[10px] sm:text-[11px]">
+            {children}
+          </table>
+        </div>
+      </div>
+
+      {isFullscreen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 sm:p-10"
+          style={{ animation: "fadeIn 0.2s ease-out forwards" }}
+          onClick={() => setIsFullscreen(false)}
+        >
+          <style>{`
+            @keyframes fadeIn {
+              from { opacity: 0; }
+              to { opacity: 1; }
+            }
+            @keyframes scaleIn {
+              from { transform: scale(0.95); opacity: 0; }
+              to { transform: scale(1); opacity: 1; }
+            }
+          `}</style>
+          <div 
+            className="bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-6xl max-h-[85vh] flex flex-col p-6 overflow-hidden"
+            style={{ animation: "scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 shrink-0">
+              <h3 className="font-semibold text-gray-900 text-sm">Table Preview</h3>
+              <button 
+                onClick={() => setIsFullscreen(false)}
+                className="p-1 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors flex items-center justify-center cursor-pointer active:scale-95"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto rounded-lg border border-gray-200 bg-white p-2">
+              <table className="min-w-full table-auto divide-y divide-gray-200 text-left text-xs sm:text-sm">
+                {children}
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 function citationAnnotationsFromDetails(citationDetails: any, rawAnnotations: unknown): CitationAnnotation[] {
@@ -1222,6 +1298,7 @@ export default function StandaloneAgentPage() {
                         {/* Markdown Output Text */}
                         <div className="prose prose-neutral prose-p:my-1 max-w-none text-black/85 leading-relaxed text-left text-sm bg-white/40 p-4 rounded-xl  animate-content-in hover:bg-white/60 hover:border-black/10 transition-all duration-300">
                           <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
                             components={{
                               p: ({ children }) => <p className="mb-1 last:mb-0">{renderCitationAwareChildren(msg, children, "p")}</p>,
                               li: ({ children }) => <li>{renderCitationAwareChildren(msg, children, "li")}</li>,
@@ -1230,7 +1307,7 @@ export default function StandaloneAgentPage() {
                               h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2">{renderCitationAwareChildren(msg, children, "h1")}</h1>,
                               h2: ({ children }) => <h2 className="text-lg font-bold mt-3 mb-2">{renderCitationAwareChildren(msg, children, "h2")}</h2>,
                               h3: ({ children }) => <h3 className="text-base font-bold mt-2.5 mb-1.5">{renderCitationAwareChildren(msg, children, "h3")}</h3>,
-
+                              table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
                             }}
                           >
                             {msg.content}
