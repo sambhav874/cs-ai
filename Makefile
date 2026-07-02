@@ -2,7 +2,7 @@
         install install-frontend install-backend install-e2e \
         docker-build docker-up docker-down \
         e2e e2e-open e2e-dev \
-        clean
+        clean eval test-backend
 
 # ── Development ──────────────────────────────────────────────
 
@@ -18,6 +18,13 @@ dev-frontend:
 
 dev-backend:
 	cd apps/backend && poetry run uvicorn main:app --reload
+
+eval:
+	cd apps/backend && poetry run python scripts/run_interactive_eval.py
+
+test-backend:
+	cd apps/backend && PYTHONPATH=../.. poetry run pytest ../../final_evaluation/tests
+
 
 # ── Build ────────────────────────────────────────────────────
 

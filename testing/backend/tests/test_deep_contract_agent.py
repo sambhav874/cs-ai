@@ -234,15 +234,11 @@ def test_tool_registry_declares_read_approval_and_forbidden_boundaries():
     assert "fetch_documents" in READ_ONLY_TOOLS
     assert "find_in_document" in READ_ONLY_TOOLS
     assert "create_tabular_review" in APPROVAL_REQUIRED_TOOLS
-    assert "edit_document" in APPROVAL_REQUIRED_TOOLS
-    assert "generate_docx" in APPROVAL_REQUIRED_TOOLS
     assert "replicate_document" in APPROVAL_REQUIRED_TOOLS
     assert "send_email" in FORBIDDEN_TOOL_NAMES
     assert specs["create_tabular_review"].risk == "approval_required"
-    assert specs["edit_document"].risk == "approval_required"
     assert "send_email" not in specs  # forbidden tools are not in the active tool specs
     assert "Search scoped" in specs["search_evidence"].description
-    assert "only after human approval" in specs["generate_docx"].description
 
 
 def test_langchain_tool_wrappers_expose_clean_read_and_approval_tools():
@@ -256,11 +252,11 @@ def test_langchain_tool_wrappers_expose_clean_read_and_approval_tools():
     tools_by_name = {item.name: item for item in tools}
 
     assert "search_evidence" in tools_by_name
-    assert "create_draft_artifact" in tools_by_name
+    assert "extract_kpis" in tools_by_name
     assert tools_by_name["search_evidence"].args_schema is not None
-    assert tools_by_name["create_draft_artifact"].args_schema is not None
+    assert tools_by_name["extract_kpis"].args_schema is not None
     assert "READ-ONLY" in tools_by_name["search_evidence"].description
-    assert "Requires human approval" in tools_by_name["create_draft_artifact"].description
+    assert "human approval" in tools_by_name["extract_kpis"].description
 
 
 def test_direct_chat_answers_without_tools():
@@ -752,21 +748,21 @@ def test_runtime_pending_approval_payload_prefers_tool_observations_then_scratch
     state = AgentRunState(user_id="user-1", message="Draft this.")
     tool_payload = {
         "__APPROVAL_REQUIRED__": True,
-        "tool": "create_draft_artifact",
-        "params": {"draft_type": "memo"},
+        "tool": "replicate_document",
+        "params": {"target_project_id": "proj-1"},
         "message": "Approval required.",
     }
     scratch_payload = {
         "__APPROVAL_REQUIRED__": True,
-        "tool": "generate_docx",
-        "params": {"filename": "memo.docx"},
-        "message": "DOCX approval required.",
+        "tool": "create_tabular_review",
+        "params": {"name": "review"},
+        "message": "Review approval required.",
     }
     state.tools.extend([
         ToolCallRecord(name="search_evidence", status="done", observation={"summary": "ok"}),
-        ToolCallRecord(name="create_draft_artifact", status="planned", observation=tool_payload),
+        ToolCallRecord(name="replicate_document", status="planned", observation=tool_payload),
     ])
-    state.react_scratchpad.append({"tool": "generate_docx", "observation": scratch_payload})
+    state.react_scratchpad.append({"tool": "create_tabular_review", "observation": scratch_payload})
 
     assert runtime._pending_approval_payload(state) == tool_payload
 
@@ -1250,7 +1246,7 @@ def test_edited_contract_copy_applies_agreement_number_change_and_starts_contrac
     )
     body = build_edited_contract_copy_body(
         source_text,
-        "Action 'create_draft_artifact' requires human approval before execution.",
+        "Action 'replicate_document' requires human approval before execution.",
         question="i want to draft the contract again but change the agreement number to APF-2025-CB-08",
     )
 
@@ -1285,7 +1281,7 @@ def test_runtime_prompt_includes_actual_tool_catalog():
     assert "untrusted data" in prompt_text
     assert "search_evidence" in prompt_text
     assert "read_document" in prompt_text
-    assert "create_draft_artifact" in prompt_text
+    assert "extract_kpis" in prompt_text
     assert "not a fixed script" in prompt_text
     assert "Do not add extra recommendations" in prompt_text
 
@@ -1350,7 +1346,7 @@ def test_declared_middlewares_are_loaded_or_traced_at_runtime():
     )
     approval_response = DeepContractAgentRunner(model=ToolCallingFakeModel(responses=[
         AIMessage(content="", tool_calls=[
-            {"name": "create_draft_artifact", "args": {"draft_type": "memo"}, "id": "call-draft"}
+            {"name": "replicate_document", "args": {"document_id": "507f1f77bcf86cd799439012", "target_project_id": "proj-1"}, "id": "call-replicate"}
         ])
     ])).run(approval_state)
 
@@ -1391,7 +1387,7 @@ def test_security_trigger_denies_unsafe_request():
 def test_react_agent_interrupts_approval_required_draft_tool():
     state = AgentRunState(
         user_id="user-1",
-        message="Draft a concise approval memo for this contract.",
+        message="Replicate document.",
         context=AgentContext(
             surface="contract",
             contract_id="507f1f77bcf86cd799439012",
@@ -1401,9 +1397,9 @@ def test_react_agent_interrupts_approval_required_draft_tool():
     model = ToolCallingFakeModel(responses=[
         AIMessage(content="", tool_calls=[
             {
-                "name": "create_draft_artifact",
-                "args": {"draft_type": "memo", "instructions": "concise approval memo"},
-                "id": "call-draft",
+                "name": "replicate_document",
+                "args": {"document_id": "507f1f77bcf86cd799439012", "target_project_id": "proj-1"},
+                "id": "call-replicate",
             }
         ])
     ])
@@ -1413,7 +1409,7 @@ def test_react_agent_interrupts_approval_required_draft_tool():
     assert response.workflow_status == AgentStatus.WAITING_APPROVAL
     assert response.requires_approval is True
     assert response.approval_request is not None
-    assert response.approval_request.action == "create_draft_artifact"
+    assert response.approval_request.action == "replicate_document"
     assert response.approval_request.payload["question"] == state.message
     assert any(event["event"] == "approval_gate" for event in response.agent_trace)
 
@@ -1431,7 +1427,7 @@ def test_completed_response_never_exposes_active_approval_request():
     )
     runner = DeepContractAgentRunner(model=ToolCallingFakeModel(responses=[
         AIMessage(content="", tool_calls=[
-            {"name": "create_draft_artifact", "args": {"draft_type": "memo"}, "id": "call-draft"}
+            {"name": "replicate_document", "args": {"document_id": "507f1f77bcf86cd799439012", "target_project_id": "proj-1"}, "id": "call-replicate"}
         ])
     ]))
     response = runner.run(state)
@@ -1706,7 +1702,7 @@ def test_runner_approval_gates_side_effect_tool_calls():
     )
     model = ToolCallingFakeModel(responses=[
         AIMessage(content="", tool_calls=[
-            {"name": "create_draft_artifact", "args": {"draft_type": "memo"}, "id": "call-draft"}
+            {"name": "replicate_document", "args": {"document_id": "507f1f77bcf86cd799439012", "target_project_id": "proj-1"}, "id": "call-replicate"}
         ])
     ])
 
@@ -1714,7 +1710,7 @@ def test_runner_approval_gates_side_effect_tool_calls():
 
     assert response.workflow_status == AgentStatus.WAITING_APPROVAL
     assert response.requires_approval is True
-    assert response.approval_request.action == "create_draft_artifact"
+    assert response.approval_request.action == "replicate_document"
     assert calls == []
     assert any(event["event"] == "approval_required" for event in response.agent_trace)
 

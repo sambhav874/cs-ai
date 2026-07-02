@@ -74,6 +74,7 @@ def build_adaptive_system_prompt(
   - Default top_k is 12, but you can increase top_k (e.g., to 15 or 20) when searching dense documents, query clause banks, or when you need more context/candidates.
 - use read_document for broad excerpts, outline_document for structure, find_in_document for specific phrases.
 - approval-gated tools require human approval before side effects happen.
+- DO NOT call extract_kpis unless the user specifically asks to save, draft, or extract candidates to the platform/database. For listing, summarizing, comparing, or finding KPIs, use read-only tools like search_evidence or get_kpi_context to retrieve them in your response.
 - do not loop excessively — if you have enough to answer, answer.
 - stay autonomous: choose tools based on the request and evidence quality, not a fixed script.
 

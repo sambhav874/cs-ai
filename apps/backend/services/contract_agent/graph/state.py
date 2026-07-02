@@ -115,14 +115,8 @@ class ApprovalRequest(BaseModel):
     action: Literal[
         "create_tabular_review",
         "generate_tabular_review",
-        "create_draft_artifact",
-        "create_redline_artifact",
-        "create_editable_copy",
-        "create_modified_copy",
         "duplicate_document_copy",
-        "edit_document",
         "extract_kpis",
-        "generate_docx",
         "replicate_document",
     ]
     title: str

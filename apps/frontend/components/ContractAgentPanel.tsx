@@ -19,11 +19,14 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  Copy,
+  Loader2,
 } from "lucide-react";
 import { CitationHoverCard } from "@/components/agent/CitationHoverCard";
 import { ReActThinkingStream } from "@/components/agent/ReActThinkingStream";
 import { ToolUsageCard } from "@/components/agent/ToolUsageCard";
 import { ApprovalInput } from "@/components/agent/ApprovalInput";
+import { ThinkingDisplay } from "@/components/ThinkingDisplay";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -258,8 +261,6 @@ const quickActions = [
   "Review obligations and deadlines",
   "Find payment and termination terms",
   "Create a tabular risk review",
-  "Draft an approval note",
-  "Prepare edit suggestions",
 ];
 
 const modelOptions: Array<{ value: AIProvider; label: string; description: string }> = [
@@ -567,6 +568,43 @@ function isReferenceDocumentReady(document: ReferenceDocument) {
     normalizedStatus === "indexed" ||
     normalizedStatus === "success" ||
     normalizedStatus.includes("indexed")
+  );
+}
+
+function MessageActions({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy text: ", err);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 mt-2 px-1 text-black/35">
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-black/5 hover:text-black/70 transition-colors animate-fade-in"
+        title="Copy message"
+      >
+        {copied ? (
+          <>
+            <Check className="h-3.5 w-3.5 text-green-600 animate-in fade-in zoom-in duration-200" />
+            <span className="text-[10px] text-green-600 font-medium">Copied</span>
+          </>
+        ) : (
+          <>
+            <Copy className="h-3.5 w-3.5" />
+            <span className="text-[10px] font-medium">Copy</span>
+          </>
+        )}
+      </button>
+    </div>
   );
 }
 
@@ -2127,94 +2165,87 @@ export default function ContractAgentPanel({
     const visibleEvents = events.filter((event) => {
       const name = event.event || "";
       if (["input_guard", "context_resolver", "persist_run", "final_response", "tool_result", "tool_start", "verify_answer"].includes(name)) return false;
-      if (name.startsWith("middleware:") && String(event.detail?.decision) !== "deny" && String(event.detail?.decision) !== "reject") return false;
+      const detail = event.detail as any;
+      if (name.startsWith("middleware:") && String(detail?.decision) !== "deny" && String(detail?.decision) !== "reject") return false;
       return true;
     });
     if (!visibleEvents.length && !isRunning) return null;
 
-    const steps: Array<{ iteration: number; type: "thought" | "tool_call" | "tool_result" | "answer"; toolName?: string; toolArgs?: Record<string, any>; toolResult?: { summary?: string; matches?: Array<Record<string, unknown>>; error?: string }; answerText?: string }> = [];
-    visibleEvents.forEach((event) => {
-      const name = event.event || "";
-      if (name === "react_thought") {
-        steps.push({
-          iteration: steps.length + 1,
-          type: "thought",
-          answerText: String(event.detail?.thought || ""),
-        });
-      } else if (name === "react_model_step" && event.detail?.action === "tool") {
-        steps.push({ iteration: steps.length + 1, type: "tool_call", toolName: String(event.detail?.tool || ""), toolArgs: event.detail as Record<string, any> });
-      } else if (name === "react_tool_observation") {
-        steps.push({ iteration: steps.length + 1, type: "tool_result", toolName: String(event.detail?.tool || ""), toolResult: { summary: String(event.detail?.summary || ""), matches: undefined } });
-      } else if (name === "react_model_step" && event.detail?.action === "final") {
-        steps.push({ iteration: steps.length + 1, type: "answer", answerText: String(event.detail?.reason || "").slice(0, 120) });
-      }
-    });
-
-    const toolSteps = steps.filter((s) => s.type === "tool_call" || s.type === "tool_result");
-
-    if (!toolSteps.length && !isRunning) return null;
-
     const isExpanded = traceExpanded || isRunning;
+    const tokenUsage = message.tokenUsage as any;
 
     return (
-      <div className="mb-2 rounded-lg border border-gray-100 bg-gray-50/50 p-2">
-        {/* Minimal inline tool indicator */}
-        <div className="flex items-center justify-between text-[10px] text-gray-400">
-          {isRunning ? (
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
-              <span className="font-medium text-gray-500">Agent executing pipeline...</span>
+      <div className="flex flex-col gap-0 select-none">
+        <button
+          type="button"
+          onClick={() => setTraceExpanded(!traceExpanded)}
+          className="flex items-center gap-1.5 text-[11px] text-black/40 hover:text-black/60 transition-colors w-fit"
+        >
+          <span className="italic">Steps</span>
+          {tokenUsage && (
+            <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-black/5 px-1.5 py-0.5 text-[9px] text-black/35 font-normal not-italic">
+              {(tokenUsage.total_tokens || (tokenUsage.input_tokens + tokenUsage.output_tokens)).toLocaleString()} tok
+              {tokenUsage.reasoning_tokens
+                ? ` · ${tokenUsage.reasoning_tokens.toLocaleString()} reasoning`
+                : ""}
+              {message.costUsd && message.costUsd > 0
+                ? ` · $${message.costUsd < 0.001 ? "<0.001" : message.costUsd.toFixed(4)}`
+                : ""}
             </span>
-          ) : (
-            <span>{toolSteps.length} tool call{toolSteps.length !== 1 ? "s" : ""}</span>
           )}
-          {steps.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => setTraceExpanded(!traceExpanded)}
-              className="inline-flex items-center gap-0.5 text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-            </button>
-          ) : null}
-        </div>
+          <ChevronDown
+            className={`h-3 w-3 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+          />
+        </button>
 
-        {/* Expanded detail — clean list, no badges */}
-        {isExpanded && steps.length > 0 ? (
-          <div className="mt-2 space-y-1.5 pl-0">
-            {steps.map((step, idx) => (
-              <div
-                key={idx}
-                className="flex items-start gap-2 text-[10px] leading-4 text-gray-500"
-              >
-                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-gray-300" />
-                <span className="min-w-0 flex-1 font-mono">
-                  {step.type === "thought" && step.answerText && (
-                    <span className="text-gray-400 italic">Thinking: {step.answerText.slice(0, 150)}...</span>
-                  )}
-                  {step.type === "tool_call" && (
-                    <span className="text-blue-600 font-semibold flex items-center gap-1">
-                      <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-ping inline-block shrink-0" />
-                      <span>Calling {step.toolName}{step.toolArgs?.args?.query ? ` (query: "${step.toolArgs.args.query}")` : ""}...</span>
-                    </span>
-                  )}
-                  {step.type === "tool_result" && (
-                    <span className="text-emerald-600 font-medium">
-                      {step.toolResult?.error ? (
-                        <span className="text-red-500">Error: {step.toolResult.error.slice(0, 100)}</span>
-                      ) : (
-                        `Observed: ${step.toolResult?.summary?.slice(0, 120) || "Executed successfully."}`
-                      )}
-                    </span>
-                  )}
-                  {step.type === "answer" && step.answerText && (
-                    <span className="text-gray-400">Answer synthesis: {step.answerText.slice(0, 100)}</span>
-                  )}
-                </span>
-              </div>
-            ))}
+        {isExpanded && visibleEvents.length > 0 && (
+          <div className="mt-2 rounded-xl bg-black/[0.015] overflow-hidden animate-content-in">
+            <div
+              className="px-3 py-2 space-y-2 font-mono text-[11px] text-black/60 max-h-52 overflow-y-auto"
+              style={{ scrollbarWidth: "none" }}
+            >
+              {visibleEvents.map((event, eventIdx) => {
+                const detail = event.detail as any;
+                if (event.event === "react_model_step" && detail?.action === "tool") {
+                  const name = detail?.tool || "tool";
+                  const args = detail?.args ?? detail;
+                  const query = typeof args?.query === "string" ? args.query : null;
+                  return (
+                    <div key={eventIdx} className="flex items-start gap-2">
+                      <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider bg-black/8 text-black/50 px-1.5 py-0.5 rounded">
+                        call
+                      </span>
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="font-semibold text-black/75">{name}</span>
+                        {query && (
+                          <span className="text-black/45 truncate max-w-xs">{query}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+                if (event.event === "react_tool_observation") {
+                  const summary = detail?.summary || null;
+                  return summary ? (
+                    <div key={eventIdx} className="flex items-start gap-2 pl-2">
+                      <span className="text-black/30 font-bold mt-0.5">↳</span>
+                      <span className="text-black/40 italic truncate max-w-xs">{summary}</span>
+                    </div>
+                  ) : null;
+                }
+                if (event.event === "react_thought") {
+                  const thought = detail?.thought || "";
+                  return thought ? (
+                    <div key={eventIdx} className="text-black/30 italic truncate max-w-xs pl-2">
+                      Thinking: {thought}
+                    </div>
+                  ) : null;
+                }
+                return null;
+              })}
+            </div>
           </div>
-        ) : null}
+        )}
       </div>
     );
   };
@@ -2528,37 +2559,48 @@ export default function ContractAgentPanel({
                   )}
                 >
                   {message.role === "agent" ? (
-                    <div className="flex min-w-0 max-w-full flex-1 items-start gap-2.5">
-                      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm">
-                        <Sparkles className="h-3.5 w-3.5 text-gray-700" />
-                      </div>
-                      <div className="min-w-0 flex-1 space-y-2 text-xs leading-5 text-gray-800 sm:text-[13px]">
-                        {renderAgentReasoning(message)}
-                        {renderAgentReActSteps(message, isRunning)}
-                        {/* Real-time thinking display */}
-                        {isRunning && message.currentThinking && !visibleAnswerText(message.content) ? (
-                          <div className="text-[11px] leading-5 text-gray-400 italic">
-                            {message.currentThinking}
-                          </div>
-                        ) : null}
-                        {visibleAnswerText(message.content) ? (
-                          <div className={cn(
-                            "contract-agent-markdown min-w-0 max-w-full overflow-hidden break-words rounded-lg bg-white",
-                            isRunning && "streaming-cursor"
-                          )}>
-                            {renderMarkdownMessage(message)}
-                          </div>
-                        ) : null}
+                    <div className="flex flex-col gap-3 w-full">
+                      {/* Collapsible Agent Trace / Thinking */}
+                      {(message.currentThinking || message.agentTrace) && (
+                        <div className="flex flex-col gap-2 select-none">
+                          <ThinkingDisplay
+                            thinking={message.currentThinking}
+                            isStreaming={isRunning && !visibleAnswerText(message.content)}
+                            hasRedacted={false}
+                            durationMs={undefined}
+                            defaultExpanded={false}
+                          />
+
+                          {/* ReAct steps if any */}
+                          {renderAgentReActSteps(message, isRunning)}
+                        </div>
+                      )}
+
+                      {/* Markdown text in message container */}
+                      {visibleAnswerText(message.content) ? (
+                        <div className={cn(
+                          "prose prose-neutral prose-p:my-1 max-w-none text-black/85 leading-relaxed text-left text-xs sm:text-[13px] bg-black/[0.015] border border-black/5 hover:bg-black/[0.03] hover:border-black/10 p-4 rounded-xl transition-all duration-300 shadow-sm",
+                          isRunning && "streaming-cursor"
+                        )}>
+                          {renderMarkdownMessage(message)}
+                        </div>
+                      ) : null}
+
+                      {visibleAnswerText(message.content) && (
+                        <MessageActions text={visibleAnswerText(message.content)} />
+                      )}
+
                       {message.artifacts?.length ? (
-                        <div className="space-y-2">
+                        <div className="space-y-2 mt-1">
                           {message.artifacts.map(renderArtifactCard)}
                         </div>
                       ) : null}
+
                       {message.citationAnnotations?.length || message.citation ? (
-                        <div className="mt-2 flex min-w-0 flex-col gap-1 border-t border-gray-100 pt-2 text-[10px] text-gray-500">
+                        <div className="mt-2 flex min-w-0 flex-col gap-1 border-t border-black/5 pt-2 text-[10px] text-black/50">
                           {message.citationAnnotations?.length ? (
                             <>
-                              <span className="font-semibold uppercase tracking-wider text-gray-400">Sources</span>
+                              <span className="font-semibold uppercase tracking-wider text-black/40">Sources</span>
                               <div className="mt-1 flex min-w-0 flex-col gap-1.5">
                                 {getUsedAndSortedAnnotations(message).map((annotation) => {
                                   const docName = citationDocumentName(annotation);
@@ -2568,30 +2610,29 @@ export default function ContractAgentPanel({
                                       <button
                                         type="button"
                                         onClick={() => handleCitationClick(message, annotation)}
-                                        className="h-4 min-w-4 shrink-0 rounded border border-gray-200 bg-white px-1 text-[9px] font-medium text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                                        className="h-4 min-w-4 shrink-0 rounded border border-black/15 bg-white px-1 text-[9px] font-bold text-black hover:bg-black/5 transition-colors"
                                       >
                                         {annotation.ref}
                                       </button>
-                                      <span className="truncate font-medium text-gray-700" title={docName}>{docName}</span>
-                                      <span className="shrink-0 text-gray-400">·</span>
-                                      <span className="shrink-0 text-blue-600">{page}</span>
+                                      <span className="truncate font-medium text-black/70" title={docName}>{docName}</span>
+                                      <span className="shrink-0 text-black/30">·</span>
+                                      <span className="shrink-0 text-black/50">{page}</span>
                                     </div>
                                   );
                                 })}
                               </div>
                             </>
                           ) : message.citation ? (
-                            <span className="min-w-0 break-words text-gray-400">Source: {cleanDisplayText(message.citation)}</span>
+                            <span className="min-w-0 break-words text-black/45">Source: {cleanDisplayText(message.citation)}</span>
                           ) : null}
                         </div>
                       ) : null}
                     </div>
-                  </div>
-                ) : (
-                  <div className="min-w-0 max-w-[82%] break-words rounded-2xl bg-gray-100 px-4 py-3 text-sm leading-6 text-gray-900 shadow-sm">
-                    {message.content}
-                  </div>
-                )}
+                  ) : (
+                    <div className="max-w-[80%] rounded-2xl bg-black/5 text-black px-4 py-3 text-sm shadow-sm font-medium break-words">
+                      {message.content}
+                    </div>
+                  )}
               </div>
             );
           })}
@@ -2683,10 +2724,9 @@ export default function ContractAgentPanel({
           </div>
         ) : (
           <>
-        <form onSubmit={handleSubmit} className="rounded-2xl border border-gray-300 bg-white shadow-lg transition-all focus-within:border-gray-400 focus-within:ring-2 focus-within:ring-gray-100 focus-within:shadow-xl">
-          <div className="flex items-end gap-2 px-4 pt-2.5 pb-2">
+        <form onSubmit={handleSubmit} className="w-full rounded-2xl border border-black/10 bg-white/70 backdrop-blur-2xl p-4 shadow-[0_4px_40px_rgba(0,0,0,0.06)] transition-all duration-300 focus-within:border-black/25 focus-within:shadow-[0_4px_60px_rgba(0,0,0,0.1)]">
+          <div className="flex flex-col gap-2 min-h-[80px] text-left">
             <textarea
-              rows={1}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
@@ -2695,124 +2735,134 @@ export default function ContractAgentPanel({
                   handleSubmit();
                 }
               }}
+              disabled={isThinking}
               placeholder={isProjectScope ? "Ask a question about this project..." : "Ask a question about this contract..."}
-              className="max-h-28 min-h-8 w-full resize-none overflow-hidden bg-transparent p-0 text-sm leading-6 text-gray-900 outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 placeholder:text-gray-400"
+              className="w-full bg-transparent border-0 p-0 text-sm text-black placeholder-black/30 outline-none focus:ring-0 focus:outline-none resize-none min-h-[50px] leading-relaxed"
             />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!draft.trim() || isThinking}
-              className="mb-0.5 h-8 w-8 shrink-0 rounded-[10px] bg-cs-primary text-white hover:bg-cs-primary/90"
-            >
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 px-3 pb-2 pt-0">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 min-w-0 max-w-[170px] gap-1 rounded-full border-transparent bg-cs-primary/10 px-2 text-xs text-cs-primary shadow-none hover:bg-cs-primary/20 hover:text-cs-primary"
-                    disabled={isThinking || (isProjectScope ? availableReferenceDocuments.length === 0 : availableReferenceDocuments.length <= 1)}
-                    aria-label="Choose documents to refer to"
-                    title="Choose documents to refer to"
-                  >
-                    <Link2 className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{selectedReferenceLabel}</span>
-                    <ChevronDown className="h-3 w-3 shrink-0 text-gray-400" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="start" className="max-h-80 w-72 overflow-y-auto">
-                  <DropdownMenuLabel className="text-xs text-gray-500">Refer to</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      setSelectedReferenceIds([]);
-                    }}
-                    className="items-start gap-2"
-                  >
-                    <Check className={cn("mt-0.5 h-4 w-4", selectedReferenceIds.length === 0 ? "opacity-100" : "opacity-0")} />
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium">
-                        {isProjectScope ? "All project docs" : "Current contract only"}
-                      </span>
-                    </span>
-                  </DropdownMenuItem>
-                  {!isProjectScope && (
+
+            {/* Bottom Accessory Row with dropdown selectors side-by-side and Send button */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-black/8">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {/* 1. Context / Doc Selector */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-2 rounded-lg border-black/10 bg-white px-3 text-xs font-medium text-black/70 shadow-sm hover:bg-black/[0.02] hover:border-black/20 hover:text-black transition-all disabled:opacity-25"
+                      disabled={isThinking || (isProjectScope ? availableReferenceDocuments.length === 0 : availableReferenceDocuments.length <= 1)}
+                    >
+                      <Link2 className="h-3.5 w-3.5 text-black/40" />
+                      <span className="max-w-[120px] truncate">{selectedReferenceLabel}</span>
+                      <ChevronDown className="h-3 w-3 text-black/30" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="top" align="start" className="max-h-80 w-72 overflow-y-auto rounded-xl border-black/10 bg-white p-1.5 text-black shadow-xl z-50">
+                    <DropdownMenuLabel className="px-2.5 py-1.5 text-[10px] font-semibold text-black/40 uppercase tracking-wider">Refer to</DropdownMenuLabel>
+                    <DropdownMenuSeparator className="bg-black/5 mx-1" />
                     <DropdownMenuItem
                       onSelect={(event) => {
                         event.preventDefault();
-                        setSelectedReferenceIds(["all"]);
+                        setSelectedReferenceIds([]);
                       }}
-                      className="items-start gap-2"
+                      className="flex items-center justify-between rounded-lg hover:bg-black/[0.04] cursor-pointer text-xs py-2 px-2.5"
                     >
-                      <Check className={cn("mt-0.5 h-4 w-4", selectedReferenceIds.includes("all") ? "opacity-100" : "opacity-0")} />
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium">All project docs</span>
+                      <span className="text-black/80">
+                        {isProjectScope ? "All project docs" : "Current contract only"}
                       </span>
+                      {selectedReferenceIds.length === 0 && <Check className="h-3.5 w-3.5 text-black/40" />}
                     </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
-                  {availableReferenceDocuments.map((document) => {
-                    const isReady = isReferenceDocumentReady(document);
-                    return (
-                      <DropdownMenuCheckboxItem
-                        key={document.id}
-                        checked={(!isProjectScope && document.isCurrent) || selectedReferenceSet.has(document.id)}
-                        disabled={(!isProjectScope && document.isCurrent) || !isReady}
+                    {!isProjectScope && (
+                      <DropdownMenuItem
                         onSelect={(event) => {
                           event.preventDefault();
-                          if ((isProjectScope || !document.isCurrent) && isReady) {
-                            toggleReferenceDocument(document.id);
-                          }
+                          setSelectedReferenceIds(["all"]);
                         }}
-                        className="items-start"
+                        className="flex items-center justify-between rounded-lg hover:bg-black/[0.04] cursor-pointer text-xs py-2 px-2.5"
                       >
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm">{document.name}</span>
-                          <span className="block text-xs text-gray-500">
-                            {!isProjectScope && document.isCurrent ? "Current" : isReady ? "Indexed" : document.status || "Not indexed"}
+                        <span className="text-black/80">All project docs</span>
+                        {selectedReferenceIds.includes("all") && <Check className="h-3.5 w-3.5 text-black/40" />}
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator className="bg-black/5 mx-1" />
+                    {availableReferenceDocuments.map((document) => {
+                      const isReady = isReferenceDocumentReady(document);
+                      const isChecked = (!isProjectScope && document.isCurrent) || selectedReferenceSet.has(document.id);
+                      return (
+                        <DropdownMenuCheckboxItem
+                          key={document.id}
+                          checked={isChecked}
+                          disabled={(!isProjectScope && document.isCurrent) || !isReady}
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            if ((isProjectScope || !document.isCurrent) && isReady) {
+                              toggleReferenceDocument(document.id);
+                            }
+                          }}
+                          className="flex items-start gap-2.5 p-2 rounded-lg hover:bg-black/5 cursor-pointer text-xs transition-colors"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium text-black/80">{document.name}</span>
+                            <span className="block text-[10px] text-black/40 truncate">
+                              {!isProjectScope && document.isCurrent ? "Current" : isReady ? "Indexed" : document.status || "Not indexed"}
+                            </span>
                           </span>
-                        </span>
-                      </DropdownMenuCheckboxItem>
-                    );
-                  })}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 min-w-0 max-w-[148px] gap-1 rounded-full border-transparent bg-cs-primary/10 px-2 text-xs text-cs-primary shadow-none hover:bg-cs-primary/20 hover:text-cs-primary"
-                    disabled={isThinking}
-                    title="Choose model"
-                    aria-label={`Choose model, currently ${providerLabel(selectedProvider)}`}
-                  >
-                    <Sparkles className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">Model: {providerLabel(selectedProvider)}</span>
-                    <ChevronDown className="h-3 w-3 shrink-0 text-gray-400" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="start" className="w-56">
-                  {modelOptions.map((option) => (
-                    <DropdownMenuItem
-                      key={option.value}
-                      onClick={() => handleProviderChange(option.value)}
-                      className="items-start gap-2"
+                        </DropdownMenuCheckboxItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* 2. Model Selector */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-2 rounded-lg border-black/10 bg-white px-3 text-xs font-medium shadow-sm hover:bg-black/[0.02] hover:border-black/20 transition-all disabled:opacity-25"
+                      disabled={isThinking}
+                      style={{
+                        color: selectedProvider === "claude" ? "#6b4fa0" : selectedProvider === "openai" ? "#10a37f" : selectedProvider === "gemini" ? "#4285f4" : "#333"
+                      }}
                     >
-                      <Check className={cn("mt-0.5 h-4 w-4", selectedProvider === option.value ? "opacity-100" : "opacity-0")} />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium">{option.label}</span>
-                        <span className="block text-xs text-gray-500">{option.description}</span>
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                      <Sparkles className="h-3.5 w-3.5" style={{ opacity: 0.7 }} />
+                      <span>{providerLabel(selectedProvider)}</span>
+                      <ChevronDown className="h-3 w-3 text-black/30" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="top" align="start" className="w-52 rounded-xl border-black/10 bg-white p-1.5 text-black shadow-xl z-50">
+                    {modelOptions.map((option) => (
+                      <DropdownMenuItem
+                        key={option.value}
+                        onClick={() => handleProviderChange(option.value)}
+                        className="flex flex-col items-start gap-0.5 rounded-lg hover:bg-black/[0.04] cursor-pointer px-2.5 py-2 text-xs"
+                      >
+                        <div className="flex items-center gap-1.5 w-full font-medium text-black/80">
+                          {option.label}
+                          {selectedProvider === option.value && <Check className="h-3.5 w-3.5 ml-auto text-black/40" />}
+                        </div>
+                        <span className="text-[10px] text-black/35">{option.description}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+
+              {/* Send button */}
+              <Button
+                type="submit"
+                disabled={!draft.trim() || isThinking}
+                className="h-8 w-8 rounded-lg bg-black hover:bg-black/85 text-white transition-all duration-200 shadow-sm disabled:bg-black/8 disabled:text-black/20 disabled:shadow-none"
+              >
+                {isThinking ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ArrowRight className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
         </form>
         <p className="pt-1.5 text-center text-[11px] leading-4 text-gray-500">AI can make mistakes. Answers are not legal advice.</p>

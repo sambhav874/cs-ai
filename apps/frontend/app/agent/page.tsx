@@ -27,7 +27,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 
 import {
-
   Sparkles,
   ChevronDown,
   ArrowRight,
@@ -40,6 +39,7 @@ import {
   FileText,
   History,
   MessageSquare,
+  Copy,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAccountContext } from "@/app/context/AccountContext";
@@ -259,6 +259,43 @@ function normalizeCitationMarkerText(text: string, refMap: Map<number, number>, 
     const uniqueDisplayRefs = Array.from(new Set(displayRefs));
     return `[${uniqueDisplayRefs.join(", ")}]`;
   });
+}
+
+function MessageActions({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy text: ", err);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 mt-2 px-1 text-black/35">
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-black/5 hover:text-black/70 transition-colors"
+        title="Copy message"
+      >
+        {copied ? (
+          <>
+            <Check className="h-3.5 w-3.5 text-green-600 animate-in fade-in zoom-in duration-200" />
+            <span className="text-[10px] text-green-600 font-medium">Copied</span>
+          </>
+        ) : (
+          <>
+            <Copy className="h-3.5 w-3.5" />
+            <span className="text-[10px] font-medium">Copy</span>
+          </>
+        )}
+      </button>
+    </div>
+  );
 }
 
 export default function StandaloneAgentPage() {
@@ -1199,6 +1236,7 @@ export default function StandaloneAgentPage() {
                             {msg.content}
                           </ReactMarkdown>
                         </div>
+                        {msg.content && <MessageActions text={msg.content} />}
                         {msg.isValidating && (
                           <p className="text-[11px] text-black/30 italic mt-1 animate-pulse">
                             Validating citations…
