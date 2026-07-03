@@ -152,6 +152,7 @@ function DashboardContent() {
   const { selectedAccountId, isInitialized: accountInitialized } = useAccountContext();
   const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL;
   const initialFetchCompleted = useRef(false);
+  const paginationRef = useRef(pagination);
 
   const {
     token,
@@ -335,9 +336,13 @@ function DashboardContent() {
     }
   }, [apiUrl, authenticatedFetch, handleApiError]);
 
+  useEffect(() => {
+    paginationRef.current = pagination;
+  }, [pagination]);
+
   const fetchDocuments = useCallback(async (
-    page = pagination.currentPage,
-    perPage = pagination.itemsPerPage,
+    page = paginationRef.current.currentPage,
+    perPage = paginationRef.current.itemsPerPage,
     search = contractSearch,
     currentStatusFilter = statusFilter,
     sortBy = sortConfig.field,
@@ -421,11 +426,11 @@ function DashboardContent() {
 
       setDocuments(newDocs);
       const activeProcessId = newDocs.find((doc) => doc.isProcessing)?._id;
-      if (!activeProcessId && currentlyProcessing) {
-        setCurrentlyProcessing(null);
-      } else if (activeProcessId && !currentlyProcessing) {
-        setCurrentlyProcessing(activeProcessId);
-      }
+      setCurrentlyProcessing((current) => {
+        if (!activeProcessId && current) return null;
+        if (activeProcessId && !current) return activeProcessId;
+        return current;
+      });
 
       setPagination({
         currentPage: (data as any).pagination.current_page,
@@ -448,8 +453,6 @@ function DashboardContent() {
     hasInitialized,
     selectedProjectId,
     selectedAccountId,
-    pagination.currentPage,
-    pagination.itemsPerPage,
     contractSearch,
     statusFilter,
     sortConfig,
@@ -457,7 +460,6 @@ function DashboardContent() {
     apiUrl,
     handleApiError,
     fetchContractStatus,
-    currentlyProcessing,
   ]);
 
   const fetchProjectPlaybooks = useCallback(async () => {
@@ -1529,4 +1531,3 @@ function DashboardContent() {
     </div>
   );
 }
-
