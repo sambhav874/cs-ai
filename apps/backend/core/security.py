@@ -147,11 +147,14 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 def _cookie_security_attrs() -> dict[str, Any]:
-    return {
+    attrs = {
         "secure": settings.is_production,
         "samesite": "none" if settings.is_production else "lax",
         "path": "/",
     }
+    if getattr(settings, "cookie_domain", None):
+        attrs["domain"] = settings.cookie_domain
+    return attrs
 
 
 def _allowed_csrf_origins() -> set[str]:

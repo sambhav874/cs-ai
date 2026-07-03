@@ -309,13 +309,8 @@ def approve_workflow(
     if state.approval_request.action == "extract_kpis":
         return _approve_kpi_extraction_workflow(state, current_user)
     if state.approval_request.action in {
-        "create_draft_artifact",
-        "create_modified_copy",
-        "create_redline_artifact",
         "create_editable_copy",
         "duplicate_document_copy",
-        "edit_document",
-        "generate_docx",
         "replicate_document",
     }:
         return _approve_artifact_workflow(state, current_user)
@@ -505,123 +500,13 @@ def _approve_artifact_workflow(state: AgentRunState, current_user: UserInDB) -> 
             count=int(payload.get("count") or 1),
         )
         artifacts = [document.to_payload(contract_id=scope_id or contract_id) for document in copied]
-    elif action == "edit_document":
-        document_id = str(payload.get("document_id") or "")
-        edits = payload.get("edits") if isinstance(payload.get("edits"), list) else []
-        if not document_id or not edits:
-            raise HTTPException(status_code=400, detail="Missing document_id or edits for tracked edit workflow.")
-        result = _agent_documents().edit_document(
-            contract_id=contract_id or None,
-            project_id=str(project_id) if project_id else None,
-            user_id=str(current_user.id),
-            document_id=document_id,
-            edits=edits,
-        )
-        if not result:
-            raise HTTPException(status_code=404, detail="Agent document not found.")
-        artifacts = [{
-            "artifact_id": f"artifact-{result.version_id}",
-            "document_id": result.document_id,
-            "version_id": result.version_id,
-            "version_number": result.version_number,
-            "filename": result.filename,
-            "download_url": result.download_url,
-            "artifact_kind": "tracked_edit_document",
-            "editable": True,
-            "edit_annotations": result.annotations,
-            "errors": result.errors,
-        }]
-    elif action == "create_modified_copy":
-        document_id = str(payload.get("document_id") or "")
-        edits = payload.get("edits") if isinstance(payload.get("edits"), list) else []
-        if not document_id or not edits:
-            raise HTTPException(status_code=400, detail="Missing document_id or edits for modified copy workflow.")
-        contract_name = str(payload.get("contract_name") or "")
-        if not contract_id and not ObjectId.is_valid(document_id):
-            raise HTTPException(status_code=400, detail="Invalid document_id for modified copy workflow.")
-        result = _agent_documents().create_modified_copy(
-            contract_id=contract_id or None,
-            project_id=str(project_id) if project_id else None,
-            user_id=str(current_user.id),
-            session_id=session_id,
-            document_id=document_id,
-            edits=edits,
-            source_contract_name=contract_name,
-            contracts_collection=collection,
-            fs=fs,
-        )
-        if not result:
-            raise HTTPException(status_code=404, detail="Document not found or could not be processed.")
-        artifacts = [{
-            "artifact_id": f"artifact-{result.version_id}",
-            "document_id": result.document_id,
-            "version_id": result.version_id,
-            "version_number": result.version_number,
-            "filename": result.filename,
-            "download_url": result.download_url,
-            "artifact_kind": "modified_copy",
-            "editable": True,
-            "edit_annotations": result.annotations,
-            "errors": result.errors,
-        }]
     else:
-        source_text = ""
-        contract_name = str(payload.get("contract_name") or "Contract Work Product")
-        if contract_id and ObjectId.is_valid(contract_id):
-            contract_doc = collection.find_one(
-                {"_id": ObjectId(contract_id)},
-                {"contract_name": 1, "projectId": 1, "index.content": 1},
-            )
-            if contract_doc:
-                contract_name = str(contract_doc.get("contract_name") or contract_name)
-                source_text = str((contract_doc.get("index") or {}).get("content") or "")
-                if not project_id and contract_doc.get("projectId"):
-                    project_id = str(contract_doc.get("projectId"))
-        question = str(payload.get("question") or state.message)
-        answer = str(payload.get("answer") or state.answer)
-        draft_type = payload.get("draft_type") or detect_work_product_type(question, answer)
-        if action == "create_redline_artifact":
-            raw_changes = payload.get("redline_changes") if isinstance(payload.get("redline_changes"), list) else []
-            changes = [
-                redline_change_from_payload(item)
-                for item in raw_changes
-                if isinstance(item, dict)
-            ]
-            result = _agent_documents().create_redline_from_agent_turn(
-                contract_id=scope_id or contract_id,
-                project_id=str(project_id) if project_id else None,
-                user_id=str(current_user.id),
-                session_id=session_id,
-                contract_name=contract_name,
-                question=question,
-                source_text=source_text,
-                changes=changes or None,
-            )
-        else:
-            result = _agent_documents().create_from_agent_turn(
-                contract_id=scope_id or contract_id,
-                project_id=str(project_id) if project_id else None,
-                user_id=str(current_user.id),
-                session_id=session_id,
-                contract_name=contract_name,
-                question=question,
-                answer=answer,
-                source_text=source_text,
-                draft_type=str(draft_type) if draft_type else None,
-            )
-        if result:
-            artifacts = [result.to_payload(contract_id=scope_id or contract_id)]
+        raise HTTPException(status_code=400, detail=f"Unsupported approval action: {action}")
 
     state.status = AgentStatus.COMPLETED
     state.approval_request = None
     state.artifacts = artifacts
-    if artifacts and action == "create_redline_artifact":
-        state.answer = "Approved. I created a DOCX redline copy with the approved tracked changes applied to the original contract text."
-    elif artifacts and action == "edit_document":
-        state.answer = "Approved. I created a tracked-edit DOCX version with deterministic source-text matches and pending edit cards."
-    elif artifacts and action == "create_modified_copy":
-        state.answer = "Approved. I created a modified copy with the requested changes applied as tracked edits."
-    elif not artifacts:
+    if not artifacts:
         state.answer = f"{state.answer}\n\nNo artifact was created because there was no eligible assistant work product to save."
     state.reason = "Human approved the assistant work-product side effect."
     state.add_trace("approval_executed", action=action, artifact_count=len(artifacts))
@@ -804,46 +689,7 @@ def _create_stream_artifact_approval(
     return DeepContractAgentRunner(store=_agent_run_store()).response_from_state(state)
 
 
-def _artifact_approval_action(question: str, answer: str, draft_type: Optional[str]) -> str:
-    del answer
-    haystack = question
-    should_edit = bool(re.search(
-        r"\b(change|replace|revise|edit|amend|apply|redline)\b",
-        haystack,
-        flags=re.IGNORECASE,
-    ))
-    return "create_redline_artifact" if should_edit or draft_type == "edit_suggestions" else "create_draft_artifact"
 
-
-def _redline_approval_details(
-    *,
-    question: str,
-    source_text: str,
-    contract_name: str,
-) -> Tuple[str, str, str, Dict[str, Any]]:
-    changes = build_redline_changes_from_request(
-        question=question,
-        source_text=source_text,
-        contract_name=contract_name,
-    )
-    changes_payload = [redline_change_to_payload(change) for change in changes]
-    if changes_payload:
-        first_change = changes_payload[0]
-        answer = (
-            "I prepared a source-matched redline proposal. Review the change card below; "
-            "on approval I will create a DOCX copy with Word tracked changes applied to the original contract text."
-        )
-        description = (
-            f"{len(changes_payload)} proposed change: "
-            f"{first_change.get('matched_text')} -> {first_change.get('suggested_revision') or '[delete]'}"
-        )
-    else:
-        answer = (
-            "I can create a redline artifact, but I could not confidently identify the exact source text to change. "
-            "Approval will create a draft artifact rather than applying a tracked change."
-        )
-        description = "Approve before creating the redline artifact."
-    return answer, "Approve redline changes", description, {"redline_changes": changes_payload}
 
 
 def _kpi_manager() -> ContractKPIManager:
@@ -2814,45 +2660,7 @@ def stream_project_agent(
                     yield format_sse_event("approval_required", approval_response.model_dump(mode="json"))
                     yield format_sse_event("done", {})
                     return
-                elif not operational_payload and should_generate_docx_work_product(
-                    request.message.strip(),
-                    answer_text,
-                    detect_work_product_type(request.message, answer_text),
-                ):
-                    draft_type = detect_work_product_type(request.message, answer_text)
-                    action = _artifact_approval_action(request.message, answer_text, draft_type)
-                    approval_response = _create_stream_artifact_approval(
-                        user_id=user_id_text,
-                        message=request.message,
-                        answer=answer_text,
-                        context=deep_agent_context,
-                        action=action,
-                        title="Create assistant work product",
-                        description="Approve before creating a DOCX artifact from this drafted answer.",
-                        payload={
-                            "scope_id": project_scope_id,
-                            "project_id": project_id,
-                            "session_id": session_id,
-                            "contract_name": project_name,
-                            "question": request.message.strip(),
-                            "answer": answer_text,
-                            "draft_type": draft_type,
-                        },
-                        ai_provider=request.ai_provider,
-                        workflow=AgentWorkflow.REDLINE if action == "create_redline_artifact" else AgentWorkflow.DRAFT,
-                    )
-                    _persist_stream_agent_gate_message(
-                        memory=memory,
-                        session_id=session_id,
-                        scope_id=project_scope_id,
-                        project_id=project_id,
-                        user_id=user_id_text,
-                        question=request.message.strip(),
-                        response=approval_response,
-                    )
-                    yield format_sse_event("approval_required", approval_response.model_dump(mode="json"))
-                    yield format_sse_event("done", {})
-                    return
+
 
                 final_payload["artifacts"] = artifacts
                 yield format_sse_event("final", final_payload)
@@ -3173,7 +2981,6 @@ def stream_contract_agent(
                     elif event_type == "delta":
                         # Token chunks from _stream_text_response — forward immediately
                         yield format_sse_event("delta", payload)
-                        yield format_sse_event("text", payload)
                     else:
                         yield format_sse_event(event_type, payload)
                 except queue.Empty:
@@ -3390,54 +3197,7 @@ def stream_contract_agent(
                     yield format_sse_event("approval_required", approval_response.model_dump(mode="json"))
                     yield format_sse_event("done", {})
                     return
-                elif not operational_payload and should_generate_docx_work_product(request.message.strip(), answer_text, detect_work_product_type(request.message, answer_text)):
-                    draft_type = detect_work_product_type(request.message, answer_text)
-                    action = _artifact_approval_action(request.message, answer_text, draft_type)
-                    should_emit_edit = action == "create_redline_artifact"
-                    approval_answer = answer_text
-                    approval_title = "Create redline artifact" if should_emit_edit else "Create draft artifact"
-                    approval_description = "Approve before creating a DOCX artifact from this assistant answer."
-                    approval_payload_extra: Dict[str, Any] = {}
-                    if should_emit_edit:
-                        approval_answer, approval_title, approval_description, approval_payload_extra = _redline_approval_details(
-                            question=request.message.strip(),
-                            source_text=index_content,
-                            contract_name=contract.get("contract_name", contract_id),
-                        )
-                    approval_response = _create_stream_artifact_approval(
-                        user_id=user_id_text,
-                        message=request.message,
-                        answer=approval_answer,
-                        context=deep_agent_context,
-                        action=action,
-                        title=approval_title,
-                        description=approval_description,
-                        payload={
-                            "scope_id": contract_id,
-                            "contract_id": contract_id,
-                            "project_id": project_id_text,
-                            "session_id": session_id,
-                            "contract_name": contract.get("contract_name", contract_id),
-                            "question": request.message.strip(),
-                            "answer": answer_text,
-                            "draft_type": draft_type,
-                            **approval_payload_extra,
-                        },
-                        ai_provider=request.ai_provider,
-                        workflow=AgentWorkflow.REDLINE if should_emit_edit else AgentWorkflow.DRAFT,
-                    )
-                    _persist_stream_agent_gate_message(
-                        memory=memory,
-                        session_id=session_id,
-                        scope_id=contract_id,
-                        project_id=project_id_text,
-                        user_id=user_id_text,
-                        question=request.message.strip(),
-                        response=approval_response,
-                    )
-                    yield format_sse_event("approval_required", approval_response.model_dump(mode="json"))
-                    yield format_sse_event("done", {})
-                    return
+
                 if artifacts:
                     final_payload["artifacts"] = artifacts
                 yield format_sse_event("final", final_payload)

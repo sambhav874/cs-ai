@@ -48,8 +48,6 @@ const TOOL_LABELS: Record<string, string> = {
   list_documents: "list_documents",
   get_kpi_context: "get_kpi_context",
   calculate_from_evidence: "calculate_from_evidence",
-  create_draft_artifact: "create_draft_artifact",
-  create_redline_artifact: "create_redline_artifact",
   suggest_tabular_review: "suggest_tabular_review",
   create_tabular_review: "create_tabular_review",
   extract_kpis: "extract_kpis",

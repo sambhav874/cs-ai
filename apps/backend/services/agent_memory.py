@@ -27,6 +27,11 @@ def _clean_text(value: Any, limit: int = 2000) -> str:
     return text[:limit]
 
 
+def _clean_message_content(value: Any, limit: int = 12000) -> str:
+    text = str(value or "").strip()
+    return text[:limit]
+
+
 def _title_from_message(message: str) -> str:
     title = _clean_text(message, 80)
     return title or "Contract assistant chat"
@@ -216,7 +221,7 @@ class AgentMemoryManager:
             "contract_id": contract_id,
             "user_id": user_id,
             "role": role,
-            "content": _clean_text(content, 12000),
+            "content": _clean_message_content(content, 12000),
             "metadata": metadata or {},
             "created_at": now,
         }
@@ -385,7 +390,7 @@ class AgentMemoryManager:
             "draft_type": draft_type,
             "title": _title_from_message(question),
             "prompt": _clean_text(question, 1000),
-            "content": _clean_text(answer, 20000),
+            "content": _clean_message_content(answer, 20000),
             "metadata": stored_metadata,
             "status": "draft",
             "created_at": now,

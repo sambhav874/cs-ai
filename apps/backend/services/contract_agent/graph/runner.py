@@ -90,7 +90,7 @@ class DeepContractAgentRunner:
         requires_approval = state.status == AgentStatus.WAITING_APPROVAL
         if state.answer:
             state.answer = re.sub(
-                r"【(\d+(?:\s*,\s*\d+)*)】",
+                r"【(\d+(?:\s*,\s*\d+)*)(?:†[^】\n]*)?】",
                 lambda m: f"[{m.group(1)}]",
                 state.answer
             )
@@ -151,7 +151,7 @@ class DeepContractAgentRunner:
         state.add_trace("final_response", status=state.status.value)
         if state.answer:
             state.answer = re.sub(
-                r"【(\d+(?:\s*,\s*\d+)*)】",
+                r"【(\d+(?:\s*,\s*\d+)*)(?:†[^】\n]*)?】",
                 lambda m: f"[{m.group(1)}]",
                 state.answer
             )

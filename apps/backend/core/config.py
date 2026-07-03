@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     marker_api_key: str = Field(default=None, env="MARKER_API_KEY")
     marker_api_url: str = Field(default = "https://www.datalab.to/api/v1/marker", env= "MARKER_API_URL")
     domain: str = Field(default="http://localhost:4200", env="DOMAIN")
+    cookie_domain: Optional[str] = Field(default=None, env="COOKIE_DOMAIN")
     secret_key: str = Field(..., env="SECRET_KEY") 
     algorithm: str = Field(default="HS256", env="ALGORITHM")
     access_token_expire_minutes: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
@@ -86,6 +87,7 @@ class Settings(BaseSettings):
     voyageai_api_key: str = Field(default="", env="VOYAGEAI_API_KEY")
     voyageai_model_name: str = Field(default="voyage-law-2", env="VOYAGEAI_MODEL_NAME")
     voyageai_embedding_dimension: int = Field(default=1024, env="VOYAGEAI_EMBEDDING_DIMENSION")
+    voyageai_auto_chunking: bool = Field(default=False, env="VOYAGEAI_AUTO_CHUNKING")
 
     # Reranker (VoyageAI direct HTTP — optional, config-gated)
     voyage_rerank_enabled: bool = Field(default=False, env="VOYAGE_RERANK_ENABLED")
