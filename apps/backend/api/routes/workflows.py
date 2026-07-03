@@ -610,7 +610,7 @@ async def submit_contract_for_approval(
               raise HTTPException(status_code=403, detail="Only the Account Owner or assigned Editor can submit for approval.")
 
     # Check if the status allows submission
-    allowed_statuses = ["Ready to Edit", "Editing", "Rejected"]
+    allowed_statuses = ["Ready to Edit", "Editing", "Rejected", "Ingested"]
     if current_status_before not in allowed_statuses:
          logger.warning(f"Submit denied for contract {contract_id}: Invalid status '{current_status_before}'. Must be one of {allowed_statuses}.")
          raise HTTPException(status_code=400, detail=f"Cannot submit contract with status '{current_status_before}'.")
@@ -743,7 +743,7 @@ async def approve_contract(
     # Update Database
     try:
         now = datetime.utcnow()
-        new_status_after = "Completed"
+        new_status_after = "Ingested"
         
         update_payload = {
             "status": new_status_after,
@@ -962,7 +962,7 @@ async def complete_personal_contract(
         )
 
     # Status Check
-    allowed_statuses = ["Ready to Edit", "Editing"]
+    allowed_statuses = ["Ready to Edit", "Editing", "Ingested"]
     if current_status not in allowed_statuses:
         raise HTTPException(
             status_code=400,
@@ -972,7 +972,7 @@ async def complete_personal_contract(
     try:
         now = datetime.utcnow()
         update_payload = {
-            "status": "Completed",
+            "status": "Ingested",
             "updatedAt": now
         }
 
@@ -1297,22 +1297,22 @@ async def acknowledge_reedit_denial(
 
     # Status Check: Must be in the correct state.
     if contract_before.get("status") != "Re-edit Denied":
-        # If it's already Completed, we don't need to do anything. Just return the contract.
-        if contract_before.get("status") == "Completed":
+        # If it's already Ingested, we don't need to do anything. Just return the contract.
+        if contract_before.get("status") in ["Completed", "Ingested"]:
             return await get_contract(contract_id=contract_id, current_user=current_user)
         raise HTTPException(status_code=400, detail="This contract is not in a 'Re-edit Denied' state.")
 
-    # Update the status to 'Completed'
+    # Update the status to 'Ingested'
     collection.update_one(
         {"_id": contract_oid},
-        {"$set": {"status": "Completed", "updatedAt": datetime.utcnow()}}
+        {"$set": {"status": "Ingested", "updatedAt": datetime.utcnow()}}
     )
     
     await create_audit_log(
         user=current_user,
         action="REEDIT_DENIAL_ACKNOWLEDGED",
         contract_id=contract_oid,
-        details={"oldStatus": "Re-edit Denied", "newStatus": "Completed"}
+        details={"oldStatus": "Re-edit Denied", "newStatus": "Ingested"}
     )
     
     return await get_contract(contract_id=contract_id, current_user=current_user)

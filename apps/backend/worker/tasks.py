@@ -526,7 +526,7 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                         "index.embedding_dimension": embedding_metadata.get("embedding_dimension"),
                         "index.embedded_at": datetime.utcnow(),
                         "index.updated_at": datetime.utcnow(), 
-                        "status": "Indexed",
+                        "status": "Ingested",
                         "credits_deducted": True
                     }
                 }

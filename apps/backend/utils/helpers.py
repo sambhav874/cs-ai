@@ -88,7 +88,7 @@ class JobManager:
             contract_update = {}
             
             if job["status"] == JobStatus.COMPLETED and job["job_type"] == "processing":
-                contract_update["status"] = "Ready to Edit"
+                contract_update["status"] = "Ingested"
 
             if contract_update:
                 self.contracts.update_one(

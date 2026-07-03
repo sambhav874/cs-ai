@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     azure_communication_connection_string: str = Field(..., env="AZURE_COMMUNICATION_CONNECTION_STRING")
     azure_sender_address: str = Field(..., env="AZURE_SENDER_ADDRESS")
 
-    marker_api_key: str = Field(default=None, env="MARKER_API_KEY")
+    marker_api_key: Optional[str] = Field(default=None, env="MARKER_API_KEY")
     marker_api_url: str = Field(default = "https://www.datalab.to/api/v1/marker", env= "MARKER_API_URL")
     domain: str = Field(default="http://localhost:4200", env="DOMAIN")
     cookie_domain: Optional[str] = Field(default=None, env="COOKIE_DOMAIN")

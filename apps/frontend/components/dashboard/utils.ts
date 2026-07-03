@@ -53,29 +53,26 @@ export function completedStatusForJob(jobType?: string) {
 
 export function getProcessingLabel(doc: DocumentWithProgress) {
   if (doc.error) return `Error: ${doc.error.message}`;
-  if (doc.status === "Ready to Edit") return "Ready to edit";
-  if (doc.status === "queued") return "Queued — waiting for service";
-  if (doc.status === "pending") return "Waiting";
-  if (doc.status === "Summarized") return "Summarized";
-  if (doc.status === "Indexed") return "Ingested";
-  if (doc.status === "Syncronizing") return "Indexing";
-
-  switch (doc.currentStep) {
-    case "indexing":
-      return `Indexing ${Math.round(doc.progress)}%`;
-    case "summarizing":
-      return `Analyzing ${Math.round(doc.progress)}%`;
-    case "processing":
-      return `Processing ${Math.round(doc.progress)}%`;
-    default:
-      return `Processing ${Math.round(doc.progress)}%`;
+  if (doc.status === "Ready to Edit" || doc.status === "Summarized" || doc.status === "Indexed" || doc.status === "Ingested" || doc.status === "Completed") {
+    return "Ingested";
   }
+  if (
+    doc.status === "queued" ||
+    doc.status === "pending" ||
+    doc.status === "Syncronizing" ||
+    doc.status === "Indexing" ||
+    doc.status === "Processing" ||
+    doc.status === "Uploaded"
+  ) {
+    return "Processing";
+  }
+
+  return `Processing ${Math.round(doc.progress)}%`;
 }
 
 export function statusClass(status: string) {
   switch (status) {
     case "Uploaded":
-      return "bg-muted text-muted-foreground border-border";
     case "Indexing":
     case "Summarizing":
     case "Processing":
@@ -87,6 +84,7 @@ export function statusClass(status: string) {
     case "Ready":
     case "Indexed":
     case "Ingested":
+    case "Completed":
       return "bg-sky-50 text-sky-700 border-sky-200";
     case "Editing":
       return "bg-indigo-50 text-indigo-700 border-indigo-200";
@@ -99,8 +97,6 @@ export function statusClass(status: string) {
     case "Error":
     case "error":
       return "bg-destructive/10 text-destructive border-destructive/20";
-    case "Completed":
-      return "bg-emerald-50 text-emerald-700 border-emerald-200";
     default:
       return "bg-muted text-muted-foreground border-border";
   }

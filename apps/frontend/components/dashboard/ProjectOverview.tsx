@@ -184,21 +184,19 @@ export function ProjectOverview({
               <TableHead className="w-[320px] pl-4">Name</TableHead>
               <TableHead className="w-24">Contracts</TableHead>
               <TableHead className="w-28">Processing</TableHead>
-              <TableHead className="w-32">Pending</TableHead>
-              <TableHead className="w-28">Completed</TableHead>
               <TableHead className="w-32">Updated</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody className="bg-card">
             {isProjectLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={4} className="h-32 text-center text-sm text-muted-foreground">
                   Loading projects...
                 </TableCell>
               </TableRow>
             ) : displayProjects.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={4} className="h-32 text-center text-sm text-muted-foreground">
                   No projects found.
                 </TableCell>
               </TableRow>
@@ -217,8 +215,6 @@ export function ProjectOverview({
                   </TableCell>
                   <TableCell className="text-muted-foreground/80">{project.stats?.total_documents || 0}</TableCell>
                   <TableCell className="text-muted-foreground/80">{project.stats?.processing_count || 0}</TableCell>
-                  <TableCell className="text-muted-foreground/80">{project.stats?.pending_approval_count || 0}</TableCell>
-                  <TableCell className="text-muted-foreground/80">{project.stats?.completed_count || 0}</TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(project.updatedAt)}</TableCell>
                 </TableRow>
               ))
