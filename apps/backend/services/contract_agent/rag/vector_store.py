@@ -22,6 +22,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
 from langchain_mongodb import MongoDBAtlasVectorSearch
+import voyageai
 from langchain_voyageai import VoyageAIEmbeddings
 
 from core.config import settings
@@ -313,6 +314,11 @@ def documents_for_vector_store(documents: List[Document], text_splitter: Any) ->
 class VectorStoreManager:
     """Manager to load documents, initialize embeddings, and manage MongoDB/Pinecone vector databases."""
 
+    # voyage-context-4 context-window cap (tokens).  Documents longer than this
+    # are split into sub-windows before calling contextualized_embed so that each
+    # API call stays safely below the model limit.
+    VOYAGE_CONTEXT_WINDOW_TOKENS: int = 120_000
+
     def __init__(self, ai_provider: str = "groq"):
         self.ai_provider = ai_provider.lower()
         self.hf_token = getattr(settings, "huggingface_token", None)
@@ -333,6 +339,8 @@ class VectorStoreManager:
         self.mongo_collection = None
         self.embeddings = None
         self.embedding_backend = None
+        # Single shared raw VoyageAI client (set during _initialize_embeddings when applicable)
+        self._vo_client: Optional[voyageai.Client] = None
 
         self.current_vector_backend = None
         self.current_namespace = None
@@ -362,6 +370,8 @@ class VectorStoreManager:
                 logger.info(
                     f"Initializing VoyageAI embeddings with model: {settings.voyageai_model_name}"
                 )
+                # Single shared raw client — reused everywhere in this instance
+                self._vo_client = voyageai.Client(api_key=self.voyageai_api_key)
                 self.embeddings = VoyageAIEmbeddings(
                     model=settings.voyageai_model_name,
                     voyage_api_key=self.voyageai_api_key,
@@ -754,20 +764,78 @@ class VectorStoreManager:
 
         if is_voyage_autochunk:
             logger.info(f"Using Voyage auto-chunking for contract {contract_name} with model {self.embedding_model}")
-            vo_client = self.embeddings._client
-            res = vo_client.contextualized_embed(
-                model=self.embedding_model,
-                inputs=[clean_content],
-                input_type="document",
-                enable_auto_chunking=True,
-                output_dimension=self.embedding_dimension,
+            vo_client = self._vo_client  # single shared client — no duplicate initialisation
+
+            # ------------------------------------------------------------------
+            # Context-window guard: voyage-context-4 hard cap = 120 k tokens.
+            # Split at paragraph boundaries, accumulating real token counts
+            # (via the same tokenizer used everywhere in the codebase) until
+            # the next paragraph would exceed the per-window target.
+            # ------------------------------------------------------------------
+            _MAX_TOKENS_PER_WINDOW = 110_000  # 10 k buffer below the 120 k cap
+            windows: List[str] = []
+            paragraphs = clean_content.split("\n\n")
+            current_parts: List[str] = []
+            current_tokens = 0
+
+            for para in paragraphs:
+                para_tokens = self.segmenter._estimated_tokens(para)
+                if para_tokens > _MAX_TOKENS_PER_WINDOW:
+                    # Single paragraph exceeds the cap — split it by sentences
+                    if current_parts:
+                        windows.append("\n\n".join(current_parts))
+                        current_parts, current_tokens = [], 0
+                    sentences = para.replace(". ", ".\n").split("\n")
+                    for sent in sentences:
+                        sent_tokens = self.segmenter._estimated_tokens(sent)
+                        if current_tokens + sent_tokens > _MAX_TOKENS_PER_WINDOW and current_parts:
+                            windows.append("\n\n".join(current_parts))
+                            current_parts, current_tokens = [sent], sent_tokens
+                        else:
+                            current_parts.append(sent)
+                            current_tokens += sent_tokens
+                elif current_tokens + para_tokens > _MAX_TOKENS_PER_WINDOW and current_parts:
+                    windows.append("\n\n".join(current_parts))
+                    current_parts, current_tokens = [para], para_tokens
+                else:
+                    current_parts.append(para)
+                    current_tokens += para_tokens
+
+            if current_parts:
+                windows.append("\n\n".join(current_parts))
+
+            logger.info(
+                "Document split into %d context window(s) for Voyage auto-chunking "
+                "(target ≤%d tokens/window, total doc tokens ~%d)",
+                len(windows), _MAX_TOKENS_PER_WINDOW,
+                self.segmenter._estimated_tokens(clean_content),
             )
-            if not res.results:
-                raise RuntimeError("Voyage auto-chunking returned no results.")
-                
-            result_obj = res.results[0]
-            chunk_texts = result_obj.chunk_texts
-            embeddings = result_obj.embeddings
+
+            chunk_texts: List[str] = []
+            embeddings: List[List[float]] = []
+
+            for win_idx, window_text in enumerate(windows):
+                win_tokens = self.segmenter._estimated_tokens(window_text)
+                logger.info(
+                    "Calling contextualized_embed for window %d/%d (~%d tokens)",
+                    win_idx + 1, len(windows), win_tokens,
+                )
+                res = vo_client.contextualized_embed(
+                    model=self.embedding_model,
+                    inputs=[window_text],
+                    input_type="document",
+                    enable_auto_chunking=True,
+                    output_dimension=self.embedding_dimension,
+                )
+                if not res.results:
+                    logger.warning("Voyage auto-chunking returned no results for window %d — skipping", win_idx + 1)
+                    continue
+                result_obj = res.results[0]
+                chunk_texts.extend(result_obj.chunk_texts)
+                embeddings.extend(result_obj.embeddings)
+
+            if not chunk_texts:
+                raise RuntimeError("Voyage auto-chunking returned no results across all windows.")
 
             # Function to find chunk offsets and pages
             def find_chunk_offsets_and_pages(
