@@ -45,10 +45,16 @@ contract_roles_collection = db["contract_roles"]
 teams_collection = db["teams"]
 audit_logs_collection = db["audit_logs"]
 projects_collection = db["projects"]
+eval_runs_collection = db["evaluation_runs"]
+eval_attempts_collection = db["evaluation_attempts"]
+eval_csvs_collection = db["evaluation_csvs"]
 
 # Async Collections (Motor)
 jobs_collection_async = async_db["jobs"]
 contracts_collection_async = async_db["contracts"]
+eval_runs_collection_async = async_db["evaluation_runs"]
+eval_attempts_collection_async = async_db["evaluation_attempts"]
+eval_csvs_collection_async = async_db["evaluation_csvs"]
 
 # GridFS
 fs = GridFS(db)

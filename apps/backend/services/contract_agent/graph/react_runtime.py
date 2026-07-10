@@ -236,7 +236,9 @@ class ContractReActRuntime:
 
                     if on_event:
                         on_event("status", {"message": "Writing answer…", "iteration": synth_iteration})
-                    answer = self._stream_text_response(model, messages, state, on_event, synth_iteration)
+                    provider = str(state.ai_provider or getattr(settings, "ai_provider", None) or "groq").lower()
+                    synthesis_model = tool_model if "groq" in provider else model
+                    answer = self._stream_text_response(synthesis_model, messages, state, on_event, synth_iteration)
                     _append_agent_debug_log(state.workflow_id, synth_iteration, synth_prompt_str, answer)
                     if answer:
                         state.react_iterations = max(state.react_iterations, iteration + 1)

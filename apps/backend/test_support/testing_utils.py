@@ -42,17 +42,20 @@ async def reset_and_seed_database(
         owner_id = ObjectId()
         editor_id = ObjectId()
         approver_id = ObjectId()
+        demouser_id = ObjectId()
         pro_team_id = ObjectId()
+        eval_team_id = ObjectId("600c00000000000000000001")
         
         users_to_create = [
-            { "_id": owner_id, "username": "test-uploader", "email": "uploader@test.com", "hashed_password": get_password_hash("password123"), "ownedAccountId": str(pro_team_id), "teamIds": [str(pro_team_id)], "disabled": False, "tokens": 0 },
-            { "_id": editor_id, "username": "test-editor", "email": "editor@test.com", "hashed_password": get_password_hash("password123"), "teamIds": [str(pro_team_id)], "disabled": False, "tokens": 0 },
-            { "_id": approver_id, "username": "test-approver", "email": "approver@test.com", "hashed_password": get_password_hash("password123"), "teamIds": [str(pro_team_id)], "disabled": False, "tokens": 0 }
+            { "_id": owner_id, "username": "test-uploader", "email": "uploader@test.com", "hashed_password": get_password_hash("password123"), "ownedAccountId": str(pro_team_id), "teamIds": [str(pro_team_id), str(eval_team_id)], "disabled": False, "tokens": 0 },
+            { "_id": editor_id, "username": "test-editor", "email": "editor@test.com", "hashed_password": get_password_hash("password123"), "teamIds": [str(pro_team_id), str(eval_team_id)], "disabled": False, "tokens": 0 },
+            { "_id": approver_id, "username": "test-approver", "email": "approver@test.com", "hashed_password": get_password_hash("password123"), "teamIds": [str(pro_team_id), str(eval_team_id)], "disabled": False, "tokens": 0 },
+            { "_id": demouser_id, "username": "demouser", "email": "demouser@contractsense.com", "hashed_password": get_password_hash("DemoPassword123!"), "teamIds": [str(eval_team_id)], "disabled": False, "tokens": 0 }
         ]
 
         # 4. Insert users and VERIFY the result
         insert_result = users_collection.insert_many(users_to_create)
-        if not insert_result.acknowledged or len(insert_result.inserted_ids) != 3:
+        if not insert_result.acknowledged or len(insert_result.inserted_ids) != 4:
             raise Exception("Seeding users failed: Insert not acknowledged or wrong count.")
         logging.info(f"--- DB SEEDING --- Successfully inserted {len(insert_result.inserted_ids)} users.")
 
@@ -63,8 +66,6 @@ async def reset_and_seed_database(
             "_id": pro_team_id,
             "name": "E2E Pro Team",
             "creatorId": owner_id,
-            
-            # --- START OF FIX ---
             "createdAt": now, # Add the required createdAt field
             "updatedAt": now, # Add the required updatedAt field
             "members": [
@@ -87,9 +88,43 @@ async def reset_and_seed_database(
                     "addedAt": now
                 }
             ]
-            # --- END OF FIX ---
+        })
+
+        teams_collection.insert_one({
+            "_id": eval_team_id,
+            "name": "Evaluation Team",
+            "creatorId": owner_id,
+            "createdAt": now,
+            "updatedAt": now,
+            "members": [
+                {
+                    "userId": owner_id, 
+                    "team_role": "admin",
+                    "addedBy": owner_id,
+                    "addedAt": now
+                },
+                {
+                    "userId": editor_id, 
+                    "team_role": "member",
+                    "addedBy": owner_id,
+                    "addedAt": now
+                },
+                {
+                    "userId": approver_id, 
+                    "team_role": "member",
+                    "addedBy": owner_id,
+                    "addedAt": now
+                },
+                {
+                    "userId": demouser_id,
+                    "team_role": "member",
+                    "addedBy": owner_id,
+                    "addedAt": now
+                }
+            ]
         })
         accounts_collection.insert_one({ "user_id": owner_id, "page_credits": 999 })
+        accounts_collection.insert_one({ "user_id": demouser_id, "page_credits": 10000 })
 
     except ConnectionFailure as e:
         logging.error(f"DATABASE CONNECTION FAILED: {e}")

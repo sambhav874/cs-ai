@@ -222,7 +222,7 @@ def _search_documents(
     documents: List[Dict[str, Any]],
     queries: Sequence[str],
     *,
-    top_k: int = 5,
+    top_k: int = 12,
     ai_provider: Optional[str] = None,
     intent: Optional[str] = None,
     must_contain: Optional[Sequence[str]] = None,

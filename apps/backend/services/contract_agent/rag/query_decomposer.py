@@ -1,8 +1,8 @@
-"""Optional query decomposition for complex multi-facet questions.
+"""Optional query decomposition for complex multi-facet contract questions.
 
 Config-gated via QUERY_DECOMPOSITION_ENABLED. Uses each provider's lightweight
-model to break a compound question into focused sub-queries, which are then
-retrieved independently.
+LangChain chat model with a structured Pydantic output to break a compound
+question into focused sub-queries retrieved independently.
 
 Provider → lightweight model mapping:
   groq   → llama-3.2-1b-preview
@@ -13,10 +13,11 @@ Provider → lightweight model mapping:
 
 from __future__ import annotations
 
-import json
 import logging
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 from core.config import settings
 
@@ -37,6 +38,31 @@ _LIGHTWEIGHT_MODELS: Dict[str, str] = {
 # Thresholds for when decomposition is worth the extra LLM call
 _MIN_COMPLEX_WORDS = 12
 _MAX_SIMPLE_SUBQUERIES = 5
+
+
+# ---------------------------------------------------------------------------
+# Structured output schema
+# ---------------------------------------------------------------------------
+
+
+class SubQueryList(BaseModel):
+    """Structured output for query decomposition."""
+
+    sub_queries: List[str] = Field(
+        description=(
+            "2–4 focused search queries that can each be answered independently "
+            "from contract text. Each sub-query targets ONE specific aspect "
+            "(obligation, payment, deadline, termination, liability, rate, "
+            "definition, etc.)."
+        ),
+        min_length=1,
+        max_length=5,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Complexity heuristic
+# ---------------------------------------------------------------------------
 
 
 def is_complex_query(query: str) -> bool:
@@ -60,134 +86,73 @@ def is_complex_query(query: str) -> bool:
     return any(indicator in normalized for indicator in conjunction_indicators)
 
 
-def _call_lightweight_model(
-    provider: str,
-    api_key: Optional[str],
-    prompt: str,
-    max_tokens: int = 256,
-) -> Optional[str]:
-    """Call the lightweight model for the given provider.
+# ---------------------------------------------------------------------------
+# LangChain model factory for lightweight models
+# ---------------------------------------------------------------------------
 
-    Returns the text content on success, None on failure.
-    """
-    import requests
 
+def _build_lightweight_llm(provider: str) -> Optional[object]:
+    """Build a LangChain chat model using the lightweight variant for the provider."""
     provider = (provider or "groq").lower()
+    model_name = _LIGHTWEIGHT_MODELS.get(provider, "llama-3.2-1b-preview")
 
-    if provider == "groq":
-        if not settings.groq_api_key:
-            return None
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {settings.groq_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": _LIGHTWEIGHT_MODELS.get(provider, "llama-3.2-1b-preview"),
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0,
-                "max_completion_tokens": max_tokens,
-            },
-            timeout=15.0,
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
-
-    if provider == "gemini":
-        if not settings.gemini_api_key:
-            return None
-        model = _LIGHTWEIGHT_MODELS.get(provider, "gemini-2.0-flash-lite")
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
-            f":generateContent?key={settings.gemini_api_key}"
-        )
-        resp = requests.post(
-            url,
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0},
-            },
-            timeout=15.0,
-        )
-        resp.raise_for_status()
-        parts = (resp.json().get("candidates", [{}])[0].get("content", {}).get("parts") or [])
-        return parts[0].get("text", "") if parts else ""
-
-    if provider == "claude":
-        if not getattr(settings, "anthropic_api_key", None):
-            return None
-        resp = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": getattr(settings, "anthropic_api_key", ""),
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": _LIGHTWEIGHT_MODELS.get(provider, "claude-haiku-4-5"),
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0,
-                "max_tokens": max_tokens,
-            },
-            timeout=15.0,
-        )
-        resp.raise_for_status()
-        blocks = resp.json().get("content") or []
-        return "".join(block.get("text", "") for block in blocks if block.get("type") == "text")
-
-    if provider == "openai":
-        if not settings.openai_api_key:
-            return None
-        resp = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {settings.openai_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": _LIGHTWEIGHT_MODELS.get(provider, "gpt-4o-mini"),
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0,
-                "max_tokens": max_tokens,
-            },
-            timeout=15.0,
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
-
-    return None
-
-
-def _extract_json_array(text: str) -> Optional[List[str]]:
-    """Extract a JSON array of strings from model output."""
-    text = (text or "").strip()
-
-    # Direct JSON parse
     try:
-        parsed = json.loads(text)
-        if isinstance(parsed, list):
-            return [str(item) for item in parsed if str(item).strip()]
-    except json.JSONDecodeError:
-        pass
+        if provider == "groq":
+            if not settings.groq_api_key:
+                return None
+            from langchain_groq import ChatGroq  # type: ignore[import]
 
-    # Code block
-    match = re.search(r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", text)
-    if match:
-        try:
-            return [str(item) for item in json.loads(match.group(1))]
-        except json.JSONDecodeError:
-            pass
+            return ChatGroq(
+                model=model_name,
+                api_key=settings.groq_api_key,
+                temperature=0.0,
+                max_tokens=256,
+            )
 
-    # Bare array
-    match = re.search(r"\[([\s\S]*?)\]", text)
-    if match:
-        try:
-            return [str(item) for item in json.loads(match.group(0))]
-        except json.JSONDecodeError:
-            pass
+        if provider == "openai":
+            if not settings.openai_api_key:
+                return None
+            from langchain_openai import ChatOpenAI  # type: ignore[import]
+
+            return ChatOpenAI(
+                model=model_name,
+                api_key=settings.openai_api_key or "",
+                temperature=0.0,
+                max_tokens=256,
+            )
+
+        if provider == "claude":
+            if not getattr(settings, "anthropic_api_key", None):
+                return None
+            from langchain_anthropic import ChatAnthropic  # type: ignore[import]
+
+            return ChatAnthropic(
+                model=model_name,
+                api_key=getattr(settings, "anthropic_api_key", "") or "",
+                temperature=0.0,
+                max_tokens=256,
+            )
+
+        if provider == "gemini":
+            if not getattr(settings, "gemini_api_key", None):
+                return None
+            from langchain_google_genai import ChatGoogleGenerativeAI  # type: ignore[import]
+
+            return ChatGoogleGenerativeAI(
+                model=model_name,
+                google_api_key=getattr(settings, "gemini_api_key", "") or "",
+                temperature=0.0,
+            )
+
+    except Exception as exc:
+        logger.debug("Could not build lightweight LLM for %s: %s", provider, exc)
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Core decomposition function
+# ---------------------------------------------------------------------------
 
 
 def decompose_query(
@@ -195,7 +160,7 @@ def decompose_query(
     provider: str = "groq",
     max_subqueries: Optional[int] = None,
 ) -> List[str]:
-    """Decompose a complex query into focused sub-queries.
+    """Decompose a complex query into focused sub-queries using a structured LLM output.
 
     Returns the original query unchanged if decomposition fails or is not needed.
     """
@@ -215,27 +180,31 @@ def decompose_query(
         "that can be answered independently from contract text. Each sub-query "
         "should target ONE specific aspect (obligation, payment, deadline, "
         "termination, liability, rate, definition, etc.).\n\n"
-        f"Question: {query}\n\n"
-        "Return ONLY a JSON array of strings, like: [\"subquery 1\", \"subquery 2\"]"
+        f"Question: {query}"
     )
 
     provider = (provider or "groq").lower()
+    llm = _build_lightweight_llm(provider)
+    if llm is None:
+        logger.debug("No lightweight LLM available for %s; using original query.", provider)
+        return [query]
+
     try:
-        response = _call_lightweight_model(provider, None, prompt)
-    except Exception:
-        logger.debug("Query decomposition LLM call failed; using original query.")
+        from langchain_core.messages import HumanMessage  # type: ignore[import]
+
+        structured = llm.with_structured_output(SubQueryList, method="json_schema")
+        result: SubQueryList = structured.invoke([HumanMessage(content=prompt)])
+        sub_queries = result.sub_queries
+    except Exception as exc:
+        logger.debug("Structured decomposition LLM call failed; using original query: %s", exc)
         return [query]
 
-    if not response:
-        return [query]
-
-    sub_queries = _extract_json_array(response)
     if not sub_queries:
         return [query]
 
     # Filter and deduplicate
-    clean = []
-    seen = set()
+    clean: List[str] = []
+    seen: set[str] = set()
     for sq in sub_queries:
         sq = re.sub(r"\s+", " ", sq).strip().rstrip(".")
         if len(sq) < 8 or sq.lower() in seen:
