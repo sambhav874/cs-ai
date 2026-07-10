@@ -1122,7 +1122,7 @@ function DashboardContent() {
     });
   }, [documents, contractView, currentUserInfo]);
 
-  const displayStatusForDoc = useCallback((doc: Document) => {
+  const displayStatusForDoc = useCallback((doc: DocumentWithProgress) => {
     const rawStatus = doc.status || "Unknown";
     if (doc.error || rawStatus === "Error" || rawStatus === "failed" || doc.index?.status === "blocked" || doc.index?.error) {
       return "Error";

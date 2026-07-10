@@ -36,7 +36,6 @@ import {
   XAxis, 
   YAxis, 
   CartesianGrid, 
-  ChartTooltip, 
   Legend, 
   ResponsiveContainer 
 } from "recharts";
