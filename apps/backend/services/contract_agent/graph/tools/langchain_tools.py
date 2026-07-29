@@ -96,6 +96,11 @@ def build_langchain_tools(
     """Build state-bound LangChain tools for one agent run."""
 
     def run_read_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        from services.contract_agent.graph.middleware import UnauthorizedAccessError
+        doc_id = args.get("document_id") or args.get("contract_id")
+        if doc_id and state.context.selected_document_ids:
+            if doc_id not in state.context.selected_document_ids:
+                raise UnauthorizedAccessError(f"Access to document {doc_id} is out of scoped context!")
         record = ToolCallRecord(
             name=name,
             args=_sanitize_args(args),
@@ -144,6 +149,11 @@ def build_langchain_tools(
         return result
 
     def run_approval_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        from services.contract_agent.graph.middleware import UnauthorizedAccessError
+        doc_id = args.get("document_id") or args.get("contract_id")
+        if doc_id and state.context.selected_document_ids:
+            if doc_id not in state.context.selected_document_ids:
+                raise UnauthorizedAccessError(f"Access to document {doc_id} is out of scoped context!")
         params = _sanitize_args(args)
         record = ToolCallRecord(
             name=name,

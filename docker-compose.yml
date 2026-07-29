@@ -118,6 +118,7 @@ services:
       dockerfile: apps/backend/Containerfile.worker
     volumes:
       - ./final_evaluation:/final_evaluation
+      - ./apps/backend:/app/backend
     env_file:
       - ./apps/backend/.env
     environment:

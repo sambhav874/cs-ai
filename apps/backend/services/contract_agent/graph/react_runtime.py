@@ -106,6 +106,15 @@ class ContractReActRuntime:
             attached_documents=state.context.attached_documents or None,
         )
 
+        state.add_trace(
+            "agent_start",
+            message=state.message,
+            surface=state.context.surface.value if hasattr(state.context, "surface") and hasattr(state.context.surface, "value") else str(state.context.surface),
+            provider=state.ai_provider,
+            project_id=state.context.project_id,
+            contract_id=state.context.contract_id,
+        )
+
         model: Any = None
         try:
             model = self.model or build_chat_model(state)
@@ -120,6 +129,7 @@ class ContractReActRuntime:
             if approval_payload:
                 self._apply_approval_payload(state, approval_payload)
                 return state
+            state.add_trace("agent_error", error=str(exc)[:800])
             return self._finish_cannot_answer(
                 state,
                 answer=self._model_failure_answer(exc),
@@ -161,6 +171,14 @@ class ContractReActRuntime:
                     content += f"\nTool Calls: {json.dumps(msg.tool_calls, default=str, indent=2)}"
                 prompt_str += f"\n--- Message {idx + 1} ({role}) ---\n{content}\n"
 
+            state.add_trace(
+                "prompt_sent",
+                iteration=iteration,
+                system_prompt_summary=system_prompt[:200] + "..." if len(system_prompt) > 200 else system_prompt,
+                user_message_snippet=user_message[:300],
+                messages_count=len(messages),
+            )
+
             response = self._invoke_tool_call(tool_model, messages, state)
             state.react_iterations = max(state.react_iterations, iteration)
 
@@ -173,23 +191,20 @@ class ContractReActRuntime:
 
             _append_agent_debug_log(state.workflow_id, iteration, prompt_str, raw_response_str)
 
-            # ── Emit thinking / reasoning content ──────────────────────────
-            # Different providers surface reasoning in different ways:
-            #
-            # • Claude (extended thinking): response.content is a list of blocks.
-            #   Thinking blocks have {"type": "thinking", "thinking": "..."}.
-            #   We must NOT include these in the final answer text.
-            #
-            # • Groq gpt-oss (reasoning_format="parsed"): top-level
-            #   response.reasoning_content attribute.
-            #
-            # • OpenAI o-series: reasoning tokens are internal and not exposed
-            #   in the message content, so nothing to extract here.
             reasoning = _extract_reasoning(response)
             if reasoning and on_event:
                 on_event("thinking", {"message": reasoning, "iteration": iteration})
 
             tool_calls = list(getattr(response, "tool_calls", None) or [])
+
+            state.add_trace(
+                "response_received",
+                iteration=iteration,
+                tool_calls_count=len(tool_calls),
+                tool_names=[c.get("name") for c in tool_calls] if tool_calls else [],
+                reasoning=reasoning[:200] if reasoning else None,
+                content_snippet=response.content[:300] if isinstance(response.content, str) else "",
+            )
 
             if tool_calls:
                 # Append the AI response to message history
@@ -448,6 +463,15 @@ class ContractReActRuntime:
                         "status": status,
                         "iteration": iteration,
                     })
+
+                state.add_trace(
+                    "tool_executed",
+                    iteration=iteration,
+                    tool=name,
+                    status=status,
+                    summary=summary[:300] if len(summary) > 300 else summary,
+                    result_length=len(content or ""),
+                )
 
                 tool_messages.append(
                     ToolMessage(

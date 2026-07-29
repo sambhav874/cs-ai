@@ -24,7 +24,7 @@ class EvaluationRunRequest(BaseModel):
     skip_citation_gate: bool = False
     model_name: Optional[str] = None
     max_cases_per_layer: Optional[int] = None
-    skip_approvals: bool = False
+    threshold_profile: str = "default"
     no_checkpoint: bool = False
     allow_short_token: bool = False
     context_id: Optional[str] = None
@@ -97,25 +97,21 @@ async def trigger_evaluation_run(
         
         api_base_url = f"http://127.0.0.1:{settings.port if hasattr(settings, 'port') else 8000}/api/v1"
         
-        if payload.dataset == "all":
-            task_ids = []
-            for ds in ["cuad", "acord", "kpi"]:
-                params = payload.model_dump()
-                params["dataset"] = ds
-                params["auth_token"] = token
-                params["api_base_url"] = api_base_url
-                task = run_evaluation_suite_task.delay(params)
-                task_ids.append(task.id)
-            return {"status": "running", "task_id": task_ids[0], "task_ids": task_ids}
-        
         params = payload.model_dump()
         params["auth_token"] = token
         params["api_base_url"] = api_base_url
         
-        # Trigger background task
-        task = run_evaluation_suite_task.delay(params)
-        
-        return {"status": "running", "task_id": task.id}
+        # Trigger background task with fallback if Celery broker (RabbitMQ/Redis) is offline
+        try:
+            task = run_evaluation_suite_task.delay(params)
+            return {"status": "running", "task_id": task.id, "run_group": payload.dataset == "all"}
+        except Exception as celery_err:
+            logger.warning(f"Celery broker connection refused ({celery_err}). Executing evaluation run directly in background thread.")
+            import uuid, asyncio
+            fallback_id = f"local-eval-{uuid.uuid4().hex[:8]}"
+            # Execute synchronously in a background thread
+            asyncio.create_task(asyncio.to_thread(run_evaluation_suite_task, params))
+            return {"status": "running", "task_id": fallback_id, "run_group": payload.dataset == "all"}
     except Exception as e:
         logger.error(f"Failed to trigger evaluation run: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -159,26 +155,29 @@ async def get_run_progress_status(
         
         run_doc = eval_runs_collection.find_one({"celery_task_id": task_id}, {"_id": 0})
         if not run_doc:
-            # Task not found in DB yet (check celery task state)
-            from celery.result import AsyncResult
-            res = AsyncResult(task_id)
+            celery_state = "PENDING"
+            try:
+                from celery.result import AsyncResult
+                res = AsyncResult(task_id)
+                celery_state = res.state
+            except Exception:
+                pass
             return {
                 "task_id": task_id,
                 "status": "pending",
-                "celery_state": res.state,
+                "celery_state": celery_state,
                 "logs": "",
                 "offset": 0
             }
             
         status = run_doc.get("status", "running")
-        run_id = run_doc.get("run_id")
+        run_id = run_doc.get("run_id", "")
         dataset = run_doc.get("dataset_key", "cuad")
-        dry_run = run_doc.get("methodology", {}).get("dry_run", True)
         
         if "__" in run_id:
             log_path = REPORTS_DIR / run_id.replace("__", "/") / "console.log"
         else:
-            log_path = REPORTS_DIR / f"{dataset}_{mode_suffix}" / run_id / "console.log"
+            log_path = REPORTS_DIR / run_id / "console.log"
         
         logs = ""
         new_offset = offset
@@ -206,10 +205,26 @@ async def get_run_progress_status(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/groups/{run_group_id}", response_model=Dict[str, Any])
+async def get_run_group_details(
+    run_group_id: str,
+    current_user: UserInDB = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """Retrieve aggregated details and child runs for a daily benchmark run group."""
+    try:
+        return EvaluationParser.get_group_details(run_group_id)
+    except Exception as e:
+        logger.error(f"Failed to get group details for '{run_group_id}': {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{run_id}", response_model=Dict[str, Any])
 async def get_evaluation_details(
     run_id: str,
     layer: Optional[str] = Query(None, description="Filter by layer: pac1, rag, or tools"),
+    family: Optional[str] = Query(None, description="Filter by canonical family: sanity, functional, non_functional, or operational"),
+    execution_mode: Optional[str] = Query(None, description="Filter by execution mode: live_agent, integration, or mocked"),
+    benchmark_metric: Optional[bool] = Query(None, description="Filter by benchmark_metric flag"),
     status: Optional[str] = Query(None, description="Filter by status: passed or failed"),
     search: Optional[str] = Query(None, description="Search cases by prompt text or contract title"),
     page: int = Query(1, ge=1, description="Page number"),
@@ -221,6 +236,9 @@ async def get_evaluation_details(
         details = EvaluationParser.get_run_details(
             run_id=run_id,
             layer=layer,
+            family=family,
+            execution_mode=execution_mode,
+            benchmark_metric=benchmark_metric,
             status=status,
             search=search,
             page=page,
@@ -249,4 +267,3 @@ async def get_evaluation_csv(
     except Exception as e:
         logger.error(f"Failed to get CSV '{csv_name}' for run '{run_id}': {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
