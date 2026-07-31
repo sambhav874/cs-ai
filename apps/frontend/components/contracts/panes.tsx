@@ -436,6 +436,27 @@ interface ContractKPI {
   breach_email_template?: string | null;
   extraction_method?: string;
   updated_at?: string;
+  custom_attributes?: Record<string, any>;
+  rule?: {
+    rule_type?: string;
+    operator?: string;
+    unit?: string;
+    period_type?: string;
+    evaluation_window?: string;
+    aggregation?: string;
+    spec?: Record<string, any>;
+  };
+  consequence?: {
+    value?: number | null;
+    unit?: string | null;
+    trigger_condition?: string | null;
+    remediation?: string | null;
+    remediation_sla?: string | null;
+    contact_email?: string | null;
+  };
+  identity?: Record<string, any>;
+  governance?: Record<string, any>;
+  error_budget?: any;
 }
 
 interface ContractKPISummary {
@@ -649,22 +670,50 @@ function isKpiRecommended(kpi?: ContractKPI | null) {
 }
 
 function formatKpiValue(kpi: ContractKPI) {
-  const parts: string[] = [];
-  if (kpi.operator && kpi.operator !== "=") parts.push(kpi.operator);
-  if (kpi.value_min != null || kpi.value_max != null) {
-    parts.push(`${kpi.value_min ?? "?"}${kpi.value_max != null ? ` - ${kpi.value_max}` : ""}`);
-  } else if (kpi.value != null && kpi.value !== "") {
-    parts.push(String(kpi.value));
+  const ruleType = String(kpi.rule_type || kpi.rule?.rule_type || "").toLowerCase();
+  const spec = kpi.rule?.spec || {};
+
+  if (ruleType === "qualitative") {
+    return "Qualitative (Human Judgment)";
   }
-  if (kpi.unit) parts.push(kpi.unit);
+  if (ruleType === "tiered") {
+    const tiers = spec.tiers || kpi.target_schedule || [];
+    if (tiers.length > 0) {
+      return `Tiered (${tiers.length} Slabs: ${tiers.map((t: any) => `${t.level || 'Tier'}: ${t.value ?? '?'}`).slice(0, 2).join(', ')}${tiers.length > 2 ? '...' : ''})`;
+    }
+    return "Tiered SLA Matrix";
+  }
+  if (ruleType === "composite") {
+    const formula = spec.formula || kpi.formula;
+    return formula ? `Formula: ${formula}` : "Composite Metric";
+  }
+  if (ruleType === "deadline") {
+    const grace = spec.grace_days ?? kpi.grace_period_days ?? 0;
+    return `Deadline Deliverable${grace > 0 ? ` (+${grace}d grace)` : ''}`;
+  }
+  if (ruleType === "error_budget") {
+    const budget = spec.budget ?? kpi.error_budget;
+    return `Error Budget: ${budget ?? 'Specified'} ${kpi.unit || ''}`.trim();
+  }
+
+  const parts: string[] = [];
+  if (kpi.operator && kpi.operator !== "=" && kpi.operator !== "specified") parts.push(kpi.operator.replace(/_/g, " "));
+  if (kpi.value_min != null || kpi.value_max != null || spec.min != null || spec.max != null) {
+    parts.push(`${spec.min ?? kpi.value_min ?? "?"}${spec.max != null || kpi.value_max != null ? ` - ${spec.max ?? kpi.value_max}` : ""}`);
+  } else if (spec.target != null || kpi.value != null || kpi.target_value != null) {
+    parts.push(String(spec.target ?? kpi.value ?? kpi.target_value));
+  }
+  if (kpi.unit && kpi.unit !== "number") parts.push(kpi.unit);
   return parts.length ? parts.join(" ") : "Not specified";
 }
 
 function formatConsequence(kpi: ContractKPI) {
   const parts: string[] = [];
-  if (kpi.consequence_value != null) parts.push(String(kpi.consequence_value));
-  if (kpi.consequence_unit) parts.push(kpi.consequence_unit);
-  if (kpi.aggregation_type) parts.push(`(${titleCase(kpi.aggregation_type)})`);
+  const val = kpi.consequence_value ?? kpi.consequence?.value;
+  const unit = kpi.consequence_unit || kpi.consequence?.unit;
+  if (val != null) parts.push(String(val));
+  if (unit) parts.push(unit);
+  if (kpi.aggregation_type || kpi.rule?.aggregation) parts.push(`(${titleCase(kpi.aggregation_type || kpi.rule?.aggregation || "")})`);
   return parts.length ? parts.join(" ") : "Not specified";
 }
 
@@ -1380,6 +1429,10 @@ function KpiReviewDashboardView({
                         {tracked ? "Tracked" : "Not tracked"}
                       </span>
                       {recommended && !tracked && <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Recommended</span>}
+                      {kpi.rule_type === "qualitative" && <span className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-semibold text-purple-700">Qualitative</span>}
+                      {kpi.rule_type === "tiered" && <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[10px] font-semibold text-teal-700">Tiered SLA</span>}
+                      {kpi.rule_type === "composite" && <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[10px] font-semibold text-cyan-700">Composite</span>}
+                      {kpi.rule_type === "error_budget" && <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">Error Budget</span>}
                       {backfillCount > 0 && <span className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-semibold text-purple-700">{backfillCount} backfilled</span>}
                     </div>
                     <h4 className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-gray-950">{kpi.name}</h4>
@@ -1392,7 +1445,7 @@ function KpiReviewDashboardView({
                 </div>
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <KpiCardField label="Threshold" value={formatKpiValue(kpi)} />
+                  <KpiCardField label={kpi.rule_type === "qualitative" ? "Type" : "Threshold"} value={formatKpiValue(kpi)} />
                   <KpiCardField label="Penalty" value={formatConsequence(kpi)} />
                   <KpiCardField label="Owner" value={kpi.party || kpi.responsible_party || "Not specified"} />
                   <KpiCardField label="Source" value={`${source.name} · ${source.cadence}`} toneClass={sourceToneClass} />
@@ -1405,7 +1458,7 @@ function KpiReviewDashboardView({
                       onClick={() => onStatusChange(kpi, kpi.status === "approved" ? "needs_review" : "approved")}
                       className={`rounded-md border px-2.5 py-1.5 text-[11px] font-semibold ${kpi.status === "approved" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-border bg-white text-gray-700 hover:bg-muted/50"}`}
                     >
-                      {kpi.status === "approved" ? "Accepted" : "Accept"}
+                      {kpi.status === "approved" ? "Accepted" : kpi.rule_type === "qualitative" ? "Mark Reviewed" : "Accept"}
                     </button>
                     {!tracked && kpi.status !== "ignored" && (
                       <button type="button" onClick={() => onTrackKpi(kpi)} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100">
@@ -1427,11 +1480,23 @@ function KpiReviewDashboardView({
               {expanded && (
                 <div className="grid gap-3 border-t border-border bg-muted/30 p-3 md:grid-cols-2">
                   <KpiDetail label="Source Text" value={quote || "No quote captured."} />
-                  <KpiDetail label="Rule" value={kpi.evaluation_rule?.breach_when || kpi.formula || `${kpi.operator || "specified"} ${kpi.value ?? kpi.value_min ?? "target"}`} />
+                  <KpiDetail label="Rule Spec" value={kpi.evaluation_rule?.breach_when || kpi.formula || `${kpi.operator || "specified"} ${kpi.value ?? kpi.value_min ?? "target"}`} />
                   <KpiDetail label="Window" value={`${titleCase(kpi.period_type || "per_event")} · ${titleCase(kpi.evaluation_window || "current_record")}`} />
                   <KpiDetail label="Source Mapping" value={linkedSourceConfig ? `${linkedSourceConfig.display_name} · ${titleCase(linkedSourceConfig.status || "ready")}` : "Not configured"} />
                   <KpiDetail label="Remediation" value={kpi.remediation || kpi.remediation_sla || "Not specified"} />
                   <KpiDetail label="Contact" value={kpi.contact_email || "Not specified"} />
+                  {kpi.custom_attributes && Object.keys(kpi.custom_attributes).length > 0 && (
+                    <div className="md:col-span-2 rounded-md border border-border bg-white p-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">FlexFields (Custom Attributes)</p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {Object.entries(kpi.custom_attributes).map(([key, val]) => (
+                          <span key={key} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-700">
+                            <span className="font-semibold text-gray-900">{key}:</span> {String(val)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </article>
@@ -3233,6 +3298,43 @@ export function KpiRegisterPane({
                 ) : (
                   isExpanded && (
                     <div className="border-t border-border bg-muted/30 px-3 py-3 space-y-2">
+                      {/* Multi-Tier Penalty Schedule (If Tiered) */}
+                      {(() => {
+                        const ruleType = String(kpi.rule_type || kpi.rule?.rule_type || "").toLowerCase();
+                        const spec = kpi.rule?.spec || {};
+                        const tiers = spec.tiers || kpi.target_schedule || [];
+                        if (ruleType === "tiered" || (Array.isArray(tiers) && tiers.length > 0)) {
+                          return (
+                            <div className="rounded-md border border-primary/20 bg-white p-2.5 space-y-1.5">
+                              <div className="flex items-center justify-between text-[10px] font-bold text-primary uppercase tracking-wider">
+                                <span>Multi-Tier Performance & Credit Matrix</span>
+                                <span>Step Interpolation</span>
+                              </div>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left text-[11px]">
+                                  <thead>
+                                    <tr className="border-b border-border bg-muted/30 text-muted-foreground font-semibold">
+                                      <th className="py-1 px-2">Tier Level</th>
+                                      <th className="py-1 px-2">Target Range</th>
+                                      <th className="py-1 px-2">Credit / Penalty</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-border">
+                                    {tiers.map((tier: any, idx: number) => (
+                                      <tr key={idx} className="hover:bg-muted/10">
+                                        <td className="py-1.5 px-2 font-medium text-foreground">{tier.tier || tier.level || `Tier ${idx + 1}`}</td>
+                                        <td className="py-1.5 px-2 font-mono text-muted-foreground">{tier.min_value != null ? `${tier.min_value}%` : (tier.min ?? '0%')} – {tier.max_value != null ? `${tier.max_value}%` : (tier.max ?? '< Target')}</td>
+                                        <td className="py-1.5 px-2 font-semibold text-destructive">{tier.credit_pct ? `${tier.credit_pct}% Fee Credit` : (tier.value ?? 'Penalty')}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                       {/* Row 1: Threshold */}
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                         <KpiDetail label="Operator" value={kpi.operator || "—"} />

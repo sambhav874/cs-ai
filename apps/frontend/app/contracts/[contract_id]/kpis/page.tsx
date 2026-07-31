@@ -16,12 +16,14 @@ import {
   ExternalLink,
   FileText,
   Info,
+  Layers,
   Loader2,
   Mail,
   Network,
   Play,
   Plus,
   RefreshCw,
+  Search,
   Send,
   Settings2,
   ShieldCheck,
@@ -54,6 +56,8 @@ interface FullContractData {
 interface ContractKPI {
   kpi_id: string
   contract_id: string
+  schema_version?: number
+  run_id?: string
   document_id?: string | null
   chunk_id?: string | null
   contract_name?: string
@@ -67,8 +71,42 @@ interface ContractKPI {
   unit?: string | null
   value_min?: number | null
   value_max?: number | null
+  rule_type?: string | null
+  target_value?: string | number | null
+  threshold_min?: number | null
+  threshold_max?: number | null
   consequence_value?: number | null
   consequence_unit?: string | null
+  target_schedule?: Array<Record<string, any>>
+  evaluation_rule?: Record<string, any>
+  custom_attributes?: Record<string, any>
+  rule?: {
+    rule_type?: string
+    operator?: string
+    unit?: string
+    period_type?: string
+    evaluation_window?: string
+    aggregation?: string
+    spec?: Record<string, any>
+  }
+  consequence?: {
+    value?: number | null
+    unit?: string | null
+    trigger_condition?: string | null
+    remediation?: string | null
+    remediation_sla?: string | null
+    contact_email?: string | null
+  }
+  governance?: {
+    status?: string
+    confidence?: number
+    needs_review?: boolean
+    version?: number
+    is_tracked?: boolean
+    tracking_status?: string
+    is_recommended?: boolean
+    recommendation_reason?: string | null
+  }
   aggregation_type?: string | null
   trigger_condition?: string | null
   period_type?: string | null
@@ -76,7 +114,6 @@ interface ContractKPI {
   source_config_id?: string | null
   source_config_status?: string | null
   field_mappings?: Array<Record<string, any>>
-  evaluation_rule?: Record<string, any>
   remediation?: string | null
   remediation_sla?: string | null
   contact_email?: string | null
@@ -110,6 +147,8 @@ interface ContractKPI {
   recommendation_reason?: string | null
   tracking_status?: string | null
   is_tracked?: boolean
+  formula?: string | null
+  grace_period_days?: number | null
   last_tracking_backfill?: {
     created_breach_count?: number
     skipped_count?: number
@@ -341,23 +380,54 @@ const money = (value: number) => new Intl.NumberFormat('en-US', {
 }).format(Math.max(0, value))
 
 const formatKpiValue = (kpi: ContractKPI) => {
-  const pieces: string[] = []
-  if (kpi.operator && kpi.operator !== '=') pieces.push(kpi.operator)
-  if (kpi.value_min != null || kpi.value_max != null) {
-    pieces.push(`${kpi.value_min ?? '?'}${kpi.value_max != null ? ` - ${kpi.value_max}` : ''}`)
-  } else if (kpi.value != null && kpi.value !== '') {
-    pieces.push(String(kpi.value))
+  const ruleType = String(kpi.rule_type || kpi.rule?.rule_type || "").toLowerCase();
+  const spec = kpi.rule?.spec || {};
+
+  if (ruleType === "qualitative") {
+    return "Qualitative (Human Judgment)";
   }
-  if (kpi.unit) pieces.push(kpi.unit)
-  return pieces.length ? pieces.join(' ') : 'Not specified'
+  if (ruleType === "tiered") {
+    // Always prefer fresh parse from clause text over stale DB tiers
+    const freshTiers = parseTiersFromClause(quoteFor(kpi));
+    const tiers = freshTiers.length > 0 ? freshTiers : (spec.tiers || (kpi as any).target_schedule || []);
+    if (tiers.length > 0) {
+      const summary = tiers.slice(0, 2).map((t: any) => t.value ?? '?').join(' / ');
+      return `Tiered — ${tiers.length} tiers (${summary}${tiers.length > 2 ? '...' : ''})`;
+    }
+    return "Tiered SLA Matrix";
+  }
+  if (ruleType === "composite") {
+    const formula = spec.formula || kpi.formula;
+    return formula ? `Formula: ${formula}` : "Composite Metric";
+  }
+  if (ruleType === "deadline") {
+    const grace = spec.grace_days ?? kpi.grace_period_days ?? 0;
+    return `Deadline Deliverable${grace > 0 ? ` (+${grace}d grace)` : ''}`;
+  }
+  if (ruleType === "error_budget") {
+    const budget = spec.budget ?? kpi.error_budget;
+    return `Error Budget: ${budget ?? 'Specified'} ${kpi.unit || ''}`.trim();
+  }
+
+  const pieces: string[] = [];
+  if (kpi.operator && kpi.operator !== '=' && kpi.operator !== 'specified') pieces.push(kpi.operator.replace(/_/g, ' '));
+  if (kpi.value_min != null || kpi.value_max != null || spec.min != null || spec.max != null) {
+    pieces.push(`${spec.min ?? kpi.value_min ?? '?'}${spec.max != null || kpi.value_max != null ? ` - ${spec.max ?? kpi.value_max}` : ''}`);
+  } else if (spec.target != null || kpi.value != null || kpi.target_value != null) {
+    pieces.push(String(spec.target ?? kpi.value ?? kpi.target_value));
+  }
+  if (kpi.unit && kpi.unit !== 'number') pieces.push(kpi.unit);
+  return pieces.length ? pieces.join(' ') : 'Not specified';
 }
 
 const formatConsequence = (kpi: ContractKPI) => {
-  const pieces: string[] = []
-  if (kpi.consequence_value != null) pieces.push(String(kpi.consequence_value))
-  if (kpi.consequence_unit) pieces.push(kpi.consequence_unit)
-  if (kpi.aggregation_type) pieces.push(`(${titleCase(kpi.aggregation_type)})`)
-  return pieces.length ? pieces.join(' ') : 'Not specified'
+  const pieces: string[] = [];
+  const val = kpi.consequence_value ?? kpi.consequence?.value;
+  const unit = kpi.consequence_unit || kpi.consequence?.unit;
+  if (val != null) pieces.push(String(val));
+  if (unit) pieces.push(unit);
+  if (kpi.aggregation_type || kpi.rule?.aggregation) pieces.push(`(${titleCase(kpi.aggregation_type || kpi.rule?.aggregation || "")})`);
+  return pieces.length ? pieces.join(' ') : 'Not specified';
 }
 
 const severityFor = (breach: ContractKPIBreach, kpi?: ContractKPI) => {
@@ -384,8 +454,13 @@ const statusTone = (value?: string | null) => {
   return 'border-gray-200 bg-gray-50 text-gray-600'
 }
 
+const kpiName = (kpi: ContractKPI) => (
+  kpi.name || (kpi as any).identity?.name || 'Unnamed KPI'
+)
+
 const kpiCode = (kpi: ContractKPI, index: number) => {
-  const match = kpi.name.match(/\b(?:KPI|SLA|TIM|FIN|PEN)-?\d+[A-Z]?\b/i)?.[0]
+  const name = kpiName(kpi)
+  const match = name.match(/\b(?:KPI|SLA|TIM|FIN|PEN|CDM)-?\d+[A-Z]?\b/i)?.[0]
   return match ? match.toUpperCase().replace(/([A-Z]+)(\d)/, '$1-$2') : `KPI-${String(index + 1).padStart(3, '0')}`
 }
 
@@ -492,8 +567,40 @@ const bindingStatusLabel = (status: string) => {
 }
 
 const quoteFor = (kpi: ContractKPI) => (
-  kpi.citation?.quote || kpi.citation_details?.quote || kpi.source_quote || kpi.quote || kpi.clause_text || ''
+  kpi.citation?.quote ||
+  kpi.citation_details?.quote ||
+  (kpi as any).custom_attributes?.clause_text ||
+  (kpi as any).custom_attributes?.quote ||
+  (kpi as any).identity?.source_clause?.quote ||
+  kpi.source_quote ||
+  kpi.quote ||
+  kpi.clause_text ||
+  ''
 )
+
+// Shared tier parser — mirrors backend _extract_tiers_from_clause.
+// Used by both the card threshold label and the expanded drawer table.
+const parseTiersFromClause = (text: string): Array<{ tier: string; range: string; value: string; credit_pct: number | null; penalty_amount: string | null }> => {
+  if (!text) return [];
+  const UNIT = String.raw`(?:%|ms|min(?:utes?)?|hrs?|hours?|sec(?:onds?)?|events?|sites?|incidents?|mbps|gbps|units?|calls?|days?|weeks?)`;
+  const NUMVAL = `[0-9][0-9,\.]*(?:\s*${UNIT})?`;
+  const RANGE = `(?:${NUMVAL}\s*[-\u2013]\s*${NUMVAL})`;
+  const CMP = `(?:(?:<=?|>=?)\s*${NUMVAL})`;
+  const BRACKET = `(?:N\/A\s*\([^)]*\)|[0-9]+\s*[-\u2013]\s*[0-9]+\s*Incidents?)`;
+  const CONSEQUENCE = `(?:[0-9\.]+%(?:\s*Fee(?:\s*Credit)?)?|\$[0-9][0-9,]*(?:\s*\/\s*[a-z]+)*)`;
+  const FULL = new RegExp(`(${RANGE}|${CMP}|${BRACKET})\s*:\s*(${CONSEQUENCE})`, 'gi');
+  return Array.from(text.matchAll(FULL)).map((m, idx) => {
+    const valueStr = (m[2] || '').trim();
+    const isDollar = valueStr.startsWith('$');
+    return {
+      tier: `Tier ${idx + 1}`,
+      range: (m[1] || '').trim(),
+      value: valueStr,
+      credit_pct: isDollar ? null : parseFloat(valueStr),
+      penalty_amount: isDollar ? valueStr : null,
+    };
+  });
+}
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return 'Not stamped'
@@ -1506,6 +1613,9 @@ function ReviewPanel({
 }) {
   const [expandedKpiId, setExpandedKpiId] = useState<string | null>(kpis.find(isKpiTracked)?.kpi_id || kpis[0]?.kpi_id || null)
   const [editingKpiId, setEditingKpiId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'all' | 'sla' | 'penalty' | 'deadline' | 'tracked' | 'review'>('all')
+  const [searchQuery, setSearchQuery] = useState('')
+
   const breachByKpiId = useMemo(() => {
     const mapping = new Map<string, ContractKPIBreach[]>()
     breaches.forEach((breach) => {
@@ -1515,6 +1625,43 @@ function ReviewPanel({
     })
     return mapping
   }, [breaches])
+
+  // Helper to categorize KPI type
+  const getCategory = (kpi: ContractKPI) => {
+    const kpiType = String(kpi.kpi_type || '').toLowerCase()
+    const ruleType = String(kpi.rule_type || (kpi as any).rule?.rule_type || '').toLowerCase()
+    if (kpiType === 'sla' || kpiType === 'performance' || ruleType === 'tiered' || ruleType === 'threshold') return 'sla'
+    if (kpiType === 'penalty' || kpi.consequence_value != null) return 'penalty'
+    if (kpiType === 'deadline' || kpiType === 'notice' || ruleType === 'deadline') return 'deadline'
+    return 'other'
+  }
+
+  const slaCount = useMemo(() => kpis.filter((kpi) => getCategory(kpi) === 'sla').length, [kpis])
+  const penaltyCount = useMemo(() => kpis.filter((kpi) => getCategory(kpi) === 'penalty').length, [kpis])
+  const deadlineCount = useMemo(() => kpis.filter((kpi) => getCategory(kpi) === 'deadline').length, [kpis])
+  const trackedCount = useMemo(() => kpis.filter(isKpiTracked).length, [kpis])
+  const reviewCount = useMemo(() => kpis.filter((kpi) => kpi.status !== 'approved' && kpi.status !== 'ignored').length, [kpis])
+
+  const filteredKpis = useMemo(() => {
+    return kpis.filter((kpi) => {
+      if (activeTab === 'sla' && getCategory(kpi) !== 'sla') return false
+      if (activeTab === 'penalty' && getCategory(kpi) !== 'penalty') return false
+      if (activeTab === 'deadline' && getCategory(kpi) !== 'deadline') return false
+      if (activeTab === 'tracked' && !isKpiTracked(kpi)) return false
+      if (activeTab === 'review' && (kpi.status === 'approved' || kpi.status === 'ignored')) return false
+
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase()
+        const nameMatch = (kpi.name || '').toLowerCase().includes(query)
+        const idMatch = (kpi.kpi_id || '').toLowerCase().includes(query)
+        const sectionMatch = (kpi.structural_path || kpi.section_path || kpi.section || '').toLowerCase().includes(query)
+        const partyMatch = (kpi.party || kpi.responsible_party || '').toLowerCase().includes(query)
+        const quoteMatch = (quoteFor(kpi) || '').toLowerCase().includes(query)
+        return nameMatch || idMatch || sectionMatch || partyMatch || quoteMatch
+      }
+      return true
+    })
+  }, [kpis, activeTab, searchQuery])
 
   if (!kpis.length) {
     return (
@@ -1529,25 +1676,63 @@ function ReviewPanel({
     <div className="space-y-4">
       <PerformanceSummaryCards kpis={kpis} actualsByKpiId={actualsByKpiId} breaches={breaches} />
 
-      <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-gray-950">KPI Register</h2>
-          <p className="mt-1 text-sm text-gray-500">{kpis.length} extracted {kpis.length === 1 ? 'KPI' : 'KPIs'} across review, tracking, and source readiness.</p>
+      <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-gray-950">KPI Register</h2>
+            <p className="mt-1 text-xs text-gray-500">Showing {filteredKpis.length} of {kpis.length} extracted KPIs across review, tracking, and source readiness.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={onAcceptAll}>
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Accept All
+            </Button>
+            <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs text-gray-800" onClick={onTrackRecommended} disabled={recommendedTrackCount === 0}>
+              <Play className="h-3.5 w-3.5" />
+              Track Recommended ({recommendedTrackCount})
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={onAcceptAll}>
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            Accept All
-          </Button>
-          <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs text-gray-800" onClick={onTrackRecommended} disabled={recommendedTrackCount === 0}>
-            <Play className="h-3.5 w-3.5" />
-            Track Recommended
-          </Button>
+
+        {/* Category Tabs & Real-Time Search */}
+        <div className="flex flex-col gap-2 pt-2 border-t border-gray-100 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { id: 'all', label: `All (${kpis.length})` },
+              { id: 'sla', label: `Core SLAs (${slaCount})` },
+              { id: 'penalty', label: `Penalties (${penaltyCount})` },
+              { id: 'deadline', label: `Deadlines (${deadlineCount})` },
+              { id: 'tracked', label: `Tracked (${trackedCount})` },
+              { id: 'review', label: `To Review (${reviewCount})` },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+                  activeTab === tab.id ? 'bg-gray-950 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative min-w-[220px]">
+            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search KPI, section, quote..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 w-full rounded-md border border-gray-200 bg-white pl-8 pr-3 text-xs text-gray-900 outline-none focus:border-cs-primary focus:ring-1 focus:ring-cs-primary"
+            />
+          </div>
         </div>
       </div>
 
       <div className="space-y-3">
-        {kpis.map((kpi, index) => {
+        {filteredKpis.map((kpi, index) => {
           const tracked = isKpiTracked(kpi)
           const sources = sourcesByKpiId.get(kpi.kpi_id) || []
           const backfilled = Number(kpi.last_tracking_backfill?.created_breach_count || 0)
@@ -1574,7 +1759,7 @@ function ReviewPanel({
                       {isKpiRecommended(kpi) && !tracked && <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700">Recommended</span>}
                       {backfilled > 0 && <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700">{backfilled} backfilled</span>}
                     </div>
-                    <h3 className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-gray-950">{kpi.name}</h3>
+                    <h3 className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-gray-950">{kpiName(kpi)}</h3>
                     <p className="mt-1 truncate text-xs text-gray-400">{kpi.structural_path || kpi.section_path || kpi.section || 'No section captured'}</p>
                   </div>
                 </button>
@@ -1617,6 +1802,62 @@ function ReviewPanel({
 
               {expanded && (
                 <div className="space-y-3 border-t border-gray-100 bg-gray-50 p-3">
+                  {/* Multi-Tier Performance & Penalty Matrix (If Tiered) */}
+                  {(() => {
+                    const ruleType = String(kpi.rule_type || (kpi as any).rule?.rule_type || '').toLowerCase();
+                    const spec = (kpi as any).rule?.spec || {};
+
+                    // Always re-parse from clause_text (ground truth) — stale DB tiers may be wrong/incomplete.
+                    const freshTiers = parseTiersFromClause(quoteFor(kpi));
+                    const staleTiers: any[] = spec.tiers || (kpi as any).target_schedule || (kpi as any).custom_attributes?.target_schedule || [];
+                    const tiers: any[] = freshTiers.length > 0 ? freshTiers : staleTiers;
+
+                    if (ruleType === 'tiered' || (Array.isArray(tiers) && tiers.length > 0)) {
+                      const hasCredits = tiers.some((t: any) => t.credit_pct != null);
+                      const hasPenalties = tiers.some((t: any) => t.penalty_amount);
+                      const consequenceLabel = hasCredits && hasPenalties ? 'Consequence' : hasCredits ? 'Service Credit' : 'Penalty Amount';
+                      return (
+                        <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 space-y-2">
+                          <p className="flex items-center gap-1.5 text-xs font-bold text-indigo-900 uppercase tracking-wider">
+                            <Layers className="h-4 w-4 text-indigo-600" /> Performance & Service Credit Schedule
+                          </p>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs bg-white rounded-md border border-indigo-100 shadow-sm">
+                              <thead>
+                                <tr className="border-b border-indigo-100 bg-indigo-50/60 text-indigo-950 font-semibold">
+                                  <th className="py-1.5 px-3">Tier</th>
+                                  <th className="py-1.5 px-3">Performance Band</th>
+                                  <th className="py-1.5 px-3">{consequenceLabel}</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-indigo-50">
+                                {tiers.map((tier: any, idx: number) => {
+                                  const isDollar = !!tier.penalty_amount;
+                                  const displayValue = isDollar
+                                    ? tier.penalty_amount
+                                    : tier.credit_pct != null
+                                    ? `${tier.credit_pct}% Fee Credit`
+                                    : (tier.value || '—');
+                                  return (
+                                    <tr key={idx} className="hover:bg-indigo-50/30">
+                                      <td className="py-2 px-3 font-medium text-gray-900">{tier.tier || tier.level || `Tier ${idx + 1}`}</td>
+                                      <td className="py-2 px-3 font-mono text-gray-600">
+                                        {tier.range || (tier.min_value != null ? `${tier.min_value}–${tier.max_value ?? '<Target'}` : '—')}
+                                      </td>
+                                      <td className={`py-2 px-3 font-semibold ${isDollar ? 'text-rose-700' : 'text-indigo-700'}`}>
+                                        {displayValue}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   <div className="rounded-lg border border-gray-200 bg-white p-3">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <div>
@@ -1687,13 +1928,93 @@ function ReviewPanel({
                         <DetailTile label="Trigger" value={kpi.trigger_condition || 'Not specified'} tone="amber" />
                         <DetailTile label="Penalty" value={formatConsequence(kpi)} tone={kpi.consequence_value != null ? 'amber' : 'gray'} />
                         <DetailTile label="Owner" value={kpi.party || kpi.responsible_party || 'Not specified'} />
-                        <DetailTile label="Governance" value={`${titleCase(kpi.governance_status || 'draft')} v${kpi.governance_version || 1}`} tone={kpi.governance_status === 'certified' ? 'blue' : 'gray'} />
+                        <DetailTile label="Governance" value={titleCase(kpi.governance?.status || kpi.governance_status || kpi.status || 'draft')} tone={kpi.governance_status === 'certified' ? 'blue' : 'gray'} />
                         <DetailTile label="Sources" value={sources.length ? `${sources.length} assigned` : 'None'} tone={sources.length ? 'blue' : 'amber'} />
                       </div>
                     )}
-                  </div>
 
-                  <SlaPolicyStrip kpi={kpi} />
+                    {(() => {
+                      const cattrs = (kpi as any).custom_attributes || {};
+                      const rawKeys = Object.keys(cattrs);
+
+                      // Standard system keys to ignore (since they are rendered elsewhere in the card)
+                      const ignoredKeys = new Set([
+                        'clause_text', 'quote', 'source_quote', 'run_id', 'document_id', 'user_id',
+                        'citation', 'citation_details', 'breach_email_template', 'value_candidates',
+                        'source_requirements', 'rule_version', 'ai_generated_only_at_extraction',
+                        'ai_extraction_provider', 'char_start', 'char_end', 'chunk_id', 'chunk_level',
+                        'source_chunk_level', 'definition', 'formula', 'confidence', 'confidence_reason',
+                        'needs_review', 'extraction_method'
+                      ]);
+
+                      // Flatten any inner 'custom_attributes' dictionary if present
+                      const flattenedAttrs: Record<string, any> = {};
+                      const processObj = (obj: Record<string, any>, prefix = '') => {
+                        for (const [k, v] of Object.entries(obj)) {
+                          if (ignoredKeys.has(k) || v == null || v === '') continue;
+                          if (k === 'custom_attributes' && typeof v === 'object') {
+                            processObj(v, prefix);
+                          } else if (prefix) {
+                            flattenedAttrs[`${prefix}_${k}`] = v;
+                          } else {
+                            flattenedAttrs[k] = v;
+                          }
+                        }
+                      };
+                      processObj(cattrs);
+
+                      const attrEntries = Object.entries(flattenedAttrs);
+                      if (attrEntries.length === 0) return null;
+
+                      return (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-indigo-100 bg-indigo-50/40 p-2.5 text-xs">
+                          <span className="font-bold text-indigo-900 uppercase tracking-wide text-[10px] mr-1 flex items-center gap-1">
+                            <Layers className="h-3 w-3 text-indigo-600" /> Domain Attributes:
+                          </span>
+                          {attrEntries.map(([attrKey, attrVal]) => {
+                            const formattedKey = titleCase(attrKey.replace(/_/g, ' '));
+                            
+                            // 1. Primitive string/number/boolean
+                            if (typeof attrVal !== 'object') {
+                              const isPenalty = attrKey.includes('penalty');
+                              const isWindow = attrKey.includes('window');
+                              const toneBg = isPenalty ? 'bg-rose-100/80 text-rose-900' : isWindow ? 'bg-blue-100/80 text-blue-900' : 'bg-indigo-100/80 text-indigo-900';
+                              return (
+                                <span key={attrKey} className={`inline-flex items-center gap-1 rounded px-2 py-0.5 font-medium ${toneBg}`}>
+                                  <span className="font-semibold opacity-75">{formattedKey}:</span> {String(attrVal)}
+                                </span>
+                              );
+                            }
+
+                            // 2. Array of primitives or objects
+                            if (Array.isArray(attrVal)) {
+                              if (attrVal.length === 0) return null;
+                              const displayStr = attrVal.map(item => typeof item === 'object' ? JSON.stringify(item) : String(item)).join(', ');
+                              return (
+                                <span key={attrKey} className="inline-flex items-center gap-1 rounded bg-indigo-100/80 px-2 py-0.5 font-medium text-indigo-900">
+                                  <span className="font-semibold opacity-75">{formattedKey}:</span> {displayStr}
+                                </span>
+                              );
+                            }
+
+                            // 3. Nested dictionary object
+                            const subEntries = Object.entries(attrVal).filter(([_, v]) => v != null && v !== '');
+                            if (subEntries.length === 0) return null;
+
+                            return subEntries.map(([subK, subV]) => {
+                              const subLabel = `${formattedKey} (${titleCase(subK.replace(/_/g, ' '))})`;
+                              const subValStr = typeof subV === 'object' ? JSON.stringify(subV) : String(subV);
+                              return (
+                                <span key={`${attrKey}.${subK}`} className="inline-flex items-center gap-1 rounded bg-indigo-100/80 px-2 py-0.5 font-medium text-indigo-900">
+                                  <span className="font-semibold opacity-75">{subLabel}:</span> {subValStr}
+                                </span>
+                              );
+                            });
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
 
                   {tracked ? (
                     <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)]">
@@ -1948,33 +2269,6 @@ function KpiBreachStrip({ kpi, breaches }: { kpi: ContractKPI; breaches: Contrac
         <DetailTile label="Actual (Ingested)" value={`${latest.actual_value ?? 'N/A'} ${latest.actual_unit || kpi.unit || ''}`.trim()} tone={latest.is_breach ? 'amber' : 'gray'} />
       </div>
     </div>
-  )
-}
-
-function SlaPolicyStrip({ kpi }: { kpi: ContractKPI }) {
-  const businessHoursEnabled = Boolean(kpi.business_hours?.enabled || kpi.business_hours?.business_days_only)
-  const blackoutCount = Array.isArray(kpi.blackout_windows) ? kpi.blackout_windows.length : 0
-  const lockDays = kpi.reporting_lock?.lock_after_days
-  const errorBudget = kpi.error_budget || {}
-  const hasPolicy = businessHoursEnabled || blackoutCount || lockDays || kpi.missing_data_policy || Object.keys(errorBudget).length
-  if (!hasPolicy) return null
-  const budgetText = Object.keys(errorBudget).length
-    ? `${errorBudget.consumed ?? 0}/${errorBudget.budget ?? errorBudget.allowed ?? 'budget'}`
-    : 'Not configured'
-  return (
-    <section className="rounded-lg border border-gray-200 bg-white p-3">
-      <div className="mb-2 flex items-center gap-2">
-        <Info className="h-4 w-4 text-gray-500" />
-        <h4 className="text-sm font-semibold text-gray-950">Advanced SLA/SLO Policy</h4>
-      </div>
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-        <DetailTile label="Business Hours" value={businessHoursEnabled ? `${kpi.business_hours?.start || '09:00'}-${kpi.business_hours?.end || '17:00'}` : 'Calendar time'} tone={businessHoursEnabled ? 'blue' : 'gray'} />
-        <DetailTile label="Blackouts" value={blackoutCount ? `${blackoutCount} window${blackoutCount === 1 ? '' : 's'}` : 'None'} tone={blackoutCount ? 'amber' : 'gray'} />
-        <DetailTile label="Reporting Lock" value={lockDays ? `${lockDays} day${Number(lockDays) === 1 ? '' : 's'}` : 'Unlocked'} />
-        <DetailTile label="Missing Data" value={titleCase(kpi.missing_data_policy || 'flag missing evidence')} tone="amber" />
-        <DetailTile label="Error Budget" value={budgetText} tone={Object.keys(errorBudget).length ? 'blue' : 'gray'} />
-      </div>
-    </section>
   )
 }
 

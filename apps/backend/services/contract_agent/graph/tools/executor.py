@@ -1258,7 +1258,8 @@ def _calculate_from_evidence(expression: str, context: str) -> Dict[str, Any]:
     result = None
     error = None
     try:
-        result = float(eval(sanitized, {"__builtins__": {}}))
+        from services.kpi_schema import evaluate_safe_formula
+        result = float(evaluate_safe_formula(sanitized))
     except Exception as exc:
         error = str(exc)[:200]
 

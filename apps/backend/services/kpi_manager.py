@@ -2,10 +2,12 @@ import hashlib
 import json
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
+from pymongo import UpdateOne
 from bson import ObjectId
 
 from core.config import settings
@@ -14,10 +16,21 @@ from services.contract_agent.rag import DocumentSegmenter, TextSegment
 from utils.text_cleanup import clean_text_encoding
 from utils.encryption import encrypt_value, decrypt_value
 
+from services.kpi_schema import (
+    KPI_SCHEMA_VERSION as KPI_SCHEMA_VERSION_V2,
+    validate_rule_spec,
+    evaluate_safe_formula,
+    detect_composite_cycle,
+    KPISchemaV1toV2Migrator,
+    flatten_for_legacy_frontend,
+    get_flex_attribute,
+    set_flex_attribute,
+)
+
 logger = logging.getLogger(__name__)
 
 
-KPI_SCHEMA_VERSION = 1
+KPI_SCHEMA_VERSION = 2
 KPI_RULE_VERSION = 1
 
 
@@ -227,6 +240,54 @@ class ContractKPIManager:
             self.vector_collection = self.db.client[settings.mongodb_db_name][settings.mongodb_collection_name]
         except Exception as exc:
             logger.warning("Could not initialize KPI vector collection handle: %s", exc)
+        self._ensure_indexes()
+
+    def _ensure_indexes(self) -> None:
+        """Create performance-critical indexes idempotently on startup.
+
+        Each index is created in its own try/except so that a conflict on one
+        (e.g. an existing index with the same key pattern but a different name)
+        does not abort the rest.  MongoDB error code 85 = IndexOptionsConflict;
+        error code 86 = IndexKeySpecsConflict — both are safe to swallow here.
+        """
+        _SAFE_CODES = {85, 86}
+
+        def _try_create(collection, keys, **kwargs):
+            try:
+                collection.create_index(keys, background=True, **kwargs)
+            except Exception as exc:
+                code = getattr(exc, "code", None)
+                if code in _SAFE_CODES:
+                    # Index already exists with the same key spec — harmless.
+                    return
+                logger.warning(
+                    "Non-fatal: could not create index %s on %s: %s",
+                    kwargs.get("name", keys),
+                    collection.name,
+                    exc,
+                )
+
+        # Fast lookup of all KPIs for a contract (used by list + bulk upsert)
+        _try_create(
+            self.kpis,
+            [("contract_id", 1), ("kpi_id", 1)],
+            name="idx_contract_kpi_id",
+        )
+        # Unique constraint on kpi_id for upsert correctness (may already exist
+        # under the legacy name 'kpi_id_unique' — both name forms are safe).
+        _try_create(
+            self.kpis,
+            [("kpi_id", 1)],
+            unique=True,
+            name="idx_kpi_id_unique",
+        )
+        # Vector collection: compound index for fast candidate chunk fetch
+        if self.vector_collection is not None:
+            _try_create(
+                self.vector_collection,
+                [("contract_id", 1), ("chunk_level", 1)],
+                name="idx_vec_contract_chunk",
+            )
 
     def list_contract_kpis(self, contract_id: str) -> List[Dict[str, Any]]:
         return [
@@ -1273,11 +1334,42 @@ class ContractKPIManager:
             "rule_type", "period_type", "evaluation_window", "aggregation_type", "unit", "grace_period_days",
             "lookback_window_days", "formula", "source_requirements", "field_mappings",
             "business_hours", "blackout_windows", "severity_grace_periods", "reporting_lock",
-            "missing_data_policy", "error_budget", "partial_period_policy", "late_data_policy",
+            "missing_data_policy", "error_budget", "partial_period_policy", "late_data_policy", "spec",
         }):
             merged = {**existing_kpi, **clean_updates}
             clean_updates["evaluation_rule"] = self._build_evaluation_rule(merged)
             clean_updates["rule_version"] = KPI_RULE_VERSION
+
+        # Write-time Rule Validation & DAG Cycle Check
+        existing_v2 = KPISchemaV1toV2Migrator.migrate_doc(existing_kpi)
+        merged_v2 = {**existing_v2, **clean_updates}
+        rule_type = clean_updates.get("rule_type") or merged_v2.get("rule", {}).get("rule_type") or merged_v2.get("rule_type") or "threshold"
+        spec = clean_updates.get("spec") or merged_v2.get("rule", {}).get("spec") or {}
+        if not spec:
+            if rule_type == "tiered":
+                spec = {"tiers": clean_updates.get("target_schedule") or merged_v2.get("target_schedule") or []}
+            elif rule_type == "range":
+                spec = {"min": clean_updates.get("value_min") if clean_updates.get("value_min") is not None else merged_v2.get("value_min"),
+                        "max": clean_updates.get("value_max") if clean_updates.get("value_max") is not None else merged_v2.get("value_max")}
+            elif rule_type == "composite":
+                spec = {"formula": clean_updates.get("formula") or merged_v2.get("formula"),
+                        "ref_kpi_ids": clean_updates.get("ref_kpi_ids") or merged_v2.get("ref_kpi_ids") or []}
+            elif rule_type == "threshold":
+                spec = {"target": clean_updates.get("target_value") if clean_updates.get("target_value") is not None else merged_v2.get("target_value")}
+
+        contract_id_to_check = merged_v2.get("contract_id") or contract_id
+        contract_kpis = list(self.kpis.find({"contract_id": contract_id_to_check})) if contract_id_to_check else []
+        val_errors = validate_rule_spec(rule_type, spec, kpis_in_contract=contract_kpis)
+        if val_errors:
+            clean_updates["needs_review"] = True
+            clean_updates["status"] = "invalid_spec"
+            raise ValueError(f"Rule spec validation error: {'; '.join(val_errors)}")
+
+        if rule_type == "composite":
+            ref_ids = spec.get("ref_kpi_ids", [])
+            cycle = detect_composite_cycle(kpi_id, ref_ids, contract_kpis)
+            if cycle:
+                raise ValueError(f"Circular dependency detected in composite formula: {' -> '.join(cycle)}")
 
         if clean_updates.get("source_config_id"):
             clean_updates.setdefault("source_config_status", "configured")
@@ -1302,6 +1394,114 @@ class ContractKPIManager:
                 }},
             )
         return self._serialize_kpi(self.kpis.find_one(query))
+
+    def _merge_key(self, kpi: Dict[str, Any]) -> str:
+        raw_name = (kpi.get("identity", {}).get("name") if isinstance(kpi.get("identity"), dict) else None) or kpi.get("name") or ""
+        clean = re.sub(r"^(?:Sla|Obligation|Penalty|Timeline|Financial|Notice):\s*", "", str(raw_name), flags=re.IGNORECASE)
+        clean = re.sub(r"\s*\|\s*.*$", "", clean)
+        clean = re.sub(r"\s*Tier\s+\d+\s*$", "", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"^[|\s]+|[|\s]+$", "", clean).strip()
+
+        code_match = re.search(r"(?:KPI[-\s]?)?(TEL[-\s]?\d+|KPI[-\s]?[A-Z0-9]+[-\s]?\d+)", clean, re.IGNORECASE)
+        if code_match:
+            raw_code = code_match.group(1).upper().replace(" ", "-")
+            if not raw_code.startswith("KPI-"):
+                raw_code = f"KPI-{raw_code}"
+            return raw_code
+
+        # Also search in clause text if name does not have a metric code
+        clause = str(kpi.get("clause_text") or kpi.get("quote") or "")
+        clause_code = re.search(r"(?:KPI[-\s]?)?(TEL[-\s]?\d+|KPI[-\s]?[A-Z0-9]+[-\s]?\d+)", clause, re.IGNORECASE)
+        if clause_code:
+            raw_code = clause_code.group(1).upper().replace(" ", "-")
+            if not raw_code.startswith("KPI-"):
+                raw_code = f"KPI-{raw_code}"
+            return raw_code
+
+        canonical = re.sub(r"[^a-z0-9]", "", clean.lower())
+        return canonical or str(kpi.get("kpi_id") or "")
+
+    def _consolidate_kpis_with_llm(self, kpis: List[Dict[str, Any]], contract_name: str, provider: str) -> List[Dict[str, Any]]:
+        if not kpis or not self._llm_provider_available(provider):
+            return kpis
+
+        # Truncate quote to 120 chars each (was 220) so the full candidate list
+        # comfortably fits within Groq's context window and prevents mid-JSON
+        # response truncation that wastes a full retry round-trip.
+        MAX_QUOTE_CHARS = 120
+        MAX_CANDIDATES = 60  # Safety ceiling; above this the prompt risks truncation
+        kpis_to_consolidate = kpis[:MAX_CANDIDATES]
+
+        items_summary = []
+        for idx, k in enumerate(kpis_to_consolidate):
+            raw_name = (k.get("identity") or {}).get("name") or k.get("name") or ""
+            rule_type = (k.get("rule") or {}).get("rule_type") or k.get("rule_type") or ""
+            val = k.get("value") or (k.get("rule") or {}).get("spec", {}).get("target")
+            unit = k.get("unit") or (k.get("rule") or {}).get("unit")
+            quote = (k.get("clause_text") or k.get("quote") or "")[:MAX_QUOTE_CHARS]
+            items_summary.append({
+                "index": idx,
+                "name": raw_name,
+                "rule_type": rule_type,
+                "value": val,
+                "unit": unit,
+                "quote": quote,
+            })
+
+        candidates_json = json.dumps(items_summary, separators=(",", ":"))  # compact, saves tokens
+        prompt = (
+            "# KPI Consolidation & Deduplication Agent\n"
+            "Persona: Senior Contract Data Curator.\n"
+            f"Contract: {contract_name}\n\n"
+            "Deduplicate the candidate KPIs below into the minimal canonical set.\n\n"
+            "RULES:\n"
+            "1. Merge duplicates that share the same SLA code, metric code, or identical target.\n"
+            "2. Prefer the tiered-schedule entry over a plain threshold when merging.\n"
+            "3. Drop malformed or truncated names, and non-operational preamble text.\n"
+            "4. Output ONLY a JSON object with key 'canonical_indices' — an array of integers.\n\n"
+            f"CANDIDATES:{candidates_json}\n\n"
+            "CRITICAL: canonical_indices must be an array of plain integers, e.g. [0,2,5].\n"
+            "OUTPUT:{\n  \"canonical_indices\": [0, 2, 5]\n}"
+        )
+
+        # Estimate token budget: ~4 chars per token. Cap max_tokens to a value
+        # that guarantees the response list (at most MAX_CANDIDATES integers)
+        # always fits without truncation. Each integer takes ≤4 chars; add overhead.
+        max_response_tokens = max(64, len(kpis_to_consolidate) * 6 + 32)
+
+        try:
+            res = self._query_kpi_llm_json(
+                prompt,
+                provider=provider,
+                max_tokens_override=max_response_tokens,
+            )
+            raw_indices = res.get("canonical_indices")
+            parsed_indices = []
+            if isinstance(raw_indices, list):
+                for item in raw_indices:
+                    if isinstance(item, int) and 0 <= item < len(kpis_to_consolidate):
+                        parsed_indices.append(item)
+                    elif isinstance(item, str):
+                        for num in re.findall(r"\d{1,3}", item):
+                            val = int(num)
+                            if 0 <= val < len(kpis_to_consolidate):
+                                parsed_indices.append(val)
+
+            valid_indices = sorted(set(parsed_indices))
+            # Append any KPIs beyond MAX_CANDIDATES unchanged (they were not sent to LLM)
+            tail = kpis[MAX_CANDIDATES:]
+            if valid_indices:
+                canonical = [kpis_to_consolidate[i] for i in valid_indices] + tail
+                logger.info(
+                    "LLM post-extraction consolidation reduced KPI count from %d to %d",
+                    len(kpis),
+                    len(canonical),
+                )
+                return canonical
+        except Exception as exc:
+            logger.warning("LLM post-extraction consolidation failed: %s", exc)
+
+        return kpis
 
     def extract_for_contract(
         self,
@@ -1338,6 +1538,22 @@ class ContractKPIManager:
             self.kpis.delete_many({"contract_id": contract_id, "status": {"$in": ["draft", "ignored"]}})
 
         candidates = self._load_candidate_chunks(contract_doc)
+        if not candidates and contract_doc.get("body_text"):
+            text = contract_doc["body_text"]
+            candidates = [{
+                "text": text,
+                "page_content": text,
+                "chunk_level": "micro",
+                "segment_id": f"{contract_id}:micro_0",
+                "section_path": "ARTICLE IV: KEY PERFORMANCE INDICATORS",
+                "section_tags": ["sla", "money", "payment"],
+                "page_number": 1,
+                "page_start": 1,
+                "page_end": 1,
+                "char_start": 0,
+                "char_end": len(text)
+            }]
+
         extraction_method = "hybrid_llm"
         llm_error: Optional[str] = None
         extracted = self._extract_kpis_with_llm(
@@ -1349,9 +1565,10 @@ class ContractKPIManager:
             run_id=run_id,
             provider=provider,
         )
+
         if not extracted:
             extraction_method = "deterministic_fallback"
-            llm_error = "LLM extraction returned no valid KPI rows; deterministic fallback used."
+            llm_error = "LLM extraction returned no valid KPI rows; running fallback deterministic extraction."
             extracted = self._extract_kpis_from_candidates(
                 candidates,
                 contract_id=contract_id,
@@ -1360,29 +1577,51 @@ class ContractKPIManager:
                 user_id=user_id,
                 run_id=run_id,
             )
+        else:
+            # Stage 3: LLM Post-Extraction Consolidation & Deduplication
+            extracted = self._consolidate_kpis_with_llm(extracted, contract_name=contract_name, provider=provider)
+
+        # ── Bulk upsert: replace N sequential round-trips with 2 total ──────────
+        # 1) Prefetch all existing KPI statuses in a single query.
+        kpi_ids = [item["kpi_id"] for item in extracted]
+        approved_ids: set = set()
+        if kpi_ids:
+            for existing in self.kpis.find(
+                {"kpi_id": {"$in": kpi_ids}},
+                {"kpi_id": 1, "status": 1, "_id": 0},
+            ):
+                if existing.get("status") == "approved":
+                    approved_ids.add(existing["kpi_id"])
+
+        # 2) Build and execute a single bulk_write for all non-approved KPIs.
+        ops: List[UpdateOne] = []
+        for item in extracted:
+            if item["kpi_id"] in approved_ids:
+                continue
+            v2_item = KPISchemaV1toV2Migrator.migrate_doc(item)
+            ops.append(
+                UpdateOne(
+                    {"kpi_id": item["kpi_id"]},
+                    {
+                        "$setOnInsert": {
+                            "created_at": now,
+                            "created_by": user_id,
+                        },
+                        "$set": {
+                            **v2_item,
+                            "last_extraction_mode": extraction_method,
+                            "updated_at": now,
+                            "updated_by": user_id,
+                        },
+                    },
+                    upsert=True,
+                )
+            )
 
         upserted = 0
-        for item in extracted:
-            existing = self.kpis.find_one({"kpi_id": item["kpi_id"]}, {"status": 1})
-            if existing and existing.get("status") == "approved":
-                continue
-            self.kpis.update_one(
-                {"kpi_id": item["kpi_id"]},
-                {
-                    "$setOnInsert": {
-                        "created_at": now,
-                        "created_by": user_id,
-                    },
-                    "$set": {
-                        **item,
-                        "last_extraction_mode": extraction_method,
-                        "updated_at": now,
-                        "updated_by": user_id,
-                    },
-                },
-                upsert=True,
-            )
-            upserted += 1
+        if ops:
+            result = self.kpis.bulk_write(ops, ordered=False)
+            upserted = result.upserted_count + result.modified_count
 
         contract_kpis = self.list_contract_kpis(contract_id)
         total_kpi_count = len(contract_kpis)
@@ -1643,6 +1882,45 @@ class ContractKPIManager:
         if not self._is_kpi_tracking_enabled(kpi):
             raise ValueError("KPI is not tracked. Track it before evaluating for breaches.")
 
+        v2_kpi = KPISchemaV1toV2Migrator.migrate_doc(kpi)
+        rule_type = v2_kpi.get("rule", {}).get("rule_type") or kpi.get("rule_type") or "threshold"
+
+        # Requirement 2.3: Qualitative KPI — Explicit Non-Evaluation
+        if rule_type == "qualitative":
+            raise ValueError("This KPI requires human judgment and cannot be auto-evaluated")
+
+        # Requirement 2.4: Composite Formula — Topological Dependencies & Safe AST Evaluation
+        if rule_type == "composite":
+            spec = v2_kpi.get("rule", {}).get("spec", {})
+            ref_kpi_ids = spec.get("ref_kpi_ids", [])
+            ref_context: Dict[str, float] = {}
+            missing_refs: List[str] = []
+            for ref_id in ref_kpi_ids:
+                ref_doc = self.kpis.find_one({"kpi_id": ref_id, "contract_id": kpi.get("contract_id")})
+                latest_actual = self.actuals.find_one({"kpi_id": ref_id}, sort=[("timestamp", -1)])
+                if latest_actual and latest_actual.get("value") is not None:
+                    ref_context[ref_id] = float(latest_actual["value"])
+                elif ref_doc and (ref_doc.get("value") is not None or ref_doc.get("target_value") is not None):
+                    ref_context[ref_id] = float(ref_doc.get("value") or ref_doc.get("target_value"))
+                else:
+                    missing_refs.append(ref_id)
+
+            if missing_refs:
+                return {
+                    "evaluation_mode": "deterministic_rule_engine",
+                    "status": "waiting_on_dependencies",
+                    "missing_ref_kpi_ids": missing_refs,
+                    "is_breach": False,
+                    "ai_used": False,
+                    "message": f"Waiting on dependencies for ref_kpi_ids: {', '.join(missing_refs)}",
+                }
+
+            formula = spec.get("formula", "") or kpi.get("formula", "")
+            try:
+                actual_value = evaluate_safe_formula(formula, context=ref_context)
+            except Exception as exc:
+                raise ValueError(f"Failed to evaluate composite formula '{formula}': {exc}") from exc
+
         rule = kpi.get("evaluation_rule") or self._build_evaluation_rule(kpi)
         evaluation = self._evaluate_rule(kpi, rule, actual_value, timestamp=timestamp)
         expected = evaluation.get("expected_value")
@@ -1861,25 +2139,33 @@ class ContractKPIManager:
             threshold_max = self._numeric(kpi.get("value_max"))
         if target is None:
             target = threshold_min if threshold_min is not None else self._numeric(kpi.get("value"))
-        text = f"{quote or ''} {kpi.get('name') or ''} {kpi.get('description') or ''}".lower()
+        text = f"{quote or ''} {kpi.get('clause_text') or ''} {kpi.get('name') or ''} {kpi.get('description') or ''}".strip()
+        text_lower = text.lower()
         kpi_type = str(kpi.get("kpi_type") or "").lower()
         rule_type = str(kpi.get("rule_type") or "").strip().lower()
-        if not rule_type:
-            if "rolling" in text or "ytd" in text or "year to date" in text:
+
+        target_schedule = kpi.get("target_schedule") or (kpi.get("custom_attributes") or {}).get("target_schedule") or []
+        if not target_schedule and text:
+            target_schedule = KPISchemaV1toV2Migrator._extract_tiers_from_clause(text)
+
+        if target_schedule:
+            rule_type = "tiered"
+        elif not rule_type:
+            if "rolling" in text_lower or "ytd" in text_lower or "year to date" in text_lower:
                 rule_type = "long_term_threshold"
-            elif "error budget" in text or "burn rate" in text or "slo" in text:
+            elif "error budget" in text_lower or "burn rate" in text_lower or "slo" in text_lower:
                 rule_type = "error_budget"
-            elif kpi_type in {"timeline", "milestone", "notice"} or operator in {"no_later_than", "within"} and any(term in text for term in ["day", "date", "deadline", "within"]):
+            elif kpi_type in {"timeline", "milestone", "notice"} or operator in {"no_later_than", "within"} and any(term in text_lower for term in ["day", "date", "deadline", "within"]):
                 rule_type = "deadline"
-            elif "evidence" in text or "certificate" in text or "attestation" in text:
+            elif "evidence" in text_lower or "certificate" in text_lower or "attestation" in text_lower:
                 rule_type = "evidence"
             elif operator == "between" or threshold_max is not None:
                 rule_type = "range"
             else:
                 rule_type = "threshold"
-        period_type = str(kpi.get("period_type") or self._period_type_for_clause(text)).lower()
-        evaluation_window = str(kpi.get("evaluation_window") or self._evaluation_window_for_period(period_type, text)).lower()
-        aggregation = str(kpi.get("aggregation_type") or self._aggregation_type(text)).lower()
+        period_type = str(kpi.get("period_type") or self._period_type_for_clause(text_lower)).lower()
+        evaluation_window = str(kpi.get("evaluation_window") or self._evaluation_window_for_period(period_type, text_lower)).lower()
+        aggregation = str(kpi.get("aggregation_type") or self._aggregation_type(text_lower)).lower()
         if aggregation == "not specified":
             aggregation = "latest"
         business_hours = kpi.get("business_hours") if isinstance(kpi.get("business_hours"), dict) else {}
@@ -1887,6 +2173,11 @@ class ContractKPIManager:
         severity_grace_periods = kpi.get("severity_grace_periods") if isinstance(kpi.get("severity_grace_periods"), dict) else {}
         reporting_lock = kpi.get("reporting_lock") if isinstance(kpi.get("reporting_lock"), dict) else {}
         error_budget = kpi.get("error_budget") if isinstance(kpi.get("error_budget"), dict) else {}
+
+        spec: Dict[str, Any] = {}
+        if target_schedule:
+            spec["tiers"] = target_schedule
+
         return {
             "rule_version": KPI_RULE_VERSION,
             "rule_type": rule_type,
@@ -1895,6 +2186,7 @@ class ContractKPIManager:
             "threshold_min": threshold_min,
             "threshold_max": threshold_max,
             "unit": kpi.get("unit"),
+            "spec": spec,
             "formula": kpi.get("formula") or self._formula_for_rule(rule_type, operator, target, threshold_min, threshold_max),
             "actual_field": "actual_value",
             "timestamp_field": "timestamp",
@@ -3003,20 +3295,14 @@ class ContractKPIManager:
         })
 
     def _is_kpi_candidate(self, candidate: Dict[str, Any]) -> bool:
-        text = (candidate.get("text") or "").lower()
-        tags = set(candidate.get("section_tags") or [])
-        values = set(candidate.get("value_types") or [])
-        has_keyword = any(keyword in text for keyword in self.KPI_KEYWORDS)
-        has_context = self._has_kpi_context(text)
-        has_structured_value = bool(self._value_snippets(candidate.get("text") or ""))
-        if (tags & self.KPI_SECTION_TAGS) and (values or has_keyword or has_context):
-            return True
-        if values & self.KPI_VALUE_TYPES and (has_keyword or has_context):
-            return True
-        if (has_keyword or has_context) and len(text) < 1500:
-            if has_structured_value or self._plain_number_allowed(text, candidate):
-                return True
-        return False
+        """Allow all non-empty text chunks to proceed to Stage 1 LLM Candidate Verification."""
+        text = (candidate.get("text") or "").strip()
+        return len(text) >= 30
+
+    def _is_segment_candidate(self, segment: TextSegment) -> bool:
+        """Allow all non-empty segments to proceed to Stage 1 LLM Candidate Verification."""
+        text = (segment.text or "").strip()
+        return len(text) >= 30
 
     def _candidate_priority(self, candidate: Dict[str, Any]) -> int:
         level = (candidate.get("chunk_level") or "").lower()
@@ -3062,15 +3348,19 @@ class ContractKPIManager:
         return items
 
     def _candidate_clause_records(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Generate candidate clause records from legal document chunks.
+
+        Extracts non-empty clause units without using hardcoded keyword whitelists.
+        Stage 1 LLM Candidate Verification will evaluate these records for operational
+        relevance in the next step.
+        """
         records: List[Dict[str, Any]] = []
         seen: set[str] = set()
         for candidate_index, candidate in enumerate(candidates):
             for clause_index, clause in enumerate(self._clause_units(candidate.get("text") or "")):
-                if not self._clause_has_kpi_signal(clause, candidate):
-                    continue
                 quote = self._quote_text(clause)
                 normalized = self._normalize_clause(quote)
-                if not normalized:
+                if not normalized or len(normalized) < 25:
                     continue
                 signature = hashlib.md5(normalized[:800].encode()).hexdigest()
                 if signature in seen:
@@ -3096,6 +3386,104 @@ class ContractKPIManager:
         ))
         return records
 
+    def _filter_kpi_candidates_with_llm(
+        self,
+        records: List[Dict[str, Any]],
+        provider: str,
+    ) -> List[Dict[str, Any]]:
+        """Stage 1: High-recall LLM Candidate Verification pass.
+
+        Replaces all Python heuristic word lists and keyword matchers.
+        Evaluates clause units in parallel micro-batches to filter out non-operational
+        boilerplate, signature lines, exhibit references, and administrative headers,
+        returning ONLY verified operational KPI candidate records.
+        """
+        if not records:
+            return []
+
+        batch_size = 15
+        batches = [records[i:i + batch_size] for i in range(0, len(records), batch_size)]
+        verified_records: List[Dict[str, Any]] = []
+        record_map = {r["source_id"]: r for r in records}
+
+        def _verify_batch(batch_records):
+            source_blocks = []
+            for r in batch_records:
+                source_blocks.append(f"SOURCE_ID: {r['source_id']}\nCLAUSE: {r['text']}")
+
+            prompt = (
+                "# Stage 1 KPI Candidate Verification Agent\n"
+                "Task: Classify whether each clause text contains an operational KPI, performance target, SLA, "
+                "quality threshold, volume commitment, delivery window, fee, rate, penalty, or notice requirement.\n\n"
+                "Return valid JSON object with key 'candidates':\n"
+                "{\"candidates\": [{\"source_id\": \"...\", \"is_kpi_candidate\": true}]}\n\n"
+                "Guidelines:\n"
+                "- is_kpi_candidate = true for any performance metric, SLA, target, penalty, fee, rate, deadline, quality threshold, or operational requirement.\n"
+                "- is_kpi_candidate = false for non-operational boilerplate, legal definitions, section-title-only lines, 401(k) notes, or signature blocks.\n\n"
+                "<CLAUSES>\n" + "\n\n---\n\n".join(source_blocks) + "\n</CLAUSES>"
+            )
+
+            try:
+                res = self._query_kpi_llm_json(prompt, provider=provider, max_tokens_override=4096)
+                cands = res.get("candidates") if isinstance(res, dict) else None
+                if isinstance(cands, list):
+                    return [
+                        record_map[c["source_id"]]
+                        for c in cands
+                        if isinstance(c, dict) and c.get("is_kpi_candidate") and c.get("source_id") in record_map
+                    ]
+            except Exception as exc:
+                logger.warning("Stage 1 LLM candidate verification batch failed (fallback to keep): %s", exc)
+                return batch_records
+            return []
+
+        max_workers = min(len(batches), 6) if len(batches) > 1 else 1
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(_verify_batch, b) for b in batches]
+            for f in as_completed(futures):
+                try:
+                    verified_records.extend(f.result())
+                except Exception as exc:
+                    logger.warning("Worker error in Stage 1 candidate verification: %s", exc)
+
+        verified_ids = {r["source_id"] for r in verified_records}
+        return [r for r in records if r["source_id"] in verified_ids]
+
+    def _extract_batch_llm_rows(self, batch: List[Dict[str, Any]], contract_name: str, provider: str) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+        prompt = self._build_kpi_llm_prompt(
+            contract_name=contract_name,
+            records=batch,
+        )
+
+        payload = {}
+        rows = None
+        error_feedback = ""
+        for attempt in range(2):
+            current_prompt = prompt
+            if error_feedback:
+                current_prompt = (
+                    f"{prompt}\n\n"
+                    f"WARNING: Your previous attempt failed to return a valid JSON object matching the schema. "
+                    f"Error Feedback: {error_feedback}\n"
+                    f"Please correct any formatting or key mapping errors, ensure it is strictly valid JSON, and try again."
+                )
+
+            payload = self._query_kpi_llm_json(current_prompt, provider=provider)
+            rows = payload.get("kpis") if isinstance(payload, dict) else None
+            if isinstance(rows, list) and len(rows) > 0:
+                break
+            else:
+                if not isinstance(payload, dict) or not payload:
+                    error_feedback = "The returned string could not be parsed as a valid JSON object."
+                elif "kpis" not in payload:
+                    error_feedback = "The returned JSON object is missing the top-level 'kpis' key."
+                else:
+                    error_feedback = "The 'kpis' list was empty."
+                logger.warning("Attempt %d failed: %s Retrying with feedback...", attempt + 1, error_feedback)
+
+        record_lookup = {record["source_id"]: record for record in batch}
+        return rows if isinstance(rows, list) else [], record_lookup
+
     def _extract_kpis_with_llm(
         self,
         candidates: List[Dict[str, Any]],
@@ -3111,67 +3499,53 @@ class ContractKPIManager:
             logger.info("Skipping LLM KPI extraction because provider %s is not configured.", provider)
             return []
 
-        records = self._candidate_clause_records(candidates)
+        raw_records = self._candidate_clause_records(candidates)
+        if not raw_records:
+            return []
+
+        # Stage 1: High-Recall LLM Candidate Verification Pass
+        records = self._filter_kpi_candidates_with_llm(raw_records, provider=provider)
         if not records:
             return []
 
+        batches = self._batch_clause_records(records)
         extracted: List[Dict[str, Any]] = []
         seen: set[str] = set()
-        for batch in self._batch_clause_records(records):
-            prompt = self._build_kpi_llm_prompt(
-                contract_name=contract_name,
-                records=batch,
-            )
 
-            payload = {}
-            rows = None
-            error_feedback = ""
-            for attempt in range(2):
-                current_prompt = prompt
-                if error_feedback:
-                    current_prompt = (
-                        f"{prompt}\n\n"
-                        f"WARNING: Your previous attempt failed to return a valid JSON object matching the schema. "
-                        f"Error Feedback: {error_feedback}\n"
-                        f"Please correct any formatting or key mapping errors, ensure it is strictly valid JSON, and try again."
-                    )
+        max_workers = min(len(batches), 6) if len(batches) > 1 else 1
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_batch = {
+                executor.submit(self._extract_batch_llm_rows, batch, contract_name, provider): batch
+                for batch in batches
+            }
+            for future in as_completed(future_to_batch):
+                try:
+                    rows, record_lookup = future.result()
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            continue
+                        item = self._kpi_from_llm_row(
+                            row=row,
+                            record_lookup=record_lookup,
+                            contract_id=contract_id,
+                            project_id=project_id,
+                            contract_name=contract_name,
+                            user_id=user_id,
+                            run_id=run_id,
+                            provider=provider,
+                        )
+                        if not item:
+                            continue
+                        signature = hashlib.md5(
+                            self._normalize_clause(f"{item.get('name')} {item.get('quote')}")[:1000].encode()
+                        ).hexdigest()
+                        if signature in seen:
+                            continue
+                        seen.add(signature)
+                        extracted.append(item)
+                except Exception as exc:
+                    logger.warning("Batch LLM extraction worker failed: %s", exc)
 
-                payload = self._query_kpi_llm_json(current_prompt, provider=provider)
-                rows = payload.get("kpis") if isinstance(payload, dict) else None
-                if isinstance(rows, list) and len(rows) > 0:
-                    break
-                else:
-                    if not isinstance(payload, dict) or not payload:
-                        error_feedback = "The returned string could not be parsed as a valid JSON object."
-                    elif "kpis" not in payload:
-                        error_feedback = "The returned JSON object is missing the top-level 'kpis' key."
-                    else:
-                        error_feedback = "The 'kpis' list was empty."
-                    logger.warning("Attempt %d failed: %s Retrying with feedback...", attempt + 1, error_feedback)
-
-            if not isinstance(rows, list):
-                continue
-            record_lookup = {record["source_id"]: record for record in batch}
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                item = self._kpi_from_llm_row(
-                    row=row,
-                    record_lookup=record_lookup,
-                    contract_id=contract_id,
-                    project_id=project_id,
-                    contract_name=contract_name,
-                    user_id=user_id,
-                    run_id=run_id,
-                    provider=provider,
-                )
-                if not item:
-                    continue
-                signature = hashlib.md5(self._normalize_clause(f"{item.get('name')} {item.get('quote')}")[:1000].encode()).hexdigest()
-                if signature in seen:
-                    continue
-                seen.add(signature)
-                extracted.append(item)
         extracted.sort(key=lambda item: (item.get("page_start") or 100000, item.get("kpi_type") or "", item.get("name") or ""))
         return extracted
 
@@ -3184,7 +3558,7 @@ class ContractKPIManager:
             return bool(self.openai_api_key)
         return False
 
-    def _batch_clause_records(self, records: List[Dict[str, Any]], *, char_budget: int = 11000, max_records: int = 18) -> List[List[Dict[str, Any]]]:
+    def _batch_clause_records(self, records: List[Dict[str, Any]], *, char_budget: int = 8000, max_records: int = 10) -> List[List[Dict[str, Any]]]:
         batches: List[List[Dict[str, Any]]] = []
         current: List[Dict[str, Any]] = []
         current_chars = 0
@@ -3235,7 +3609,19 @@ class ContractKPIManager:
             "Each KPI object MUST contain these keys:\n"
             "source_id, name, description, kpi_type, party, operator, value, unit, value_min, value_max, "
             "consequence_value, consequence_unit, aggregation_type, trigger_condition, remediation, remediation_sla, "
-            "contact_email, breach_email_template, quote, confidence, needs_review, notes.\n\n"
+            "contact_email, breach_email_template, quote, confidence, needs_review, notes, "
+            "measurement_scope, measurement_window, monetary_penalty_schedule, target_schedule.\n\n"
+            "TARGET SCHEDULE / TIERS RULES:\n"
+            "- If the clause defines a multi-tier schedule (e.g. Tier 1: 5% credit, Tier 2: 12% credit), extract the list "
+            "of objects into target_schedule: [{\"tier\": \"Tier 1\", \"range\": \"...\", \"credit_pct\": 5.0, \"penalty_amount\": \"$5,000\"}].\n"
+            "- If not tiered, keep target_schedule null or empty list.\n\n"
+            "CUSTOM ATTRIBUTE RULES:\n"
+            "- measurement_scope: the specific population or asset scope this KPI applies to, exactly as stated "
+            "in the contract (e.g. 'All production servers', 'North America region', 'Per project site'). null if not mentioned.\n"
+            "- measurement_window: the time or event granularity for measurement, exactly as written "
+            "(e.g. 'Monthly average', 'Per incident event', 'Rolling 30 days', 'Annual'). null if not mentioned.\n"
+            "- monetary_penalty_schedule: the penalty rate formula exactly as written in the clause "
+            "(e.g. '$500 / hour of downtime', '2% of monthly fee per day of delay', '$10,000 per event'). null if not applicable.\n\n"
             "SOURCE AND CITATION RULES:\n"
             "- source_id must be one of the provided SOURCE_ID values.\n"
             "- quote must be exact contiguous source text, no more than 60 words where possible.\n"
@@ -3256,14 +3642,9 @@ class ContractKPIManager:
             "- volume: quantities, seats, loads, units, storage limits, staffing levels.\n"
             "- obligation, compliance, reporting, notice, renewal, termination, milestone: use when those are more specific.\n\n"
             "REMEDIATION AND EMAIL DRAFTING RULES:\n"
-            "- remediation is mandatory. First extract specific corrective action from the contract: CAP, RCA, PIP, refund, credit, cure, replacement, audit, report, suspension, or termination process.\n"
-            "- If the clause is silent, use a standard business action. Do not return null or 'Not specified'. Examples: 'Submit root cause analysis and corrective action plan.' or 'Correct the invoice and confirm payment status.'\n"
-            "- remediation_sla is mandatory. First extract the contract timeline. If silent, use a sensible default: 48 hours for critical/safety/payment blocking matters, 7 days for ordinary operational KPIs, 15 days for reporting/audit follow-up.\n"
-            "- contact_email is optional. Extract only an email address present in the source. If no email exists, use null.\n"
-            "- breach_email_template is mandatory. Draft a professional breach notice email in a direct, human, collaborative tone.\n"
-            "- Avoid AI-isms such as: 'I hope this finds you well', 'pivotal', 'delve', 'leverage', 'robust', 'testament'.\n"
-            "- The email template MUST include these exact placeholders: {{kpi_name}}, {{threshold}}, {{actual_value}}, {{unit}}, {{penalty_amount}}, {{remediation}}, {{remediation_sla}}, {{contract_name}}.\n"
-            "- Include a clear subject line, greeting, breach facts, threshold vs actual, consequence or penalty, remediation path, SLA, and professional closing.\n\n"
+            "- remediation is mandatory. First extract specific corrective action from the contract.\n"
+            "- remediation_sla is mandatory (e.g. 48 hours, 7 days, 15 days).\n"
+            "- breach_email_template: keep null or brief (1 short sentence max). The system auto-formats the template.\n\n"
             "CONFIDENCE RULES:\n"
             "- Include only KPIs with confidence >= 0.80.\n"
             "- 0.95-1.0: explicit numeric value and direct KPI/penalty/fee/deadline language.\n"
@@ -3277,27 +3658,48 @@ class ContractKPIManager:
             + "\n</SOURCES>"
         )
 
-    def _query_kpi_llm_json(self, prompt: str, *, provider: str) -> Dict[str, Any]:
+    def _query_kpi_llm_json(
+        self,
+        prompt: str,
+        *,
+        provider: str,
+        max_tokens_override: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Send a structured JSON request to the chosen LLM provider.
+
+        Args:
+            prompt: The full user-turn prompt.
+            provider: One of 'groq', 'openai', 'gemini'.
+            max_tokens_override: When set, overrides the default max_tokens cap.
+                Use this for small, bounded responses (e.g. the consolidation
+                dedup pass) to prevent the model from padding/truncating output.
+        """
         try:
             if provider == "groq":
+                # Default to 20 000 for full extraction; caller may supply a
+                # tighter cap for short-response calls to avoid truncation.
+                groq_max_tokens = max_tokens_override if max_tokens_override else 20000
                 response = self.http_session.post(
                     "https://api.groq.com/openai/v1/chat/completions",
                     headers=self.groq_headers,
                     json={
-                        "model": settings.model_name,
+                        "model": getattr(settings, "model_name"),
                         "messages": [{"role": "user", "content": prompt}],
                         "temperature": 0,
                         "top_p": 1,
                         "response_format": {"type": "json_object"},
-                        "max_completion_tokens": max(4096, min(getattr(settings, "max_tokens", 4096), 8192)),
+                        "max_tokens": groq_max_tokens,
                     },
-                    timeout=getattr(settings, "api_timeout", 30),
+                    timeout=getattr(settings, "api_timeout", 20),
                 )
                 response.raise_for_status()
                 content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
                 return self._parse_json_object(content)
 
             if provider == "openai":
+                openai_max_tokens = max_tokens_override if max_tokens_override else max(
+                    4096, min(getattr(settings, "max_tokens", 4096), 8192)
+                )
                 response = self.http_session.post(
                     "https://api.openai.com/v1/chat/completions",
                     headers=self.openai_headers,
@@ -3307,7 +3709,7 @@ class ContractKPIManager:
                         "temperature": 0,
                         "top_p": 1,
                         "response_format": {"type": "json_object"},
-                        "max_tokens": max(4096, min(getattr(settings, "max_tokens", 4096), 8192)),
+                        "max_tokens": openai_max_tokens,
                     },
                     timeout=getattr(settings, "api_timeout", 30),
                 )
@@ -3317,16 +3719,19 @@ class ContractKPIManager:
 
             if provider == "gemini":
                 model = getattr(settings, "gemini_model_name", None) or "gemini-2.0-flash"
+                gen_config: Dict[str, Any] = {
+                    "temperature": 0,
+                    "topP": 1,
+                    "responseMimeType": "application/json",
+                }
+                if max_tokens_override:
+                    gen_config["maxOutputTokens"] = max_tokens_override
                 response = self.http_session.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.gemini_api_key}",
                     headers=self.gemini_headers,
                     json={
                         "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {
-                            "temperature": 0,
-                            "topP": 1,
-                            "responseMimeType": "application/json",
-                        },
+                        "generationConfig": gen_config,
                     },
                     timeout=getattr(settings, "api_timeout", 30),
                 )
@@ -3357,6 +3762,8 @@ class ContractKPIManager:
                     return {}
         return {}
 
+
+
     def _kpi_from_llm_row(
         self,
         *,
@@ -3373,25 +3780,25 @@ class ContractKPIManager:
         record = record_lookup.get(source_id)
         if not record:
             return None
-        candidate = record.get("candidate") or {}
-        source_text = record.get("text") or ""
+
+        source_text = str(record.get("text") or "")
         quote = self._validated_quote(str(row.get("quote") or ""), source_text)
-        if len(quote) < 30:
-            return None
-        if self._is_non_operational_clause(quote, candidate):
+        if len(quote) < 25:
             return None
 
-        kpi_type = str(row.get("kpi_type") or self._classify_kpi_type(quote, candidate) or "obligation").strip().lower()
-        if kpi_type not in {"financial", "timeline", "notice", "termination", "milestone", "penalty", "sla", "volume", "obligation", "compliance", "reporting", "renewal", "other"}:
-            kpi_type = self._classify_kpi_type(quote, candidate)
-        name = self._clean_optional_string(row.get("name")) or self._kpi_name(quote, kpi_type, candidate)
+        candidate = record.get("candidate") or {}
+        kpi_type = str(row.get("kpi_type") or "obligation").strip().lower()
+
+        raw_name = self._clean_optional_string(row.get("name")) or self._kpi_name(quote, kpi_type, candidate)
+        name = self._clean_kpi_display_name(raw_name)
         value_data = self._primary_value(quote)
         page_start = record.get("page_start")
         page_end = record.get("page_end")
         section_path = record.get("section_path") or "Document"
-        base_confidence = self._coerce_confidence(row.get("confidence"), fallback=self._confidence_for_clause(quote, candidate, value_data))
-        confidence, confidence_reason = self._calibrate_confidence(base_confidence, section_path, kpi_type, quote)
-        needs_review = bool(row.get("needs_review")) or confidence < 0.82
+
+        confidence = self._coerce_confidence(row.get("confidence"), fallback=0.90)
+        needs_review = bool(row.get("needs_review")) or confidence < 0.80
+
         recommendation = self._recommendation_for_kpi(
             quote=quote,
             kpi_type=kpi_type,
@@ -3423,10 +3830,6 @@ class ContractKPIManager:
         kpi_id = self._stable_kpi_id(contract_id, quote, candidate.get("segment_id"), name)
         remediation = self._clean_optional_string(row.get("remediation"))
         remediation_sla = self._clean_optional_string(row.get("remediation_sla"))
-        if not remediation or not remediation_sla:
-            default_remediation, default_sla = self._default_remediation(kpi_type, quote)
-            remediation = remediation or default_remediation
-            remediation_sla = remediation_sla or default_sla
 
         breach_email_template = self._normalize_breach_email_template(
             self._clean_optional_string(row.get("breach_email_template")),
@@ -3436,10 +3839,14 @@ class ContractKPIManager:
             remediation_sla=remediation_sla,
         )
 
+        target_schedule = row.get("target_schedule") or row.get("tiers") or []
+        rule_type = "tiered" if target_schedule else ("range" if row.get("value_max") is not None else "threshold")
+
         item = {
             "kpi_id": kpi_id,
             "schema_version": KPI_SCHEMA_VERSION,
             "run_id": run_id,
+            "contract_id": contract_id,
             "contract_id": contract_id,
             "document_id": contract_id,
             "project_id": project_id,
@@ -3448,17 +3855,19 @@ class ContractKPIManager:
             "name": name[:160],
             "description": self._clean_optional_string(row.get("description")) or self._short_description(quote),
             "kpi_type": kpi_type,
+            "rule_type": rule_type,
             "party": self._clean_optional_string(row.get("party")),
-            "operator": self._normalize_operator(self._clean_optional_string(row.get("operator")) or self._operator_for_clause(quote)),
+            "operator": self._normalize_operator(self._clean_optional_string(row.get("operator")) or ">="),
             "value": llm_value if llm_value is not None else value_data.get("value"),
             "unit": llm_unit or value_data.get("unit"),
             "value_min": self._numeric(row.get("value_min")) if row.get("value_min") is not None else value_data.get("value_min"),
             "value_max": self._numeric(row.get("value_max")) if row.get("value_max") is not None else value_data.get("value_max"),
+            "target_schedule": target_schedule if isinstance(target_schedule, list) else [],
             "value_candidates": self._value_candidates(quote),
             "consequence_value": self._numeric(row.get("consequence_value")),
             "consequence_unit": self._clean_optional_string(row.get("consequence_unit")),
-            "aggregation_type": self._clean_optional_string(row.get("aggregation_type")) or self._aggregation_type(quote),
-            "trigger_condition": self._clean_optional_string(row.get("trigger_condition")) or self._trigger_condition(quote),
+            "aggregation_type": self._clean_optional_string(row.get("aggregation_type")) or "monthly",
+            "trigger_condition": self._clean_optional_string(row.get("trigger_condition")),
             "section": self._last_section(section_path),
             "section_path": section_path,
             "structural_path": section_path,
@@ -3477,7 +3886,7 @@ class ContractKPIManager:
             "char_start": record.get("char_start"),
             "char_end": record.get("char_end"),
             "confidence": confidence,
-            "confidence_reason": f"LLM structured extraction via {provider}. {confidence_reason}",
+            "confidence_reason": f"LLM structured extraction via {provider}.",
             "needs_review": needs_review,
             **recommendation,
             "status": "draft",
@@ -3486,7 +3895,8 @@ class ContractKPIManager:
             "contact_email": self._clean_optional_string(row.get("contact_email")),
             "breach_email_template": breach_email_template,
             "notes": self._clean_optional_string(row.get("notes")),
-            "extraction_method": f"hybrid_llm_{provider}",
+            "extraction_method": f"llm_{provider}",
+            "custom_attributes": self._extract_kpi_domain_custom_attributes(quote, name, llm_row=row),
             "source_id": source_id,
         }
         item.update(self._production_kpi_metadata(item, quote=quote, ai_provider=provider))
@@ -3509,7 +3919,10 @@ class ContractKPIManager:
         text = re.sub(r"\s+", " ", clean_text_encoding(str(value))).strip()
         if not text or text.lower() in {"null", "none", "n/a", "unknown", "not specified"}:
             return None
-        return text
+        cleaned = re.sub(r"^(?:Sla|Obligation|Penalty|Timeline|Financial|Notice):\s*", "", text, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*\|\s*.*$", "", cleaned)
+        cleaned = re.sub(r"^[|\s]+|[|\s]+$", "", cleaned)
+        return cleaned.strip() or None
 
     def _coerce_confidence(self, value: Any, *, fallback: float) -> float:
         numeric = self._numeric(value)
@@ -3518,6 +3931,44 @@ class ContractKPIManager:
         if numeric > 1:
             numeric = numeric / 100
         return round(max(0.0, min(float(numeric), 1.0)), 2)
+
+    def _extract_kpi_domain_custom_attributes(
+        self,
+        quote: str,
+        name: str,
+        llm_row: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Build the custom_attributes dict for a KPI.
+
+        These fields are domain-agnostic and apply to any contract type
+        (telecom, pharma, logistics, finance, construction, etc.).
+        Values are sourced exclusively from the LLM row — no hardcoded
+        contract-specific regex patterns.  The LLM infers them from the
+        source clause text and they are validated / cleaned here.
+        """
+        attrs: Dict[str, Any] = {}
+        if not llm_row:
+            return attrs
+
+        # 1. Measurement scope — e.g. "All production servers", "North America region",
+        #    "All active users", "Per project site" — inferred by the model from context.
+        scope = self._clean_optional_string(llm_row.get("measurement_scope"))
+        if scope:
+            attrs["measurement_scope"] = scope
+
+        # 2. Measurement window — e.g. "Monthly average", "Rolling 30 days",
+        #    "Per incident", "Annual", "Quarterly" — inferred by the model.
+        window = self._clean_optional_string(llm_row.get("measurement_window"))
+        if window:
+            attrs["measurement_window"] = window
+
+        # 3. Monetary penalty schedule — the rate formula as written in the contract,
+        #    e.g. "$500 / hour", "2% of monthly fee per day of delay", "$10,000 / event".
+        penalty_schedule = self._clean_optional_string(llm_row.get("monetary_penalty_schedule"))
+        if penalty_schedule:
+            attrs["monetary_penalty_schedule"] = penalty_schedule
+
+        return attrs
 
     def _kpi_from_clause(
         self,
@@ -3582,6 +4033,8 @@ class ContractKPIManager:
             "char_end": candidate.get("char_end"),
         }
 
+        domain_attrs = self._extract_kpi_domain_custom_attributes(quote, name, llm_row=None)
+
         item = {
             "kpi_id": kpi_id,
             "schema_version": KPI_SCHEMA_VERSION,
@@ -3637,24 +4090,71 @@ class ContractKPIManager:
                 remediation_sla=remediation_sla,
             ),
             "extraction_method": "deterministic_legal_chunks_v1",
+            "custom_attributes": domain_attrs,
         }
         item.update(self._production_kpi_metadata(item, quote=quote, ai_provider=None))
         return item
 
+    def _is_table_header_or_delimiter_line(self, line: str) -> bool:
+        """Return True when a pipe-delimited line is a table header or separator row.
+
+        Uses only structural / typographic signals that hold across all contract
+        domains (telecom, pharma, construction, finance, etc.).  No domain-
+        specific column-name lists that would break on different contract types.
+        """
+        cleaned = (line or "").strip()
+        if not cleaned or "|" not in cleaned:
+            return False
+
+        # Pure alignment rows: | --- | :---: | --- |
+        if re.fullmatch(r"[\s|:\-]+", cleaned):
+            return True
+
+        # A header row contains only short label-like tokens between pipes —
+        # no numeric values and no obligation verbs.  We detect this by checking
+        # that every non-empty cell (split by |) is short (<= 6 words) AND the
+        # line as a whole contains no digits, currency symbols, or percent signs,
+        # which would indicate it is a data row rather than a header.
+        cells = [c.strip() for c in cleaned.split("|") if c.strip()]
+        if not cells:
+            return False
+        all_short = all(len(c.split()) <= 6 for c in cells)
+        has_numeric_data = bool(re.search(r"[\d$%]", cleaned))
+        has_obligation_verb = bool(re.search(
+            r"\b(?:shall|must|will|may|agrees?|required|provide|deliver|maintain|ensure|comply|pay|report)\b",
+            cleaned,
+            re.IGNORECASE,
+        ))
+        if all_short and not has_numeric_data and not has_obligation_verb and len(cells) >= 2:
+            return True
+
+        return False
+
     def _clause_units(self, text: str) -> List[str]:
         cleaned = self._strip_embedding_context(clean_text_encoding(text or ""))
-        table_lines = [line.strip() for line in cleaned.splitlines() if "|" in line and line.count("|") >= 2]
+        table_lines = [
+            line.strip()
+            for line in cleaned.splitlines()
+            if "|" in line and line.count("|") >= 2 and not self._is_table_header_or_delimiter_line(line)
+        ]
         units: List[str] = []
         units.extend(table_lines)
         for block in re.split(r"\n\s*\n", cleaned):
             block = block.strip()
             if not block:
                 continue
+            # Strip table header/delimiter lines from block
+            lines = [l for l in block.splitlines() if not self._is_table_header_or_delimiter_line(l)]
+            if not lines:
+                continue
+            block = "\n".join(lines).strip()
+            if self._is_table_header_or_delimiter_line(block):
+                continue
             if len(block) <= 520:
                 units.append(block)
                 continue
             parts = re.split(r"(?<=[.;:])\s+(?=(?:The|If|Where|Upon|Each|Any|A|An|No|Payment|Delivery|Service|Supplier|Contractor|Customer|Company)\b)", block)
-            units.extend(part.strip() for part in parts if part.strip())
+            units.extend(part.strip() for part in parts if part.strip() and not self._is_table_header_or_delimiter_line(part))
         return [unit for unit in units if 30 <= len(unit) <= 1400]
 
     def _clause_has_kpi_signal(self, clause: str, candidate: Dict[str, Any]) -> bool:
@@ -3686,6 +4186,38 @@ class ContractKPIManager:
         lower = text.lower()
         if not lower:
             return True
+
+        if self._is_table_header_or_delimiter_line(text):
+            return True
+
+        # Signature blocks: underscore lines or labeled party-signing blocks.
+        if re.search(r"_{4,}", text) or (
+            ("by:" in lower or "title:" in lower)
+            and any(term in lower for term in ["inc.", "corp.", "llc.", "ltd.", "officer", "president", "director", "cto", "cfo", "ceo", "signature", "authorized"])
+        ):
+            return True
+
+        # Section-title-only intro preambles — a line that is ONLY a section header
+        # label with no operative content.  We detect: starts with a section/article/
+        # schedule marker, followed by a label-style title.
+        # Guards: a line is kept (not filtered) when it contains obligation verbs,
+        # or numeric / monetary data IN THE TITLE BODY (after the colon) that could
+        # define a threshold — any of which make it potentially trackable.
+        _section_preamble_match = re.match(
+            r"^(?:Section|Article|Schedule|Exhibit|Annex|Appendix|Clause|Part)\s+[\dA-Z.]+\s*[:–—]\s*(.+)$",
+            text,
+            re.IGNORECASE,
+        )
+        if _section_preamble_match:
+            _title_body = _section_preamble_match.group(1).strip()
+            _has_operative_verb = bool(re.search(
+                r"\b(?:shall|must|will|agrees?|required|provide|deliver|maintain|ensure|comply|pay|report|incur|forfeit)\b",
+                _title_body,
+                re.IGNORECASE,
+            ))
+            _has_quantitative_data = bool(re.search(r"[\d$%]", _title_body))
+            if not _has_operative_verb and not _has_quantitative_data:
+                return True
 
         # Contract metadata and section-heading artifacts are useful citations, but not trackable KPIs.
         if re.search(r"\b(?:ex|exhibit)-?\d+(?:\.\d+)?\b", lower) and not self._has_kpi_context(lower):
@@ -3840,10 +4372,11 @@ class ContractKPIManager:
         return match.group(1).strip() if match else None
 
     def _consequence_value(self, text: str) -> Tuple[Optional[float], Optional[str]]:
+        if match := self.MONEY_RE.search(text):
+            if "/" in text or "$" in text or re.search(r"\b(?:penalty|damages|service credit|credit|deduct|withhold|late fee|terminate|breach|event|leak|site|hr|outage)\b", text, re.IGNORECASE):
+                return self._numeric(match.group(1)), "currency"
         if not re.search(r"\b(?:penalty|damages|service credit|credit|deduct|withhold|late fee|terminate|breach)\b", text, re.IGNORECASE):
             return None, None
-        if match := self.MONEY_RE.search(text):
-            return self._numeric(match.group(1)), "currency"
         if match := self.PERCENT_RE.search(text):
             return self._numeric(match.group(1)), "%"
         return None, None
@@ -3928,7 +4461,12 @@ class ContractKPIManager:
             str(kpi.get("responsible_party") or "").strip().lower() if kpi else "",
             str(kpi.get("business_owner") or "").strip().lower() if kpi else "",
         ]
-        preferred_roles = {"supplier", "vendor", "contractor", "provider", "concessionaire", "operator"}
+        # Do not use a closed role whitelist — it breaks for domain-specific
+        # party designations (e.g. "Airport Authority", "Subcontractor",
+        # "Sub-Recipient", "Licensee", "Franchisor", "Prime Contractor").
+        # Instead, give any party that has an explicitly stated role a small
+        # base bonus; the KPI-party name match below gives the decisive signal.
+        preferred_roles: set = set()  # open — all roles treated equally at base
         candidates: List[Tuple[int, str, Dict[str, Any]]] = []
         for party in parties:
             if not isinstance(party, dict):
@@ -4154,6 +4692,12 @@ class ContractKPIManager:
         return None
 
     def _trigger_condition(self, text: str) -> Optional[str]:
+        # Match threshold band operators like < 99.900%, > 30.0 min, > 8.00 ms in table rows
+        tb_match = re.search(r"\|\s*((?:<|>|<=|>=)\s*[0-9.]+\s*(?:%|ms|min|hr)?)\s*\|", text)
+        if tb_match:
+            val = tb_match.group(1).strip()
+            return f"Breach threshold band: {val}"
+
         match = re.search(r"\b(?:if|upon|when|in the event that)\b[^.;]{10,260}", text, re.IGNORECASE)
         return " ".join(match.group(0).split()) if match else None
 
@@ -4225,12 +4769,47 @@ class ContractKPIManager:
 
         return base_confidence, "Retained default base confidence score."
 
-    def _kpi_name(self, text: str, kpi_type: str, candidate: Dict[str, Any]) -> str:
-        section = self._last_section(candidate.get("section_path"))
-        clean = re.sub(r"\s+", " ", text).strip(" -|")
-        clean = re.sub(r"^\|?[-: \t|]+", "", clean)
+    def _clean_kpi_title_snippet(self, text: str) -> str:
+        clean = re.sub(r"^(?:Sla|Obligation|Penalty|Timeline|Financial|Notice):\s*", "", str(text), flags=re.IGNORECASE)
+        # If line has pipe delimiters: | KPI-TEL-01 | 5G SA Core Uptime | ...
+        if "|" in clean:
+            parts = [p.strip() for p in clean.split("|") if p.strip()]
+            # Filter out pure numbers/percentages/ranges/fees from title parts
+            name_parts = []
+            for p in parts:
+                if re.fullmatch(r"[\d\.\s%<>$,\-\/]+", p) or re.search(r"\b(?:Fee|Credit|Penalty|USD|Monthly|Aggregate)\b", p, re.I):
+                    continue
+                name_parts.append(p)
+            if name_parts:
+                unique_words = []
+                seen_words = set()
+                for part in name_parts:
+                    for w in part.split():
+                        w_lower = w.lower()
+                        if w_lower not in seen_words:
+                            seen_words.add(w_lower)
+                            unique_words.append(w)
+                clean = " ".join(unique_words)
+
+        # Strip percentage thresholds, dollar figures, operators, and raw schedule numbers
+        clean = re.sub(r"(?:[0-9]+\.[0-9]+%?|\$[0-9,]+(?:\s*/\s*[a-z]+)*|(?:<=?|>=?)\s*[0-9\.]+)", "", clean)
+        clean = re.sub(r"\b(?:Fee(?:\s*Credit)?|Penalty|Single Incident|Incidents?)\b", "", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"[\s|:\-\/]+", " ", clean).strip()
         words = clean.split()
-        snippet = " ".join(words[:9]).strip(".,;:")
+        return " ".join(words[:7]).strip(".,;:-")
+
+    def _clean_kpi_display_name(self, name: str) -> str:
+        text = re.sub(r"^(?:Section|Article|Schedule|Exhibit)\s+[\dA-Z.]+\s*[:–—]\s*(?:KPI\s+Performance\s+Table|Comprehensive\s+KPI\s+Performance\s+and\s+Credit\s+Matrix|KPI\s+Performance\s+Guarantees\s+and\s+Penalty\s+Matrix)?\s*[:–—]?\s*", "", name or "", flags=re.IGNORECASE)
+        text = re.sub(r"\s*\|\s*.*$", "", text)
+        text = re.sub(r"[*`_#]", "", text)
+        return text.strip() or name
+
+    def _kpi_name(self, text: str, kpi_type: str, candidate: Dict[str, Any]) -> str:
+        snippet = self._clean_kpi_title_snippet(text)
+        section = self._last_section(candidate.get("section_path"))
+        if not snippet:
+            words = re.sub(r"\s+", " ", text).strip().split()
+            snippet = " ".join(words[:6]).strip(".,;:")
         if section and section.lower() != "document":
             return f"{section}: {snippet}"[:120]
         return f"{kpi_type.title()}: {snippet}"[:120]
@@ -4322,10 +4901,11 @@ class ContractKPIManager:
     def _serialize_kpi(self, doc: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """Serialize a KPI document for client responses.
 
-        breach_email_template is stored internally on the KPI and used only
-        when a breach is flagged for remediation. It must never be returned
-        in the KPI listing or detail endpoints.
+        Migrates to V2 shape and applies flatten_for_legacy_frontend for backward compatibility.
         """
-        serialized = self._serialize(doc)
-        serialized.pop("breach_email_template", None)
+        if not doc:
+            return {}
+        v2_doc = KPISchemaV1toV2Migrator.migrate_doc(doc)
+        flattened = flatten_for_legacy_frontend(v2_doc)
+        serialized = self._serialize(flattened)
         return serialized

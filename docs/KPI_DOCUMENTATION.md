@@ -353,32 +353,52 @@ Used for legal obligations that state non-quantifiable standards (e.g. *"Contrac
 
 ## 4. Extraction & Harvesting Pipeline
 
-KPI candidates are generated via a multi-phase extraction process in [kpi_manager.py](file:///Users/sambhavjain/Desktop/Codes/extractor/extractor/apps/backend/services/kpi_manager.py):
+The KPI system uses a **100% LLM-Driven 3-Stage Pipeline** in [kpi_manager.py](file:///Users/sambhavjain/Desktop/Codes/extractor/extractor/apps/backend/services/kpi_manager.py) to extract, structure, and consolidate KPIs across all contract domains with zero hardcoded keyword whitelists or heuristic regex filters:
 
 ```
- Raw Document Chunks (Vector Store)
-               │
-               ▼
- [1. Signal Filtering (_clause_has_kpi_signal)] ──► Drops generic text / reference numbers
-               │
-               ▼
- [2. Voyage AI Reranking (_rerank_candidates_with_voyage)] ──► Reranks via Voyage rerank-2.5
-               │
-               ▼
- [3. Hybrid LLM Extraction (_extract_kpis_with_llm)] ──► Extracts candidate schema rows
-               │
-               ▼
- [4. Confidence Calibration (_calibrate_confidence)] ──► Applies header/clause priority rules
-               │
-               ▼
- Stored as "draft" or "recommended" KPIs
+  Raw Contract Chunks (Vector Store / Document Index)
+                        │
+                        ▼
+ ┌──────────────────────────────────────────────────────────┐
+ │ STAGE 1: LLM Candidate Verification Pass                 │
+ │ Micro-batches run in parallel to evaluate legal intent  │
+ │ across all clauses, filtering non-operational text       │
+ └──────────────────────────┬───────────────────────────────┘
+                            │ Verified Operational KPI Clauses
+                            ▼
+ ┌──────────────────────────────────────────────────────────┐
+ │ STAGE 2: Deep V2 KPI & Tier Extraction                   │
+ │ Model extracts V2 schema fields (identity, rule, spec,   │
+ │ consequence, tiers, custom_attributes) natively in JSON │
+ └──────────────────────────┬───────────────────────────────┘
+                            │ Raw Extracted V2 KPI Cards
+                            ▼
+ ┌──────────────────────────────────────────────────────────┐
+ │ STAGE 3: LLM Consolidation & Deduplication Pass          │
+ │ Model merges duplicates across chunk boundaries & ranks   │
+ └──────────────────────────┬───────────────────────────────┘
+                            │
+                            ▼
+           Stored in MongoDB `contract_kpis`
 ```
 
-### Confidence Calibration Rules (`_calibrate_confidence`)
-* **Article I / Definitions Section**: Capped at maximum **0.80** (definitions often describe terms rather than binding operational SLAs).
-* **Article IV / Service Level Agreements**: Boosted to **1.00**.
-* **Payment / Pricing / Fees Sections**: Boosted to **0.95**.
-* **Penalties / Remedies / Termination Sections**: Boosted to **0.90**.
+### Pipeline Stage Details
+
+1. **Stage 1: High-Recall Candidate Verification (`_filter_kpi_candidates_with_llm`)**:
+   - Micro-batches of 15 candidate clauses are evaluated in parallel (`ThreadPoolExecutor`).
+   - The LLM classifies operational controls, SLAs, targets, penalties, and payment milestones vs administrative preambles, legal headers, and signature lines based on semantic legal intent.
+   - Eliminates fragile keyword lists (`KPI_KEYWORDS`, `KPI_CONTEXT_TERMS`, `NON_OPERATIONAL_NUMBER_TERMS`).
+
+2. **Stage 2: Deep V2 KPI & Tier Structuring (`_extract_batch_llm_rows` & `_kpi_from_llm_row`)**:
+   - The LLM extracts structured JSON objects directly mapped to V2 Schema specifications.
+   - Infers `kpi_type`, `operator`, `value`, `unit`, `consequence_value`, `remediation`, `remediation_sla`, and `target_schedule` (multi-tier SLA penalty matrices).
+   - Dynamically extracts domain custom attributes: `measurement_scope`, `measurement_window`, and `monetary_penalty_schedule`.
+   - Validates candidate quotes with contiguous substring checking (`_validated_quote`).
+
+3. **Stage 3: LLM Post-Extraction Consolidation (`_consolidate_kpis_with_llm`)**:
+   - Analyzes extracted cards to merge duplicate KPIs extracted across overlapping chunk boundaries.
+   - Prefers tiered-schedule representations over simple thresholds when merging matching metrics.
+   - Cleans leading markdown table header noise and section title prefixes for publication-grade display.
 
 ---
 

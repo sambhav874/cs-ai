@@ -159,11 +159,41 @@ export interface ContractKPI {
   section_path?: string;
   structural_path?: string | null;
   quote?: string;
-  page_start?: number | null;
-  page_end?: number | null;
   remediation?: string | null;
   remediation_sla?: string | null;
   updated_at?: string;
+  rule_type?: string | null;
+  target_value?: string | number | null;
+  formula?: string | null;
+  grace_period_days?: number | null;
+  error_budget?: any;
+  target_schedule?: Array<Record<string, any>>;
+  custom_attributes?: Record<string, any>;
+  rule?: {
+    rule_type?: string;
+    operator?: string;
+    unit?: string;
+    period_type?: string;
+    evaluation_window?: string;
+    aggregation?: string;
+    spec?: Record<string, any>;
+  };
+  consequence?: {
+    value?: number | null;
+    unit?: string | null;
+    trigger_condition?: string | null;
+    remediation?: string | null;
+    remediation_sla?: string | null;
+    contact_email?: string | null;
+  };
+  identity?: Record<string, any>;
+  governance?: Record<string, any>;
+  source_quote?: string;
+  responsible_party?: string | null;
+  evaluation_window?: string | null;
+  period_type?: string | null;
+  page_start?: number | null;
+  clause_text?: string;
 }
 
 export type AIProvider = "groq" | "openai" | "claude" | "gemini";

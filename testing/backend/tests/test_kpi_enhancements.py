@@ -427,3 +427,131 @@ def test_tracking_kpi_backfills_deferred_actuals():
         source="upload",
         timestamp=datetime(2026, 6, 1),
     )
+
+
+def test_validate_rule_spec_validates_tiered_range_and_budget():
+    from services.kpi_schema import validate_rule_spec
+
+    # 1. Valid range vs Invalid range (min >= max)
+    assert validate_rule_spec("range", {"min": 10.0, "max": 20.0}) == []
+    errors = validate_rule_spec("range", {"min": 25.0, "max": 20.0})
+    assert len(errors) == 1
+    assert "strictly less than" in errors[0]
+
+    # 2. Overlapping / Unsorted Tiered spec
+    invalid_tiers = {
+        "tiers": [
+            {"level": "T1", "value": 90.0, "funding_pct": 100},
+            {"level": "T2", "value": 85.0, "funding_pct": 80},
+        ],
+        "interpolation": "step",
+    }
+    tier_errors = validate_rule_spec("tiered", invalid_tiers)
+    assert len(tier_errors) == 1
+    assert "sorted ascending" in tier_errors[0]
+
+    # 3. Error budget == 0
+    budget_errors = validate_rule_spec("error_budget", {"budget": 0})
+    assert len(budget_errors) == 1
+    assert "cannot be zero" in budget_errors[0]
+
+
+def test_evaluate_safe_formula_rejects_eval_code_execution():
+    from services.kpi_schema import evaluate_safe_formula
+
+    # Valid arithmetic formula with context lookup
+    context = {"kpi1": 100.0, "kpi2": 50.0}
+    assert evaluate_safe_formula("kpi1 * 0.6 + kpi2 * 0.4", context) == 80.0
+    assert evaluate_safe_formula("(kpi1 - kpi2) / 2", context) == 25.0
+
+    # Rejection of unsafe function calls or code injection
+    with pytest.raises(ValueError, match="Disallowed expression node type"):
+        evaluate_safe_formula("__import__('os').system('ls')", context)
+
+    with pytest.raises(ValueError, match="Undefined variable"):
+        evaluate_safe_formula("unknown_var * 2", context)
+
+
+def test_qualitative_kpi_rejects_auto_evaluation():
+    manager = ContractKPIManager()
+    manager.kpis = MagicMock()
+    manager.kpis.find_one.return_value = {
+        "kpi_id": "kpi-qual-1",
+        "contract_id": "contract-1",
+        "name": "Commercially reasonable efforts",
+        "tracking_status": "tracked",
+        "is_tracked": True,
+        "rule_type": "qualitative",
+        "rule": {
+            "rule_type": "qualitative",
+            "spec": {"description": "Contractor shall use commercially reasonable efforts."},
+        },
+    }
+
+    with pytest.raises(ValueError, match="human judgment and cannot be auto-evaluated"):
+        manager.evaluate_kpi(
+            kpi_id="kpi-qual-1",
+            actual_value="done",
+            user_id="user-1",
+            contract_id="contract-1",
+        )
+
+
+def test_composite_kpi_dag_cycle_detection():
+    from services.kpi_schema import detect_composite_cycle
+
+    contract_kpis = [
+        {"kpi_id": "kpi_a", "schema_version": 2, "rule": {"rule_type": "composite", "spec": {"ref_kpi_ids": ["kpi_b"]}}},
+        {"kpi_id": "kpi_b", "schema_version": 2, "rule": {"rule_type": "composite", "spec": {"ref_kpi_ids": ["kpi_c"]}}},
+    ]
+
+    # Valid DAG addition (c references d)
+    cycle = detect_composite_cycle("kpi_c", ["kpi_d"], contract_kpis)
+    assert cycle is None
+
+    # Self reference cycle
+    cycle_self = detect_composite_cycle("kpi_a", ["kpi_a"], contract_kpis)
+    assert cycle_self == ["kpi_a", "kpi_a"]
+
+    # Multi-hop transitive cycle (c references a -> creating a -> b -> c -> a)
+    cycle_transitive = detect_composite_cycle("kpi_c", ["kpi_a"], contract_kpis)
+    assert cycle_transitive is not None
+    assert "kpi_a" in cycle_transitive
+
+
+def test_v1_to_v2_migration_and_translation_shim():
+    from services.kpi_schema import KPISchemaV1toV2Migrator, flatten_for_legacy_frontend
+
+    v1_doc = {
+        "_id": "507f1f77bcf86cd799439011",
+        "kpi_id": "kpi_v1_legacy",
+        "schema_version": 1,
+        "contract_id": "contract-100",
+        "name": "Legacy Uptime",
+        "kpi_type": "sla",
+        "operator": ">=",
+        "value": 99.9,
+        "unit": "%",
+        "consequence_value": 1000.0,
+        "consequence_unit": "USD",
+        "is_tracked": True,
+        "tracking_status": "tracked",
+        "custom_tag": "enterprise_sla",
+    }
+
+    # Migrate to V2
+    v2_doc = KPISchemaV1toV2Migrator.migrate_doc(v1_doc)
+    assert v2_doc["schema_version"] == 2
+    assert v2_doc["identity"]["name"] == "Legacy Uptime"
+    assert v2_doc["rule"]["rule_type"] == "threshold"
+    assert v2_doc["rule"]["spec"]["target"] == 99.9
+    assert v2_doc["consequence"]["value"] == 1000.0
+    assert v2_doc["custom_attributes"]["custom_tag"] == "enterprise_sla"
+
+    # Flatten for legacy frontend shim
+    flat = flatten_for_legacy_frontend(v2_doc)
+    assert flat["kpi_id"] == "kpi_v1_legacy"
+    assert flat["target_value"] == 99.9
+    assert flat["name"] == "Legacy Uptime"
+    assert flat["custom_tag"] == "enterprise_sla"
+
