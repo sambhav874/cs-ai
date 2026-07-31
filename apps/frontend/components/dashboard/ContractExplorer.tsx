@@ -27,7 +27,7 @@ export const ContractExplorer = memo(function ContractExplorer({
   currentUserInfo: UserInDB | null;
   currentlyProcessing: string | null;
   isLoading: boolean;
-  displayStatusForDoc: (doc: Document) => string;
+  displayStatusForDoc: (doc: DocumentWithProgress) => string;
   onProcess: (contractId: string) => void;
   onEditRoles: (doc: Document) => void;
 }) {

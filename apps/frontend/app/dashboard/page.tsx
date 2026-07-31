@@ -1122,27 +1122,25 @@ function DashboardContent() {
     });
   }, [documents, contractView, currentUserInfo]);
 
-  const displayStatusForDoc = useCallback((doc: Document) => {
+  const displayStatusForDoc = useCallback((doc: DocumentWithProgress) => {
     const rawStatus = doc.status || "Unknown";
-    if (rawStatus === "Indexed") return "Ingested";
-    const isPersonalDoc = doc.ownerType === "user";
-    const currentUserId = currentUserInfo?._id;
-    const isAssignedApprover = !!(currentUserId && doc.workflowRoles?.approverUserId === currentUserId);
-    const isAssignedEditor = !!(currentUserId && doc.workflowRoles?.editorUserId === currentUserId);
-    const isAccountOwner = !!(
-      currentUserInfo?.ownedAccountId &&
-      doc.ownerType === "team" &&
-      doc.ownerId === currentUserInfo.ownedAccountId
-    );
-
-    if (isPersonalDoc) return rawStatus;
-    if (rawStatus === "Pending Approval") {
-      if (isAssignedApprover) return "Pending Your Approval";
-      if (isAssignedEditor) return "Submitted";
-      if (isAccountOwner) return "Pending Your Approval";
+    if (doc.error || rawStatus === "Error" || rawStatus === "failed" || doc.index?.status === "blocked" || doc.index?.error) {
+      return "Error";
     }
-    return rawStatus;
-  }, [currentUserInfo]);
+    if (
+      rawStatus === "Indexing" ||
+      rawStatus === "Summarizing" ||
+      rawStatus === "Processing" ||
+      rawStatus === "Uploaded" ||
+      rawStatus === "Queued" ||
+      rawStatus === "queued" ||
+      rawStatus === "pending" ||
+      doc.isProcessing
+    ) {
+      return "Processing";
+    }
+    return "Ingested";
+  }, []);
 
   if (isInitialLoading) {
     return <LoadingScreen />;
@@ -1401,13 +1399,8 @@ function DashboardContent() {
                           className="h-8 appearance-none rounded-md border border-border bg-background pl-3 pr-8 text-xs font-medium text-foreground/80 outline-none transition-colors hover:bg-muted/30"
                         >
                           <option value="all">All statuses</option>
-                          <option value="uploaded">Uploaded</option>
                           <option value="processing">Processing</option>
-                          <option value="ready_to_edit">Ready to edit</option>
-                          <option value="editing">Editing</option>
-                          <option value="pending_approval">Pending approval</option>
-                          <option value="rejected">Rejected</option>
-                          <option value="completed">Completed</option>
+                          <option value="ingested">Ingested</option>
                           <option value="error">Error</option>
                         </select>
                         <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/80" />

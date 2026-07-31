@@ -115,9 +115,17 @@ class ContractRAGSystem:
     def use_mongodb_vector(self) -> bool:
         return self.vector_manager.use_mongodb_vector
 
+    @use_mongodb_vector.setter
+    def use_mongodb_vector(self, val: bool):
+        self.vector_manager.use_mongodb_vector = val
+
     @property
     def use_pinecone(self) -> bool:
         return self.vector_manager.use_pinecone
+
+    @use_pinecone.setter
+    def use_pinecone(self, val: bool):
+        self.vector_manager.use_pinecone = val
 
     @property
     def embeddings(self):

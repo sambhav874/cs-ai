@@ -79,7 +79,7 @@ ContractSense_Supplier_Performance_Report.xlsx
 ContractSense_Performance_Monitoring_Technical_Spec.pdf
 spec_text.txt
 celerybeat-schedule*
-final_evaluation/
+final_evaluation/reports/
 # Local debug logs & bundles
 apps/backend/agent_debug.log
 cookies.txt

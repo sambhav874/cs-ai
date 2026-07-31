@@ -171,11 +171,14 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
     }
   }, [selectedAccountId, accountInitialized, isAuthenticated, authenticatedFetch])
 
+  const isTestUser = currentUser?.username === "test-uploader" || currentUser?.username === "demouser"
+
   const navItems = [
     { href: "/dashboard?view=all", label: "Projects", icon: FolderOpen },
     { href: "/agent", label: "AI Agent", icon: Sparkles },
     { href: "/tabular-reviews", label: "Reviews", icon: Table2 },
     { href: "/playbooks", label: "Playbooks", icon: BookOpen },
+    ...(isTestUser ? [{ href: "/evaluations", label: "Evaluations", icon: HistoryIcon }] : []),
     { href: "/integrations", label: "Integrations", icon: Plug },
     { href: "/support", label: "Support", icon: MessageSquare },
   ]

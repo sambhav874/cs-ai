@@ -10,6 +10,11 @@ from .state import AgentRunState, AgentStatus, AgentWorkflow
 from .tools.registry import APPROVAL_REQUIRED_TOOLS, FORBIDDEN_TOOL_NAMES, READ_ONLY_TOOLS, tool_specs
 
 
+class UnauthorizedAccessError(Exception):
+    """Raised when document access is outside of authorized contract scope."""
+    pass
+
+
 @dataclass(frozen=True)
 class MiddlewareDescriptor:
     """Advertised middleware capability and how it is applied at runtime."""
@@ -32,8 +37,7 @@ def middleware_descriptors() -> List[MiddlewareDescriptor]:
         MiddlewareDescriptor("ModelRetryMiddleware", True, {"max_retries": 2}, runtime="langchain"),
         MiddlewareDescriptor("ModelCallLimitMiddleware", True, {"run_limit": 12}, runtime="langchain"),
         MiddlewareDescriptor("ToolCallLimitMiddleware", True, {"run_limit": 16}, runtime="langchain"),
-        MiddlewareDescriptor("PIIMiddleware", True, {"strategy": "redact"}, runtime="trace", enforced=False),
-        MiddlewareDescriptor("ContextEditingMiddleware", True, {"mode": "prune_large_tool_results"}, runtime="local"),
+        MiddlewareDescriptor("PIIMiddleware", True, {"strategy": "redact"}, runtime="langchain", enforced=True),
         MiddlewareDescriptor("ScopeGuardMiddleware", True, {}, runtime="trace", enforced=False),
         MiddlewareDescriptor("ToolPolicyMiddleware", True, {}, runtime="local"),
         MiddlewareDescriptor("ConfidentialityGuardMiddleware", True, {}, runtime="trace", enforced=False),
@@ -56,6 +60,7 @@ def load_langchain_middleware(*, model: Any | None = None) -> List[Any]:
             ModelCallLimitMiddleware,
             ModelRetryMiddleware,
             ToolCallLimitMiddleware,
+            PIIMiddleware,
         )
     except Exception:
         return []
@@ -64,6 +69,7 @@ def load_langchain_middleware(*, model: Any | None = None) -> List[Any]:
         ModelRetryMiddleware(max_retries=2, on_failure="error", initial_delay=0, jitter=False),
         ModelCallLimitMiddleware(run_limit=12, exit_behavior="error"),
         ToolCallLimitMiddleware(run_limit=16, exit_behavior="continue"),
+        PIIMiddleware(pii_type="email", strategy="redact", apply_to_input=True, apply_to_output=True),
     ]
 
 
@@ -108,7 +114,6 @@ class ActiveMiddlewareEngine:
         state.add_trace("middleware:ModelCallLimitMiddleware", limit=12)
         state.add_trace("middleware:ModelRetryMiddleware", max_retries=2)
         state.add_trace("middleware:ModelFallbackMiddleware", enabled=False, enforced=False, reason="No fallback model is configured.")
-        state.add_trace("middleware:PIIMiddleware", strategy="redact", enforced=False, reason="PII redaction is not applied by the local guard.")
         return state
 
     def tool_guard(self, state: AgentRunState) -> AgentRunState:
@@ -173,18 +178,6 @@ class ActiveMiddlewareEngine:
         )
 
         state.add_trace("middleware:ConfidentialityGuardMiddleware", decision="allow", enforced=False)
-        state.add_trace("middleware:ContextEditingMiddleware", mode="prune_large_tool_results")
-        memory_summary = _conversation_summary_from_memory(state.memory_context)
-        if memory_summary:
-            state.add_trace(
-                "middleware:SummarizationMiddleware",
-                enabled=True,
-                enforced=False,
-                summary=memory_summary,
-                source="agent_memory",
-            )
-        else:
-            state.add_trace("middleware:SummarizationMiddleware", enabled=False, enforced=False, reason="No conversation summarizer is configured.")
         return state
 
 

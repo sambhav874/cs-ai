@@ -81,7 +81,7 @@ def build_accessible_contract_query(
 
 def _project_stats(project: Dict[str, Any], current_user: UserInDB) -> Dict[str, int]:
     query = build_accessible_contract_query(project, current_user)
-    processing_statuses = ["Indexing", "Summarizing", "Processing", "queued", "pending", "processing"]
+    processing_statuses = ["Indexing", "Summarizing", "Processing", "queued", "pending", "processing", "Queued"]
     empty_stats = {
         "total_documents": 0,
         "processing_count": 0,
@@ -102,11 +102,11 @@ def _project_stats(project: Dict[str, Any], current_user: UserInDB) -> Dict[str,
                 "total_documents": {"$sum": 1},
                 "processing_count": {"$sum": {"$cond": [{"$in": ["$status", processing_statuses]}, 1, 0]}},
                 "uploaded_count": {"$sum": {"$cond": [{"$eq": ["$status", "Uploaded"]}, 1, 0]}},
-                "ready_to_edit_count": {"$sum": {"$cond": [{"$eq": ["$status", "Ready to Edit"]}, 1, 0]}},
+                "ready_to_edit_count": {"$sum": {"$cond": [{"$in": ["$status", ["Ready to Edit", "Ingested"]]}, 1, 0]}},
                 "editing_count": {"$sum": {"$cond": [{"$eq": ["$status", "Editing"]}, 1, 0]}},
                 "pending_approval_count": {"$sum": {"$cond": [{"$eq": ["$status", "Pending Approval"]}, 1, 0]}},
                 "rejected_count": {"$sum": {"$cond": [{"$eq": ["$status", "Rejected"]}, 1, 0]}},
-                "completed_count": {"$sum": {"$cond": [{"$eq": ["$status", "Completed"]}, 1, 0]}},
+                "completed_count": {"$sum": {"$cond": [{"$in": ["$status", ["Completed", "Ingested"]]}, 1, 0]}},
                 "error_count": {
                     "$sum": {
                         "$cond": [

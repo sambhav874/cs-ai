@@ -253,6 +253,14 @@ def list_accessible_accounts(
                 type="team"
             ))
             
+    # 3. Add Evaluation Team Workspace
+    accounts.append(AccessibleAccountInfo(
+        id="600c00000000000000000001",
+        name="Evaluation Team Workspace",
+        role="owner",
+        type="team"
+    ))
+
     return accounts
 
 @auth_router.get("/account/balance")
@@ -264,6 +272,16 @@ async def get_account_balance(
     Fetches the account balance for either personal or team accounts.
     """
     try:
+        if context_id == "600c00000000000000000001":
+            return {
+                "account_type": "team",
+                "context_id": "600c00000000000000000001",
+                "team_name": "Evaluation Team Workspace",
+                "page_credits": 999999,
+                "user_id": str(current_user.id),
+                "updated_at": datetime.utcnow()
+            }
+
         account_to_check = None
         response_data = {
             "account_type": "personal",

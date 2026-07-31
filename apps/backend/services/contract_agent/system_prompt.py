@@ -72,6 +72,7 @@ def build_adaptive_system_prompt(
 
 - search_evidence is your primary tool — returns full clause text with citations.
   - Default top_k is 12, but you can increase top_k (e.g., to 15 or 20) when searching dense documents, query clause banks, or when you need more context/candidates.
+- get_kpi_context returns STRUCTURED KPI register entries (actuals, thresholds, breach flags). For KPI/SLA tasks, call get_kpi_context FIRST, then search_evidence for clause text. Never skip get_kpi_context on KPI extraction requests.
 - use read_document for broad excerpts, outline_document for structure, find_in_document for specific phrases.
 - approval-gated tools require human approval before side effects happen.
 - DO NOT call extract_kpis unless the user specifically asks to save, draft, or extract candidates to the platform/database. For listing, summarizing, comparing, or finding KPIs, use read-only tools like search_evidence or get_kpi_context to retrieve them in your response.

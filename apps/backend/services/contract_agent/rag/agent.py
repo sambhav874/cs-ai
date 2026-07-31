@@ -42,7 +42,7 @@ class ContractEvidenceLoop:
         "final_answer",
     }
 
-    def __init__(self, owner: Any, *, max_steps: int = 3):
+    def __init__(self, owner: Any, *, max_steps: int = 6):
         self.owner = owner
         self.max_steps = max_steps
         self.tools = EvidenceToolbox(owner)
@@ -230,7 +230,7 @@ class ContractEvidenceLoop:
             return self.tools.outline_document(all_segments, limit=limit), set()
         if tool_name == "search_evidence":
             query = str(args.get("query") or "").strip()
-            limit = self._limit(args.get("limit"), default=8, maximum=20)
+            limit = self._limit(args.get("limit"), default=12, maximum=25)
             result = self.tools.search_evidence(all_segments, query=query, limit=limit)
             return result, {item["segment_id"] for item in result if item.get("segment_id")}
         if tool_name == "get_kpi_context":

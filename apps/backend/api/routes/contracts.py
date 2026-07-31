@@ -407,7 +407,7 @@ async def index_documents(
         {"$set": {
             "index.status": "processing",
             "index.started_at": datetime.utcnow(),
-            "status": "Indexing"
+            "status": "Processing"
         }}
     )
 
@@ -431,7 +431,7 @@ async def index_documents(
                 "index.queued_at": datetime.utcnow(),
                 "index.retry_count": 0,
                 "index.error": "Ingestion queued — will resume when the processing service is available.",
-                "status": "Queued"
+                "status": "Processing"
             }}
         )
         celery_task_id = None
@@ -443,7 +443,7 @@ async def index_documents(
         audit_log_task_account_id = owner_id_obj_from_db
         if team_doc_for_context and team_doc_for_context.get("_id") == audit_log_task_account_id:
             audit_log_task_account_name = team_doc_for_context.get("name")
-        elif teams_collection: 
+        elif teams_collection is not None:
             temp_team_doc_task = teams_collection.find_one({"_id": audit_log_task_account_id}, {"name": 1})
             if temp_team_doc_task: audit_log_task_account_name = temp_team_doc_task.get("name")
         
@@ -652,7 +652,7 @@ async def process_contract_chain_endpoint(
             {"$set": {
                 "index.status": "processing",
                 "process.status": "pending",
-                "status": "Indexing",
+                "status": "Processing",
                 "index.started_at": datetime.utcnow(),
                 "process.lastSave": None
             }}
@@ -741,7 +741,7 @@ async def process_contract_chain_endpoint(
                     {"status": 1}
                 )
                 if (current_contract_status_doc and
-                   current_contract_status_doc.get("status") not in ["Ready to Edit", "Completed", "Error"]):
+                   current_contract_status_doc.get("status") not in ["Ready to Edit", "Completed", "Ingested", "Error"]):
                     await contracts_collection_async.update_one(
                         {"_id": contract_oid},
                         {"$set": {
@@ -807,14 +807,14 @@ def list_documents(
         query_conditions.append({"ownerType": "team", "ownerId": account_oid})
         is_owner = current_user.ownedAccountId == context_id
         if not is_owner:
-            active_statuses = ["Uploaded", "Indexing", "Summarizing", "Processing", "Ready to Edit", "Editing", "Pending Approval", "Rejected", "Error", "Indexed"]
+            active_statuses = ["Uploaded", "Processing", "Ingested", "Editing", "Pending Approval", "Rejected", "Error"]
             
             permission_clauses = [
                 {"uploaded_by": user_oid, "status": {"$in": active_statuses}},
                 {"workflowRoles.editorUserId": user_oid},
                 {
                     "workflowRoles.approverUserId": user_oid,
-                    "status": {"$in": ["Pending Approval", "Completed", "Pending Re-edit Approval", "Re-edit Denied"]}
+                    "status": {"$in": ["Pending Approval", "Ingested", "Pending Re-edit Approval", "Re-edit Denied"]}
                 }
             ]
             query_conditions.append({"$or": permission_clauses})
@@ -825,12 +825,13 @@ def list_documents(
         else:
             status_map = {
                 "uploaded": {"$or": [{"status": "Uploaded"}, {"index.status": "pending"}]},
-                "processing": {"$or": [{"status": {"$in": ["Indexing", "Summarizing", "Processing"]}}]},
-                "ready_to_edit": {"status": "Ready to Edit"},
+                "processing": {"$or": [{"status": {"$in": ["Indexing", "Summarizing", "Processing", "Queued"]}}]},
+                "ingested": {"status": {"$in": ["Ingested", "Indexed", "Ready to Edit", "Completed", "Editing", "Pending Approval", "Rejected"]}},
+                "ready_to_edit": {"status": {"$in": ["Ingested", "Ready to Edit"]}},
                 "editing": {"status": "Editing"},
                 "pending_approval": {"status": "Pending Approval"},
                 "rejected": {"status": "Rejected"},
-                "completed": {"status": "Completed"},
+                "completed": {"status": {"$in": ["Ingested", "Completed"]}},
                 "error": {"$or": [{"status": "Error"}, {"error": {"$exists": True}}]}
             }
             if status in status_map:
@@ -1325,16 +1326,15 @@ async def get_contract_stats(
                 query["ownerId"] = account_oid
             else:
                 query["$or"] = [
-                    {"ownerType": "team", "ownerId": account_oid, "uploaded_by": current_user_id},
                     {"ownerType": "team", "ownerId": account_oid, "workflowRoles.editorUserId": current_user_id, 
-                     "status": {"$in": ["Ready to Edit", "Editing" , "Pending Approval", "Pending Your Approval", "Rejected" , "Uploaded" , "Processing" , "Indexing" , "Summarizing" , "Completed" , "Error"]}},
+                     "status": {"$in": ["Ingested", "Ready to Edit", "Editing" , "Pending Approval", "Pending Your Approval", "Rejected" , "Uploaded" , "Processing" , "Indexing" , "Summarizing" , "Completed" , "Error"]}},
                     {"ownerType": "team", "ownerId": account_oid, "workflowRoles.approverUserId": current_user_id, 
                      "status": {"$in": ["Pending Approval", "Pending Your Approval", "Rejected"]}},
                     {"ownerType": "team", "ownerId": account_oid, "workflowRoles.uploaded_by": current_user_id, 
                      "status": {"$in": ["Pending Approval", "Pending Your Approval", "Rejected"]}},
                     {"ownerType": "user", "ownerId": current_user_id, "teamId": account_oid}
                 ]
-
+        
         if search:
             search_query = {
                 "$or": [
@@ -1345,7 +1345,7 @@ async def get_contract_stats(
                 ]
             }
             query = combine_query(query, search_query)
-
+        
         if status:
             status_map = {
                 "uploaded": {"$or": [
@@ -1353,15 +1353,16 @@ async def get_contract_stats(
                     {"index.status": "pending", "process.status": "pending"}
                 ]},
                 "processing": {"$or": [
-                    {"status": {"$in": ["Indexing", "Summarizing", "Processing"]}},
+                    {"status": {"$in": ["Indexing", "Summarizing", "Processing", "Queued"]}},
                     {"index.status": "processing"},
                     {"process.status": "processing"}
                 ]},
-                "ready_to_edit": {"status": "Ready to Edit"},
+                "ingested": {"status": {"$in": ["Ingested", "Indexed", "Ready to Edit", "Completed", "Editing", "Pending Approval", "Rejected"]}},
+                "ready_to_edit": {"status": {"$in": ["Ingested", "Ready to Edit"]}},
                 "editing": {"status": "Editing"},
                 "pending_approval": {"status": {"$in": ["Pending Approval", "Pending Your Approval"]}},
                 "rejected": {"status": "Rejected"},
-                "completed": {"status": "Completed"},
+                "completed": {"status": {"$in": ["Ingested", "Completed"]}},
                 "error": {"$or": [
                     {"status": "Error"},
                     {"error": {"$exists": True}}
@@ -1405,11 +1406,11 @@ async def get_contract_stats(
                             ]
                         }
                     },
-                    "ready_to_edit_count": {"$sum": {"$cond": [{"$eq": ["$status", "Ready to Edit"]}, 1, 0]}},
+                    "ready_to_edit_count": {"$sum": {"$cond": [{"$in": ["$status", ["Ready to Edit", "Ingested"]]}, 1, 0]}},
                     "editing_count": {"$sum": {"$cond": [{"$eq": ["$status", "Editing"]}, 1, 0]}},
                     "pending_approval_count": {"$sum": {"$cond": [{"$in": ["$status", ["Pending Approval", "Pending Your Approval"]]}, 1, 0]}},
                     "rejected_count": {"$sum": {"$cond": [{"$eq": ["$status", "Rejected"]}, 1, 0]}},
-                    "completed_count": {"$sum": {"$cond": [{"$eq": ["$status", "Completed"]}, 1, 0]}},
+                    "completed_count": {"$sum": {"$cond": [{"$in": ["$status", ["Completed", "Ingested"]]}, 1, 0]}},
                     "error_count": {
                         "$sum": {
                             "$cond": [

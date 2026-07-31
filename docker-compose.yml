@@ -89,6 +89,8 @@ services:
       rabbitmq:
         condition: service_healthy
         required: false
+    volumes:
+      - ./final_evaluation:/final_evaluation
     networks:
       - contractsense-net
     restart: unless-stopped
@@ -114,6 +116,9 @@ services:
     build:
       context: .
       dockerfile: apps/backend/Containerfile.worker
+    volumes:
+      - ./final_evaluation:/final_evaluation
+      - ./apps/backend:/app/backend
     env_file:
       - ./apps/backend/.env
     environment:

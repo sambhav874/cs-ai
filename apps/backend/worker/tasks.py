@@ -526,7 +526,7 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                         "index.embedding_dimension": embedding_metadata.get("embedding_dimension"),
                         "index.embedded_at": datetime.utcnow(),
                         "index.updated_at": datetime.utcnow(), 
-                        "status": "Indexed",
+                        "status": "Ingested",
                         "credits_deducted": True
                     }
                 }
@@ -1459,4 +1459,231 @@ def send_contact_and_demo_confirmation(self, name: str, user_email: str, company
         log_exception(logger, "Unexpected error while sending contact+confirmation emails", e)
         raise self.retry(exc=e, countdown=10)
 
+
+# --- Celery Task for Executing Evaluations ---
+@celery_app.task(bind=True, name="tasks.run_evaluation_suite")
+def run_evaluation_suite_task(self, params: dict):
+    """Run one dataset, or the canonical CUAD → ACORD → KPI group serially."""
+    dataset = str(params.get("dataset", "cuad")).lower()
+    if dataset != "all":
+        return _run_single_evaluation_suite(self, params)
+
+    import uuid
+
+    run_group_id = str(params.get("run_group_id") or f"daily-internal-{uuid.uuid4().hex[:12]}")
+    child_runs = []
+    # Do not enqueue three tasks here: the non-functional benchmark must follow
+    # each functional dataset run deterministically and retain its denominator.
+    for child_dataset in ("cuad", "acord", "kpi"):
+        child_params = dict(params)
+        child_params["dataset"] = child_dataset
+        child_params["run_group_id"] = run_group_id
+        _run_single_evaluation_suite(self, child_params)
+        child_runs.append(child_dataset)
+    return {"status": "completed", "run_group_id": run_group_id, "datasets": child_runs}
+
+
+def _run_single_evaluation_suite(self, params: dict):
+    """
+    Background worker task to execute the evaluation suite subprocess,
+    stream logs to a local console file, and import final reports to MongoDB.
+    """
+    import os
+    import sys
+    import subprocess
+    from datetime import datetime, timezone
+    from pathlib import Path
+    from core.database import eval_runs_collection
+    from utils.eval_parser import EvaluationParser, REPORTS_DIR, REPO_ROOT
+
+    provider = str(params.get("provider", "groq")).lower()
+    dataset = str(params.get("dataset", "cuad")).lower()
+    contract_count = int(params.get("contract_count", 5))
+    repeat_default = params.get("repeat_default")
+    repeat_security = params.get("repeat_security")
+    smoke_profile = params.get("smoke_profile", "none")
+    dry_run = bool(params.get("dry_run", True))
+    keep_fixtures = bool(params.get("keep_fixtures", False))
+    skip_citation_gate = bool(params.get("skip_citation_gate", False))
+    model_name = params.get("model_name")
+    max_cases_per_layer = params.get("max_cases_per_layer")
+    threshold_profile = str(params.get("threshold_profile") or "default")
+    no_checkpoint = bool(params.get("no_checkpoint", False))
+    allow_short_token = bool(params.get("allow_short_token", False))
+    auth_token = params.get("auth_token", "")
+
+    # Generate a unique run ID representing a dashboard run matching double-underscore subfolder naming conventions
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    mode_suffix = "dry" if dry_run else "live"
+    subfolder = f"{dataset}_{mode_suffix}"
+    
+    internal_run_id = f"dash-eval-{timestamp}_{provider}"
+    run_id = f"{subfolder}__{internal_run_id}"
+    run_group_id = params.get("run_group_id") or (f"group-eval-{timestamp}_{provider}" if dataset == "all" else None)
+    
+    # Formulate output directory
+    output_dir = REPORTS_DIR / subfolder / internal_run_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_file = output_dir / "console.log"
+
+    # 1. Create a run record in MongoDB with status "running"
+    run_doc = {
+        "run_id": run_id,
+        "internal_run_id": internal_run_id,
+        "provider": provider,
+        "dataset_key": dataset,
+        "run_group_id": run_group_id,
+        "contract_count": contract_count,
+        "status": "running",
+        "celery_task_id": self.request.id,
+        "account_id": params.get("context_id"),
+        "summary": {},
+        "methodology": {
+            "dataset_key": dataset,
+            "provider": provider,
+            "run_group_id": run_group_id,
+            "contract_count_requested": contract_count,
+            "repeat_default": repeat_default or (1 if smoke_profile == "balanced" else 3),
+            "repeat_security": repeat_security or (1 if smoke_profile == "balanced" else 5),
+            "smoke_profile": smoke_profile,
+            "skip_citation_gate": skip_citation_gate,
+            "dry_run": dry_run,
+            "threshold_profile": threshold_profile,
+        },
+        "created_at": datetime.now(timezone.utc)
+    }
+    eval_runs_collection.replace_one({"run_id": run_id}, run_doc, upsert=True)
+    logger.info(f"Initialized dashboard run '{run_id}' with Celery Task ID: {self.request.id}")
+
+    # 2. Build subprocess commands
+    script_path = REPO_ROOT / "final_evaluation" / "scripts" / "run_final_eval.py"
+    
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--dataset", dataset,
+        "--contract-count", str(contract_count),
+        "--provider", provider,
+        "--run-id", internal_run_id,
+        "--output-dir", str(output_dir.parent)  # run_final_eval.py appends run-id to this parent
+    ]
+
+    if run_group_id:
+        cmd.extend(["--run-group-id", run_group_id])
+
+    if dataset == "kpi":
+        manifest_path = REPO_ROOT / "final_evaluation" / "datasets" / "kpi_contracts" / "manifest.json"
+        cmd.extend(["--manifest", str(manifest_path)])
+    
+    if repeat_default is not None:
+        cmd.extend(["--repeat-default", str(repeat_default)])
+    if repeat_security is not None:
+        cmd.extend(["--repeat-security", str(repeat_security)])
+    cmd.extend(["--threshold-profile", threshold_profile])
+        
+    cmd.extend(["--smoke-profile", smoke_profile])
+    
+    if skip_citation_gate:
+        cmd.append("--skip-citation-gate")
+    if model_name:
+        cmd.extend(["--model-name", model_name])
+    if max_cases_per_layer is not None and str(max_cases_per_layer).strip() != "":
+        cmd.extend(["--max-cases-per-layer", str(max_cases_per_layer)])
+    if no_checkpoint:
+        cmd.append("--no-checkpoint")
+    if allow_short_token:
+        cmd.append("--allow-short-token")
+        
+    if dry_run:
+        cmd.append("--dry-run")
+    else:
+        api_url = params.get("api_base_url", "http://127.0.0.1:8000/api/v1")
+        # Dynamically detect if we are running in Docker, and map localhost to the host machine gateway
+        is_docker = os.path.exists('/.dockerenv')
+        if not is_docker:
+            try:
+                if os.path.exists('/proc/1/cgroup'):
+                    with open('/proc/1/cgroup', 'r') as f:
+                        content = f.read()
+                        if 'docker' in content or 'containerd' in content or 'kubepods' in content:
+                            is_docker = True
+            except Exception:
+                pass
+                
+        if is_docker:
+            api_url = api_url.replace("127.0.0.1", "host.docker.internal").replace("localhost", "host.docker.internal")
+            
+        cmd.extend([
+            "--api-base-url", api_url
+        ])
+        if keep_fixtures:
+            cmd.append("--keep-fixtures")
+
+    # Set up environment with auth token
+    env = os.environ.copy()
+    backend_dir = str(REPO_ROOT / "apps" / "backend") if (REPO_ROOT / "apps" / "backend").exists() else (str(REPO_ROOT) if (REPO_ROOT / "utils").exists() else "/app/backend")
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{backend_dir}:{existing_pp}" if existing_pp else backend_dir
+    if auth_token:
+        env["CONTRACTSENSE_FINAL_EVAL_AUTH_TOKEN"] = auth_token
+
+    # 3. Execute subprocess and stream logs to file
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=str(REPO_ROOT),
+            env=env
+        )
+
+        with open(log_file, "w", encoding="utf-8") as f:
+            f.write(f"=== EVALUATION SUITE PROCESS STARTED AT {datetime.utcnow().isoformat()}Z ===\n")
+            f.write(f"Command: {' '.join(cmd)}\n\n")
+            f.flush()
+
+            for line in proc.stdout:
+                f.write(line)
+                f.flush()
+                
+        proc.wait()
+
+        if proc.returncode == 0:
+            logger.info(f"Evaluation process completed successfully for run '{run_id}'")
+            # 4. Import the parsed files into MongoDB collections
+            imported = EvaluationParser.import_run_to_db(run_id, celery_task_id=self.request.id)
+            if imported:
+                eval_runs_collection.update_one(
+                    {"run_id": run_id},
+                    {"$set": {"status": "completed"}}
+                )
+            else:
+                eval_runs_collection.update_one(
+                    {"run_id": run_id},
+                    {"$set": {"status": "failed", "summary.error": "Failed to parse final evaluation reports files"}}
+                )
+        else:
+            logger.error(f"Evaluation process exited with error code {proc.returncode} for run '{run_id}'")
+            eval_runs_collection.update_one(
+                {"run_id": run_id},
+                {"$set": {"status": "failed", "summary.error": f"Evaluation process exited with error code {proc.returncode}"}}
+            )
+
+    except (KeyboardInterrupt, SystemExit, Exception) as e:
+        logger.warning(f"Evaluation task interrupted or encountered exception for run '{run_id}': {e}")
+        try:
+            proc.terminate()
+            proc.wait(timeout=5)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+                
+        eval_runs_collection.update_one(
+            {"run_id": run_id},
+            {"$set": {"status": "aborted", "summary.error": str(e)}}
+        )
+        raise e
 

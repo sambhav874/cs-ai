@@ -47,8 +47,12 @@ def get_auto_token() -> str:
     from core.database import users_collection, accounts_collection
     from core.security import get_password_hash
     from datetime import datetime
+    from bson import ObjectId
 
     user = users_collection.find_one({"username": "demouser"})
+    eval_team_id_str = "600c00000000000000000001"
+    eval_team_oid = ObjectId(eval_team_id_str)
+
     if not user:
         hashed_password = get_password_hash("DemoPassword123!")
         new_user = {
@@ -56,12 +60,29 @@ def get_auto_token() -> str:
             "email": "demouser@contractsense.com",
             "hashed_password": hashed_password,
             "tokens": 0,
-            "teamIds": [],
+            "teamIds": [eval_team_id_str],
             "disabled": False
         }
         insert_result = users_collection.insert_one(new_user)
         user_id = insert_result.inserted_id
         
+        # Add demouser to Evaluation Team members
+        from core.database import db
+        teams_collection = db["teams"]
+        teams_collection.update_one(
+            {"_id": eval_team_oid},
+            {
+                "$push": {
+                    "members": {
+                        "userId": user_id,
+                        "team_role": "member",
+                        "addedBy": user_id,
+                        "addedAt": datetime.utcnow()
+                    }
+                }
+            }
+        )
+
         account_data = {
             "user_id": user_id,
             "page_credits": 10000,
@@ -71,6 +92,30 @@ def get_auto_token() -> str:
         accounts_collection.insert_one(account_data)
     else:
         user_id = user["_id"]
+        # Ensure they are in the teamIds list
+        if eval_team_id_str not in user.get("teamIds", []):
+            users_collection.update_one(
+                {"_id": user_id},
+                {"$addToSet": {"teamIds": eval_team_id_str}}
+            )
+            # Add to teams members list
+            from core.database import db
+            teams_collection = db["teams"]
+            team = teams_collection.find_one({"_id": eval_team_oid, "members.userId": user_id})
+            if not team:
+                teams_collection.update_one(
+                    {"_id": eval_team_oid},
+                    {
+                        "$push": {
+                            "members": {
+                                "userId": user_id,
+                                "team_role": "member",
+                                "addedBy": user_id,
+                                "addedAt": datetime.utcnow()
+                            }
+                        }
+                    }
+                )
         # Ensure credits are topped up
         accounts_collection.update_one(
             {"user_id": user_id},
@@ -78,6 +123,7 @@ def get_auto_token() -> str:
             upsert=True
         )
     
+    from core.security import create_access_token
     return create_access_token(data={"sub": "demouser"}, expires_delta=timedelta(days=7))
 
 
@@ -89,7 +135,7 @@ def main():
     # 1. Select Dataset
     dataset = prompt_choice(
         "Which dataset do you want to evaluate?",
-        ["CUAD (Standard Atticus contracts)", "ACORD (Clause retrieval precision)", "KPI (High-density KPI contracts)"],
+        ["CUAD (Standard Atticus contracts)", "ACORD (Clause retrieval precision)", "KPI (High-density KPI contracts)", "ALL (KPI, CUAD, and ACORD split)"],
         default=3  # Recommend KPI
     )
 
@@ -108,8 +154,12 @@ def main():
     )
 
     # 3. Choose count
-    default_count = "5" if dataset == "kpi" else "10"
-    count = prompt_input(f"How many contracts/query records to evaluate?", default_count)
+    if dataset == "all":
+        default_count = "3"
+        count = prompt_input("Total contracts/query records to evaluate? (Will be divided evenly, e.g. 1 per dataset)", default_count)
+    else:
+        default_count = "5" if dataset == "kpi" else "10"
+        count = prompt_input("How many contracts/query records to evaluate?", default_count)
 
     # 4. Optional parameters
     keep_fixtures = "false"
@@ -117,6 +167,9 @@ def main():
         keep = prompt_choice("Keep temporary database projects/fixtures after run?", ["No (Clean up afterward)", "Yes (Keep for debugging)"], default=1)
         if keep == "yes":
             keep_fixtures = "true"
+
+    # 4b. Citation gate option
+    skip_citation = prompt_choice("Bypass the citation hard-gate in scoring?", ["No (Keep strict citation scoring)", "Yes (Bypass citation hard-gate)"], default=1)
 
     # 5. Handle auth token for live run
     auth_token = ""
@@ -131,29 +184,48 @@ def main():
                 print(f"[!] Failed to auto-generate token: {e}")
                 auth_token = input("Please enter auth token manually: ").strip()
 
-    # 6. Construct CLI command
-    cmd = [
-        sys.executable,
-        "../../final_evaluation/scripts/run_final_eval.py",
-        "--dataset", dataset,
-        "--contract-count", count,
-        "--provider", provider,
-        "--output-dir", f"../../final_evaluation/reports/{dataset}_{mode}"
-    ]
-
-    if dataset == "kpi":
-        cmd.extend(["--manifest", "../../final_evaluation/datasets/kpi_contracts/manifest.json"])
-
-    if mode == "dry":
-        cmd.append("--dry-run")
+    # 6. Construct and confirm CLI command(s)
+    runs_to_execute = []
+    if dataset == "all":
+        try:
+            total_count = int(count)
+        except ValueError:
+            total_count = 3
+        # Divide count evenly (at least 1 per dataset)
+        per_dataset = max(1, total_count // 3)
+        for ds in ["kpi", "cuad", "acord"]:
+            runs_to_execute.append((ds, str(per_dataset)))
     else:
-        # Live run specific flags
-        cmd.extend([
-            "--api-base-url", "http://127.0.0.1:8000/api/v1",
-            "--smoke-profile", "balanced"
-        ])
-        if keep_fixtures == "true":
-            cmd.append("--keep-fixtures")
+        runs_to_execute.append((dataset, count))
+
+    commands = []
+    root_dir = Path(__file__).resolve().parents[3]  # extractor root directory
+    script_path = root_dir / "final_evaluation/scripts/run_final_eval.py"
+    for ds, ds_count in runs_to_execute:
+        output_dir = root_dir / f"final_evaluation/reports/{ds}_{mode}"
+        cmd = [
+            sys.executable,
+            str(script_path),
+            "--dataset", ds,
+            "--contract-count", ds_count,
+            "--provider", provider,
+            "--output-dir", str(output_dir)
+        ]
+        if ds == "kpi":
+            manifest_path = root_dir / "final_evaluation/datasets/kpi_contracts/manifest.json"
+            cmd.extend(["--manifest", str(manifest_path)])
+        if skip_citation == "yes":
+            cmd.append("--skip-citation-gate")
+        if mode == "dry":
+            cmd.append("--dry-run")
+        else:
+            cmd.extend([
+                "--api-base-url", "http://127.0.0.1:8000/api/v1",
+                "--smoke-profile", "balanced"
+            ])
+            if keep_fixtures == "true":
+                cmd.append("--keep-fixtures")
+        commands.append((ds, cmd))
 
     # Set up environment variables
     env = os.environ.copy()
@@ -162,20 +234,24 @@ def main():
         env["CONTRACTSENSE_FINAL_EVAL_AUTH_TOKEN"] = auth_token
 
     print("\n" + "=" * 70)
-    print("CONSTRUCTED COMMAND")
+    print("CONSTRUCTED COMMAND(S) TO RUN")
     print("=" * 70)
-    print(" ".join(cmd))
+    for ds, cmd in commands:
+        print(f"[{ds.upper()}] " + " ".join(cmd))
     print("=" * 70)
 
-    confirm = input("\nDo you want to run this command now? [Y/n]: ").strip().lower()
+    confirm = input("\nDo you want to run these commands now? [Y/n]: ").strip().lower()
     if confirm in ("", "y", "yes"):
-        print("\n[*] Starting evaluation run...\n")
-        try:
-            subprocess.run(cmd, env=env, check=True)
-        except KeyboardInterrupt:
-            print("\n[!] Evaluation run interrupted by user.")
-        except subprocess.CalledProcessError as e:
-            print(f"\n[!] Evaluation runner exited with error code {e.returncode}")
+        for ds, cmd in commands:
+            print(f"\n[*] Starting {ds.upper()} evaluation run...\n")
+            try:
+                subprocess.run(cmd, env=env, cwd=str(root_dir), check=True)
+            except KeyboardInterrupt:
+                print("\n[!] Evaluation run interrupted by user.")
+                break
+            except subprocess.CalledProcessError as e:
+                print(f"\n[!] Evaluation runner for {ds.upper()} exited with error code {e.returncode}")
+                break
     else:
         print("\n[x] Cancelled.")
 

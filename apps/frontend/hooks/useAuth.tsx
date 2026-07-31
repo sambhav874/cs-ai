@@ -155,7 +155,7 @@ export const useAuth = () => {
       const response = await promise;
       
       // Handle authentication errors
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) {
         logout();
         return { error: "Authentication failed" };
       }

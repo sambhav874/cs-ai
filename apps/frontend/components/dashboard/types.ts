@@ -21,7 +21,7 @@ export interface Document {
   status: string;
   contract_name: string;
   projectId?: string | null;
-  index?: { status: string; job_id?: string };
+  index?: { status: string; job_id?: string; error?: string };
   summarize?: { status: string; job_id?: string };
   process?: { status: string; job_id?: string };
   upload?: { status: string; job_id?: string };

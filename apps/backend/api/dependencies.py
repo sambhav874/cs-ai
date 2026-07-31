@@ -26,8 +26,21 @@ from api.routes.projects import verify_project_access, ensure_default_project
 logger = logging.getLogger(__name__)
 
 async def deduct_credits(user_id: ObjectId, page_count: int) -> bool:
-    """Deduct credits from user's account if available (always returns True post-redaction)"""
-    return True
+    """Deduct credits from user's account if available"""
+    from core.database import async_db
+    accounts_col = async_db["accounts"]
+    
+    result = await accounts_col.update_one(
+        {"user_id": user_id, "page_credits": {"$gte": page_count}},
+        {"$inc": {"page_credits": -page_count}, "$set": {"updated_at": datetime.utcnow()}}
+    )
+    
+    if result.modified_count > 0:
+        logger.info(f"Successfully deducted {page_count} credits from user {user_id}")
+        return True
+        
+    logger.warning(f"Failed to deduct {page_count} credits from user {user_id}: Insufficient credits or account not found")
+    return False
 
 def queue_contract_ingestion(
     *,
@@ -44,7 +57,7 @@ def queue_contract_ingestion(
             "index.status": "processing",
             "index.started_at": datetime.utcnow(),
             "index.error": "",
-            "status": "Indexing",
+            "status": "Processing",
         }}
     )
     try:

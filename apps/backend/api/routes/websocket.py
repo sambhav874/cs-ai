@@ -108,7 +108,7 @@ def get_contract_status(
         if has_failed_jobs:
             status = "Error"
         elif processing_complete:
-            status = "Ready to Edit"
+            status = "Ingested"
         elif has_in_progress_jobs:
             status = "Processing"
         else:

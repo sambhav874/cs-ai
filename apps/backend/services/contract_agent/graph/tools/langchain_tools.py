@@ -42,7 +42,7 @@ class SearchInput(BaseModel):
     query: Any = Field(..., description="Concise clause/evidence query rewritten from the user's need, e.g. 'governing law', 'change of control', or 'payment deadline'.")
     queries: Any = Field(default_factory=list, description="Optional related query variants when the issue has aliases or multiple evidence needs.")
     document_ids: Any = Field(default_factory=list, description="Optional document IDs to restrict search; leave blank to search the authorized scope.")
-    top_k: Any = Field(default=5, description="Maximum evidence snippets to return. Use 5-8 for most legal questions.")
+    top_k: Any = Field(default=12, description="Maximum evidence snippets to return. Default is 12. Use 12-20 for query clause banks or dense documents.")
     intent: str = Field(default="", description="Optional retrieval intent: fact, summary, compare, or normal.")
     must_contain: Any = Field(default_factory=list, description="Optional exact terms that evidence must contain; use sparingly when the user requires a phrase.")
     section_ref: str = Field(default="", description="Optional section, clause, article, schedule, or exhibit reference from the user's request.")
@@ -96,6 +96,11 @@ def build_langchain_tools(
     """Build state-bound LangChain tools for one agent run."""
 
     def run_read_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        from services.contract_agent.graph.middleware import UnauthorizedAccessError
+        doc_id = args.get("document_id") or args.get("contract_id")
+        if doc_id and state.context.selected_document_ids:
+            if doc_id not in state.context.selected_document_ids:
+                raise UnauthorizedAccessError(f"Access to document {doc_id} is out of scoped context!")
         record = ToolCallRecord(
             name=name,
             args=_sanitize_args(args),
@@ -144,6 +149,11 @@ def build_langchain_tools(
         return result
 
     def run_approval_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        from services.contract_agent.graph.middleware import UnauthorizedAccessError
+        doc_id = args.get("document_id") or args.get("contract_id")
+        if doc_id and state.context.selected_document_ids:
+            if doc_id not in state.context.selected_document_ids:
+                raise UnauthorizedAccessError(f"Access to document {doc_id} is out of scoped context!")
         params = _sanitize_args(args)
         record = ToolCallRecord(
             name=name,
@@ -208,7 +218,7 @@ def build_langchain_tools(
         query: Any,
         queries: Any = None,
         document_ids: Any = None,
-        top_k: Any = 5,
+        top_k: Any = 12,
         intent: str = "",
         must_contain: Any = None,
         section_ref: str = "",
@@ -237,7 +247,7 @@ def build_langchain_tools(
                 "query": primary_query,
                 "queries": rewritten_queries,
                 "document_ids": _coerce_list(payload.get("document_ids")),
-                "top_k": _coerce_int(payload.get("top_k"), 5),
+                "top_k": _coerce_int(payload.get("top_k"), 12),
                 "intent": str(payload.get("intent") or ""),
                 "must_contain": _coerce_list(payload.get("must_contain")),
                 "section_ref": str(payload.get("section_ref") or ""),

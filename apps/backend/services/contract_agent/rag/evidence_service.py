@@ -3,6 +3,12 @@
 The graph ReAct tools and the older RAG agent both need the same evidence
 contract: stable IDs, legal-aware fallback segmentation, compact quotes, and
 metadata that is precise enough for citation validation.
+
+Query analysis (intent + expansion) is handled by SemanticQueryAnalyzer, which
+uses a lightweight LangChain LLM call with a structured Pydantic output so that
+any phrasing — not just the hardcoded keyword lists — can be understood.
+The deterministic fallbacks (CLAUSE_ALIASES, LEGAL_SYNONYMS, infer_intent) are
+kept as a cold-start safety net when the LLM is unavailable.
 """
 
 from __future__ import annotations
@@ -12,13 +18,210 @@ from dataclasses import dataclass, field
 import hashlib
 import re
 import time
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Literal, Optional, Sequence, Tuple
+
+from pydantic import BaseModel, Field
 
 from core.config import settings
 from utils.text_cleanup import clean_text_encoding
 
 from .schemas import TextSegment
 from .segmentation import DocumentSegmenter
+
+# ---------------------------------------------------------------------------
+# Structured query analysis schema
+# ---------------------------------------------------------------------------
+
+
+class QueryAnalysis(BaseModel):
+    """Structured output from the semantic query analyzer."""
+
+    intent: Literal["fact", "summary", "compare", "normal"] = Field(
+        description=(
+            "The retrieval intent. "
+            "'fact' for specific values/dates/amounts, "
+            "'summary' for high-level overviews, "
+            "'compare' for cross-document comparisons, "
+            "'normal' for everything else."
+        )
+    )
+    semantic_expansions: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Synonymous phrases, alternate wordings, and related legal terms "
+            "that should also be searched. E.g. for 'termination': "
+            "['early exit', 'cancellation clause', 'right to terminate', 'walk-away rights']."
+        ),
+    )
+    clause_types: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Standard contract clause categories relevant to the query, e.g. "
+            "['termination', 'notice', 'cure period']."
+        ),
+    )
+    key_concepts: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Specific concepts the answer must address, e.g. "
+            "['30-day notice', 'written form', 'material breach']."
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Semantic query analyzer — LLM-backed, with TTL cache and deterministic fallback
+# ---------------------------------------------------------------------------
+
+_SEMANTIC_CACHE: OrderedDict[str, Tuple[QueryAnalysis, float]] = OrderedDict()
+_SEMANTIC_CACHE_MAX = 512
+_SEMANTIC_CACHE_TTL_SECONDS = 600  # 10 minutes
+
+
+def _semantic_cache_key(query: str) -> str:
+    return hashlib.sha256(query.strip().lower().encode()).hexdigest()
+
+
+def _semantic_cache_get(key: str) -> Optional[QueryAnalysis]:
+    entry = _SEMANTIC_CACHE.get(key)
+    if entry:
+        result, timestamp = entry
+        if time.time() - timestamp < _SEMANTIC_CACHE_TTL_SECONDS:
+            return result
+        del _SEMANTIC_CACHE[key]
+    return None
+
+
+def _semantic_cache_set(key: str, result: QueryAnalysis) -> None:
+    if len(_SEMANTIC_CACHE) >= _SEMANTIC_CACHE_MAX:
+        _SEMANTIC_CACHE.popitem(last=False)
+    _SEMANTIC_CACHE[key] = (result, time.time())
+
+
+class SemanticQueryAnalyzer:
+    """LLM-backed query analyzer that replaces deterministic keyword matching.
+
+    A single, cheap LLM call returns a ``QueryAnalysis`` Pydantic model with:
+    - ``intent``              — retrieval strategy (fact / summary / compare / normal)
+    - ``semantic_expansions`` — LLM-generated synonyms and alternate phrasings
+    - ``clause_types``        — standard clause categories relevant to the query
+    - ``key_concepts``        — specific facts or values the answer must address
+
+    Results are SHA-256 keyed and cached for 10 minutes so repeated retrieval
+    cycles never re-call the LLM for the same query.
+
+    When the LLM is unavailable or returns an invalid response, the deterministic
+    ``infer_intent()`` and ``expand_legal_queries()`` helpers are called instead.
+    """
+
+    _PROMPT_TEMPLATE = (
+        "You are a legal contract analysis assistant.\n"
+        "Given the following user query about a contract, analyze it and return structured data.\n\n"
+        "Query: {query}\n\n"
+        "Return:\n"
+        "- intent: one of 'fact', 'summary', 'compare', 'normal'\n"
+        "- semantic_expansions: list of synonymous phrases, alternate wordings, "
+        "and related legal terms (up to 12). Think broadly — include informal "
+        "phrasings, industry jargon, and legal synonyms. Do NOT include the original query.\n"
+        "- clause_types: standard contract clause names this query relates to (up to 6)\n"
+        "- key_concepts: specific values, timeframes, or conditions the answer must address (up to 6)"
+    )
+
+    def __init__(self, provider: str = "groq"):
+        self.provider = (provider or "groq").lower()
+
+    def analyze(self, query: str) -> QueryAnalysis:
+        """Return a QueryAnalysis for ``query``, using cache or LLM call."""
+        cache_key = _semantic_cache_key(query)
+        cached = _semantic_cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        result = self._llm_analyze(query)
+        if result is None:
+            result = self._deterministic_fallback(query)
+
+        _semantic_cache_set(cache_key, result)
+        return result
+
+    def _llm_analyze(self, query: str) -> Optional[QueryAnalysis]:
+        """Call the LLM with structured output. Returns None on failure."""
+        import logging
+        _logger = logging.getLogger(__name__)
+        try:
+            llm = self._build_llm()
+            if llm is None:
+                return None
+            from langchain_core.messages import HumanMessage  # type: ignore[import]
+
+            method = "json_schema"
+            structured = llm.with_structured_output(QueryAnalysis, method=method)
+            prompt = self._PROMPT_TEMPLATE.format(query=query)
+            result = structured.invoke([HumanMessage(content=prompt)])
+            return result if isinstance(result, QueryAnalysis) else None
+        except Exception as exc:
+            _logger.debug("SemanticQueryAnalyzer LLM call failed, using fallback: %s", exc)
+            return None
+
+    def _deterministic_fallback(self, query: str) -> QueryAnalysis:
+        """Use the legacy deterministic helpers as a cold-start fallback."""
+        intent = infer_intent(query)
+        expanded = expand_legal_queries(normalize_queries([query]))
+        # Everything beyond the original query is a synthetic expansion
+        originals = set(normalize_queries([query]))
+        extras = [t for t in expanded if t not in originals]
+        return QueryAnalysis(
+            intent=intent,
+            semantic_expansions=extras[:12],
+            clause_types=[],
+            key_concepts=[],
+        )
+
+    def _build_llm(self) -> Optional[object]:
+        """Build a LangChain chat model using the same model configured for generation."""
+        try:
+            if self.provider == "groq":
+                if not getattr(settings, "groq_api_key", None):
+                    return None
+                from langchain_groq import ChatGroq  # type: ignore[import]
+                return ChatGroq(
+                    model=settings.model_name,
+                    api_key=settings.groq_api_key,
+                    temperature=0.0,
+                    max_tokens=512,
+                )
+            if self.provider == "openai":
+                if not getattr(settings, "openai_api_key", None):
+                    return None
+                from langchain_openai import ChatOpenAI  # type: ignore[import]
+                return ChatOpenAI(
+                    model=getattr(settings, "openai_model_name", None) or "gpt-4o-mini",
+                    api_key=settings.openai_api_key or "",
+                    temperature=0.0,
+                    max_tokens=512,
+                )
+            if self.provider == "claude":
+                if not getattr(settings, "anthropic_api_key", None):
+                    return None
+                from langchain_anthropic import ChatAnthropic  # type: ignore[import]
+                return ChatAnthropic(
+                    model=getattr(settings, "anthropic_model_name", None) or "claude-haiku-4-5",
+                    api_key=getattr(settings, "anthropic_api_key", "") or "",
+                    temperature=0.0,
+                    max_tokens=512,
+                )
+            if self.provider == "gemini":
+                if not getattr(settings, "gemini_api_key", None):
+                    return None
+                from langchain_google_genai import ChatGoogleGenerativeAI  # type: ignore[import]
+                return ChatGoogleGenerativeAI(
+                    model=getattr(settings, "gemini_model_name", None) or "gemini-2.0-flash",
+                    google_api_key=getattr(settings, "gemini_api_key", "") or "",
+                    temperature=0.0,
+                )
+        except Exception:
+            return None
+        return None
 
 # ---------------------------------------------------------------------------
 # TTL retrieval cache — avoids re-running the full hybrid pipeline for
@@ -232,17 +435,29 @@ class EvidenceRetrievalService:
         documents: Sequence[Dict[str, Any]],
         queries: Sequence[str],
         *,
-        top_k: int = 5,
+        top_k: int = 12,
         ai_provider: Optional[str] = None,
         intent: Optional[str] = None,
         must_contain: Optional[Sequence[str]] = None,
         section_ref: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any]]:
         normalized_queries = normalize_queries(queries)
-        expanded_queries = expand_legal_queries(normalized_queries)
         normalized_must = normalize_queries(must_contain or [])
         normalized_section = normalize_section_ref(section_ref)
-        resolved_intent = intent or infer_intent(" ".join(expanded_queries or normalized_queries))
+
+        # --- Semantic query analysis (replaces deterministic infer_intent + expand) ---
+        combined_raw = " ".join(normalized_queries)
+        analyzer = SemanticQueryAnalyzer(provider=ai_provider or "groq")
+        analysis: QueryAnalysis = analyzer.analyze(combined_raw)
+
+        # Build the expanded query list: original + LLM semantic expansions + clause types
+        expanded_queries: List[str] = list(normalized_queries)
+        for term in analysis.semantic_expansions + analysis.clause_types + analysis.key_concepts:
+            if term and term not in expanded_queries:
+                expanded_queries.append(term)
+        expanded_queries = expanded_queries[:18]  # cap to avoid context explosion
+
+        resolved_intent: str = intent or analysis.intent
 
         # Check retrieval cache (per-contract + query)
         combined_query = " ".join(expanded_queries or normalized_queries)
@@ -268,13 +483,20 @@ class EvidenceRetrievalService:
         decomposition_used = False
         if getattr(settings, "query_decomposition_enabled", False):
             from .query_decomposer import decompose_query, is_complex_query
-            if is_complex_query(combined_query):
+            if is_complex_query(combined_raw):
                 decomposed = decompose_query(
-                    combined_query,
+                    combined_raw,
                     provider=ai_provider or "groq",
                 )
                 if decomposed and decomposed != normalized_queries:
-                    decomposed_queries = expand_legal_queries(decomposed)
+                    # Re-run semantic expansion on decomposed sub-queries
+                    decomposed_expanded: List[str] = list(decomposed)
+                    for sub in decomposed:
+                        sub_analysis = analyzer.analyze(sub)
+                        for term in sub_analysis.semantic_expansions:
+                            if term and term not in decomposed_expanded:
+                                decomposed_expanded.append(term)
+                    decomposed_queries = decomposed_expanded[:18]
                     decomposition_used = True
 
         candidate_k = max(top_k * 4, 20)
@@ -344,6 +566,11 @@ class EvidenceRetrievalService:
             "backend": backend,
             "backend_detail": backend_detail,
             "intent": resolved_intent,
+            "semantic_analysis": {
+                "clause_types": analysis.clause_types,
+                "key_concepts": analysis.key_concepts,
+                "expansion_count": len(analysis.semantic_expansions),
+            },
             "query_decomposition_used": decomposition_used,
             "decomposed_queries": decomposed_queries if decomposition_used else None,
             "expanded_queries": expanded_queries if expanded_queries != normalized_queries else None,
@@ -367,10 +594,19 @@ class EvidenceRetrievalService:
         must_contain: Optional[Sequence[str]] = None,
         section_ref: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        queries = expand_legal_queries(normalize_queries([query]))
         normalized_must = normalize_queries(must_contain or [])
         normalized_section = normalize_section_ref(section_ref)
-        resolved_intent = intent or infer_intent(query)
+
+        # Semantic analysis for search_segments (lightweight path)
+        analyzer = SemanticQueryAnalyzer(provider="groq")
+        analysis = analyzer.analyze(query)
+        base_queries = normalize_queries([query])
+        queries = list(base_queries)
+        for term in analysis.semantic_expansions + analysis.clause_types:
+            if term and term not in queries:
+                queries.append(term)
+        queries = queries[:16]
+        resolved_intent = intent or analysis.intent
         hits: List[EvidenceHit] = []
         for segment in segments:
             if segment.type == "sentence" or not (segment.text or "").strip():
@@ -1191,6 +1427,8 @@ def word_boundary_right(text: str, index: int) -> int:
 __all__ = [
     "EvidenceHit",
     "EvidenceRetrievalService",
+    "QueryAnalysis",
+    "SemanticQueryAnalyzer",
     "extract_exact_span",
     "infer_intent",
     "normalize_queries",
