@@ -1526,9 +1526,8 @@ function ReviewPanel({
   const [expandedKpiId, setExpandedKpiId] = useState<string | null>(kpis.find(isKpiTracked)?.kpi_id || kpis[0]?.kpi_id || null)
   const [editingKpiId, setEditingKpiId] = useState<string | null>(null)
   
-  const [activeTab, setActiveTab] = useState<'all' | 'sla' | 'penalty' | 'deadline' | 'tracked' | 'review'>('all')
+  const [activeTab, setActiveTab] = useState<'all' | 'sla' | 'penalty' | 'deadline' | 'tracked' | 'review' | 'approved'>('all')
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState("all")
   const [pagination, setPagination] = useState({ currentPage: 1, itemsPerPage: 10 })
   const breachByKpiId = useMemo(() => {
     const mapping = new Map<string, ContractKPIBreach[]>()
@@ -1555,6 +1554,7 @@ function ReviewPanel({
   const deadlineCount = useMemo(() => kpis.filter((kpi) => getCategory(kpi) === 'deadline').length, [kpis])
   const trackedCount = useMemo(() => kpis.filter(isKpiTracked).length, [kpis])
   const reviewCount = useMemo(() => kpis.filter((kpi) => kpi.status !== 'approved' && kpi.status !== 'ignored').length, [kpis])
+  const approvedCount = useMemo(() => kpis.filter((kpi) => kpi.status === 'approved').length, [kpis])
 
   const filteredKpis = useMemo(() => {
     return kpis.filter((kpi) => {
@@ -1564,6 +1564,7 @@ function ReviewPanel({
       if (activeTab === 'deadline' && getCategory(kpi) !== 'deadline') return false
       if (activeTab === 'tracked' && !isKpiTracked(kpi)) return false
       if (activeTab === 'review' && (kpi.status === 'approved' || kpi.status === 'ignored')) return false
+      if (activeTab === 'approved' && kpi.status !== 'approved') return false
 
       // 2. Search query filter
       if (searchQuery.trim()) {
@@ -1576,18 +1577,9 @@ function ReviewPanel({
         if (!(nameMatch || idMatch || sectionMatch || partyMatch || quoteMatch)) return false
       }
       
-      // 3. Status filter
-      if (statusFilter !== "all") {
-        if (statusFilter === "tracked") {
-          if (!isKpiTracked(kpi)) return false;
-        } else {
-          if (kpi.status !== statusFilter) return false;
-        }
-      }
-      
       return true
     })
-  }, [kpis, activeTab, searchQuery, statusFilter])
+  }, [kpis, activeTab, searchQuery])
 
   const totalPages = Math.max(1, Math.ceil(filteredKpis.length / pagination.itemsPerPage));
   const paginatedKpis = filteredKpis.slice((pagination.currentPage - 1) * pagination.itemsPerPage, pagination.currentPage * pagination.itemsPerPage);
@@ -1623,7 +1615,7 @@ function ReviewPanel({
           </div>
         </div>
         
-        {/* Category Tabs & Real-Time Search & Status Filter */}
+        {/* Category Tabs & Real-Time Search */}
         <div className="flex flex-col gap-3 p-4 border-b border-border sm:flex-row sm:items-center sm:justify-between bg-background">
           <div className="flex flex-wrap items-center gap-1.5">
             {[
@@ -1633,13 +1625,14 @@ function ReviewPanel({
               { id: 'deadline', label: `Deadlines (${deadlineCount})` },
               { id: 'tracked', label: `Tracked (${trackedCount})` },
               { id: 'review', label: `To Review (${reviewCount})` },
+              { id: 'approved', label: `Approved (${approvedCount})` },
             ].map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => { setActiveTab(tab.id as any); setPagination(p => ({ ...p, currentPage: 1 })) }}
                 className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
-                  activeTab === tab.id ? 'bg-[#015CA9] text-white shadow-sm' : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                  activeTab === tab.id ? 'bg-[#015CA9] text-white shadow-sm' : 'bg-muted/50 text-gray-700 hover:bg-muted'
                 }`}
               >
                 {tab.label}
@@ -1648,33 +1641,14 @@ function ReviewPanel({
           </div>
 
           <div className="flex items-center gap-3 w-full sm:w-auto">
-            <div className="relative flex items-center shrink-0">
-              <Filter className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" />
-              <select
-                value={statusFilter}
-                onChange={(event) => {
-                  setStatusFilter(event.target.value);
-                  setPagination((prev) => ({ ...prev, currentPage: 1 }));
-                }}
-                className="h-8 appearance-none rounded-md border border-border bg-background pl-8 pr-8 text-xs font-medium text-foreground/80 outline-none transition-colors hover:bg-muted/30"
-              >
-                <option value="all">All statuses</option>
-                <option value="approved">Approved</option>
-                <option value="review">Review</option>
-                <option value="ignored">Ignored</option>
-                <option value="tracked">Tracked</option>
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 h-4 w-4 text-foreground/80" />
-            </div>
-
             <div className="relative flex-1 sm:min-w-[220px]">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-700" />
               <input
                 type="text"
                 placeholder="Search KPI, section, quote..."
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setPagination(p => ({ ...p, currentPage: 1 })) }}
-                className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-3 text-xs text-foreground outline-none focus:border-[#015CA9] focus:ring-1 focus:ring-[#015CA9]"
+                className="h-8 w-full rounded-md border border-gray-400 bg-[#FFFFFF] pl-8 pr-3 text-xs text-foreground outline-none focus:border-[#015CA9] focus:ring-1 focus:ring-[#015CA9]"
               />
             </div>
           </div>
