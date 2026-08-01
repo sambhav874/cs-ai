@@ -98,10 +98,11 @@ class AgentMemoryManager:
     """Mongo-backed memory manager for contract assistant chat."""
 
     def __init__(self, mongo_db):
-        self.sessions = mongo_db["agent_chat_sessions"]
-        self.messages = mongo_db["agent_chat_messages"]
-        self.memories = mongo_db["agent_memories"]
-        self.drafts = mongo_db["agent_drafts"]
+        agent_db = mongo_db.client["contract_agent_db"]
+        self.sessions = agent_db["agent_chat_sessions"]
+        self.messages = agent_db["agent_chat_messages"]
+        self.memories = agent_db["agent_memories"]
+        self.drafts = agent_db["agent_drafts"]
 
     def ensure_session(
         self,

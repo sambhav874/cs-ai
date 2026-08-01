@@ -106,10 +106,10 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
             "matches": matches,
         }
     if tool.name == "get_kpi_context":
-        contract_id = str(tool.args.get("contract_id") or state.context.contract_id or "")
+        contract_id, scoped_ids = _resolve_contract_ids_for_kpi(tool, state)
         metric_name = str(tool.args.get("metric_name") or "")
         query = str(tool.args.get("query") or state.message or "")
-        return _get_kpi_context(collection, contract_id, metric_name=metric_name, query=query)
+        return _get_kpi_context(collection, contract_id, metric_name=metric_name, query=query, scoped_ids=scoped_ids, state=state)
     if tool.name == "calculate_from_evidence":
         expression = str(tool.args.get("expression") or "")
         context = str(tool.args.get("context") or tool.args.get("text") or "")
@@ -1155,21 +1155,100 @@ def _coerce_int(value: Any, default: int) -> int:
 # ── KPI context & calculation helpers ──────────────────────────────────────
 
 
-def _get_kpi_context(collection: Any, contract_id: str, *, metric_name: str = "", query: str = "") -> Dict[str, Any]:
-    """Fetch KPI/SLA records for the given contract, filtering by metric name or query."""
-    if not contract_id:
+def _resolve_contract_ids_for_kpi(tool: ToolCallRecord, state: AgentRunState) -> Tuple[Optional[str], List[str]]:
+    """Resolve single or multiple contract_ids from tool args and agent run state context."""
+    doc_index: Dict[str, str] = {}
+    attached = state.context.attached_documents or []
+    for i, doc in enumerate(attached):
+        doc_id = doc.get("document_id") or doc.get("id") or ""
+        if doc_id:
+            doc_index[f"doc-{i}"] = str(doc_id)
+    selected_ids = state.context.selected_document_ids or []
+    for i, doc_id in enumerate(selected_ids):
+        if doc_id:
+            doc_index.setdefault(f"doc-{i}", str(doc_id))
+
+    requested_id = str(tool.args.get("contract_id") or tool.args.get("document_id") or "").strip()
+    if requested_id in doc_index:
+        requested_id = doc_index[requested_id]
+
+    all_scoped_ids: List[str] = []
+    for sid in (state.context.selected_document_ids or []):
+        if sid and str(sid) not in all_scoped_ids:
+            all_scoped_ids.append(str(sid))
+    for doc in (state.context.attached_documents or []):
+        did = doc.get("document_id") or doc.get("id")
+        if did and str(did) not in all_scoped_ids:
+            all_scoped_ids.append(str(did))
+    if state.context.contract_id and str(state.context.contract_id) not in all_scoped_ids:
+        all_scoped_ids.append(str(state.context.contract_id))
+
+    primary_id = (
+        requested_id
+        or (str(state.context.contract_id) if state.context.contract_id else None)
+        or ((state.context.displayed_document or {}).get("document_id"))
+        or (all_scoped_ids[0] if all_scoped_ids else None)
+    )
+
+    return primary_id, all_scoped_ids
+
+
+def _get_kpi_context(
+    collection: Any,
+    contract_id: Optional[str],
+    *,
+    metric_name: str = "",
+    query: str = "",
+    scoped_ids: Optional[List[str]] = None,
+    state: Optional[AgentRunState] = None,
+) -> Dict[str, Any]:
+    """Fetch KPI/SLA records for the given contract(s), filtering by metric name or query."""
+    target_ids = list(dict.fromkeys([id_val for id_val in ([contract_id] + (scoped_ids or [])) if id_val]))
+    if not target_ids:
         return {"summary": "No contract_id available for KPI lookup.", "kpis": [], "count": 0}
 
     try:
         from services.kpi_manager import ContractKPIManager
         manager = ContractKPIManager()
-        kpis = manager.list_contract_kpis(contract_id)
+        kpis: List[Dict[str, Any]] = []
+        for tid in target_ids:
+            found = manager.list_contract_kpis(tid)
+            if found:
+                kpis.extend(found)
+
+        # Deduplicate by kpi_id
+        seen_kpi_ids = set()
+        deduped_kpis = []
+        for kpi in kpis:
+            kid = kpi.get("kpi_id") or kpi.get("id")
+            if kid and kid not in seen_kpi_ids:
+                seen_kpi_ids.add(kid)
+                deduped_kpis.append(kpi)
+            elif not kid:
+                deduped_kpis.append(kpi)
+        kpis = deduped_kpis
+
+        # Auto-extraction fallback if 0 KPIs currently in database
+        if not kpis and collection is not None:
+            from bson import ObjectId
+            for tid in target_ids:
+                doc = None
+                if ObjectId.is_valid(tid):
+                    doc = collection.find_one({"_id": ObjectId(tid)})
+                if not doc:
+                    doc = collection.find_one({"_id": tid})
+                if doc:
+                    user_id = state.user_id if state and hasattr(state, "user_id") else "agent"
+                    res = manager.extract_for_contract(contract_doc=doc, user_id=user_id, replace_drafts=False)
+                    extracted = res.get("kpis") or []
+                    if extracted:
+                        kpis.extend(extracted)
     except Exception as exc:
         return {"summary": f"KPI lookup failed: {str(exc)[:300]}", "kpis": [], "count": 0}
 
     if not kpis:
         return {
-            "summary": f"No KPI/SLA records found for the scoped contract.",
+            "summary": "No KPI/SLA records found for the scoped contract(s).",
             "kpis": [],
             "count": 0,
         }
@@ -1181,19 +1260,56 @@ def _get_kpi_context(collection: Any, contract_id: str, *, metric_name: str = ""
     summary_data = ContractKPIManager().summarize_kpis(kpis) if hasattr(ContractKPIManager, "summarize_kpis") else {}
 
     compact_kpis = []
-    for kpi in kpis[:20]:
+    for kpi in kpis[:30]:
+        quote_val = kpi.get("quote") or kpi.get("source_clause") or kpi.get("definition")
+        if isinstance(quote_val, dict):
+            quote_val = quote_val.get("quote") or quote_val.get("text") or quote_val.get("clause_text") or ""
+        if not quote_val and isinstance(kpi.get("identity"), dict):
+            sc = kpi["identity"].get("source_clause")
+            if isinstance(sc, dict):
+                quote_val = sc.get("quote") or sc.get("text") or ""
+            elif isinstance(sc, str):
+                quote_val = sc
+        if not isinstance(quote_val, str):
+            quote_val = str(quote_val or "")
+
+        page_val = (
+            kpi.get("page_start")
+            or kpi.get("page_number")
+            or kpi.get("page")
+        )
+        if page_val is None and isinstance(kpi.get("identity"), dict):
+            sc = kpi["identity"].get("source_clause")
+            if isinstance(sc, dict):
+                page_val = sc.get("page_start") or sc.get("page_number") or sc.get("page")
+
+        cid = (
+            kpi.get("contract_id")
+            or (kpi.get("identity", {}).get("contract_id") if isinstance(kpi.get("identity"), dict) else None)
+            or contract_id
+        )
+        fname = (
+            kpi.get("contract_name")
+            or kpi.get("filename")
+            or (kpi.get("identity", {}).get("contract_name") if isinstance(kpi.get("identity"), dict) else None)
+        )
+
         compact_kpis.append({
             "kpi_id": kpi.get("kpi_id"),
-            "name": kpi.get("name"),
-            "kpi_type": kpi.get("kpi_type"),
-            "value": kpi.get("value"),
+            "name": kpi.get("name") or (kpi.get("identity", {}).get("name") if isinstance(kpi.get("identity"), dict) else ""),
+            "kpi_type": kpi.get("kpi_type") or (kpi.get("identity", {}).get("kpi_type") if isinstance(kpi.get("identity"), dict) else ""),
+            "value": kpi.get("value") or kpi.get("target_value"),
             "unit": kpi.get("unit"),
             "status": kpi.get("status"),
             "threshold": kpi.get("threshold") or kpi.get("threshold_min"),
             "breach_state": kpi.get("breach_state"),
             "actual_value": kpi.get("actual_value"),
-            "page_start": kpi.get("page_start"),
-            "quote": (kpi.get("quote") or "")[:300],
+            "page": page_val,
+            "page_start": page_val,
+            "contract_id": cid,
+            "filename": fname,
+            "quote": quote_val[:500],
+            "text": quote_val[:500],
             "citation": kpi.get("citation"),
         })
 

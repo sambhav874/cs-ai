@@ -55,7 +55,7 @@ class FindInDocumentInput(BaseModel):
 
 
 class KPIInput(BaseModel):
-    contract_id: str = Field(default="", description="Contract ID owning KPI/SLA records.")
+    contract_id: str = Field(default="", description="Contract ID owning KPI/SLA records. Leave blank for current contract or document.")
     metric_name: str = Field(default="", description="Optional KPI/SLA metric name to filter by.")
     query: str = Field(default="", description="User's natural language query to find relevant KPIs.")
 

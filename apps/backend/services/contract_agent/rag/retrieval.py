@@ -79,7 +79,15 @@ class EvidenceToolbox:
             for line in (memory_context or "").splitlines()
             if "kpi" in line.lower() or "sla" in line.lower() or "threshold" in line.lower() or "breach" in line.lower()
         ]
-        return {"lines": lines, "count": len(lines)}
+        kpis = []
+        try:
+            from services.kpi_manager import ContractKPIManager
+            cid = getattr(self.owner, "contract_id", None) or getattr(self.owner, "document_id", None)
+            if cid:
+                kpis = ContractKPIManager().list_contract_kpis(str(cid))
+        except Exception:
+            pass
+        return {"lines": lines, "kpis": kpis, "count": len(kpis) if kpis else len(lines)}
 
     def calculate_from_evidence(self, text: str) -> Dict[str, Any]:
         """Return simple numeric values available for model-visible calculations."""

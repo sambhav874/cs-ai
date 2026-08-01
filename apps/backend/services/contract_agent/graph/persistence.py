@@ -10,11 +10,12 @@ from .state import AgentRunState, AgentStatus
 
 class AgentRunStore:
     def __init__(self, mongo_db: Any):
-        self.runs = mongo_db["agent_runs"]
-        self.trace_events = mongo_db["agent_trace_events"]
-        self.approvals = mongo_db["agent_approvals"]
-        self.cost_events = mongo_db["agent_cost_events"]
-        self.checkpoints = mongo_db["agent_workflow_checkpoints"]
+        agent_db = mongo_db.client["contract_agent_db"]
+        self.runs = agent_db["agent_runs"]
+        self.trace_events = agent_db["agent_trace_events"]
+        self.approvals = agent_db["agent_approvals"]
+        self.cost_events = agent_db["agent_cost_events"]
+        self.checkpoints = agent_db["agent_workflow_checkpoints"]
 
     def save(self, state: AgentRunState) -> None:
         payload = state.model_dump(mode="json")

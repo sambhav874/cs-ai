@@ -34,10 +34,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/playbooks")
 
-playbooks_collection = db["playbooks"]
-playbook_runs_collection = db["playbook_runs"]
-playbook_findings_collection = db["playbook_findings"]
-playbook_redlines_collection = db["playbook_redlines"]
+from core.database import core_db
+
+playbooks_collection = core_db["playbooks"]
+playbook_runs_collection = core_db["playbook_runs"]
+playbook_findings_collection = core_db["playbook_findings"]
+playbook_redlines_collection = core_db["playbook_redlines"]
 
 MAX_RULES = 300
 MAX_RUN_DOCUMENTS = 25

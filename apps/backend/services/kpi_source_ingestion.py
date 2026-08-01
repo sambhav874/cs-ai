@@ -352,6 +352,95 @@ def _format_from_config(config: Dict[str, Any], fallback_url: Optional[str] = No
     return suffix[-1].lower() if len(suffix) == 2 and suffix[-1] else "json"
 
 
+# --- Auto-Mapping Field Scoring Table & Logic ---
+AUTO_MAP_FIELD_PATTERNS = {
+    "actual_value": ["actual_value", "value", "val", "actual", "score", "metric_value", "reading", "amount", "result", "measured_value"],
+    "timestamp": ["timestamp", "time", "date", "event_time", "created_at", "recorded_at", "ts", "datetime", "log_date"],
+    "source_record_id": ["source_record_id", "record_id", "id", "txn_id", "event_id", "uuid", "transaction_id", "row_id", "key"],
+    "unit": ["unit", "uom", "unit_of_measure", "dimension"],
+    "period": ["period", "interval", "window", "quarter", "month", "reporting_period"],
+    "kpi_id": ["kpi_id", "kpi", "metric_id", "metric_code", "sla_id"],
+    "kpi_name": ["kpi_name", "metric_name", "name", "metric_title", "sla_name"],
+}
+
+
+def auto_detect_field_mappings(schema_fields: List[str]) -> List[Dict[str, Any]]:
+    """Auto-detect target KPI field mappings from raw payload column names."""
+    mappings: List[Dict[str, Any]] = []
+    used_sources = set()
+
+    for target_field, synonyms in AUTO_MAP_FIELD_PATTERNS.items():
+        best_match = None
+        best_score = -1
+
+        for col in schema_fields:
+            if col in used_sources:
+                continue
+            col_clean = re.sub(r"[^a-z0-9]", "", col.lower())
+
+            for rank, synonym in enumerate(synonyms):
+                syn_clean = re.sub(r"[^a-z0-9]", "", synonym.lower())
+                if col_clean == syn_clean:
+                    score = 100 - rank
+                    if score > best_score:
+                        best_score = score
+                        best_match = col
+                elif syn_clean in col_clean or col_clean in syn_clean:
+                    score = 70 - rank
+                    if score > best_score:
+                        best_score = score
+                        best_match = col
+
+        if best_match:
+            used_sources.add(best_match)
+            transform = "number" if target_field == "actual_value" else "datetime" if target_field == "timestamp" else "string"
+            mappings.append({
+                "kpi_field": target_field,
+                "source_field": best_match,
+                "transform": transform,
+                "auto_detected": True,
+            })
+
+    return mappings
+
+
+def parse_sample_file_bytes(
+    content: bytes,
+    file_format: str,
+    record_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """Parse raw uploaded sample file bytes, extract records, schema fields, and auto-detected mappings."""
+    records = _parse_records_by_format(content, file_format, record_path)
+    if not records:
+        return {
+            "schema_fields": [],
+            "sample_rows": [],
+            "field_mappings": [],
+            "record_count": 0,
+            "sample_payload": [],
+        }
+
+    all_keys = []
+    seen = set()
+    for rec in records:
+        if isinstance(rec, dict):
+            for key in rec.keys():
+                if key not in seen:
+                    seen.add(key)
+                    all_keys.append(key)
+
+    schema_fields = [{"name": key, "type": "string"} for key in all_keys]
+    auto_mappings = auto_detect_field_mappings(all_keys)
+
+    return {
+        "schema_fields": schema_fields,
+        "sample_rows": records[:5],
+        "field_mappings": auto_mappings,
+        "record_count": len(records),
+        "sample_payload": records[:20],
+    }
+
+
 class BaseKpiSourceAdapter:
     def __init__(self, config: Dict[str, Any], session: Optional[requests.Session] = None):
         self.config = dict(config)
@@ -360,11 +449,11 @@ class BaseKpiSourceAdapter:
                 self.config[field] = decrypt_value(self.config[field])
         self.session = session or requests.Session()
 
-    def validate_config(self) -> List[str]:
+    def validate_config(self, payload: Any = None) -> List[str]:
         return []
 
-    def test_connection(self) -> Dict[str, Any]:
-        errors = self.validate_config()
+    def test_connection(self, payload: Any = None) -> Dict[str, Any]:
+        errors = self.validate_config(payload=payload)
         return {
             "ok": not errors,
             "errors": errors,
@@ -504,9 +593,10 @@ class HttpFileSourceAdapter(BaseKpiSourceAdapter):
 
 
 class UploadedFileAdapter(BaseKpiSourceAdapter):
-    def validate_config(self) -> List[str]:
-        if self.config.get("sample_payload") is None and not _clean_string(self.config.get("endpoint") or self.config.get("signed_url")):
-            return ["sample_payload, endpoint, or signed_url is required for file adapters"]
+    def validate_config(self, payload: Any = None) -> List[str]:
+        selected_payload = self._sample_or_payload(payload)
+        if selected_payload is None and not _clean_string(self.config.get("endpoint") or self.config.get("signed_url")):
+            return ["No telemetry data found. Please drop or select a sample file into Section 4 before clicking 'Ingest Actuals'."]
         return []
 
     def fetch(self, payload: Any = None, limit: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -592,7 +682,8 @@ def adapter_for_source(config: Dict[str, Any], session: Optional[requests.Sessio
 
 class KpiSourceIngestionService:
     def __init__(self, database=None, session: Optional[requests.Session] = None):
-        self.db = database if database is not None else db
+        from core.database import kpi_db
+        self.db = database if database is not None else kpi_db
         self.source_configs = self.db["contract_kpi_source_configs"]
         self.fetch_runs = self.db["contract_kpi_fetch_runs"]
         self.actuals = self.db["contract_kpi_actuals"]
@@ -611,7 +702,7 @@ class KpiSourceIngestionService:
         run = self._start_run(config, user_id=user_id, trigger_type="test")
         try:
             adapter = adapter_for_source(config, self.session)
-            connection = adapter.test_connection()
+            connection = adapter.test_connection(payload=payload)
             if not connection.get("ok"):
                 raise KpiSourceError("; ".join(connection.get("errors") or ["Connection test failed"]))
             records = adapter.fetch(payload=payload, limit=int(config.get("preview_limit") or 50))
@@ -701,7 +792,7 @@ class KpiSourceIngestionService:
         watermark_before = config.get("watermark_value")
         try:
             adapter = adapter_for_source(config, self.session)
-            validation_errors = adapter.validate_config()
+            validation_errors = adapter.validate_config(payload=payload)
             if validation_errors:
                 raise KpiSourceError("; ".join(validation_errors))
             records = adapter.fetch(payload=payload)

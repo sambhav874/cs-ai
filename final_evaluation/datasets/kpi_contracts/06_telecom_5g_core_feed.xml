@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<telemetry_feed contract_id="TELECOM-5G-2027-MSA-9901">
+  <record>
+    <kpi_id>KPI-TEL-01</kpi_id>
+    <kpi_name>5G SA Core Uptime</kpi_name>
+    <actual_value>99.999</actual_value>
+    <unit>%</unit>
+    <period>2028-01</period>
+    <timestamp>2028-01-31T23:59:59Z</timestamp>
+    <source_record_id>XML-CORE-001</source_record_id>
+  </record>
+  <record>
+    <kpi_id>KPI-TEL-07</kpi_id>
+    <kpi_name>Packet Loss Ratio (User Plane)</kpi_name>
+    <actual_value>0.0007</actual_value>
+    <unit>%</unit>
+    <period>2028-01</period>
+    <timestamp>2028-01-31T23:59:59Z</timestamp>
+    <source_record_id>XML-CORE-002</source_record_id>
+  </record>
+  <record>
+    <kpi_id>KPI-TEL-01</kpi_id>
+    <kpi_name>5G SA Core Uptime</kpi_name>
+    <actual_value>99.988</actual_value>
+    <unit>%</unit>
+    <period>2028-02</period>
+    <timestamp>2028-02-29T23:59:59Z</timestamp>
+    <source_record_id>XML-CORE-003</source_record_id>
+  </record>
+  <record>
+    <kpi_id>KPI-TEL-07</kpi_id>
+    <kpi_name>Packet Loss Ratio (User Plane)</kpi_name>
+    <actual_value>0.0006</actual_value>
+    <unit>%</unit>
+    <period>2028-02</period>
+    <timestamp>2028-02-29T23:59:59Z</timestamp>
+    <source_record_id>XML-CORE-004</source_record_id>
+  </record>
+</telemetry_feed>

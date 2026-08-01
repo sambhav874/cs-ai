@@ -731,6 +731,18 @@ class ContractReActRuntime:
                 continue
             raw_doc_id = str(item.get("doc_id") or "").strip()
             quote = str(item.get("quote") or "").strip()
+            if quote.startswith("{") and ("kpi_id" in quote or "kpi_type" in quote):
+                try:
+                    parsed_q = json.loads(quote)
+                    if isinstance(parsed_q, dict):
+                        quote = (
+                            parsed_q.get("quote")
+                            or parsed_q.get("source_clause")
+                            or parsed_q.get("definition")
+                            or f"{parsed_q.get('name', '')}: {parsed_q.get('value', '')} {parsed_q.get('unit', '')}".strip(" :")
+                        )
+                except Exception:
+                    pass
             raw_page = item.get("page")
             page, page_start, page_end = _parse_page_range(raw_page)
             doc_info = doc_index.get(raw_doc_id)
@@ -739,8 +751,26 @@ class ContractReActRuntime:
                     if key.lower() == raw_doc_id.lower():
                         doc_info = val
                         break
-            doc_id_resolved = doc_info["document_id"] if (doc_info and doc_info["document_id"]) else raw_doc_id
-            filename_resolved = doc_info["filename"] if (doc_info and doc_info["filename"]) else raw_doc_id
+            doc_id_resolved = doc_info["document_id"] if (doc_info and doc_info.get("document_id")) else raw_doc_id
+            filename_resolved = doc_info["filename"] if (doc_info and doc_info.get("filename")) else raw_doc_id
+
+            from bson import ObjectId
+            if not ObjectId.is_valid(doc_id_resolved):
+                fallback_id = (
+                    (str(state.context.contract_id) if state.context.contract_id and ObjectId.is_valid(str(state.context.contract_id)) else None)
+                    or ((state.context.displayed_document or {}).get("document_id") if ObjectId.is_valid((state.context.displayed_document or {}).get("document_id") or "") else None)
+                    or next((str(sid) for sid in (state.context.selected_document_ids or []) if ObjectId.is_valid(str(sid))), None)
+                )
+                if fallback_id:
+                    doc_id_resolved = fallback_id
+
+            if not filename_resolved or filename_resolved in ("kpi_context", "doc-0", "doc-1") or not (doc_info and doc_info.get("filename")):
+                fallback_filename = (
+                    (state.context.displayed_document or {}).get("filename")
+                    or (state.context.visible_state or {}).get("contract_name")
+                )
+                if fallback_filename:
+                    filename_resolved = fallback_filename
             resolved.append({
                 "type": "citation_data",
                 "ref": ref_val,

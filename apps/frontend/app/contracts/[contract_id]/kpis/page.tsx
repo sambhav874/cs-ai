@@ -963,39 +963,68 @@ export default function ContractKpiManagementPage() {
     })
   }
 
-  const uploadActuals = async (file: File) => {
+  const uploadActuals = async (files: FileList | File[] | File) => {
     if (!apiUrl || !token) return
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('evaluate', 'true')
+    const fileList = Array.from(files instanceof File ? [files] : files)
+    if (!fileList.length) return
+
     setIsUploading(true)
-    try {
-      const result = await apiUploadWithProgress<any>(`${apiUrl}/contracts/${contractId}/kpis/actuals/upload`, formData)
-      if (result.error) throw new Error(result.error || 'Unable to upload actuals.')
-      const payload = result.data || {}
+    let totalCount = 0
+    let totalBreaches = 0
+    let successCount = 0
+    let errorMessages: string[] = []
+
+    for (const file of fileList) {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('evaluate', 'true')
+      try {
+        const result = await apiUploadWithProgress<any>(`${apiUrl}/contracts/${contractId}/kpis/actuals/upload`, formData)
+        if (result.error) throw new Error(result.error || `Unable to upload ${file.name}`)
+        const payload = result.data || {}
+        totalCount += payload.count || 0
+        totalBreaches += payload.breaches?.length || 0
+        successCount++
+      } catch (uploadError) {
+        errorMessages.push(`${file.name}: ${uploadError instanceof Error ? uploadError.message : 'Upload failed'}`)
+      }
+    }
+
+    setIsUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+
+    if (successCount > 0) {
       toast({
-        title: 'Actuals ingested',
-        description: `${payload.count || 0} rows mapped, ${payload.breaches?.length || 0} tracked evaluations created.`,
+        title: `${successCount} file${successCount === 1 ? '' : 's'} ingested successfully!`,
+        description: `${totalCount} actual rows mapped, ${totalBreaches} compliance evaluations generated.`,
       })
       setActivePanel('logs')
       await loadWorkspace()
-    } catch (uploadError) {
+    }
+    if (errorMessages.length > 0) {
       toast({
-        title: 'Actual upload failed',
-        description: uploadError instanceof Error ? uploadError.message : 'Check the CSV or JSON file.',
+        title: 'Some files failed to upload',
+        description: errorMessages.join('; '),
         variant: 'destructive',
       })
-    } finally {
-      setIsUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
   const defaultMappings = getDefaultKpiSourceMappings()
 
   const createSource = async (source: KPISourceCatalogItem) => {
-    if (!apiUrl) return
+    if (!apiUrl) return null
     setIsSavingSource(true)
+    const visibleKpis = sortedKpis.filter((kpi) => kpi.status !== 'ignored')
+    const initialKpiIds: string[] = []
+    const initialBindings = visibleKpis.map((kpi, index) => ({
+      binding_id: sourceBindingId('new_source', kpi.kpi_id, index + 1),
+      kpi_id: kpi.kpi_id,
+      enabled: false,
+      field_mappings: [],
+      aggregation: 'latest',
+    }))
+
     const result = await authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/source-configs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1004,14 +1033,17 @@ export default function ContractKpiManagementPage() {
         source_type: source.source_type,
         file_format: source.source_type === 'manual_attestation' ? 'json' : source.source_type,
         auth_type: source.auth_types?.[0] || 'none',
-        status: 'draft',
+        status: initialKpiIds.length ? 'mapped' : 'draft',
+        enabled: true,
         schedule: {
           cadence: 'manual',
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
         },
-        dedupe_key: 'record_id',
+        dedupe_key: 'source_record_id',
         watermark_field: 'timestamp',
         field_mappings: defaultMappings,
+        kpi_ids: initialKpiIds,
+        kpi_bindings: initialBindings,
         validation_rules: [
           { field: 'actual_value', rule: 'required_numeric' },
           { field: 'timestamp', rule: 'required_datetime' },
@@ -1021,10 +1053,46 @@ export default function ContractKpiManagementPage() {
     setIsSavingSource(false)
     if (result.error) {
       toast({ title: 'Could not create source', description: result.error, variant: 'destructive' })
-      return
+      return null
     }
-    setSourceConfigs((current) => [result.data, ...current])
-    setSelectedSourceId(result.data.source_config_id)
+    const created = result.data as KPISourceConfig
+    setSourceConfigs((current) => [created, ...current])
+    setSelectedSourceId(created.source_config_id)
+    return created
+  }
+
+  const uploadSourceSampleFile = async (config: KPISourceConfig, file: File) => {
+    if (!apiUrl || !token) return
+    setIsSavingSource(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const response = await fetch(`${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(config.source_config_id)}/sample-upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.detail || 'Failed to parse sample file.')
+      if (data.source_config) {
+        setSourceConfigs((current) => current.map((item) => item.source_config_id === data.source_config.source_config_id ? data.source_config : item))
+      }
+      if (data.sample_payload) {
+        setSamplePayload(typeof data.sample_payload === 'string' ? data.sample_payload : JSON.stringify(data.sample_payload, null, 2))
+      }
+      toast({
+        title: 'Sample file uploaded & auto-mapped!',
+        description: `Parsed ${data.record_count || 0} rows. ${data.field_mappings?.length || 0} fields auto-mapped.`,
+      })
+    } catch (uploadError) {
+      toast({
+        title: 'Sample upload failed',
+        description: uploadError instanceof Error ? uploadError.message : 'Invalid file format.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSavingSource(false)
+    }
   }
 
   const updateSource = async (config: KPISourceConfig, updates: Partial<KPISourceConfig>) => {
@@ -1113,8 +1181,19 @@ export default function ContractKpiManagementPage() {
 
   const runSourceAction = async (config: KPISourceConfig, action: 'test' | 'fetch') => {
     if (!apiUrl) return
+    const payloadStr = samplePayload.trim()
+    if (!payloadStr && !config.sample_payload) {
+      toast({
+        title: 'Please attach a data file',
+        description: 'Select your CSV, Excel, JSON, or XML file to ingest actuals.',
+      })
+      if (fileInputRef.current) {
+        fileInputRef.current.click()
+      }
+      return
+    }
     setIsRunningSource(true)
-    const payload = samplePayload.trim()
+    const payload = payloadStr
       ? (() => {
           try {
             return JSON.parse(samplePayload)
@@ -1224,11 +1303,12 @@ export default function ContractKpiManagementPage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".csv,.json"
+        multiple
+        accept=".csv,.xlsx,.xls,.json,.xml"
         className="hidden"
         onChange={(event) => {
-          const file = event.target.files?.[0]
-          if (file) void uploadActuals(file)
+          const files = event.target.files
+          if (files && files.length) void uploadActuals(files)
         }}
       />
 
@@ -1376,6 +1456,7 @@ export default function ContractKpiManagementPage() {
               onSaveSample={saveSamplePayload}
               onSamplePayloadChange={setSamplePayload}
               onRunSourceAction={runSourceAction}
+              onUploadSampleFile={uploadSourceSampleFile}
             />
           ) : activePanel === 'flags' ? (
             <FlagsPanel breaches={visibleBreaches} kpiById={kpiById} onFlagRemediationEmail={flagRemediationEmail} />
@@ -1613,7 +1694,7 @@ function ReviewPanel({
 }) {
   const [expandedKpiId, setExpandedKpiId] = useState<string | null>(kpis.find(isKpiTracked)?.kpi_id || kpis[0]?.kpi_id || null)
   const [editingKpiId, setEditingKpiId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'all' | 'sla' | 'penalty' | 'deadline' | 'tracked' | 'review'>('all')
+  const [activeTab, setActiveTab] = useState<'all' | 'supplier' | 'client' | 'sla' | 'penalty' | 'deadline' | 'tracked' | 'review'>('all')
   const [searchQuery, setSearchQuery] = useState('')
 
   const breachByKpiId = useMemo(() => {
@@ -1626,6 +1707,28 @@ function ReviewPanel({
     return mapping
   }, [breaches])
 
+  // Helper to categorize Supplier vs Client Obligation
+  const getObligationType = (kpi: ContractKPI): 'supplier' | 'client' => {
+    const obType = String((kpi as any).obligation_type || (kpi as any).party_type || '').toLowerCase()
+    if (obType === 'supplier') return 'supplier'
+    if (obType === 'client') return 'client'
+
+    const partyStr = String(kpi.party || (kpi as any).responsible_party || (kpi as any).business_owner || '').toLowerCase()
+    const quoteStr = String(quoteFor(kpi) || '').toLowerCase()
+    const combined = `${partyStr} ${quoteStr}`
+
+    if (/\b(client|customer|operator|buyer|purchaser|owner|company|enterprise|subscriber|lessee|licensee|principal|agency|authority)\b/.test(partyStr)) {
+      return 'client'
+    }
+    if (/\b(supplier|provider|vendor|contractor|managed services provider|seller|developer|manufacturer|subcontractor|lessor|concessionaire|licensor|gnodeb|service provider|partner|consultant|builder|epc)\b/.test(partyStr)) {
+      return 'supplier'
+    }
+    if (/\b(client|customer|operator|buyer|purchaser|owner|company|enterprise|subscriber|lessee|licensee|principal|agency|authority)\b/.test(combined) && /\b(shall pay|shall provide access|shall notify|shall furnish|shall reimburse|shall grant|responsible for providing)\b/.test(combined)) {
+      return 'client'
+    }
+    return 'supplier'
+  }
+
   // Helper to categorize KPI type
   const getCategory = (kpi: ContractKPI) => {
     const kpiType = String(kpi.kpi_type || '').toLowerCase()
@@ -1636,6 +1739,8 @@ function ReviewPanel({
     return 'other'
   }
 
+  const supplierCount = useMemo(() => kpis.filter((kpi) => getObligationType(kpi) === 'supplier').length, [kpis])
+  const clientCount = useMemo(() => kpis.filter((kpi) => getObligationType(kpi) === 'client').length, [kpis])
   const slaCount = useMemo(() => kpis.filter((kpi) => getCategory(kpi) === 'sla').length, [kpis])
   const penaltyCount = useMemo(() => kpis.filter((kpi) => getCategory(kpi) === 'penalty').length, [kpis])
   const deadlineCount = useMemo(() => kpis.filter((kpi) => getCategory(kpi) === 'deadline').length, [kpis])
@@ -1644,6 +1749,8 @@ function ReviewPanel({
 
   const filteredKpis = useMemo(() => {
     return kpis.filter((kpi) => {
+      if (activeTab === 'supplier' && getObligationType(kpi) !== 'supplier') return false
+      if (activeTab === 'client' && getObligationType(kpi) !== 'client') return false
       if (activeTab === 'sla' && getCategory(kpi) !== 'sla') return false
       if (activeTab === 'penalty' && getCategory(kpi) !== 'penalty') return false
       if (activeTab === 'deadline' && getCategory(kpi) !== 'deadline') return false
@@ -1655,7 +1762,7 @@ function ReviewPanel({
         const nameMatch = (kpi.name || '').toLowerCase().includes(query)
         const idMatch = (kpi.kpi_id || '').toLowerCase().includes(query)
         const sectionMatch = (kpi.structural_path || kpi.section_path || kpi.section || '').toLowerCase().includes(query)
-        const partyMatch = (kpi.party || kpi.responsible_party || '').toLowerCase().includes(query)
+        const partyMatch = (kpi.party || (kpi as any).responsible_party || '').toLowerCase().includes(query)
         const quoteMatch = (quoteFor(kpi) || '').toLowerCase().includes(query)
         return nameMatch || idMatch || sectionMatch || partyMatch || quoteMatch
       }
@@ -1680,7 +1787,7 @@ function ReviewPanel({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-base font-semibold text-gray-950">KPI Register</h2>
-            <p className="mt-1 text-xs text-gray-500">Showing {filteredKpis.length} of {kpis.length} extracted KPIs across review, tracking, and source readiness.</p>
+            <p className="mt-1 text-xs text-gray-500">Showing {filteredKpis.length} of {kpis.length} extracted KPIs ({supplierCount} Supplier · {clientCount} Client Obligations).</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={onAcceptAll}>
@@ -1699,6 +1806,8 @@ function ReviewPanel({
           <div className="flex flex-wrap items-center gap-1.5">
             {[
               { id: 'all', label: `All (${kpis.length})` },
+              { id: 'supplier', label: `Supplier Obligations (${supplierCount})` },
+              { id: 'client', label: `Client Obligations (${clientCount})` },
               { id: 'sla', label: `Core SLAs (${slaCount})` },
               { id: 'penalty', label: `Penalties (${penaltyCount})` },
               { id: 'deadline', label: `Deadlines (${deadlineCount})` },
@@ -1734,6 +1843,7 @@ function ReviewPanel({
       <div className="space-y-3">
         {filteredKpis.map((kpi, index) => {
           const tracked = isKpiTracked(kpi)
+          const obType = getObligationType(kpi)
           const sources = sourcesByKpiId.get(kpi.kpi_id) || []
           const backfilled = Number(kpi.last_tracking_backfill?.created_breach_count || 0)
           const kpiActuals = actualsByKpiId.get(kpi.kpi_id) || []
@@ -1754,6 +1864,15 @@ function ReviewPanel({
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="font-mono text-[11px] font-semibold text-gray-400">{kpiCode(kpi, index)}</span>
+                      {obType === 'supplier' ? (
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                          Supplier Obligation
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">
+                          Client Obligation
+                        </span>
+                      )}
                       <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone(kpi.status || 'review')}`}>{titleCase(kpi.status || 'review')}</span>
                       <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tracked ? 'border-gray-300 bg-white text-gray-800' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>{tracked ? 'Tracked' : 'Deferred'}</span>
                       {isKpiRecommended(kpi) && !tracked && <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700">Recommended</span>}
@@ -2353,6 +2472,7 @@ function SourceKpiBindingEditor({
   onSelectBinding,
   onToggleSourceKpi,
   onUpdateBinding,
+  onUpdateSource,
 }: {
   config: KPISourceConfig
   kpis: ContractKPI[]
@@ -2361,184 +2481,150 @@ function SourceKpiBindingEditor({
   onSelectBinding: (kpiId: string) => void
   onToggleSourceKpi: (config: KPISourceConfig, kpi: ContractKPI) => void | Promise<void>
   onUpdateBinding: (config: KPISourceConfig, binding: KPISourceBinding) => void | Promise<void>
+  onUpdateSource: (config: KPISourceConfig, updates: Partial<KPISourceConfig>) => void | Promise<KPISourceConfig | null>
 }) {
+  const [searchQuery, setSearchQuery] = useState('')
+
   if (!kpis.length) {
     return <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500">No KPI rows available to assign.</div>
   }
 
   const bindings = bindingsForSource(config, kpis)
-  const enabledCount = bindings.filter((binding) => binding.enabled !== false).length
-  const sourceFieldOptions = detectKpiSourceFields({
-    fieldMappings: [
-      ...normalizeFieldMappings(config.field_mappings),
-      ...bindings.flatMap((binding) => normalizeFieldMappings(binding.field_mappings)),
-    ],
-    recordPath: config.record_path,
-    samplePayload: config.sample_payload,
-    schemaFields: config.schema_fields,
-  })
-  const inputListId = `${config.source_config_id}-binding-source-fields`
-  const saveBinding = (binding: KPISourceBinding, updates: Partial<KPISourceBinding>) => {
-    void onUpdateBinding(config, { ...binding, ...updates })
-  }
-  const updateMapping = (
-    binding: KPISourceBinding,
-    kpiField: string,
-    sourceField: string,
-    transform: string,
-  ) => {
-    const baseMappings = binding.field_mappings?.length
-      ? binding.field_mappings
-      : normalizeFieldMappings(config.field_mappings?.length ? config.field_mappings : getDefaultKpiSourceMappings())
-    saveBinding(binding, {
+  const enabledCount = bindings.filter((b) => b.enabled !== false).length
+
+  const filtered = kpis
+    .map((kpi, idx) => ({ kpi, idx }))
+    .filter(({ kpi }) => {
+      if (!searchQuery.trim()) return true
+      const q = searchQuery.toLowerCase()
+      return kpi.name.toLowerCase().includes(q) || (kpi.kpi_type || '').toLowerCase().includes(q)
+    })
+
+  const linkAll = async () => {
+    const allKpiIds = kpis.map((k) => k.kpi_id)
+    const newBindings = kpis.map((kpi, idx) => ({
+      binding_id: sourceBindingId(config.source_config_id, kpi.kpi_id, idx + 1),
+      kpi_id: kpi.kpi_id,
       enabled: true,
-      field_mappings: setFieldMapping(baseMappings, kpiField, sourceField, transform),
+      field_mappings: [],
+      aggregation: 'latest',
+    }))
+    await onUpdateSource(config, {
+      kpi_ids: allKpiIds,
+      kpi_bindings: newBindings,
+      status: 'mapped',
+      enabled: true,
     })
   }
-  const updateMatchRule = (binding: KPISourceBinding, field: string, value: string) => {
-    const cleanField = field.trim()
-    const cleanValue = value.trim()
-    saveBinding(binding, {
-      match_rule: cleanField || cleanValue
-        ? { field: cleanField || 'kpi_id', operator: 'equals', value: cleanValue }
-        : {},
+
+  const unlinkAll = async () => {
+    const newBindings = bindings.map((b) => ({ ...b, enabled: false }))
+    await onUpdateSource(config, {
+      kpi_ids: [],
+      kpi_bindings: newBindings,
+    })
+  }
+
+  const smartMatch = async () => {
+    const sourceLabel = (config.display_name || config.source_type || '').toLowerCase()
+    const schemaFields = (config.schema_fields || []).map((f) => String(f).toLowerCase())
+
+    const matchedKpiIds: string[] = []
+    const newBindings = kpis.map((kpi, idx) => {
+      const kName = (kpi.name || '').toLowerCase()
+      const section = (kpi.structural_path || kpi.section_path || kpi.section || '').toLowerCase()
+      const quote = (quoteFor(kpi) || '').toLowerCase()
+
+      let isMatch = false
+      if (schemaFields.length) {
+        isMatch = schemaFields.some((field) => kName.includes(field) || field.includes(kName) || (kpi.kpi_id && field.includes(kpi.kpi_id.toLowerCase())))
+      }
+      if (!isMatch) {
+        const terms = sourceLabel.replace(/(upload|feed|workbook|csv|xlsx|json|xml|source|manual|attestation)/gi, '').trim().split(/\s+/).filter((b) => b.length > 2)
+        if (terms.length) {
+          isMatch = terms.some((term) => kName.includes(term) || section.includes(term) || quote.includes(term))
+        }
+      }
+
+      if (isMatch) matchedKpiIds.push(kpi.kpi_id)
+      return {
+        binding_id: sourceBindingId(config.source_config_id, kpi.kpi_id, idx + 1),
+        kpi_id: kpi.kpi_id,
+        enabled: isMatch,
+        field_mappings: [],
+        aggregation: 'latest',
+      }
+    })
+
+    await onUpdateSource(config, {
+      kpi_ids: matchedKpiIds,
+      kpi_bindings: newBindings,
+      status: matchedKpiIds.length ? 'mapped' : 'draft',
     })
   }
 
   return (
-    <div className="max-h-[420px] overflow-auto rounded-md border border-gray-200">
-      <datalist id={inputListId}>
-        {sourceFieldOptions.map((fieldName) => <option key={fieldName} value={fieldName} />)}
-      </datalist>
-      <table className="min-w-[980px] text-left text-xs">
-        <thead className="sticky top-0 z-10 bg-gray-50 text-[10px] font-bold uppercase tracking-wide text-gray-400">
-          <tr>
-            <th className="min-w-[230px] px-3 py-2">KPI</th>
-            <th className="w-24 px-3 py-2">Enabled</th>
-            <th className="min-w-[210px] px-3 py-2">Match Rule</th>
-            <th className="min-w-[150px] px-3 py-2">Actual Value</th>
-            <th className="min-w-[145px] px-3 py-2">Timestamp</th>
-            <th className="min-w-[120px] px-3 py-2">Unit</th>
-            <th className="min-w-[110px] px-3 py-2">Aggregation</th>
-            <th className="min-w-[120px] px-3 py-2">Status</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100 bg-white">
-          {kpis.map((kpi, index) => {
-            const binding = bindings[index]
-            const selected = selectedBindingKpiId === kpi.kpi_id
-            const effectiveMappings = bindingEffectiveMappings(config, binding)
-            const status = bindingStatus(config, binding, enabledCount)
-            const matchField = String(binding.match_rule?.field || '')
-            const matchValue = String(binding.match_rule?.value || '')
-            return (
-              <tr key={kpi.kpi_id} className={`align-top ${selected ? 'bg-gray-50' : ''}`}>
-                <td className="px-3 py-2" onClick={() => onSelectBinding(kpi.kpi_id)}>
-                  <p className="font-mono text-[10px] font-semibold text-gray-400">{kpiCode(kpi, index)}</p>
-                  <p className="mt-0.5 line-clamp-2 text-xs font-semibold text-gray-900">{kpi.name}</p>
-                  <p className="mt-0.5 truncate text-[11px] text-gray-400">{formatKpiValue(kpi)}</p>
-                </td>
-                <td className="px-3 py-2">
-                  <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={binding.enabled !== false}
-                      disabled={disabled}
-                      onChange={() => {
-                        onSelectBinding(kpi.kpi_id)
-                        void onToggleSourceKpi(config, kpi)
-                      }}
-                      className="h-4 w-4 rounded border-gray-300 text-gray-950 focus:ring-gray-950"
-                    />
-                    <span>{binding.enabled !== false ? 'On' : 'Off'}</span>
-                  </label>
-                </td>
-                <td className="px-3 py-2">
-                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1">
-                    <input
-                      list={inputListId}
-                      defaultValue={matchField}
-                      placeholder="field"
-                      disabled={disabled || binding.enabled === false}
-                      onFocus={() => onSelectBinding(kpi.kpi_id)}
-                      onBlur={(event) => updateMatchRule(binding, event.target.value, matchValue)}
-                      className="h-8 rounded-md border border-gray-200 bg-white px-2 font-mono text-[11px] text-gray-700"
-                    />
-                    <input
-                      defaultValue={matchValue}
-                      placeholder="value"
-                      disabled={disabled || binding.enabled === false}
-                      onFocus={() => onSelectBinding(kpi.kpi_id)}
-                      onBlur={(event) => updateMatchRule(binding, matchField, event.target.value)}
-                      className="h-8 rounded-md border border-gray-200 bg-white px-2 font-mono text-[11px] text-gray-700"
-                    />
-                  </div>
-                </td>
-                {([
-                  ['actual_value', 'value', 'number'],
-                  ['timestamp', 'timestamp', 'datetime'],
-                  ['unit', 'unit', 'string'],
-                ] as const).map(([kpiField, placeholder, transform]) => (
-                  <td key={kpiField} className="px-3 py-2">
-                    <input
-                      list={inputListId}
-                      defaultValue={sourceFieldFor(effectiveMappings, kpiField)}
-                      placeholder={placeholder}
-                      disabled={disabled || binding.enabled === false}
-                      onFocus={() => onSelectBinding(kpi.kpi_id)}
-                      onBlur={(event) => updateMapping(binding, kpiField, event.target.value, transform)}
-                      className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 font-mono text-[11px] text-gray-700"
-                    />
-                  </td>
-                ))}
-                <td className="px-3 py-2">
-                  <select
-                    value={binding.aggregation || 'latest'}
-                    disabled={disabled || binding.enabled === false}
-                    onFocus={() => onSelectBinding(kpi.kpi_id)}
-                    onChange={(event) => saveBinding(binding, { aggregation: event.target.value, enabled: true })}
-                    className="h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-[11px] font-semibold text-gray-700"
-                  >
-                    <option value="latest">Latest</option>
-                    <option value="average">Average</option>
-                    <option value="sum">Sum</option>
-                    <option value="min">Min</option>
-                    <option value="max">Max</option>
-                    <option value="count">Count</option>
-                  </select>
-                </td>
-                <td className="px-3 py-2">
-                  <button
-                    type="button"
-                    onClick={() => onSelectBinding(kpi.kpi_id)}
-                    className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone(status)}`}
-                  >
-                    {bindingStatusLabel(status)}
-                  </button>
-                  <div className="mt-1 flex gap-1">
-                    <button
-                      type="button"
-                      disabled={disabled || binding.enabled === false}
-                      onClick={() => saveBinding(binding, { field_mappings: [], enabled: true })}
-                      className="text-[10px] font-semibold text-gray-500 hover:text-gray-950 disabled:opacity-40"
-                    >
-                      Defaults
-                    </button>
-                    <button
-                      type="button"
-                      disabled={disabled || binding.enabled === false}
-                      onClick={() => saveBinding(binding, { field_mappings: normalizeFieldMappings(config.field_mappings?.length ? config.field_mappings : getDefaultKpiSourceMappings()), enabled: true })}
-                      className="text-[10px] font-semibold text-gray-700 hover:text-gray-950 disabled:opacity-40"
-                    >
-                      Override
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+    <div className="space-y-2">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <button type="button" disabled={disabled} onClick={smartMatch} className="rounded-md border border-cs-primary/30 bg-cs-primary/5 px-2.5 py-1 text-[11px] font-semibold text-cs-primary hover:bg-cs-primary/10 disabled:opacity-40">
+            Smart Match
+          </button>
+          <button type="button" disabled={disabled} onClick={linkAll} className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40">
+            Link All ({kpis.length})
+          </button>
+          <button type="button" disabled={disabled} onClick={unlinkAll} className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-40">
+            Unlink All
+          </button>
+          <span className="ml-1 text-xs font-semibold text-gray-400">{enabledCount} linked</span>
+        </div>
+        <input
+          type="text"
+          placeholder="Search KPIs..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="h-7 w-44 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-800 placeholder:text-gray-400"
+        />
+      </div>
+
+      {/* Clean checklist */}
+      <div className="max-h-[400px] overflow-y-auto rounded-md border border-gray-200">
+        {filtered.map(({ kpi, idx }) => {
+          const binding = bindings[idx]
+          const isEnabled = binding.enabled !== false
+          const kpiType = String(kpi.kpi_type || kpi.rule_type || '').toLowerCase()
+          const typeBadge = kpiType === 'sla' || kpiType === 'performance' ? 'SLA'
+            : kpiType === 'penalty' ? 'Penalty'
+            : kpiType === 'deadline' || kpiType === 'notice' ? 'Deadline'
+            : 'KPI'
+
+          return (
+            <div
+              key={kpi.kpi_id}
+              className={`flex items-center gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0 ${isEnabled ? 'bg-white' : 'bg-gray-50/50'}`}
+            >
+              <input
+                type="checkbox"
+                checked={isEnabled}
+                disabled={disabled}
+                onChange={() => {
+                  onSelectBinding(kpi.kpi_id)
+                  void onToggleSourceKpi(config, kpi)
+                }}
+                className="h-4 w-4 shrink-0 rounded border-gray-300 text-cs-primary focus:ring-cs-primary"
+              />
+              <div className="min-w-0 flex-1">
+                <p className={`truncate text-xs font-semibold ${isEnabled ? 'text-gray-900' : 'text-gray-500'}`}>{kpi.name}</p>
+                {kpi.target_value != null && (
+                  <p className="mt-0.5 truncate text-[11px] text-gray-400">Target: {formatKpiValue(kpi)}</p>
+                )}
+              </div>
+              <span className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-semibold text-gray-500">{typeBadge}</span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -2563,6 +2649,7 @@ function SourcesPanel({
   onSaveSample,
   onSamplePayloadChange,
   onRunSourceAction,
+  onUploadSampleFile,
 }: {
   sourceCatalog: KPISourceCatalogItem[]
   sourceConfigs: KPISourceConfig[]
@@ -2575,7 +2662,7 @@ function SourcesPanel({
   isSavingSource: boolean
   isRunningSource: boolean
   onSelectSource: (sourceId: string) => void
-  onCreateSource: (source: KPISourceCatalogItem) => void | Promise<void>
+  onCreateSource: (source: KPISourceCatalogItem) => void | Promise<KPISourceConfig | null>
   onUpdateSource: (config: KPISourceConfig, updates: Partial<KPISourceConfig>) => void | Promise<KPISourceConfig | null>
   onUpdateSourceBinding: (config: KPISourceConfig, binding: KPISourceBinding) => void | Promise<void>
   onToggleSourceKpi: (config: KPISourceConfig, kpi: ContractKPI) => void | Promise<void>
@@ -2583,7 +2670,29 @@ function SourcesPanel({
   onSaveSample: (config: KPISourceConfig) => void | Promise<void>
   onSamplePayloadChange: (value: string) => void
   onRunSourceAction: (config: KPISourceConfig, action: 'test' | 'fetch') => void | Promise<void>
+  onUploadSampleFile?: (config: KPISourceConfig, file: File) => void | Promise<void>
 }) {
+  const sourceFileInputRef = useRef<HTMLInputElement | null>(null)
+  const dropzoneFileInputRef = useRef<HTMLInputElement | null>(null)
+  const section4FileInputRef = useRef<HTMLInputElement | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const handleDropzoneFile = async (files: FileList | File[] | File) => {
+    const fileList = Array.from(files instanceof File ? [files] : files)
+    if (!fileList.length) return
+
+    for (const file of fileList) {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'csv'
+      const catalogType = ext === 'xlsx' || ext === 'xls' ? 'xlsx' : ext === 'json' ? 'json' : ext === 'xml' ? 'xml' : 'csv'
+      const matchedCatalog = sourceCatalog.find((s) => s.source_type === catalogType) || sourceCatalog[0]
+      if (!matchedCatalog) continue
+
+      const created = await onCreateSource(matchedCatalog)
+      if (created && onUploadSampleFile) {
+        await onUploadSampleFile(created, file)
+      }
+    }
+  }
   const visibleKpis = kpis.filter((kpi) => kpi.status !== 'ignored')
   const selectedBindings = selectedSource ? bindingsForSource(selectedSource, visibleKpis) : []
   const enabledBindings = selectedBindings.filter((binding) => binding.enabled !== false)
@@ -2739,6 +2848,7 @@ function SourcesPanel({
                     onSelectBinding={setSelectedBindingKpiId}
                     onToggleSourceKpi={onToggleSourceKpi}
                     onUpdateBinding={onUpdateSourceBinding}
+                    onUpdateSource={onUpdateSource}
                   />
                 </section>
 
@@ -2794,121 +2904,150 @@ function SourcesPanel({
                 </section>
               </div>
 
-              <section className="rounded-lg border border-gray-200 bg-white p-3">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              {/* Section 3: Field Mapping (Collapsible) */}
+              <details className="rounded-lg border border-gray-200 bg-white p-3">
+                <summary className="flex cursor-pointer items-center justify-between">
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">3 · Map Fields</p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {selectedBindingKpi ? `Editing ${selectedBindingKpi.name}` : 'Select a KPI binding above to edit its fields.'}
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">3 · Field Mappings & Schema</span>
+                    <p className="mt-0.5 text-xs text-gray-600 font-medium">
+                      Auto-detected {selectedSource.field_mappings?.length || 0} column mappings ({selectedSource.schema_fields?.length || 0} fields in source)
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {selectedBinding && (
-                      <Pill tone={selectedBindingHasOverrides ? 'blue' : 'emerald'}>
-                        {selectedBindingHasOverrides ? 'Override' : 'Source defaults'}
-                      </Pill>
-                    )}
-                    <Pill tone="emerald">{trackedKpis.length} tracked</Pill>
-                  </div>
-                </div>
-                {selectedBinding ? (
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-semibold text-gray-950">{selectedBindingKpi?.name || selectedBinding.kpi_id}</p>
-                        <p className="mt-0.5 text-[11px] text-gray-500">
-                          {selectedBinding.enabled === false ? 'Disabled binding' : selectedBindingHasOverrides ? 'This KPI uses its own field mapping.' : 'This KPI currently inherits the source default mapping.'}
-                        </p>
+                  <span className="text-xs font-semibold text-cs-primary hover:underline">Configure Mappings ↓</span>
+                </summary>
+                <div className="mt-4 border-t border-gray-100 pt-3">
+                  {selectedBinding ? (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-semibold text-gray-950">{selectedBindingKpi?.name || selectedBinding.kpi_id}</p>
+                          <p className="mt-0.5 text-[11px] text-gray-500">
+                            {selectedBinding.enabled === false ? 'Disabled binding' : selectedBindingHasOverrides ? 'This KPI uses custom field mapping.' : 'This KPI uses source default mapping.'}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={useSelectedBindingDefaults} disabled={isSavingSource || !selectedBindingHasOverrides}>
+                            Use Defaults
+                          </Button>
+                          <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={overrideSelectedBinding} disabled={isSavingSource || selectedBinding.enabled === false}>
+                            Override
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={useSelectedBindingDefaults} disabled={isSavingSource || !selectedBindingHasOverrides}>
-                          Use Defaults
-                        </Button>
-                        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={overrideSelectedBinding} disabled={isSavingSource || selectedBinding.enabled === false}>
-                          Override
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 px-2 text-xs"
-                          onClick={() => updateSelectedBindingValue({ enabled: selectedBinding.enabled === false })}
-                          disabled={isSavingSource}
-                        >
-                          {selectedBinding.enabled === false ? 'Enable' : 'Disable'}
-                        </Button>
-                      </div>
+                      <KpiSourceFieldMapper
+                        sourceConfigId={`${selectedSource.source_config_id}-${selectedBinding.binding_id || selectedBinding.kpi_id}`}
+                        fieldMappings={selectedMapperMappings}
+                        schemaFields={selectedSource.schema_fields}
+                        samplePayload={selectedSource.sample_payload}
+                        samplePayloadDraft={samplePayload}
+                        recordPath={selectedSource.record_path}
+                        trackedCount={trackedKpis.length}
+                        isSaving={isSavingSource || selectedBinding.enabled === false}
+                        onUpdateMapping={updateMapping}
+                      />
                     </div>
+                  ) : (
                     <KpiSourceFieldMapper
-                      sourceConfigId={`${selectedSource.source_config_id}-${selectedBinding.binding_id || selectedBinding.kpi_id}`}
-                      fieldMappings={selectedMapperMappings}
+                      sourceConfigId={`${selectedSource.source_config_id}-defaults`}
+                      fieldMappings={selectedSource.field_mappings}
                       schemaFields={selectedSource.schema_fields}
                       samplePayload={selectedSource.sample_payload}
                       samplePayloadDraft={samplePayload}
                       recordPath={selectedSource.record_path}
                       trackedCount={trackedKpis.length}
-                      isSaving={isSavingSource || selectedBinding.enabled === false}
-                      onUpdateMapping={updateMapping}
+                      isSaving={isSavingSource}
+                      onUpdateMapping={updateSourceDefaultMapping}
                     />
-                    <details className="rounded-md border border-gray-200 bg-white p-3">
-                      <summary className="cursor-pointer text-xs font-semibold text-gray-800">Edit source default mapping</summary>
-                      <div className="mt-3">
-                        <KpiSourceFieldMapper
-                          sourceConfigId={`${selectedSource.source_config_id}-defaults`}
-                          fieldMappings={selectedSource.field_mappings}
-                          schemaFields={selectedSource.schema_fields}
-                          samplePayload={selectedSource.sample_payload}
-                          samplePayloadDraft={samplePayload}
-                          recordPath={selectedSource.record_path}
-                          trackedCount={trackedKpis.length}
-                          isSaving={isSavingSource}
-                          onUpdateMapping={updateSourceDefaultMapping}
-                        />
-                      </div>
-                    </details>
-                  </div>
-                ) : (
-                  <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500">No KPI binding selected.</div>
-                )}
-              </section>
+                  )}
+                </div>
+              </details>
 
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <div className="mb-2 flex items-center justify-between">
+              {/* Section 4: Clean Validate & Ingest CTA Card */}
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="rounded-lg border border-gray-200 bg-white p-4">
+                  <input
+                    ref={section4FileInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls,.json,.xml"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file && selectedSource && onUploadSampleFile) {
+                        void (async () => {
+                          await onUploadSampleFile(selectedSource, file)
+                          await onRunSourceAction(selectedSource, 'fetch')
+                        })()
+                      }
+                    }}
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">4 · Validate & Fetch</p>
-                      <p className="mt-1 text-xs text-gray-500">Validate identity, actual value, timestamp, period, and record ID.</p>
+                      <h4 className="text-sm font-semibold text-gray-950">4 · Ingest Actuals & Activate Tracking</h4>
+                      <p className="mt-0.5 text-xs text-gray-500">Run ingestion to record telemetry actuals and automatically activate KPI tracking.</p>
                     </div>
-                    <div className="flex gap-2">
-                      <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onSaveSample(selectedSource)}>Save</Button>
-                      <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs" onClick={() => onRunSourceAction(selectedSource, 'test')} disabled={isRunningSource}>
-                        {isRunningSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 px-3 text-xs"
+                        onClick={() => section4FileInputRef.current?.click()}
+                        disabled={isSavingSource || isRunningSource}
+                      >
+                        <UploadCloud className="h-3.5 w-3.5 text-cs-primary" />
+                        {selectedSource.sample_payload ? 'Change Data File' : 'Attach Data File'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 px-3 text-xs"
+                        onClick={() => onRunSourceAction(selectedSource, 'test')}
+                        disabled={isRunningSource}
+                      >
+                        {isRunningSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 text-gray-500" />}
                         Validate
                       </Button>
-                      <Button type="button" size="sm" className="h-7 gap-1.5 bg-cs-primary px-2 text-xs text-white hover:bg-cs-primary/90" onClick={() => onRunSourceAction(selectedSource, 'fetch')} disabled={isRunningSource}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 gap-1.5 bg-cs-primary px-4 text-xs font-semibold text-white hover:bg-cs-primary/90 shadow-sm"
+                        onClick={() => onRunSourceAction(selectedSource, 'fetch')}
+                        disabled={isRunningSource}
+                      >
                         {isRunningSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                        Fetch
+                        Ingest Actuals
                       </Button>
                     </div>
                   </div>
-                  <Textarea
-                    value={samplePayload}
-                    onChange={(event) => onSamplePayloadChange(event.target.value)}
-                    placeholder="kpi_id,value,timestamp,period,record_id"
-                    className="min-h-[180px] bg-white font-mono text-xs"
-                  />
+
                   {(validationRows.length || skippedRows.length) ? (
                     <div className="mt-3 grid gap-2 md:grid-cols-2">
                       <RunPreviewBlock title="Accepted Preview" rows={validationRows} empty="No accepted rows in latest validation." />
                       <RunPreviewBlock title="Skipped / Needs Fix" rows={skippedRows} empty="No skipped rows." />
                     </div>
                   ) : null}
+
+                  <details className="mt-3 rounded-md border border-gray-200 bg-gray-50/50 p-2.5">
+                    <summary className="cursor-pointer text-xs font-semibold text-gray-700">View / Edit Raw Sample Payload</summary>
+                    <div className="mt-2 space-y-2">
+                      <Textarea
+                        value={samplePayload}
+                        onChange={(event) => onSamplePayloadChange(event.target.value)}
+                        placeholder="kpi_id,value,timestamp,period,record_id"
+                        className="min-h-[140px] bg-white font-mono text-xs"
+                      />
+                      <div className="flex justify-end">
+                        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onSaveSample(selectedSource)}>Save Payload</Button>
+                      </div>
+                    </div>
+                  </details>
                 </div>
 
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                   <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-400">Latest Runs</p>
                   <div className="grid gap-2">
-                    {selectedRuns.length ? selectedRuns.slice(0, 6).map((run) => (
+                    {selectedRuns.length ? selectedRuns.slice(0, 5).map((run) => (
                       <div key={run.run_id} className="rounded-md border border-gray-200 bg-white px-3 py-2">
                         <div className="flex items-center justify-between gap-2">
                           <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone(run.status)}`}>{titleCase(run.status || 'run')}</span>
@@ -2964,8 +3103,70 @@ function SourcesPanel({
             </div>
           </div>
         ) : (
-          <div className="flex min-h-[420px] items-center justify-center text-sm text-gray-500">
-            Add a source to begin ingestion.
+          <div className="p-8">
+            <input
+              ref={dropzoneFileInputRef}
+              type="file"
+              multiple
+              accept=".csv,.xlsx,.xls,.json,.xml"
+              className="hidden"
+              onChange={(e) => {
+                const files = e.target.files
+                if (files && files.length) void handleDropzoneFile(files)
+              }}
+            />
+            <div
+              onDragOver={(e) => {
+                e.preventDefault()
+                setIsDragging(true)
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setIsDragging(false)
+                const files = e.dataTransfer.files
+                if (files && files.length) void handleDropzoneFile(files)
+              }}
+              className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 text-center transition-colors ${
+                isDragging ? 'border-cs-primary bg-cs-primary/5' : 'border-gray-300 bg-gray-50/50 hover:border-gray-400 hover:bg-gray-50'
+              }`}
+            >
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm border border-gray-200">
+                <UploadCloud className="h-7 w-7 text-cs-primary" />
+              </div>
+              <h3 className="text-base font-semibold text-gray-950">Connect Operational Data Source</h3>
+              <p className="mt-1.5 max-w-md text-xs text-gray-500 leading-relaxed">
+                Drop your performance telemetry or actuals file (CSV, Excel, JSON, XML) here to auto-detect schema, map attributes, and start tracking compliance.
+              </p>
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
+                  onClick={() => dropzoneFileInputRef.current?.click()}
+                  disabled={isSavingSource}
+                >
+                  <Upload className="mr-1.5 h-3.5 w-3.5" />
+                  Drop or Select File
+                </Button>
+              </div>
+              <div className="mt-6 border-t border-gray-200 pt-5 text-center">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Or choose a manual source type</p>
+                <div className="mt-3 flex flex-wrap justify-center gap-2">
+                  {sourceCatalog.slice(0, 5).map((source) => (
+                    <button
+                      key={source.source_type}
+                      type="button"
+                      onClick={() => onCreateSource(source)}
+                      disabled={isSavingSource}
+                      className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      + {source.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </section>

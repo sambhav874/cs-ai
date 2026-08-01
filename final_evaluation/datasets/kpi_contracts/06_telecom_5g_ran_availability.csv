@@ -1,0 +1,7 @@
+source_record_id,timestamp,cell_site_id,kpi_id,kpi_name,actual_value,unit,period
+RAN-LOG-202801-001,2028-01-31T23:59:59Z,gNodeB-DAL-9901,KPI-TEL-02,gNodeB Active Availability,99.965,%,2028-01
+RAN-LOG-202801-002,2028-01-31T23:59:59Z,gNodeB-ASH-8812,KPI-TEL-05,Mobility Handover Success Rate,99.912,%,2028-01
+RAN-LOG-202802-001,2028-02-29T23:59:59Z,gNodeB-DAL-9901,KPI-TEL-02,gNodeB Active Availability,99.920,%,2028-02
+RAN-LOG-202802-002,2028-02-29T23:59:59Z,gNodeB-ASH-8812,KPI-TEL-05,Mobility Handover Success Rate,99.875,%,2028-02
+RAN-LOG-202803-001,2028-03-31T23:59:59Z,gNodeB-CHI-4421,KPI-TEL-02,gNodeB Active Availability,99.975,%,2028-03
+RAN-LOG-202803-002,2028-03-31T23:59:59Z,gNodeB-CHI-4421,KPI-TEL-05,Mobility Handover Success Rate,99.940,%,2028-03

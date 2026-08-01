@@ -132,9 +132,10 @@ class AgentTrackedEditResult:
 
 class AgentDocumentManager:
     def __init__(self, mongo_db, fs):
-        self.documents = mongo_db["agent_documents"]
-        self.versions = mongo_db["agent_document_versions"]
-        self.edits = mongo_db["agent_document_edits"]
+        agent_db = mongo_db.client["contract_agent_db"]
+        self.documents = agent_db["agent_documents"]
+        self.versions = agent_db["agent_document_versions"]
+        self.edits = agent_db["agent_document_edits"]
         self.fs = fs
 
     def create_from_agent_turn(

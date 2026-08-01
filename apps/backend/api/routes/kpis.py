@@ -25,7 +25,7 @@ from models.domain import UserInDB
 from utils.audit_logger import create_audit_log
 from utils.secure_logger import log_exception
 from services.kpi_manager import ContractKPIManager, USER_CONFIGURABLE_SOURCE_TYPES
-from services.kpi_source_ingestion import KpiSourceError, KpiSourceIngestionService
+from services.kpi_source_ingestion import KpiSourceError, KpiSourceIngestionService, parse_sample_file_bytes
 from api.dependencies import check_contract_access, get_contract_and_verify_access, get_project_and_verify_access
 from api.routes.projects import verify_project_access, build_accessible_contract_query
 from core.cache import cache
@@ -392,6 +392,64 @@ def update_contract_kpi_source_config(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@kpis_router.post("/contracts/{contract_id}/kpis/source-configs/{source_config_id}/sample-upload")
+async def upload_contract_kpi_source_sample(
+    contract_id: str,
+    source_config_id: str,
+    file: UploadFile = File(...),
+    record_path: Optional[str] = Form(None),
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Upload a sample CSV/XLSX/JSON/XML file to auto-detect schema fields and field mappings for a source config."""
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+
+    contract = collection.find_one({"_id": contract_oid}, {"_id": 1, "ownerType": 1, "ownerId": 1, "projectId": 1})
+    check_contract_access(contract, current_user)
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    filename = file.filename or "sample.csv"
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "csv"
+    file_format = "xlsx" if ext in {"xlsx", "xls"} else "json" if ext == "json" else "xml" if ext == "xml" else "csv"
+
+    try:
+        parsed = parse_sample_file_bytes(content, file_format, record_path)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to parse sample file: {str(exc)}")
+
+    # Update source config with parsed schema fields, sample payload, and auto field mappings
+    updated = _kpi_manager().upsert_source_config(
+        contract_id=contract_id,
+        project_id=str(contract.get("projectId")) if contract.get("projectId") else None,
+        user_id=str(current_user.id),
+        source_config_id=source_config_id,
+        payload={
+            "file_format": file_format,
+            "schema_fields": parsed["schema_fields"],
+            "sample_payload": parsed["sample_payload"],
+            "field_mappings": parsed["field_mappings"],
+            "record_path": record_path,
+        },
+    )
+
+    return {
+        "contract_id": contract_id,
+        "source_config_id": source_config_id,
+        "file_name": filename,
+        "file_format": file_format,
+        "record_count": parsed["record_count"],
+        "schema_fields": parsed["schema_fields"],
+        "sample_rows": parsed["sample_rows"],
+        "field_mappings": parsed["field_mappings"],
+        "source_config": updated,
+    }
 
 
 @kpis_router.delete("/contracts/{contract_id}/kpis/source-configs/{source_config_id}")
@@ -779,32 +837,18 @@ async def upload_contract_kpi_actuals(
     check_contract_access(contract, current_user)
     filename = file.filename or "actuals.csv"
     content = await file.read()
-    filename = validate_file_upload(
-        content,
-        filename,
-        MAX_KPI_ACTUALS_UPLOAD_BYTES,
-        ["csv", "json"]
-    )
-    try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = content.decode("latin-1")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "csv"
+    file_format = "xlsx" if ext in {"xlsx", "xls"} else "json" if ext == "json" else "xml" if ext == "xml" else "csv"
 
-    if filename.lower().endswith(".json"):
-        try:
-            payload = json.loads(text)
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid JSON actuals file.")
-        rows = payload.get("actuals") if isinstance(payload, dict) else payload
-        if not isinstance(rows, list):
-            raise HTTPException(status_code=400, detail="JSON actuals file must be a list or contain an 'actuals' list.")
-    else:
-        reader = csv.DictReader(io.StringIO(text))
-        rows = []
-        for row in reader:
-            rows.append(dict(row))
-            if len(rows) > MAX_KPI_ACTUALS_UPLOAD_ROWS:
-                raise HTTPException(status_code=413, detail="KPI actuals file has too many rows.")
+    try:
+        parsed = parse_sample_file_bytes(content, file_format)
+        rows = parsed.get("sample_payload") or parsed.get("sample_rows") or []
+        if not rows:
+            # Fallback direct parse
+            from services.kpi_source_ingestion import _parse_records_by_format
+            rows = _parse_records_by_format(content, file_format)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to parse actuals file ({file_format}): {str(exc)}")
 
     if not rows:
         raise HTTPException(status_code=400, detail="No actual rows found in uploaded file.")

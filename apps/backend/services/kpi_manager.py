@@ -214,7 +214,8 @@ class ContractKPIManager:
     NUMBER_RE = re.compile(r"\b\d+(?:\.\d+)?\b")
 
     def __init__(self, database=None):
-        self.db = database if database is not None else db
+        from core.database import kpi_db
+        self.db = database if database is not None else kpi_db
         self.kpis = self.db["contract_kpis"]
         self.actuals = self.db["contract_kpi_actuals"]
         self.breaches = self.db["contract_kpi_breaches"]
@@ -1436,13 +1437,17 @@ class ContractKPIManager:
         for idx, k in enumerate(kpis_to_consolidate):
             raw_name = (k.get("identity") or {}).get("name") or k.get("name") or ""
             rule_type = (k.get("rule") or {}).get("rule_type") or k.get("rule_type") or ""
+            kpi_type = k.get("kpi_type") or (k.get("identity") or {}).get("kpi_type") or ""
+            party = k.get("party") or (k.get("identity") or {}).get("party") or k.get("obligation_type") or ""
             val = k.get("value") or (k.get("rule") or {}).get("spec", {}).get("target")
             unit = k.get("unit") or (k.get("rule") or {}).get("unit")
             quote = (k.get("clause_text") or k.get("quote") or "")[:MAX_QUOTE_CHARS]
             items_summary.append({
                 "index": idx,
                 "name": raw_name,
-                "rule_type": rule_type,
+                "type": kpi_type,
+                "party": party,
+                "rule": rule_type,
                 "value": val,
                 "unit": unit,
                 "quote": quote,
@@ -1451,14 +1456,16 @@ class ContractKPIManager:
         candidates_json = json.dumps(items_summary, separators=(",", ":"))  # compact, saves tokens
         prompt = (
             "# KPI Consolidation & Deduplication Agent\n"
-            "Persona: Senior Contract Data Curator.\n"
+            "Persona: Senior Contract Data Curator & Operational Governance Lead.\n"
             f"Contract: {contract_name}\n\n"
-            "Deduplicate the candidate KPIs below into the minimal canonical set.\n\n"
-            "RULES:\n"
-            "1. Merge duplicates that share the same SLA code, metric code, or identical target.\n"
-            "2. Prefer the tiered-schedule entry over a plain threshold when merging.\n"
-            "3. Drop malformed or truncated names, and non-operational preamble text.\n"
-            "4. Output ONLY a JSON object with key 'canonical_indices' — an array of integers.\n\n"
+            "Consolidate and filter the candidate KPIs below into a clean, highly meaningful canonical set of operational KPIs and SLAs.\n\n"
+            "CONSOLIDATION RULES:\n"
+            "1. OPERATIONAL MONITORABILITY: Retain performance controls, SLAs, operational targets, quality metrics, risk thresholds, volume boundaries, penalties, cure windows, and recurring compliance deadlines that a contract manager could track over time against incoming telemetry or evidence logs across any industry domain.\n"
+            "2. METRIC CONSOLIDATION: Merge redundant sub-clauses or minor name variations that monitor the exact same underlying operational requirement.\n"
+            "3. PREFER STRUCTURED TIERS: Prefer complete multi-tier schedules, range rules, or composite formulas over fragmented single-attribute sub-clauses.\n"
+            "4. OMIT PASSIVE NOISE: Exclude static commercial price sheets, static fee listings without SLA conditions, boilerplate legal preambles, section headings, and passive background text.\n"
+            "5. PRESERVE OBLIGATION DIVERSITY: Retain distinct Supplier Obligations and Client Obligations so responsibilities of both parties remain balanced.\n"
+            "6. Output ONLY a JSON object with key 'canonical_indices' — an array of integers representing the index of each canonical KPI to keep.\n\n"
             f"CANDIDATES:{candidates_json}\n\n"
             "CRITICAL: canonical_indices must be an array of plain integers, e.g. [0,2,5].\n"
             "OUTPUT:{\n  \"canonical_indices\": [0, 2, 5]\n}"
@@ -1491,7 +1498,8 @@ class ContractKPIManager:
             # Append any KPIs beyond MAX_CANDIDATES unchanged (they were not sent to LLM)
             tail = kpis[MAX_CANDIDATES:]
             if valid_indices:
-                canonical = [kpis_to_consolidate[i] for i in valid_indices] + tail
+                canonical = [kpis_to_consolidate[i] for i in valid_indices if self._is_meaningful_kpi(kpis_to_consolidate[i])]
+                canonical += [k for k in tail if self._is_meaningful_kpi(k)]
                 logger.info(
                     "LLM post-extraction consolidation reduced KPI count from %d to %d",
                     len(kpis),
@@ -1501,7 +1509,31 @@ class ContractKPIManager:
         except Exception as exc:
             logger.warning("LLM post-extraction consolidation failed: %s", exc)
 
-        return kpis
+        return [k for k in kpis if self._is_meaningful_kpi(k)]
+
+    def _is_meaningful_kpi(self, item: Dict[str, Any]) -> bool:
+        """Domain-agnostic filter to retain trackable operational metrics and exclude static non-conditional declarations."""
+        ktype = str(item.get("kpi_type") or (item.get("identity") or {}).get("kpi_type") or "").lower()
+        rule_spec = (item.get("rule") or {}).get("spec") or {}
+
+        # 1. Operational taxonomy categories are inherently monitorable
+        if ktype in {"sla", "penalty", "timeline", "deadline", "volume", "compliance", "obligation", "reporting"}:
+            return True
+
+        # 2. Any item with an explicit performance target, threshold, schedule, or consequence is monitorable
+        has_target = item.get("value") is not None or item.get("value_min") is not None or item.get("value_max") is not None or rule_spec.get("target") is not None
+        has_schedule = bool(item.get("target_schedule") or item.get("monetary_penalty_schedule"))
+        has_consequence = item.get("consequence_value") is not None or bool(item.get("trigger_condition"))
+        has_remediation = bool(item.get("remediation") or item.get("remediation_sla"))
+
+        if has_target or has_schedule or has_consequence or has_remediation:
+            return True
+
+        # 3. Pure static financial items with no performance target, no schedule, no consequence, and no remediation are passive reference data
+        if ktype == "financial" and not (has_target or has_schedule or has_consequence or has_remediation):
+            return False
+
+        return True
 
     def extract_for_contract(
         self,
@@ -1851,6 +1883,30 @@ class ContractKPIManager:
                         "actual_id": actual.get("actual_id"),
                         "reason": "KPI is not tracked",
                     })
+
+        ingested_kpi_ids = {actual["kpi_id"] for actual in actuals if actual.get("kpi_id")}
+        if ingested_kpi_ids:
+            now = datetime.utcnow()
+            self.kpis.update_many(
+                {
+                    "contract_id": contract_id,
+                    "kpi_id": {"$in": list(ingested_kpi_ids)},
+                    "tracking_status": {"$ne": "tracked"},
+                },
+                {
+                    "$set": {
+                        "tracking_status": "tracked",
+                        "is_tracked": True,
+                        "status": "approved",
+                        "updated_at": now,
+                        "last_tracking_backfill": {
+                            "actual_count": len(actuals),
+                            "created_breach_count": len(breaches),
+                            "activated_at": now.isoformat(),
+                        },
+                    }
+                },
+            )
 
         return {
             "contract_id": contract_id,
@@ -2646,7 +2702,6 @@ class ContractKPIManager:
                     "source_config_id": source_config_id,
                     "first_seen_at": now,
                     "created_at": now,
-                    "occurrence_count": 0,
                 },
                 "$set": {
                     "severity": severity,
@@ -3607,51 +3662,65 @@ class ContractKPIManager:
             "STRICT OUTPUT: Return only valid JSON with this exact top-level shape:\n"
             "{\"kpis\": [ ... ], \"financial_summary\": [], \"key_dates\": [], \"penalties\": [], \"needs_more_context\": false}\n\n"
             "Each KPI object MUST contain these keys:\n"
-            "source_id, name, description, kpi_type, party, operator, value, unit, value_min, value_max, "
+            "source_id, name, description, kpi_type, party, obligation_type, operator, value, unit, value_min, value_max, "
             "consequence_value, consequence_unit, aggregation_type, trigger_condition, remediation, remediation_sla, "
             "contact_email, breach_email_template, quote, confidence, needs_review, notes, "
             "measurement_scope, measurement_window, monetary_penalty_schedule, target_schedule.\n\n"
+            "FOUNDATIONAL KNOWLEDGE & CONCEPTS:\n"
+            "• Service Level Agreement (SLA): A binding performance commitment or service quality boundary owed by an obligated party measured over a defined evaluation window (e.g. Uptime %, Mean Time to Repair, Latency Ceiling, Error Budget, Turnaround Speed). SLAs almost always carry a target, a measurement window, and an associated penalty, credit, or remediation requirement.\n"
+            "• Key Performance Indicator (KPI): A trackable operational metric or compliance checkpoint measured continuously to evaluate service health, delivery volume, staffing levels, reporting deadlines, or operational benchmarks.\n"
+            "• Operational Threshold / Consequence Control: A quantitative boundary condition (e.g. Outage Duration > 5 minutes, Affected Subscribers > 10,000) that triggers breach escalation, liquidated damages, or remediation.\n"
+            "• WHAT NOT TO EXTRACT (UNUSEFUL NOISE): Do NOT extract static reference numbers (exhibit IDs, clause section numbers, page counts), static price sheets without performance SLA targets, legal definitions, party corporate registration numbers, or narrative preamble text that cannot be monitored over time.\n\n"
+            "KPI CODE & DISPLAY NAME FORMATTING RULE:\n"
+            "• If the clause text or section header contains an explicit KPI code, SLA code, metric ID, or clause reference (e.g. 'SLA-01', 'KPI-04', 'SEC-4.2', 'SCHEDULE-B-1.2', 'REQ-109'), format the 'name' field strictly as 'Code: Description' (e.g. 'SLA-01: 5G RAN Monthly Availability Target', 'KPI-04: Emergency Outage Cell Site Threshold').\n"
+            "• If no explicit code is present in the source text, provide a concise, highly descriptive display name (e.g. 'URLLC Latency Guarantee').\n\n"
+            "TOP-LEVEL CONTAINER RULE:\n"
+            "• Ensure EVERY trackable item (SLAs, penalties, payment deadlines, volume caps) is present in the main \"kpis\" array. High-level summaries in financial_summary or key_dates are secondary.\n\n"
+            "OBLIGATION TYPE & PARTY CLASSIFICATION RULES:\n"
+            "• party: The specific bound entity name (e.g. 'Network Edge Infrastructure Corp (Provider)', 'Apex Telecom (Operator)').\n"
+            "• obligation_type: Must be 'supplier' (if the SLA/performance/delivery target is owed by the Vendor/Provider/Supplier/Contractor) OR 'client' (if the obligation/payment/facility access/dependency is owed by the Customer/Client/Operator/Buyer) OR 'mutual'.\n\n"
             "TARGET SCHEDULE / TIERS RULES:\n"
-            "- If the clause defines a multi-tier schedule (e.g. Tier 1: 5% credit, Tier 2: 12% credit), extract the list "
+            "• If the clause defines a multi-tier schedule (e.g. Tier 1: 5% credit, Tier 2: 12% credit), extract the list "
             "of objects into target_schedule: [{\"tier\": \"Tier 1\", \"range\": \"...\", \"credit_pct\": 5.0, \"penalty_amount\": \"$5,000\"}].\n"
-            "- If not tiered, keep target_schedule null or empty list.\n\n"
+            "• If not tiered, keep target_schedule null or empty list.\n\n"
             "CUSTOM ATTRIBUTE RULES:\n"
-            "- measurement_scope: the specific population or asset scope this KPI applies to, exactly as stated "
+            "• measurement_scope: the specific population or asset scope this KPI applies to, exactly as stated "
             "in the contract (e.g. 'All production servers', 'North America region', 'Per project site'). null if not mentioned.\n"
-            "- measurement_window: the time or event granularity for measurement, exactly as written "
+            "• measurement_window: the time or event granularity for measurement, exactly as written "
             "(e.g. 'Monthly average', 'Per incident event', 'Rolling 30 days', 'Annual'). null if not mentioned.\n"
-            "- monetary_penalty_schedule: the penalty rate formula exactly as written in the clause "
+            "• monetary_penalty_schedule: the penalty rate formula exactly as written in the clause "
             "(e.g. '$500 / hour of downtime', '2% of monthly fee per day of delay', '$10,000 per event'). null if not applicable.\n\n"
             "SOURCE AND CITATION RULES:\n"
-            "- source_id must be one of the provided SOURCE_ID values.\n"
-            "- quote must be exact contiguous source text, no more than 60 words where possible.\n"
-            "- Use the quote that proves the KPI, threshold, consequence, or remediation.\n"
-            "- If a KPI references an exhibit/schedule not present in the sources, extract available values and set needs_review true.\n\n"
+            "• source_id must be one of the provided SOURCE_ID values.\n"
+            "• quote must be exact contiguous source text, no more than 60 words where possible.\n"
+            "• Use the quote that proves the KPI, threshold, consequence, or remediation.\n"
+            "• If a KPI references an exhibit/schedule not present in the sources, extract available values and set needs_review true.\n\n"
             "QUANTITATIVE FIELD RULES:\n"
-            "- value_min is the minimum numeric threshold or the single threshold value.\n"
-            "- value_max is only for ranges.\n"
-            "- operator must be one of: >=, <=, ==, >, <, between, within, no_later_than, recurring, conditional, specified.\n"
-            "- consequence_value is a numeric penalty, service credit, refund, damages, bonus, withholding, or fee consequence.\n"
-            "- consequence_unit is the consequence unit, such as USD, %, USD per incident, days, hours.\n"
-            "- aggregation_type must be one of: sum, avg, latest, min, max, per_hour, per_day, per_unit, per_incident, monthly, annual, one_time.\n\n"
+            "• value is the primary single numeric target value (e.g. 99.9).\n"
+            "• value_min is the minimum numeric threshold or lower bound for ranges.\n"
+            "• value_max is upper bound for ranges.\n"
+            "• operator must be one of: >=, <=, ==, >, <, between, within, no_later_than, recurring, conditional, specified.\n"
+            "• consequence_value is a numeric penalty, service credit, refund, damages, bonus, withholding, or fee consequence.\n"
+            "• consequence_unit is the consequence unit, such as USD, %, USD per incident, days, hours.\n"
+            "• aggregation_type must be one of: sum, avg, latest, min, max, per_hour, per_day, per_unit, per_incident, monthly, annual, one_time.\n\n"
             "KPI TAXONOMY:\n"
-            "- financial: fees, rates, payment terms, escalation percentages, discounts, interest, expense caps.\n"
-            "- sla: uptime, availability, response times, quality scores, error rates, delivery performance.\n"
-            "- penalty: per-incident penalties, tiered penalties, service credits, liquidated damages, termination triggers.\n"
-            "- timeline: terms, deadlines, notice periods, cure periods, milestones, reporting dates.\n"
-            "- volume: quantities, seats, loads, units, storage limits, staffing levels.\n"
-            "- obligation, compliance, reporting, notice, renewal, termination, milestone: use when those are more specific.\n\n"
+            "• financial: fees, rates, payment terms, escalation percentages, discounts, interest, expense caps.\n"
+            "• sla: uptime, availability, response times, quality scores, error rates, delivery performance.\n"
+            "• penalty: per-incident penalties, tiered penalties, service credits, liquidated damages, termination triggers.\n"
+            "• timeline: terms, deadlines, notice periods, cure periods, milestones, reporting dates.\n"
+            "• volume: quantities, seats, loads, units, storage limits, staffing levels.\n"
+            "• obligation, compliance, reporting, notice, renewal, termination, milestone: use when those are more specific.\n\n"
             "REMEDIATION AND EMAIL DRAFTING RULES:\n"
-            "- remediation is mandatory. First extract specific corrective action from the contract.\n"
-            "- remediation_sla is mandatory (e.g. 48 hours, 7 days, 15 days).\n"
-            "- breach_email_template: keep null or brief (1 short sentence max). The system auto-formats the template.\n\n"
+            "• If specific corrective action or cure period is stated in the clause, extract it into remediation and remediation_sla.\n"
+            "• If not explicitly stated in the source text, set remediation and remediation_sla to null (do not hallucinate cure periods). The system will supply standard default remediation.\n"
+            "• breach_email_template: keep null or brief (1 short sentence max). The system auto-formats the template.\n\n"
             "CONFIDENCE RULES:\n"
-            "- Include only KPIs with confidence >= 0.80.\n"
-            "- 0.95-1.0: explicit numeric value and direct KPI/penalty/fee/deadline language.\n"
-            "- 0.80-0.94: value is clear but context, party, or consequence is partly inferred from the same source.\n"
-            "- needs_review is true when an important field is inferred, absent, or dependent on an external exhibit.\n"
-            "- Mark clean, monitorable KPIs as recommended in notes; mark background/reference-only items by omitting them.\n"
-            "- Deduplicate within this batch, but do not merge separate tiers or rows.\n\n"
+            "• Include only KPIs with confidence >= 0.80.\n"
+            "• 0.95-1.0: explicit numeric value and direct KPI/penalty/fee/deadline language.\n"
+            "• 0.80-0.94: value is clear but context, party, or consequence is partly inferred from the same source.\n"
+            "• needs_review is true when an important field is inferred, absent, or dependent on an external exhibit.\n"
+            "• Mark clean, monitorable KPIs as recommended in notes; mark background/reference-only items by omitting them.\n"
+            "• Deduplicate within this batch, but do not merge separate tiers or rows.\n\n"
             f"Contract: {contract_name}\n\n"
             "<SOURCES>\n"
             + "\n\n---\n\n".join(source_blocks)
@@ -3854,9 +3923,9 @@ class ContractKPIManager:
             "user_id": user_id,
             "name": name[:160],
             "description": self._clean_optional_string(row.get("description")) or self._short_description(quote),
-            "kpi_type": kpi_type,
-            "rule_type": rule_type,
             "party": self._clean_optional_string(row.get("party")),
+            "obligation_type": self._determine_obligation_type(row.get("party") or row.get("obligation_type"), quote),
+            "party_type": self._determine_obligation_type(row.get("party") or row.get("obligation_type"), quote),
             "operator": self._normalize_operator(self._clean_optional_string(row.get("operator")) or ">="),
             "value": llm_value if llm_value is not None else value_data.get("value"),
             "unit": llm_unit or value_data.get("unit"),
@@ -3901,6 +3970,17 @@ class ContractKPIManager:
         }
         item.update(self._production_kpi_metadata(item, quote=quote, ai_provider=provider))
         return item
+
+    def _determine_obligation_type(self, party: Optional[str], quote: str) -> str:
+        party_str = str(party or "").lower()
+        quote_str = str(quote or "").lower()
+        if re.search(r"\b(client|customer|operator|buyer|purchaser|owner|company|enterprise|subscriber|lessee|licensee|principal|agency|authority)\b", party_str):
+            return "client"
+        if re.search(r"\b(supplier|provider|vendor|contractor|managed services provider|seller|developer|manufacturer|subcontractor|lessor|concessionaire|licensor|gnodeb|service provider|partner|consultant|builder|epc)\b", party_str):
+            return "supplier"
+        if re.search(r"\b(client|customer|operator|buyer|purchaser|owner|company|enterprise|subscriber|lessee|licensee|principal|agency|authority)\b", quote_str) and re.search(r"\b(shall pay|shall provide access|shall notify|shall furnish|shall reimburse|shall grant|responsible for providing)\b", quote_str):
+            return "client"
+        return "supplier"
 
     def _validated_quote(self, quote: str, source_text: str) -> str:
         source = self._quote_text(source_text)
