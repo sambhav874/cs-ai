@@ -16,28 +16,36 @@ import {
   ExternalLink,
   FileText,
   Info,
-  Layers,
   Loader2,
   Mail,
+  MoreHorizontal,
   Network,
   Play,
   Plus,
   RefreshCw,
-  Search,
   Send,
   Settings2,
   ShieldCheck,
   Upload,
   UploadCloud,
+  Maximize2,
+  Filter,
+  Search,
+  Layers,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
+import { useBreadcrumbs } from '@/app/context/BreadcrumbContext'
 import KpiSourceFieldMapper from '@/components/kpis/KpiSourceFieldMapper'
 import { apiUploadWithProgress } from '@/lib/apiClient'
 import { detectKpiSourceFields, getDefaultKpiSourceMappings } from '@/lib/kpi-source-fields'
 import type { KpiSourceFieldMapping } from '@/lib/kpi-source-fields'
+import { motion } from 'framer-motion'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 
 const USER_KPI_SOURCE_TYPES = new Set(['csv', 'xlsx', 'json', 'xml', 'manual_attestation'])
 
@@ -56,8 +64,6 @@ interface FullContractData {
 interface ContractKPI {
   kpi_id: string
   contract_id: string
-  schema_version?: number
-  run_id?: string
   document_id?: string | null
   chunk_id?: string | null
   contract_name?: string
@@ -71,42 +77,8 @@ interface ContractKPI {
   unit?: string | null
   value_min?: number | null
   value_max?: number | null
-  rule_type?: string | null
-  target_value?: string | number | null
-  threshold_min?: number | null
-  threshold_max?: number | null
   consequence_value?: number | null
   consequence_unit?: string | null
-  target_schedule?: Array<Record<string, any>>
-  evaluation_rule?: Record<string, any>
-  custom_attributes?: Record<string, any>
-  rule?: {
-    rule_type?: string
-    operator?: string
-    unit?: string
-    period_type?: string
-    evaluation_window?: string
-    aggregation?: string
-    spec?: Record<string, any>
-  }
-  consequence?: {
-    value?: number | null
-    unit?: string | null
-    trigger_condition?: string | null
-    remediation?: string | null
-    remediation_sla?: string | null
-    contact_email?: string | null
-  }
-  governance?: {
-    status?: string
-    confidence?: number
-    needs_review?: boolean
-    version?: number
-    is_tracked?: boolean
-    tracking_status?: string
-    is_recommended?: boolean
-    recommendation_reason?: string | null
-  }
   aggregation_type?: string | null
   trigger_condition?: string | null
   period_type?: string | null
@@ -114,6 +86,7 @@ interface ContractKPI {
   source_config_id?: string | null
   source_config_status?: string | null
   field_mappings?: Array<Record<string, any>>
+  evaluation_rule?: Record<string, any>
   remediation?: string | null
   remediation_sla?: string | null
   contact_email?: string | null
@@ -147,8 +120,6 @@ interface ContractKPI {
   recommendation_reason?: string | null
   tracking_status?: string | null
   is_tracked?: boolean
-  formula?: string | null
-  grace_period_days?: number | null
   last_tracking_backfill?: {
     created_breach_count?: number
     skipped_count?: number
@@ -380,54 +351,23 @@ const money = (value: number) => new Intl.NumberFormat('en-US', {
 }).format(Math.max(0, value))
 
 const formatKpiValue = (kpi: ContractKPI) => {
-  const ruleType = String(kpi.rule_type || kpi.rule?.rule_type || "").toLowerCase();
-  const spec = kpi.rule?.spec || {};
-
-  if (ruleType === "qualitative") {
-    return "Qualitative (Human Judgment)";
+  const pieces: string[] = []
+  if (kpi.operator && kpi.operator !== '=') pieces.push(kpi.operator)
+  if (kpi.value_min != null || kpi.value_max != null) {
+    pieces.push(`${kpi.value_min ?? '?'}${kpi.value_max != null ? ` - ${kpi.value_max}` : ''}`)
+  } else if (kpi.value != null && kpi.value !== '') {
+    pieces.push(String(kpi.value))
   }
-  if (ruleType === "tiered") {
-    // Always prefer fresh parse from clause text over stale DB tiers
-    const freshTiers = parseTiersFromClause(quoteFor(kpi));
-    const tiers = freshTiers.length > 0 ? freshTiers : (spec.tiers || (kpi as any).target_schedule || []);
-    if (tiers.length > 0) {
-      const summary = tiers.slice(0, 2).map((t: any) => t.value ?? '?').join(' / ');
-      return `Tiered — ${tiers.length} tiers (${summary}${tiers.length > 2 ? '...' : ''})`;
-    }
-    return "Tiered SLA Matrix";
-  }
-  if (ruleType === "composite") {
-    const formula = spec.formula || kpi.formula;
-    return formula ? `Formula: ${formula}` : "Composite Metric";
-  }
-  if (ruleType === "deadline") {
-    const grace = spec.grace_days ?? kpi.grace_period_days ?? 0;
-    return `Deadline Deliverable${grace > 0 ? ` (+${grace}d grace)` : ''}`;
-  }
-  if (ruleType === "error_budget") {
-    const budget = spec.budget ?? kpi.error_budget;
-    return `Error Budget: ${budget ?? 'Specified'} ${kpi.unit || ''}`.trim();
-  }
-
-  const pieces: string[] = [];
-  if (kpi.operator && kpi.operator !== '=' && kpi.operator !== 'specified') pieces.push(kpi.operator.replace(/_/g, ' '));
-  if (kpi.value_min != null || kpi.value_max != null || spec.min != null || spec.max != null) {
-    pieces.push(`${spec.min ?? kpi.value_min ?? '?'}${spec.max != null || kpi.value_max != null ? ` - ${spec.max ?? kpi.value_max}` : ''}`);
-  } else if (spec.target != null || kpi.value != null || kpi.target_value != null) {
-    pieces.push(String(spec.target ?? kpi.value ?? kpi.target_value));
-  }
-  if (kpi.unit && kpi.unit !== 'number') pieces.push(kpi.unit);
-  return pieces.length ? pieces.join(' ') : 'Not specified';
+  if (kpi.unit) pieces.push(kpi.unit)
+  return pieces.length ? pieces.join(' ') : 'Not specified'
 }
 
 const formatConsequence = (kpi: ContractKPI) => {
-  const pieces: string[] = [];
-  const val = kpi.consequence_value ?? kpi.consequence?.value;
-  const unit = kpi.consequence_unit || kpi.consequence?.unit;
-  if (val != null) pieces.push(String(val));
-  if (unit) pieces.push(unit);
-  if (kpi.aggregation_type || kpi.rule?.aggregation) pieces.push(`(${titleCase(kpi.aggregation_type || kpi.rule?.aggregation || "")})`);
-  return pieces.length ? pieces.join(' ') : 'Not specified';
+  const pieces: string[] = []
+  if (kpi.consequence_value != null) pieces.push(String(kpi.consequence_value))
+  if (kpi.consequence_unit) pieces.push(kpi.consequence_unit)
+  if (kpi.aggregation_type) pieces.push(`(${titleCase(kpi.aggregation_type)})`)
+  return pieces.length ? pieces.join(' ') : 'Not specified'
 }
 
 const severityFor = (breach: ContractKPIBreach, kpi?: ContractKPI) => {
@@ -454,14 +394,8 @@ const statusTone = (value?: string | null) => {
   return 'border-gray-200 bg-gray-50 text-gray-600'
 }
 
-const kpiName = (kpi: ContractKPI) => (
-  kpi.name || (kpi as any).identity?.name || 'Unnamed KPI'
-)
-
 const kpiCode = (kpi: ContractKPI, index: number) => {
-  const name = kpiName(kpi)
-  const match = name.match(/\b(?:KPI|SLA|TIM|FIN|PEN|CDM)-?\d+[A-Z]?\b/i)?.[0]
-  return match ? match.toUpperCase().replace(/([A-Z]+)(\d)/, '$1-$2') : `KPI-${String(index + 1).padStart(3, '0')}`
+  return String(index + 1)
 }
 
 const sourceBindingId = (sourceConfigId: string, kpiId: string, index: number) => {
@@ -567,40 +501,8 @@ const bindingStatusLabel = (status: string) => {
 }
 
 const quoteFor = (kpi: ContractKPI) => (
-  kpi.citation?.quote ||
-  kpi.citation_details?.quote ||
-  (kpi as any).custom_attributes?.clause_text ||
-  (kpi as any).custom_attributes?.quote ||
-  (kpi as any).identity?.source_clause?.quote ||
-  kpi.source_quote ||
-  kpi.quote ||
-  kpi.clause_text ||
-  ''
+  kpi.citation?.quote || kpi.citation_details?.quote || kpi.source_quote || kpi.quote || kpi.clause_text || ''
 )
-
-// Shared tier parser — mirrors backend _extract_tiers_from_clause.
-// Used by both the card threshold label and the expanded drawer table.
-const parseTiersFromClause = (text: string): Array<{ tier: string; range: string; value: string; credit_pct: number | null; penalty_amount: string | null }> => {
-  if (!text) return [];
-  const UNIT = String.raw`(?:%|ms|min(?:utes?)?|hrs?|hours?|sec(?:onds?)?|events?|sites?|incidents?|mbps|gbps|units?|calls?|days?|weeks?)`;
-  const NUMVAL = `[0-9][0-9,\.]*(?:\s*${UNIT})?`;
-  const RANGE = `(?:${NUMVAL}\s*[-\u2013]\s*${NUMVAL})`;
-  const CMP = `(?:(?:<=?|>=?)\s*${NUMVAL})`;
-  const BRACKET = `(?:N\/A\s*\([^)]*\)|[0-9]+\s*[-\u2013]\s*[0-9]+\s*Incidents?)`;
-  const CONSEQUENCE = `(?:[0-9\.]+%(?:\s*Fee(?:\s*Credit)?)?|\$[0-9][0-9,]*(?:\s*\/\s*[a-z]+)*)`;
-  const FULL = new RegExp(`(${RANGE}|${CMP}|${BRACKET})\s*:\s*(${CONSEQUENCE})`, 'gi');
-  return Array.from(text.matchAll(FULL)).map((m, idx) => {
-    const valueStr = (m[2] || '').trim();
-    const isDollar = valueStr.startsWith('$');
-    return {
-      tier: `Tier ${idx + 1}`,
-      range: (m[1] || '').trim(),
-      value: valueStr,
-      credit_pct: isDollar ? null : parseFloat(valueStr),
-      penalty_amount: isDollar ? valueStr : null,
-    };
-  });
-}
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return 'Not stamped'
@@ -704,6 +606,7 @@ const sourceEndpointLabel = (source?: KPISourceConfig | null) => {
 }
 
 export default function ContractKpiManagementPage() {
+  const { setBreadcrumbs } = useBreadcrumbs()
   const router = useRouter()
   const params = useParams()
   const contractId = typeof params?.contract_id === 'string' ? params.contract_id : ''
@@ -821,6 +724,22 @@ export default function ContractKpiManagementPage() {
       setSelectedSourceId(sourceConfigs[0].source_config_id)
     }
   }, [sourceConfigs, selectedSourceId])
+
+  useEffect(() => {
+    if (contract) {
+      setBreadcrumbs([
+        { label: "Projects", href: "/dashboard?view=all" },
+        { label: contract.project?.name || "Contract", href: `/dashboard?project=${contract.project_id || contract.projectId || contract.project?._id || ''}` },
+        { label: contract.contract_name || "Contract", href: `/contracts/${contractId}` },
+        { label: "KPI Management", href: `/contracts/${contractId}/kpis` }
+      ]);
+    } else {
+      setBreadcrumbs([
+        { label: "Projects", href: "/dashboard?view=all" },
+        { label: "KPI Management", href: `/contracts/${contractId}/kpis` }
+      ]);
+    }
+  }, [contract, contractId, setBreadcrumbs]);
 
   const loadFetchRuns = useCallback(async (config: KPISourceConfig) => {
     if (!apiUrl || !config?.source_config_id) return
@@ -1220,7 +1139,7 @@ export default function ContractKpiManagementPage() {
   const sourceResult = selectedSource ? sourceResults[selectedSource.source_config_id] : null
 
   return (
-    <div className="min-h-screen bg-neutral-50 font-InterVar text-gray-950">
+    <div className="min-h-screen bg-[#F9F9FF] font-InterVar text-gray-950">
       <input
         ref={fileInputRef}
         type="file"
@@ -1236,14 +1155,7 @@ export default function ContractKpiManagementPage() {
         <div className="px-4 py-4 md:px-8">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0">
-              <div className="mb-2 flex flex-wrap items-center gap-2 text-sm text-gray-500">
-                <Link href={`/contracts/${contractId}`} className="inline-flex items-center gap-1 font-medium text-gray-700 hover:text-gray-950">
-                  <ArrowLeft className="h-4 w-4" />
-                  Contract
-                </Link>
-                <span>/</span>
-                <span>KPI Management</span>
-              </div>
+
               <h1 className="truncate text-2xl font-semibold tracking-tight text-gray-950">
                 {contract?.contract_name || 'Contract KPI Management'}
               </h1>
@@ -1613,9 +1525,11 @@ function ReviewPanel({
 }) {
   const [expandedKpiId, setExpandedKpiId] = useState<string | null>(kpis.find(isKpiTracked)?.kpi_id || kpis[0]?.kpi_id || null)
   const [editingKpiId, setEditingKpiId] = useState<string | null>(null)
+  
   const [activeTab, setActiveTab] = useState<'all' | 'sla' | 'penalty' | 'deadline' | 'tracked' | 'review'>('all')
   const [searchQuery, setSearchQuery] = useState('')
-
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [pagination, setPagination] = useState({ currentPage: 1, itemsPerPage: 10 })
   const breachByKpiId = useMemo(() => {
     const mapping = new Map<string, ContractKPIBreach[]>()
     breaches.forEach((breach) => {
@@ -1626,10 +1540,10 @@ function ReviewPanel({
     return mapping
   }, [breaches])
 
-  // Helper to categorize KPI type
+
   const getCategory = (kpi: ContractKPI) => {
     const kpiType = String(kpi.kpi_type || '').toLowerCase()
-    const ruleType = String(kpi.rule_type || (kpi as any).rule?.rule_type || '').toLowerCase()
+    const ruleType = String((kpi as any).rule_type || (kpi as any).rule?.rule_type || '').toLowerCase()
     if (kpiType === 'sla' || kpiType === 'performance' || ruleType === 'tiered' || ruleType === 'threshold') return 'sla'
     if (kpiType === 'penalty' || kpi.consequence_value != null) return 'penalty'
     if (kpiType === 'deadline' || kpiType === 'notice' || ruleType === 'deadline') return 'deadline'
@@ -1644,12 +1558,14 @@ function ReviewPanel({
 
   const filteredKpis = useMemo(() => {
     return kpis.filter((kpi) => {
+      // 1. Tab filter
       if (activeTab === 'sla' && getCategory(kpi) !== 'sla') return false
       if (activeTab === 'penalty' && getCategory(kpi) !== 'penalty') return false
       if (activeTab === 'deadline' && getCategory(kpi) !== 'deadline') return false
       if (activeTab === 'tracked' && !isKpiTracked(kpi)) return false
       if (activeTab === 'review' && (kpi.status === 'approved' || kpi.status === 'ignored')) return false
 
+      // 2. Search query filter
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase()
         const nameMatch = (kpi.name || '').toLowerCase().includes(query)
@@ -1657,11 +1573,24 @@ function ReviewPanel({
         const sectionMatch = (kpi.structural_path || kpi.section_path || kpi.section || '').toLowerCase().includes(query)
         const partyMatch = (kpi.party || kpi.responsible_party || '').toLowerCase().includes(query)
         const quoteMatch = (quoteFor(kpi) || '').toLowerCase().includes(query)
-        return nameMatch || idMatch || sectionMatch || partyMatch || quoteMatch
+        if (!(nameMatch || idMatch || sectionMatch || partyMatch || quoteMatch)) return false
       }
+      
+      // 3. Status filter
+      if (statusFilter !== "all") {
+        if (statusFilter === "tracked") {
+          if (!isKpiTracked(kpi)) return false;
+        } else {
+          if (kpi.status !== statusFilter) return false;
+        }
+      }
+      
       return true
     })
-  }, [kpis, activeTab, searchQuery])
+  }, [kpis, activeTab, searchQuery, statusFilter])
+
+  const totalPages = Math.max(1, Math.ceil(filteredKpis.length / pagination.itemsPerPage));
+  const paginatedKpis = filteredKpis.slice((pagination.currentPage - 1) * pagination.itemsPerPage, pagination.currentPage * pagination.itemsPerPage);
 
   if (!kpis.length) {
     return (
@@ -1676,26 +1605,26 @@ function ReviewPanel({
     <div className="space-y-4">
       <PerformanceSummaryCards kpis={kpis} actualsByKpiId={actualsByKpiId} breaches={breaches} />
 
-      <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="rounded-md border bg-card overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-border bg-[#F9FAFC] p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-gray-950">KPI Register</h2>
-            <p className="mt-1 text-xs text-gray-500">Showing {filteredKpis.length} of {kpis.length} extracted KPIs across review, tracking, and source readiness.</p>
+            <h2 className="text-base font-semibold text-foreground">KPI Register</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{kpis.length} extracted {kpis.length === 1 ? 'KPI' : 'KPIs'}</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 items-center">
             <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={onAcceptAll}>
               <CheckCircle2 className="h-3.5 w-3.5" />
               Accept All
             </Button>
-            <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs text-gray-800" onClick={onTrackRecommended} disabled={recommendedTrackCount === 0}>
+            <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs text-foreground/80" onClick={onTrackRecommended} disabled={recommendedTrackCount === 0}>
               <Play className="h-3.5 w-3.5" />
-              Track Recommended ({recommendedTrackCount})
+              Track Recommended
             </Button>
           </div>
         </div>
-
-        {/* Category Tabs & Real-Time Search */}
-        <div className="flex flex-col gap-2 pt-2 border-t border-gray-100 sm:flex-row sm:items-center sm:justify-between">
+        
+        {/* Category Tabs & Real-Time Search & Status Filter */}
+        <div className="flex flex-col gap-3 p-4 border-b border-border sm:flex-row sm:items-center sm:justify-between bg-background">
           <div className="flex flex-wrap items-center gap-1.5">
             {[
               { id: 'all', label: `All (${kpis.length})` },
@@ -1708,9 +1637,9 @@ function ReviewPanel({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => { setActiveTab(tab.id as any); setPagination(p => ({ ...p, currentPage: 1 })) }}
                 className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
-                  activeTab === tab.id ? 'bg-gray-950 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  activeTab === tab.id ? 'bg-[#015CA9] text-white shadow-sm' : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                 }`}
               >
                 {tab.label}
@@ -1718,221 +1647,242 @@ function ReviewPanel({
             ))}
           </div>
 
-          <div className="relative min-w-[220px]">
-            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search KPI, section, quote..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-white pl-8 pr-3 text-xs text-gray-900 outline-none focus:border-cs-primary focus:ring-1 focus:ring-cs-primary"
-            />
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="relative flex items-center shrink-0">
+              <Filter className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <select
+                value={statusFilter}
+                onChange={(event) => {
+                  setStatusFilter(event.target.value);
+                  setPagination((prev) => ({ ...prev, currentPage: 1 }));
+                }}
+                className="h-8 appearance-none rounded-md border border-border bg-background pl-8 pr-8 text-xs font-medium text-foreground/80 outline-none transition-colors hover:bg-muted/30"
+              >
+                <option value="all">All statuses</option>
+                <option value="approved">Approved</option>
+                <option value="review">Review</option>
+                <option value="ignored">Ignored</option>
+                <option value="tracked">Tracked</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 h-4 w-4 text-foreground/80" />
+            </div>
+
+            <div className="relative flex-1 sm:min-w-[220px]">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search KPI, section, quote..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setPagination(p => ({ ...p, currentPage: 1 })) }}
+                className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-3 text-xs text-foreground outline-none focus:border-[#015CA9] focus:ring-1 focus:ring-[#015CA9]"
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="space-y-3">
-        {filteredKpis.map((kpi, index) => {
-          const tracked = isKpiTracked(kpi)
-          const sources = sourcesByKpiId.get(kpi.kpi_id) || []
-          const backfilled = Number(kpi.last_tracking_backfill?.created_breach_count || 0)
-          const kpiActuals = actualsByKpiId.get(kpi.kpi_id) || []
-          const kpiBreaches = breachByKpiId.get(kpi.kpi_id) || []
-          const latestActual = [...kpiActuals].sort((left, right) => (
-            new Date(actualTimestamp(right) || 0).getTime() - new Date(actualTimestamp(left) || 0).getTime()
-          ))[0]
-          const latestFlag = kpiBreaches.find((breach) => breach.is_breach) || kpiBreaches[0]
-          const expanded = expandedKpiId === kpi.kpi_id
-          const editing = editingKpiId === kpi.kpi_id
-          return (
-            <article key={kpi.kpi_id || `${kpi.name}-${index}`} className="rounded-lg border border-gray-200 bg-white">
-              <div className="grid gap-3 px-3 py-3 lg:grid-cols-[minmax(280px,1fr)_120px_130px_190px_190px_170px] lg:items-center">
-                <button type="button" onClick={() => setExpandedKpiId(expanded ? null : kpi.kpi_id)} className="flex min-w-0 items-start gap-3 text-left">
-                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border ${tracked ? 'border-gray-300 bg-white text-gray-900' : 'border-gray-200 bg-gray-50 text-gray-500'}`}>
-                    {tracked ? <CheckCircle2 className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="font-mono text-[11px] font-semibold text-gray-400">{kpiCode(kpi, index)}</span>
-                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone(kpi.status || 'review')}`}>{titleCase(kpi.status || 'review')}</span>
-                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tracked ? 'border-gray-300 bg-white text-gray-800' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>{tracked ? 'Tracked' : 'Deferred'}</span>
-                      {isKpiRecommended(kpi) && !tracked && <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700">Recommended</span>}
-                      {backfilled > 0 && <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700">{backfilled} backfilled</span>}
-                    </div>
-                    <h3 className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-gray-950">{kpiName(kpi)}</h3>
-                    <p className="mt-1 truncate text-xs text-gray-400">{kpi.structural_path || kpi.section_path || kpi.section || 'No section captured'}</p>
-                  </div>
-                </button>
-                <DetailTile label="Threshold" value={formatKpiValue(kpi)} />
-                <DetailTile label="Latest Actual" value={latestActual ? actualLabel(latestActual, kpi) : 'No actuals'} tone={latestFlag?.is_breach ? 'amber' : 'gray'} />
-                <div className="min-w-0 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Sources</p>
-                  <div className="mt-1 flex min-h-5 flex-wrap gap-1">
-                    {sources.length ? sources.slice(0, 3).map((source) => (
-                      <span key={source.source_config_id} className="max-w-[128px] truncate rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700">
-                        {source.display_name}
-                      </span>
-                    )) : (
-                      <span className="text-xs font-semibold text-gray-500">Not configured</span>
-                    )}
-                    {sources.length > 3 && <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-gray-500">+{sources.length - 3}</span>}
-                  </div>
-                </div>
-                <DetailTile label="Last Flag" value={latestFlag ? (latestFlag.is_breach ? `${severityFor(latestFlag, kpi)} · open` : 'Clear') : 'No evaluation'} tone={latestFlag?.is_breach ? 'amber' : 'gray'} />
-                <div className="flex flex-wrap justify-start gap-1.5 lg:justify-end">
-                  {kpi.status === 'approved' ? (
-                    <span className="inline-flex h-8 items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-xs font-semibold text-gray-600">Accepted</span>
-                  ) : (
-                    <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => onUpdateKpi(kpi, { status: 'approved' })}>
-                      Accept
-                    </Button>
-                  )}
-                  {!tracked && kpi.status !== 'ignored' && (
-                    <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs text-gray-800" onClick={() => onUpdateKpi(kpi, { status: 'approved', tracking_status: 'tracked', is_tracked: true })}>
-                      <Play className="h-3.5 w-3.5" />
-                      Track
-                    </Button>
-                  )}
-                  <Button type="button" variant="ghost" size="sm" className="h-8 text-xs text-gray-500" onClick={() => setExpandedKpiId(expanded ? null : kpi.kpi_id)}>
-                    Details
-                    <ChevronDown className={`ml-1 h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                  </Button>
-                </div>
-              </div>
-
-              {expanded && (
-                <div className="space-y-3 border-t border-gray-100 bg-gray-50 p-3">
-                  {/* Multi-Tier Performance & Penalty Matrix (If Tiered) */}
-                  {(() => {
-                    const ruleType = String(kpi.rule_type || (kpi as any).rule?.rule_type || '').toLowerCase();
-                    const spec = (kpi as any).rule?.spec || {};
-
-                    // Always re-parse from clause_text (ground truth) — stale DB tiers may be wrong/incomplete.
-                    const freshTiers = parseTiersFromClause(quoteFor(kpi));
-                    const staleTiers: any[] = spec.tiers || (kpi as any).target_schedule || (kpi as any).custom_attributes?.target_schedule || [];
-                    const tiers: any[] = freshTiers.length > 0 ? freshTiers : staleTiers;
-
-                    if (ruleType === 'tiered' || (Array.isArray(tiers) && tiers.length > 0)) {
-                      const hasCredits = tiers.some((t: any) => t.credit_pct != null);
-                      const hasPenalties = tiers.some((t: any) => t.penalty_amount);
-                      const consequenceLabel = hasCredits && hasPenalties ? 'Consequence' : hasCredits ? 'Service Credit' : 'Penalty Amount';
-                      return (
-                        <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 space-y-2">
-                          <p className="flex items-center gap-1.5 text-xs font-bold text-indigo-900 uppercase tracking-wider">
-                            <Layers className="h-4 w-4 text-indigo-600" /> Performance & Service Credit Schedule
-                          </p>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs bg-white rounded-md border border-indigo-100 shadow-sm">
-                              <thead>
-                                <tr className="border-b border-indigo-100 bg-indigo-50/60 text-indigo-950 font-semibold">
-                                  <th className="py-1.5 px-3">Tier</th>
-                                  <th className="py-1.5 px-3">Performance Band</th>
-                                  <th className="py-1.5 px-3">{consequenceLabel}</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-indigo-50">
-                                {tiers.map((tier: any, idx: number) => {
-                                  const isDollar = !!tier.penalty_amount;
-                                  const displayValue = isDollar
-                                    ? tier.penalty_amount
-                                    : tier.credit_pct != null
-                                    ? `${tier.credit_pct}% Fee Credit`
-                                    : (tier.value || '—');
-                                  return (
-                                    <tr key={idx} className="hover:bg-indigo-50/30">
-                                      <td className="py-2 px-3 font-medium text-gray-900">{tier.tier || tier.level || `Tier ${idx + 1}`}</td>
-                                      <td className="py-2 px-3 font-mono text-gray-600">
-                                        {tier.range || (tier.min_value != null ? `${tier.min_value}–${tier.max_value ?? '<Target'}` : '—')}
-                                      </td>
-                                      <td className={`py-2 px-3 font-semibold ${isDollar ? 'text-rose-700' : 'text-indigo-700'}`}>
-                                        {displayValue}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-                  <div className="rounded-lg border border-gray-200 bg-white p-3">
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Verbatim Contract Text</p>
-                        <p className="mt-1 text-xs text-gray-500">{kpi.structural_path || kpi.section_path || kpi.section || 'Clause location not captured'}</p>
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-[#FBFCFD] hover:bg-[#FBFCFD]">
+              <TableHead className="w-[60px] font-semibold text-foreground/90">S.no.</TableHead>
+              <TableHead className="w-[280px] font-semibold text-foreground/90">KPI</TableHead>
+              <TableHead className="font-semibold text-foreground/90">Status</TableHead>
+              <TableHead className="font-semibold text-foreground/90">Threshold</TableHead>
+              <TableHead className="font-semibold text-foreground/90">Sources</TableHead>
+              <TableHead className="text-right pr-4 font-semibold text-foreground/90">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {paginatedKpis.map((kpi, i) => {
+              const index = (pagination.currentPage - 1) * pagination.itemsPerPage + i;
+              const tracked = isKpiTracked(kpi)
+              const sources = sourcesByKpiId.get(kpi.kpi_id) || []
+              const backfilled = Number(kpi.last_tracking_backfill?.created_breach_count || 0)
+              const kpiActuals = actualsByKpiId.get(kpi.kpi_id) || []
+              const kpiBreaches = breachByKpiId.get(kpi.kpi_id) || []
+              const latestActual = [...kpiActuals].sort((left, right) => (
+                new Date(actualTimestamp(right) || 0).getTime() - new Date(actualTimestamp(left) || 0).getTime()
+              ))[0]
+              const latestFlag = kpiBreaches.find((breach) => breach.is_breach) || kpiBreaches[0]
+              const expanded = expandedKpiId === kpi.kpi_id
+              const editing = editingKpiId === kpi.kpi_id
+              return (
+                <React.Fragment key={kpi.kpi_id || `${kpi.name}-${index}`}>
+                  <TableRow className={`bg-[#FFFFFF] hover:bg-muted/15 transition-colors cursor-pointer ${expanded ? 'bg-muted/15' : ''}`} onClick={() => setExpandedKpiId(expanded ? null : kpi.kpi_id)}>
+                    <TableCell className="align-middle py-4 text-sm font-semibold text-center text-foreground">
+                      {index + 1}.
+                    </TableCell>
+                    <TableCell className="align-middle py-4">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-foreground">{kpi.name}</h3>
                       </div>
-                      <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => onOpenClause(kpi)}>
-                        <FileText className="h-3.5 w-3.5" />
-                        Refer Contract
-                      </Button>
-                    </div>
-                    <blockquote className="max-h-32 overflow-auto rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-sm italic leading-6 text-gray-700">
-                      {quoteFor(kpi) || kpi.confidence_reason || kpi.recommendation_reason || 'No source quote captured.'}
-                    </blockquote>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-200 bg-white p-3">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">KPI Control</p>
-                        <p className="mt-1 text-xs text-gray-500">Compact threshold, ownership, and remediation controls.</p>
+                    </TableCell>
+                    <TableCell className="align-middle py-4">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${kpi.status === 'approved' ? 'border-green-200 bg-green-50 text-green-700' : statusTone(kpi.status || 'review')}`}>{titleCase(kpi.status || 'review')}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tracked ? 'border-[#015CA9]/30 bg-[#015CA9]/10 text-[#015CA9]' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>{tracked ? 'Tracked' : 'Deferred'}</span>
+                        {isKpiRecommended(kpi) && !tracked && <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700">Recommended</span>}
+                        {backfilled > 0 && <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700">{backfilled} backfilled</span>}
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <span className={`inline-flex h-8 items-center rounded-md border px-2.5 text-xs font-semibold ${statusTone(kpi.governance_status || 'draft')}`}>
-                          {titleCase(kpi.governance_status || 'Draft')}
-                        </span>
-                        <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => onCertifyKpi(kpi, 'reviewed')}>
-                          Review
-                        </Button>
-                        <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs text-gray-800" onClick={() => onCertifyKpi(kpi, 'certified')}>
-                          <BookOpen className="h-3.5 w-3.5" />
-                          Certify
-                        </Button>
-                        <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => setEditingKpiId(editing ? null : kpi.kpi_id)}>
-                          {editing ? 'Done Editing' : 'Edit KPI'}
-                        </Button>
+                    </TableCell>
+                    <TableCell className="align-middle font-medium text-sm text-foreground/80">
+                      {formatKpiValue(kpi)}
+                    </TableCell>
+                    <TableCell className="align-middle py-4">
+                      <div className="flex flex-wrap gap-1">
+                        {sources.length ? sources.slice(0, 3).map((source) => (
+                          <span key={source.source_config_id} className="max-w-[128px] truncate rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                            {source.display_name}
+                          </span>
+                        )) : (
+                          <span className="text-xs font-semibold text-muted-foreground">Not configured</span>
+                        )}
+                        {sources.length > 3 && <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] text-muted-foreground">+{sources.length - 3}</span>}
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-middle text-right pr-4">
+                      <div className="flex flex-wrap justify-end gap-1.5">
                         {kpi.status !== 'approved' && (
-                          <Button type="button" size="sm" className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90" onClick={() => onUpdateKpi(kpi, { status: 'approved' })}>
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Accept KPI
+                          <Button type="button" variant="outline" size="sm" className="h-8 text-xs border-green-200 hover:bg-green-50 hover:text-green-700" onClick={(e) => { e.stopPropagation(); onUpdateKpi(kpi, { status: 'approved' }); }}>
+                            Accept
                           </Button>
                         )}
-                        <Button type="button" variant="outline" size="sm" className="h-8 text-xs text-gray-700" onClick={() => onUpdateKpi(kpi, { status: 'ignored', is_tracked: false, tracking_status: 'ignored' })}>
-                          Remove
-                        </Button>
-                        <Button type="button" variant="ghost" size="sm" className="h-8 text-xs text-gray-500" onClick={() => onCertifyKpi(kpi, 'deprecated')}>
-                          Deprecate
-                        </Button>
+                        {!tracked && kpi.status !== 'ignored' && (
+                          <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs border-[#015CA9]/30 hover:bg-[#015CA9]/10 hover:text-[#015CA9]" onClick={(e) => { e.stopPropagation(); onUpdateKpi(kpi, { status: 'approved', tracking_status: 'tracked', is_tracked: true }); }}>
+                            <Play className="h-3.5 w-3.5" />
+                            Track
+                          </Button>
+                        )}
+                        {tracked && kpi.status === 'approved' && (
+                          <Button type="button" variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={(e) => { e.stopPropagation(); setExpandedKpiId(expanded ? null : kpi.kpi_id); }}>
+                            View
+                          </Button>
+                        )}
                       </div>
-                    </div>
+                    </TableCell>
+                  </TableRow>
+                  
 
-                    {editing ? (
-                      <div className="grid gap-2 lg:grid-cols-4">
-                        <EditableKpiField label="KPI Name" value={kpi.name} onCommit={(value) => onUpdateKpi(kpi, { name: value })} wide />
-                        <EditableKpiField label="Operator" value={kpi.operator || ''} onCommit={(value) => onUpdateKpi(kpi, { operator: value })} />
-                        <EditableKpiField label="Unit" value={kpi.unit || ''} onCommit={(value) => onUpdateKpi(kpi, { unit: value })} />
-                        <EditableKpiField label="Threshold Min" value={kpi.value_min ?? kpi.value ?? ''} onCommit={(value) => onUpdateKpi(kpi, { value_min: value as any })} />
-                        <EditableKpiField label="Threshold Max" value={kpi.value_max ?? ''} onCommit={(value) => onUpdateKpi(kpi, { value_max: value as any })} />
-                        <EditableKpiField label="Responsible Party" value={kpi.party || kpi.responsible_party || ''} onCommit={(value) => onUpdateKpi(kpi, { party: value })} />
-                        <EditableKpiField label="Trigger" value={kpi.trigger_condition || ''} onCommit={(value) => onUpdateKpi(kpi, { trigger_condition: value })} wide />
-                        <EditableKpiField label="SLA" value={kpi.remediation_sla || ''} onCommit={(value) => onUpdateKpi(kpi, { remediation_sla: value })} />
-                        <EditableKpiField label="Penalty" value={kpi.consequence_value ?? ''} onCommit={(value) => onUpdateKpi(kpi, { consequence_value: value as any })} />
-                        <EditableKpiField label="Remediation" value={kpi.remediation || ''} onCommit={(value) => onUpdateKpi(kpi, { remediation: value })} wide />
-                      </div>
-                    ) : (
-                      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6">
-                        <DetailTile label="Threshold" value={formatKpiValue(kpi)} tone="blue" />
-                        <DetailTile label="Trigger" value={kpi.trigger_condition || 'Not specified'} tone="amber" />
-                        <DetailTile label="Penalty" value={formatConsequence(kpi)} tone={kpi.consequence_value != null ? 'amber' : 'gray'} />
-                        <DetailTile label="Owner" value={kpi.party || kpi.responsible_party || 'Not specified'} />
-                        <DetailTile label="Governance" value={titleCase(kpi.governance?.status || kpi.governance_status || kpi.status || 'draft')} tone={kpi.governance_status === 'certified' ? 'blue' : 'gray'} />
-                        <DetailTile label="Sources" value={sources.length ? `${sources.length} assigned` : 'None'} tone={sources.length ? 'blue' : 'amber'} />
-                      </div>
-                    )}
+                </React.Fragment>
+              )
+            })}
+          </TableBody>
+        </Table>
+        
+        {filteredKpis.length > 0 && (
+          <div className="flex items-center justify-between border-t border-border/50 p-4">
+            <p className="text-sm text-muted-foreground">
+              Showing {paginatedKpis.length} of {filteredKpis.length} KPIs
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-8" onClick={() => setPagination(p => ({...p, currentPage: Math.max(1, p.currentPage - 1)}))} disabled={pagination.currentPage === 1}>
+                Previous
+              </Button>
+              <span className="text-sm font-medium text-foreground">
+                Page {pagination.currentPage} of {totalPages}
+              </span>
+              <Button variant="outline" size="sm" className="h-8" onClick={() => setPagination(p => ({...p, currentPage: Math.min(totalPages, p.currentPage + 1)}))} disabled={pagination.currentPage === totalPages}>
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
 
+      <Dialog open={!!expandedKpiId} onOpenChange={(open) => !open && setExpandedKpiId(null)}>
+        {(() => {
+          const kpi = kpis.find(k => k.kpi_id === expandedKpiId)
+          if (!kpi) return null
+          const kpiActuals = actualsByKpiId.get(kpi.kpi_id) || []
+          const kpiBreaches = breaches.filter((b) => b.kpi_id === kpi.kpi_id)
+          const tracked = isKpiTracked(kpi)
+          const editing = editingKpiId === kpi.kpi_id
+          const latestActual = kpiActuals.length > 0 ? [...kpiActuals].sort((a, b) => new Date(actualTimestamp(b) || 0).getTime() - new Date(actualTimestamp(a) || 0).getTime())[0] : null
+          const latestFlag = kpiBreaches.length > 0 ? [...kpiBreaches].sort((a, b) => new Date(b.created_at || b.timestamp || 0).getTime() - new Date(a.created_at || a.timestamp || 0).getTime())[0] : null
+          const sources = sourcesByKpiId.get(kpi.kpi_id) || []
+          return (
+            <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col overflow-hidden sm:rounded-xl p-0 gap-0">
+              <DialogHeader className="sr-only">
+                <DialogTitle>KPI Details</DialogTitle>
+                <DialogDescription>Details for {kpi.name}</DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-6 py-4 pr-12 shrink-0">
+                <h4 className="text-sm font-semibold text-foreground">KPI Details</h4>
+                <div className="flex flex-wrap items-center gap-2">
+                                <span className={`inline-flex h-6 items-center rounded-full border px-2 text-[10px] font-semibold ${statusTone(kpi.governance_status || 'draft')}`}>
+                                  {titleCase(kpi.governance_status || 'Draft')}
+                                </span>
+                                <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => setEditingKpiId(editing ? null : kpi.kpi_id)}>
+                                  {editing ? 'Done Editing' : 'Edit KPI'}
+                                </Button>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                                      <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-40">
+                                    <DropdownMenuItem onClick={() => onCertifyKpi(kpi, 'reviewed')}>
+                                      <ShieldCheck className="mr-2 h-4 w-4" /> Review
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => onCertifyKpi(kpi, 'certified')}>
+                                      <BookOpen className="mr-2 h-4 w-4" /> Certify
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onUpdateKpi(kpi, { status: 'ignored', is_tracked: false, tracking_status: 'ignored' })}>
+                                      <AlertCircle className="mr-2 h-4 w-4" /> Remove
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem className="text-muted-foreground focus:text-muted-foreground" onClick={() => onCertifyKpi(kpi, 'deprecated')}>
+                                      <Clock className="mr-2 h-4 w-4" /> Deprecate
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+                <div>
+
+                            {editing ? (
+                              <div className="grid gap-4 lg:grid-cols-4">
+                                <EditableKpiField label="KPI Name" value={kpi.name} onCommit={(value) => onUpdateKpi(kpi, { name: value })} wide />
+                                <EditableKpiField label="Operator" value={kpi.operator || ''} onCommit={(value) => onUpdateKpi(kpi, { operator: value })} />
+                                <EditableKpiField label="Unit" value={kpi.unit || ''} onCommit={(value) => onUpdateKpi(kpi, { unit: value })} />
+                                <EditableKpiField label="Threshold Min" value={kpi.value_min ?? kpi.value ?? ''} onCommit={(value) => onUpdateKpi(kpi, { value_min: value as any })} />
+                                <EditableKpiField label="Threshold Max" value={kpi.value_max ?? ''} onCommit={(value) => onUpdateKpi(kpi, { value_max: value as any })} />
+                                <EditableKpiField label="Responsible Party" value={kpi.party || kpi.responsible_party || ''} onCommit={(value) => onUpdateKpi(kpi, { party: value })} />
+                                <EditableKpiField label="Trigger" value={kpi.trigger_condition || ''} onCommit={(value) => onUpdateKpi(kpi, { trigger_condition: value })} wide />
+                                <EditableKpiField label="SLA" value={kpi.remediation_sla || ''} onCommit={(value) => onUpdateKpi(kpi, { remediation_sla: value })} />
+                                <EditableKpiField label="Penalty" value={kpi.consequence_value ?? ''} onCommit={(value) => onUpdateKpi(kpi, { consequence_value: value as any })} />
+                                <EditableKpiField label="Remediation" value={kpi.remediation || ''} onCommit={(value) => onUpdateKpi(kpi, { remediation: value })} wide />
+                              </div>
+                            ) : (
+                              <div className="grid gap-x-8 gap-y-6 grid-cols-2 md:grid-cols-4">
+                                <DetailTile label="Latest Actual" value={latestActual ? actualLabel(latestActual, kpi) : 'No actuals'} tone={latestFlag?.is_breach ? 'amber' : 'gray'} />
+                                <DetailTile label="Last Flag" value={latestFlag ? (latestFlag.is_breach ? `${severityFor(latestFlag, kpi)} · open` : 'Clear') : 'No evaluation'} tone={latestFlag?.is_breach ? 'amber' : 'gray'} />
+                                <DetailTile label="Threshold" value={formatKpiValue(kpi)} tone="blue" />
+                                <DetailTile label="Trigger" value={kpi.trigger_condition || 'Not specified'} tone="amber" />
+                                <DetailTile label="Penalty" value={formatConsequence(kpi)} tone={kpi.consequence_value != null ? 'amber' : 'gray'} />
+                                <DetailTile label="Owner" value={kpi.party || kpi.responsible_party || 'Not specified'} />
+                                <DetailTile label="Governance" value={`${titleCase(kpi.governance_status || 'draft')} v${kpi.governance_version || 1}`} tone={kpi.governance_status === 'certified' ? 'blue' : 'gray'} />
+                                <DetailTile label="Sources" value={sources.length ? `${sources.length} assigned` : 'None'} tone={sources.length ? 'blue' : 'amber'} />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Contract Evidence (Priority 2) */}
+                          <div className="border-t border-border pt-6 mt-6">
+                            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                              <h4 className="text-sm font-semibold text-foreground">Contract Evidence</h4>
+                              <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => onOpenClause(kpi)}>
+                                <FileText className="h-3.5 w-3.5" />
+                                Refer Contract
+                              </Button>
+                            </div>
+                            <div className="space-y-2">
+                              <p className="text-xs font-medium text-muted-foreground">{kpi.structural_path || kpi.section_path || kpi.section || 'Clause location not captured'}</p>
+                              <blockquote className="border-l-2 border-muted pl-4 text-sm leading-relaxed text-foreground/90 max-h-32 overflow-auto">
+                                {quoteFor(kpi) || kpi.confidence_reason || kpi.recommendation_reason || 'No source quote captured.'}
+                              </blockquote>
+                            </div>
+                          </div>
                     {(() => {
                       const cattrs = (kpi as any).custom_attributes || {};
                       const rawKeys = Object.keys(cattrs);
@@ -2014,26 +1964,49 @@ function ReviewPanel({
                         </div>
                       );
                     })()}
-                  </div>
 
-                  {tracked ? (
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)]">
-                      <KpiHistoryChart kpi={kpi} actuals={kpiActuals} breaches={kpiBreaches} />
-                      <KpiActualHistory kpi={kpi} actuals={kpiActuals} />
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-gray-300 bg-white px-4 py-3 text-sm text-gray-600">
-                      This KPI is accepted or pending but not actively tracked. Use Track to start evaluating historical actuals and future source runs.
-                    </div>
-                  )}
 
-                  <KpiBreachStrip kpi={kpi} breaches={kpiBreaches} />
-                </div>
-              )}
-            </article>
+                          {/* Historical Logs (Priority 4) */}
+                          <KpiBreachStrip kpi={kpi} breaches={kpiBreaches} />
+
+                          {/* Advanced SLA/SLO Policy (Priority 5) */}
+                          <SlaPolicyStrip kpi={kpi} />
+
+
+                                                    {tracked && (
+                            <>
+    {/* Monitoring (Priority 3) */}
+                          {tracked ? (
+                            <div className="border-t border-border pt-6 mt-6">
+                              <h4 className="mb-4 text-sm font-semibold text-foreground">Monitoring</h4>
+                                <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)]">
+                                  <KpiHistoryChart kpi={kpi} actuals={kpiActuals} breaches={kpiBreaches} />
+                                  <KpiActualHistory kpi={kpi} actuals={kpiActuals} />
+                                </div>
+                            </div>
+                          ) : (
+                            <div className="border-t border-border pt-6 mt-6">
+                              <h4 className="mb-4 text-sm font-semibold text-foreground">Monitoring</h4>
+                              <div className="rounded-lg border border-dashed border-gray-300 bg-white px-4 py-3 text-sm text-gray-600">
+                                This KPI is accepted or pending but not actively tracked. Use Track to start evaluating historical actuals and future source runs.
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Historical Logs (Priority 4) */}
+                          <KpiBreachStrip kpi={kpi} breaches={kpiBreaches} />
+
+                          
+                            </>
+                          )}
+
+                          {/* Advanced SLA/SLO Policy (Priority 5) */}
+                          <SlaPolicyStrip kpi={kpi} />
+                        </div>
+            </DialogContent>
           )
-        })}
-      </div>
+        })()}
+      </Dialog>
     </div>
   )
 }
@@ -2093,14 +2066,19 @@ function HorizontalMiniBars({ values }: { values: Array<{ label: string; value: 
   const max = Math.max(...rows.map((row) => row.value), 1)
   return (
     <div className="space-y-3">
-      {rows.slice(0, 5).map((row) => (
+      {rows.slice(0, 5).map((row, index) => (
         <div key={row.label}>
           <div className="mb-1 flex justify-between gap-2 text-xs">
             <span className="truncate text-gray-600">{row.label}</span>
             <span className="font-semibold text-gray-950">{row.value}</span>
           </div>
-          <div className="h-2 rounded-full bg-gray-100">
-            <div className="h-2 rounded-full bg-gray-800" style={{ width: `${Math.max(8, (row.value / max) * 100)}%` }} />
+          <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.max(8, (row.value / max) * 100)}%` }}
+              transition={{ duration: 0.8, delay: index * 0.1, ease: 'easeOut' }}
+              className="h-2 rounded-full bg-blue-600"
+            />
           </div>
         </div>
       ))}
@@ -2113,11 +2091,17 @@ function FlagDonut({ open, clear }: { open: number; clear: number }) {
   const openPercent = (open / total) * 100
   return (
     <div className="flex items-center gap-4">
-      <div className="relative h-28 w-28 shrink-0 rounded-full" style={{ background: `conic-gradient(#111827 0 ${openPercent}%, #e5e7eb ${openPercent}% 100%)` }}>
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+        className="relative h-28 w-28 shrink-0 rounded-full shadow-sm"
+        style={{ background: `conic-gradient(#ef4444 0 ${openPercent}%, #e5e7eb ${openPercent}% 100%)` }}
+      >
         <div className="absolute inset-7 flex items-center justify-center rounded-full bg-white text-lg font-semibold text-gray-950">{open}</div>
-      </div>
+      </motion.div>
       <div className="space-y-2 text-xs text-gray-600">
-        <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-cs-primary" /> Open flags <strong>{open}</strong></div>
+        <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-sm" /> Open flags <strong>{open}</strong></div>
         <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-gray-300" /> Clear tracked <strong>{clear}</strong></div>
       </div>
     </div>
@@ -2191,9 +2175,15 @@ function Sparkline({ values, labels, threshold, heightClass }: { values: number[
   const thresholdY = thresholdValue == null ? null : 150 - ((thresholdValue - min) / range) * 120
 
   return (
-    <div className={`${heightClass} rounded-md border border-gray-200 bg-white p-3`}>
+    <div className={`${heightClass} rounded-md border border-gray-200 bg-white p-3 shadow-sm`}>
       {values.length ? (
         <svg viewBox="0 0 320 170" className="h-full w-full overflow-visible">
+          <defs>
+            <linearGradient id="sparkline-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#4f46e5" />
+              <stop offset="100%" stopColor="#06b6d4" />
+            </linearGradient>
+          </defs>
           <line x1="0" y1="150" x2="320" y2="150" stroke="#e5e7eb" />
           {thresholdY != null && (
             <>
@@ -2201,10 +2191,31 @@ function Sparkline({ values, labels, threshold, heightClass }: { values: number[
               <text x="4" y={Math.max(12, thresholdY - 6)} fill="#6b7280" fontSize="10">target {thresholdValue}</text>
             </>
           )}
-          <polyline points={coords} fill="none" stroke="#111827" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          <motion.polyline
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 1.5, ease: 'easeInOut' }}
+            points={coords}
+            fill="none"
+            stroke="url(#sparkline-gradient)"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
           {data.map((value, index) => {
             const [x, y] = coords.split(' ')[index].split(',').map(Number)
-            return <circle key={`${value}-${index}`} cx={x} cy={y} r="3.5" fill="#111827" />
+            return (
+              <motion.circle
+                key={`${value}-${index}`}
+                cx={x}
+                cy={y}
+                r="3.5"
+                fill="#4f46e5"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.3, delay: index * 0.05 + 0.5 }}
+              />
+            )
           })}
           {labels?.length ? <text x="0" y="168" fill="#6b7280" fontSize="10">{labels[0]}</text> : null}
           {labels?.length ? <text x="320" y="168" textAnchor="end" fill="#6b7280" fontSize="10">{labels[labels.length - 1]}</text> : null}
@@ -2253,35 +2264,54 @@ function KpiActualHistory({ kpi, actuals }: { kpi: ContractKPI; actuals: Contrac
 }
 
 function KpiBreachStrip({ kpi, breaches }: { kpi: ContractKPI; breaches: ContractKPIBreach[] }) {
-  const latest = [...breaches].sort((left, right) => new Date(right.created_at || right.timestamp || 0).getTime() - new Date(left.created_at || left.timestamp || 0).getTime())[0]
-  if (!latest) return null
+  if (breaches.length === 0) {
+    return null
+  }
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Latest Compliance Evaluation</p>
-          <p className="mt-1 text-sm font-semibold text-gray-950">{latest.is_breach ? 'Outside threshold' : 'Within threshold'}</p>
-        </div>
-        <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(severityFor(latest, kpi))}`}>{severityFor(latest, kpi)}</span>
-      </div>
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
-        <DetailTile label="Expected (Contract)" value={expectedFor(latest, kpi)} />
-        <DetailTile label="Actual (Ingested)" value={`${latest.actual_value ?? 'N/A'} ${latest.actual_unit || kpi.unit || ''}`.trim()} tone={latest.is_breach ? 'amber' : 'gray'} />
-      </div>
+    <div className="mt-6">
+      <h5 className="mb-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Compliance Evaluations</h5>
+      <RecordPreviewTable rows={breaches} empty="No evaluations" />
     </div>
   )
 }
 
+function SlaPolicyStrip({ kpi }: { kpi: ContractKPI }) {
+  const businessHoursEnabled = Boolean(kpi.business_hours?.enabled || kpi.business_hours?.business_days_only)
+  const blackoutCount = Array.isArray(kpi.blackout_windows) ? kpi.blackout_windows.length : 0
+  const lockDays = kpi.reporting_lock?.lock_after_days
+  const errorBudget = kpi.error_budget || {}
+  const hasPolicy = businessHoursEnabled || blackoutCount || lockDays || kpi.missing_data_policy || Object.keys(errorBudget).length
+  if (!hasPolicy) return null
+  const budgetText = Object.keys(errorBudget).length
+    ? `${errorBudget.consumed ?? 0}/${errorBudget.budget ?? errorBudget.allowed ?? 'budget'}`
+    : 'Not configured'
+  return (
+    <details className="border-t border-border pt-6 mt-6 group">
+      <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-foreground hover:text-muted-foreground list-none [&::-webkit-details-marker]:hidden">
+        <ChevronDown className="h-4 w-4 transition-transform group-open:-rotate-180" />
+        Advanced SLA/SLO Policy
+      </summary>
+      <div className="mt-4 grid gap-x-8 gap-y-6 grid-cols-2 xl:grid-cols-5 pl-6">
+        <DetailTile label="Business Hours" value={businessHoursEnabled ? `${kpi.business_hours?.start || '09:00'}-${kpi.business_hours?.end || '17:00'}` : 'Calendar time'} tone={businessHoursEnabled ? 'blue' : 'gray'} />
+        <DetailTile label="Blackouts" value={blackoutCount ? `${blackoutCount} window${blackoutCount === 1 ? '' : 's'}` : 'None'} tone={blackoutCount ? 'amber' : 'gray'} />
+        <DetailTile label="Reporting Lock" value={lockDays ? `${lockDays} day${Number(lockDays) === 1 ? '' : 's'}` : 'Unlocked'} />
+        <DetailTile label="Missing Data" value={titleCase(kpi.missing_data_policy || 'flag missing evidence')} tone="amber" />
+        <DetailTile label="Error Budget" value={budgetText} tone={Object.keys(errorBudget).length ? 'blue' : 'gray'} />
+      </div>
+    </details>
+  )
+}
+
 function DetailTile({ label, value, tone = 'gray' }: { label: string; value: string; tone?: 'gray' | 'blue' | 'amber' }) {
-  const classes = {
-    gray: 'border-gray-200 bg-gray-50 text-gray-700',
-    blue: 'border-gray-200 bg-white text-gray-800',
-    amber: 'border-gray-300 bg-white text-gray-800',
+  const textColor = {
+    gray: 'text-foreground',
+    blue: 'text-[#015CA9]',
+    amber: 'text-amber-700',
   }[tone]
   return (
-    <div className={`min-w-0 rounded-md border px-3 py-2 ${classes}`}>
-      <p className="text-[10px] font-bold uppercase tracking-wide opacity-60">{label}</p>
-      <p className="mt-1 truncate text-xs font-semibold">{value}</p>
+    <div className="min-w-0 flex flex-col gap-1">
+      <p className="text-[13px] font-medium text-muted-foreground">{label}</p>
+      <p className={`truncate text-sm font-semibold ${textColor}`}>{value}</p>
     </div>
   )
 }

@@ -25,8 +25,6 @@ import {
 export function ValueProposition() {
   return (
     <div className="w-full flex flex-col bg-background font-sans overflow-hidden">
-      
-
 
       {/* =========================================
           FEATURE 1: ANALYSE
@@ -312,8 +310,8 @@ export function ValueProposition() {
         </div>
       </section>
 
-            {/* =========================================
-          SECTION 1: THE DRAIN (IMPROVED)
+      {/* =========================================
+          SECTION 1: THE DRAIN 
           ========================================= */}
       <section className="py-24 md:py-32 border-b border-foreground/10 bg-background relative">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,hsl(var(--primary)/0.05),transparent_50%)] pointer-events-none" />
@@ -370,16 +368,16 @@ export function ValueProposition() {
       {/* =========================================
           SECTION 4: THE SCENARIO (BEFORE & AFTER)
           ========================================= */}
-      <section className="py-32 bg-background">
-        <div className="max-w-[1240px] mx-auto px-6 md:px-12">
+      <section className="min-h-[calc(100vh-90px)] py-16 md:py-20 flex flex-col justify-center bg-background">
+        <div className="max-w-[1240px] mx-auto px-6 md:px-12 w-full">
           
-          <div className="mb-20 text-center">
+          <div className="mb-12 text-center">
             <span className="text-[12px] tracking-[0.2em] font-bold uppercase text-primary mb-4 block">The Impact</span>
             <h2 className="text-[40px] md:text-[64px] font-light leading-[1] max-w-[800px] mx-auto">
               Transforming a 45-minute delay into <i className="text-primary">automated recovery.</i>
             </h2>
             <p className="text-[16px] md:text-[18px] opacity-60 mt-6 max-w-[600px] mx-auto">
-              Scenario: Flight LH450. A catering truck arrives 20 minutes late, causing a 35-minute departure delay.
+              Scenario: Flight LH450. A catering truck arrives 20 minutes late, causing a 35-minute departure delay resulting in a $12,000 operational loss.
             </p>
           </div>
 
@@ -390,16 +388,16 @@ export function ValueProposition() {
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              className="border border-destructive/20 bg-destructive/5 rounded-3xl p-8 md:p-12 flex flex-col relative overflow-hidden"
+              className="border border-destructive/20 bg-destructive/5 rounded-3xl p-8 flex flex-col relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-32 h-32 bg-destructive/10 rounded-full blur-3xl -z-10" />
               
-              <div className="flex items-center gap-3 text-destructive mb-10">
+              <div className="flex items-center gap-3 text-destructive mb-8">
                 <XCircle size={28} />
                 <h3 className="text-[14px] tracking-[0.2em] font-bold uppercase">Before: The Old Way</h3>
               </div>
 
-              <div className="space-y-8 flex-1">
+              <div className="space-y-6 flex-1">
                 <div className="flex gap-4 items-start opacity-70">
                   <Clock className="shrink-0 mt-1" size={20} />
                   <div>
@@ -417,12 +415,12 @@ export function ValueProposition() {
                 </div>
               </div>
 
-              <div className="mt-12 pt-8 border-t border-destructive/20">
-                <p className="text-[12px] uppercase tracking-widest text-destructive mb-2 font-bold">Total Result</p>
+              <div className="mt-8 pt-6 border-t border-destructive/20">
+                <p className="text-[12px] uppercase tracking-widest text-destructive mb-2 font-bold">Total Recovered</p>
                 <div className="flex items-baseline gap-2">
-                  <p className="text-[40px] md:text-[56px] font-light leading-none text-destructive">-$12,000</p>
+                  <p className="text-[40px] md:text-[56px] font-light leading-none text-destructive">$0</p>
                 </div>
-                <p className="text-[14px] opacity-70 mt-2">Zero recovery. Claim window expired.</p>
+                <p className="text-[14px] opacity-70 mt-2">Zero recovery. Claim window expired. The $12,000 loss remains.</p>
               </div>
             </motion.div>
 
@@ -432,11 +430,11 @@ export function ValueProposition() {
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
               viewport={{ once: true }}
-              className="border border-emerald-500/20 bg-emerald-500/5 rounded-3xl p-8 md:p-12 flex flex-col relative overflow-hidden dark:bg-emerald-500/10 shadow-lg shadow-emerald-500/5"
+              className="border border-emerald-500/20 bg-emerald-500/5 rounded-3xl p-8 flex flex-col relative overflow-hidden dark:bg-emerald-500/10 shadow-lg shadow-emerald-500/5"
             >
               <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -z-10" />
 
-              <div className="flex items-center gap-3 text-emerald-600 dark:text-emerald-400 mb-10">
+              <div className="flex items-center gap-3 text-emerald-600 dark:text-emerald-400 mb-8">
                 <CheckCircle2 size={28} />
                 <h3 className="text-[14px] tracking-[0.2em] font-bold uppercase">After: ContractSense</h3>
               </div>
@@ -468,8 +466,8 @@ export function ValueProposition() {
                 </div>
               </div>
 
-              <div className="mt-12 pt-8 border-t border-emerald-500/20">
-                <p className="text-[12px] uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-2 font-bold">Recovered Instantly</p>
+              <div className="mt-8 pt-6 border-t border-emerald-500/20">
+                <p className="text-[12px] uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-2 font-bold">Total Recovered</p>
                 <div className="flex items-baseline gap-2">
                   <p className="text-[40px] md:text-[56px] font-light leading-none text-emerald-600 dark:text-emerald-400">+$6,500</p>
                 </div>
