@@ -50,6 +50,15 @@ interface HeaderProps {
   isExpanded?: boolean
 }
 
+
+function truncateMiddle(text: string, maxLength: number = 30) {
+  if (!text || text.length <= maxLength) return text;
+  const charsToShow = maxLength - 3;
+  const frontChars = Math.ceil(charsToShow / 2);
+  const backChars = Math.floor(charsToShow / 2);
+  return text.substring(0, frontChars) + '...' + text.substring(text.length - backChars);
+}
+
 export function ColabsHeader({ onMobileMenuClick, onUploadSuccess, isExpanded = false }: HeaderProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -217,11 +226,11 @@ export function ColabsHeader({ onMobileMenuClick, onUploadSuccess, isExpanded = 
               {breadcrumbs.map((crumb, index) => (
                 <div key={index} className="flex items-center gap-1.5">
                   {crumb.href ? (
-                    <Link href={crumb.href} className="hover:text-foreground transition-colors">
-                      {crumb.label}
+                    <Link href={crumb.href} className="hover:text-foreground transition-colors" title={crumb.label}>
+                      {truncateMiddle(crumb.label, 25)}
                     </Link>
                   ) : (
-                    <span className="text-foreground truncate max-w-[300px]" title={crumb.label}>{crumb.label}</span>
+                    <span className="text-foreground" title={crumb.label}>{truncateMiddle(crumb.label, 25)}</span>
                   )}
                   {index < breadcrumbs.length - 1 && (
                     <ChevronRight className="h-4 w-4 shrink-0 opacity-50" />
