@@ -119,14 +119,15 @@ export function isProjectKpiRecommended(kpi?: ContractKPI | null) {
 
 export function getKpiCategory(kpi: ContractKPI): "sla" | "penalty" | "deadline" | "other" {
   const kpiType = String(kpi.kpi_type || "").toLowerCase();
+  const recordType = String(kpi.record_type || "").toLowerCase();
   const ruleType = String(kpi.rule_type || kpi.rule?.rule_type || "").toLowerCase();
-  if (kpiType === "sla" || kpiType === "performance" || ruleType === "tiered" || ruleType === "threshold") {
+  if (recordType === "supporting_measurement" || kpiType === "sla" || kpiType === "performance" || ruleType === "tiered" || ruleType === "threshold") {
     return "sla";
   }
-  if (kpiType === "penalty" || kpi.consequence_value != null || kpi.consequence?.value != null) {
+  if (recordType === "financial_consequence" || kpiType === "penalty" || kpi.consequence_value != null || kpi.consequence?.value != null) {
     return "penalty";
   }
-  if (kpiType === "deadline" || kpiType === "notice" || ruleType === "deadline") {
+  if (recordType === "reporting_or_evidence_obligation" || kpiType === "deadline" || kpiType === "notice" || ruleType === "deadline") {
     return "deadline";
   }
   return "other";

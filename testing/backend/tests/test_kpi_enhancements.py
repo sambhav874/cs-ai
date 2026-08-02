@@ -2,6 +2,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 from services.kpi_manager import ContractKPIManager
+from services.kpi_schema import KPISchemaV1toV2Migrator, flatten_for_legacy_frontend
 
 def test_calibrate_confidence():
     manager = ContractKPIManager()
@@ -30,6 +31,80 @@ def test_calibrate_confidence():
     calibrated, reason = manager._calibrate_confidence(0.81, "Misc", "other", "some text")
     assert calibrated == 0.81
     assert "Retained" in reason
+
+
+def test_phase_aware_record_preserves_measurement_and_recovery_separately():
+    manager = ContractKPIManager.__new__(ContractKPIManager)
+    phase = {
+        "source_id": "src-1",
+        "record_type": "penalty",
+        "name": "KPI-TEL-09: Sev 1 MTTR",
+        "description": "MTTR target with a financial consequence.",
+        "party_role": "supplier",
+        "party_name": "Provider",
+        "quote": "Sev 1 MTTR must be less than 15 minutes; failure incurs $10,000 per incident.",
+        "measurement": {"target_type": "scalar", "operator": "lt", "threshold": 15, "unit": "minutes"},
+        "recovery": {
+            "mechanism": "liquidated_damages",
+            "direction": "recover_from_supplier",
+            "consequence_value": 10000,
+            "consequence_unit": "currency",
+            "consequence_currency": "USD",
+        },
+        "confidence": 0.95,
+        "needs_review": False,
+    }
+    row = {
+        "phase1": phase,
+        "_phase_record": {"record_id": "REC-1", "status": "source_mapped", "phase4": {"action": "claim damages"}},
+    }
+    item = manager._kpi_from_llm_row(
+        row=row,
+        record_lookup={"src-1": {"text": phase["quote"], "candidate": {"segment_id": "seg-1"}, "section_path": "Article V"}},
+        contract_id="contract-1",
+        project_id=None,
+        contract_name="contract.pdf",
+        user_id="user-1",
+        run_id="run-1",
+        provider="test",
+    )
+
+    assert item["value"] == 15
+    assert item["unit"] == "minutes"
+    assert item["consequence_value"] == 10000
+    assert item["recovery"]["mechanism"] == "liquidated_damages"
+    assert item["phase4"]["action"] == "claim damages"
+
+    flat = flatten_for_legacy_frontend(KPISchemaV1toV2Migrator.migrate_doc(item))
+    assert flat["rule"]["spec"]["target"] == 15
+    assert flat["recovery"]["mechanism"] == "liquidated_damages"
+
+
+def test_missing_measurement_does_not_promote_penalty_number_to_threshold():
+    manager = ContractKPIManager.__new__(ContractKPIManager)
+    parsed = manager._parse_quantitative_threshold(
+        raw_value=None,
+        raw_operator=None,
+        raw_unit="minutes",
+        quote="Failure incurs $10,000 per incident.",
+    )
+    assert parsed["value"] is None
+    assert parsed["value_min"] is None
+    assert parsed["operator"] == "specified"
+
+
+def test_canonical_consolidation_merges_supporting_rows_without_losing_target():
+    manager = ContractKPIManager.__new__(ContractKPIManager)
+    rows = [
+        {"name": "KPI-TEL-01: Core Uptime", "canonical_metric_key": "KPI-TEL-01", "value": 99.99, "unit": "%", "quote": "Core uptime target 99.99%.", "citation": {"source_id": "a"}, "confidence": 0.95},
+        {"name": "KPI-TEL-01: Core Uptime Tier 1", "canonical_metric_key": "KPI-TEL-01", "value": None, "target_schedule": [{"tier": "Tier 1", "range": "99.990%-99.994%", "credit_pct": 5}], "recovery": {"mechanism": "service_credit"}, "quote": "99.990%-99.994%: 5% credit.", "citation": {"source_id": "b"}, "confidence": 0.90},
+    ]
+    result = manager._consolidate_and_group_kpis(rows)
+    assert len(result) == 1
+    assert result[0]["value"] == 99.99
+    assert result[0]["target_schedule"][0]["credit_pct"] == 5
+    assert result[0]["recovery"]["mechanism"] == "service_credit"
+    assert len(result[0]["source_evidence"]) == 2
 
 @patch("services.kpi_manager.requests.Session")
 def test_rerank_candidates_with_voyage(mock_session_cls):
@@ -554,4 +629,3 @@ def test_v1_to_v2_migration_and_translation_shim():
     assert flat["target_value"] == 99.9
     assert flat["name"] == "Legacy Uptime"
     assert flat["custom_tag"] == "enterprise_sla"
-

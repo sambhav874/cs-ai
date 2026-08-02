@@ -55,7 +55,7 @@ export function ProjectKPIWorkspace({
   onTrackRecommended: () => void | Promise<void>;
   onTrackKpi: (kpi: ContractKPI) => void | Promise<void>;
 }) {
-  const [activeTab, setActiveTab] = useState<"all" | "sla" | "penalty" | "deadline" | "tracked" | "review">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "supplier" | "client" | "mutual" | "sla" | "penalty" | "deadline" | "tracked" | "review">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedKpiId, setExpandedKpiId] = useState<string | null>(null);
 
@@ -69,6 +69,7 @@ export function ProjectKPIWorkspace({
   const slaCount = useMemo(() => kpis.filter((kpi) => getKpiCategory(kpi) === "sla").length, [kpis]);
   const penaltyCount = useMemo(() => kpis.filter((kpi) => getKpiCategory(kpi) === "penalty").length, [kpis]);
   const deadlineCount = useMemo(() => kpis.filter((kpi) => getKpiCategory(kpi) === "deadline").length, [kpis]);
+  const partyCount = (role: "supplier" | "client" | "mutual") => kpis.filter((kpi) => String((kpi as any).party_role || (kpi as any).obligation_type || "").toLowerCase() === role).length;
 
   // Financial Risk Exposure Calculation
   const totalFinancialExposure = useMemo(() => {
@@ -89,6 +90,9 @@ export function ProjectKPIWorkspace({
   const filteredKpis = useMemo(() => {
     return kpis.filter((kpi) => {
       // Tab filter
+      if (activeTab === "supplier" && String((kpi as any).party_role || (kpi as any).obligation_type || "").toLowerCase() !== "supplier") return false;
+      if (activeTab === "client" && String((kpi as any).party_role || (kpi as any).obligation_type || "").toLowerCase() !== "client") return false;
+      if (activeTab === "mutual" && String((kpi as any).party_role || (kpi as any).obligation_type || "").toLowerCase() !== "mutual") return false;
       if (activeTab === "sla" && getKpiCategory(kpi) !== "sla") return false;
       if (activeTab === "penalty" && getKpiCategory(kpi) !== "penalty") return false;
       if (activeTab === "deadline" && getKpiCategory(kpi) !== "deadline") return false;
@@ -120,10 +124,10 @@ export function ProjectKPIWorkspace({
         <div>
           <div className="flex items-center gap-2">
             <BarChart3 className="h-6 w-6 text-primary" />
-            <h2 className="text-3xl font-bold text-foreground">KPI Register & SLA Monitoring</h2>
+            <h2 className="text-3xl font-bold text-foreground">Trackable Operational Obligations</h2>
           </div>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Structured contract obligations, service level targets, and penalty rules. Tracked KPIs automatically sync with live telemetry and breach alerts.
+            Agreement-derived obligations, supporting measurements, evidence duties, and consequences. Monitoring activates only when the record is ready for evidence.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -227,6 +231,9 @@ export function ProjectKPIWorkspace({
           >
             All Items ({kpis.length})
           </button>
+          <button type="button" onClick={() => setActiveTab("supplier")} className={cx("rounded-lg px-3 py-1.5 text-xs font-medium transition-colors", activeTab === "supplier" ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/60 text-muted-foreground hover:bg-muted")}>Supplier ({partyCount("supplier")})</button>
+          <button type="button" onClick={() => setActiveTab("client")} className={cx("rounded-lg px-3 py-1.5 text-xs font-medium transition-colors", activeTab === "client" ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/60 text-muted-foreground hover:bg-muted")}>Client ({partyCount("client")})</button>
+          <button type="button" onClick={() => setActiveTab("mutual")} className={cx("rounded-lg px-3 py-1.5 text-xs font-medium transition-colors", activeTab === "mutual" ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/60 text-muted-foreground hover:bg-muted")}>Mutual ({partyCount("mutual")})</button>
           <button
             type="button"
             onClick={() => setActiveTab("sla")}
@@ -284,7 +291,7 @@ export function ProjectKPIWorkspace({
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search KPI name, section, quote..."
+            placeholder="Search obligation, section, quote..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="h-9 w-full rounded-md border border-border bg-background pl-9 pr-3 text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
@@ -479,7 +486,7 @@ export function ProjectKPIWorkspace({
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-xs">
                       <div className="rounded-md border border-border bg-background p-2.5">
                         <span className="text-[10px] font-semibold text-muted-foreground uppercase">Responsible Party</span>
-                        <p className="mt-0.5 font-medium text-foreground">{kpi.party || kpi.responsible_party || "Vendor"}</p>
+                        <p className="mt-0.5 font-medium text-foreground">{kpi.party_role || "Needs review"} · {kpi.party || kpi.responsible_party || "Unassigned"}</p>
                       </div>
                       <div className="rounded-md border border-border bg-background p-2.5">
                         <span className="text-[10px] font-semibold text-muted-foreground uppercase">Remediation SLA</span>

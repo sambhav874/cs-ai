@@ -1220,8 +1220,19 @@ class KpiSourceIngestionService:
         for index, row in enumerate(rows, start=1):
             reasons: List[str] = []
             raw_value = next((row.get(key) for key in ("actual_value", "value", "actual", "score") if not _is_missing_value(row.get(key))), None)
-            if raw_value is None:
-                reasons.append("Missing actual_value/value")
+            evidence_value = next(
+                (row.get(key) for key in ("evidence", "evidence_artifact", "artifact", "artifact_url", "certificate", "attestation", "conforms_to", "result", "status", "present") if not _is_missing_value(row.get(key))),
+                None,
+            )
+            obligation = self.manager.kpis.find_one(
+                {"contract_id": config.get("contract_id"), "kpi_id": row.get("kpi_id")},
+                {"record_type": 1, "rule_type": 1, "trackability_status": 1},
+            ) if row.get("kpi_id") else None
+            record_type = str((obligation or {}).get("record_type") or "").lower()
+            rule_type = str((obligation or {}).get("rule_type") or "").lower()
+            evidence_only = record_type in {"reporting_or_evidence_obligation", "reference_only", "process_only"} or rule_type in {"evidence", "qualitative"}
+            if raw_value is None and not (evidence_only and evidence_value is not None):
+                reasons.append("Missing actual_value/value or evidence artifact")
             if not row.get("kpi_id") and not row.get("kpi_name") and not row.get("metric") and not row.get("name"):
                 reasons.append("Missing KPI mapping")
             for field in required_fields:
@@ -1230,6 +1241,8 @@ class KpiSourceIngestionService:
             if reasons:
                 skipped.append({"row": index, "reason": "; ".join(reasons), "data": row})
             else:
+                if raw_value is None and evidence_value is not None:
+                    row["actual_value"] = evidence_value
                 accepted.append(row)
         for binding in self.manager._runtime_kpi_bindings(config):
             if binding.get("enabled") is False:

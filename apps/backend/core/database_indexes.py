@@ -6,14 +6,37 @@ import logging
 # Set up logging
 logger = logging.getLogger(__name__)
 
-def initialize_all_indexes(db):
+def initialize_all_indexes(db=None):
     """
     Initialize all MongoDB indexes with proper error handling.
-    Skips index creation if duplicates exist rather than failing.
+    Routes index creation strictly to domain DBs (contract_core_db, contract_agent_db, contract_kpi_db, contract_eval_db).
     """
+    from core.database import core_db, agent_db, kpi_db, eval_db
+    
+    target_core_db = db if db is not None else core_db
+
+    # Clean up any misplaced empty collections accidentally created in contract_core_db
+    misplaced = [
+        "agent_approvals", "agent_chat_messages", "agent_chat_sessions", "agent_cost_events",
+        "agent_document_edits", "agent_drafts", "agent_memories", "agent_runs", "agent_trace_events",
+        "agent_workflow_checkpoints", "contract_kpi_actuals", "contract_kpi_alert_rules",
+        "contract_kpi_alerts", "contract_kpi_breaches", "contract_kpi_extraction_runs",
+        "contract_kpi_fetch_runs", "contract_kpi_governance_events", "contract_kpi_integration_profiles",
+        "contract_kpi_metric_catalog", "contract_kpi_source_configs", "contract_kpis", "contract_vectors",
+        "playbook_findings", "playbook_runs", "playbooks"
+    ]
+    for col in misplaced:
+        if col in target_core_db.list_collection_names():
+            if target_core_db[col].count_documents({}) == 0:
+                try:
+                    target_core_db.drop_collection(col)
+                    logger.info(f"Dropped misplaced empty collection '{col}' from contract_core_db")
+                except Exception as e:
+                    logger.warning(f"Could not drop misplaced collection '{col}': {e}")
+
     try:
-        # Contracts collection indexes
-        contracts = db["contracts"]
+        # Contracts collection indexes (contract_core_db)
+        contracts = target_core_db["contracts"]
         
         # Compound Index for list_documents (status + uploaded_at)
         _create_index_safe(
@@ -182,8 +205,8 @@ def initialize_all_indexes(db):
             "playbook_findings_playbook_status_updated"
         )
 
-        # ContractSense deep agent workflow collections
-        agent_runs = db["agent_runs"]
+        # ContractSense deep agent workflow collections (contract_agent_db)
+        agent_runs = agent_db["agent_runs"]
         _create_unique_index_safe(
             agent_runs,
             [("workflow_id", ASCENDING)],
@@ -200,14 +223,14 @@ def initialize_all_indexes(db):
             "agent_runs_project_updated"
         )
 
-        agent_trace_events = db["agent_trace_events"]
+        agent_trace_events = agent_db["agent_trace_events"]
         _create_index_safe(
             agent_trace_events,
             [("workflow_id", ASCENDING), ("created_at", ASCENDING)],
             "agent_trace_workflow_created"
         )
 
-        agent_approvals = db["agent_approvals"]
+        agent_approvals = agent_db["agent_approvals"]
         _create_unique_index_safe(
             agent_approvals,
             [("approval_id", ASCENDING)],
@@ -219,21 +242,21 @@ def initialize_all_indexes(db):
             "agent_approvals_workflow_status"
         )
 
-        agent_cost_events = db["agent_cost_events"]
+        agent_cost_events = agent_db["agent_cost_events"]
         _create_index_safe(
             agent_cost_events,
             [("workflow_id", ASCENDING), ("created_at", ASCENDING)],
             "agent_cost_workflow_created"
         )
 
-        agent_workflow_checkpoints = db["agent_workflow_checkpoints"]
+        agent_workflow_checkpoints = agent_db["agent_workflow_checkpoints"]
         _create_index_safe(
             agent_workflow_checkpoints,
             [("workflow_id", ASCENDING), ("created_at", DESCENDING)],
             "agent_checkpoints_workflow_created"
         )
 
-        agent_document_edits = db["agent_document_edits"]
+        agent_document_edits = agent_db["agent_document_edits"]
         _create_unique_index_safe(
             agent_document_edits,
             [("edit_id", ASCENDING)],
@@ -250,8 +273,8 @@ def initialize_all_indexes(db):
             "agent_document_edits_version_created"
         )
 
-        # Users collection indexes
-        users = db["users"]
+        # Users collection indexes (contract_core_db)
+        users = target_core_db["users"]
         _create_unique_index_safe(
             users,
             "username",
@@ -268,8 +291,8 @@ def initialize_all_indexes(db):
             "teamIds"
         )
 
-        # Teams collection indexes
-        teams = db["teams"]
+        # Teams collection indexes (contract_core_db)
+        teams = target_core_db["teams"]
         _create_index_safe(
             teams,
             "name",
@@ -286,17 +309,16 @@ def initialize_all_indexes(db):
             "members_userId"
         )
 
-        # Accounts collection indexes
-        accounts = db["accounts"]
+        # Accounts collection indexes (contract_core_db)
+        accounts = target_core_db["accounts"]
         _create_unique_index_safe(
             accounts,
             "user_id",
             "user_id_unique"
         )
 
-        # Revoked tokens (JWT blocklist) \u2014 TTL auto-purges expired entries.
-        # The `expireAfterSeconds=0` means MongoDB deletes documents exactly at `expires_at`.
-        revoked_tokens = db["revoked_tokens"]
+        # Revoked tokens (contract_core_db)
+        revoked_tokens = target_core_db["revoked_tokens"]
         _create_unique_index_safe(
             revoked_tokens,
             "jti",
@@ -313,8 +335,8 @@ def initialize_all_indexes(db):
             if "already exists" not in str(ttl_err):
                 logger.warning(f"Failed to create TTL index on revoked_tokens: {ttl_err}")
 
-        # Contract vector retrieval indexes
-        contract_vectors = db["contract_vectors"]
+        # Contract vector retrieval indexes (contract_core_db)
+        contract_vectors = target_core_db["contract_vectors"]
         _create_index_safe(
             contract_vectors,
             [("namespace", ASCENDING), ("chunk_level", ASCENDING)],
@@ -336,16 +358,16 @@ def initialize_all_indexes(db):
             "cv_document_id"
         )
 
-        # Jobs collection indexes
-        jobs = db["jobs"]
+        # Jobs collection indexes (contract_core_db)
+        jobs = target_core_db["jobs"]
         _create_index_safe(
             jobs,
             [("contract_id", ASCENDING), ("updated_at", DESCENDING), ("created_at", DESCENDING)],
             "job_contract_latest"
         )
 
-        # Agent memory / chat indexes
-        agent_chat_sessions = db["agent_chat_sessions"]
+        # Agent memory / chat indexes (contract_agent_db)
+        agent_chat_sessions = agent_db["agent_chat_sessions"]
         _create_unique_index_safe(
             agent_chat_sessions,
             [("session_id", ASCENDING), ("contract_id", ASCENDING), ("user_id", ASCENDING)],
@@ -357,14 +379,14 @@ def initialize_all_indexes(db):
             "agent_sessions_contract_user_updated"
         )
 
-        agent_chat_messages = db["agent_chat_messages"]
+        agent_chat_messages = agent_db["agent_chat_messages"]
         _create_index_safe(
             agent_chat_messages,
             [("session_id", ASCENDING), ("contract_id", ASCENDING), ("user_id", ASCENDING), ("created_at", ASCENDING)],
             "agent_messages_session_order"
         )
 
-        agent_memories = db["agent_memories"]
+        agent_memories = agent_db["agent_memories"]
         _create_unique_index_safe(
             agent_memories,
             [("contract_id", ASCENDING), ("user_id", ASCENDING), ("memory_key", ASCENDING)],
@@ -376,15 +398,15 @@ def initialize_all_indexes(db):
             "agent_memory_contract_user_updated"
         )
 
-        agent_drafts = db["agent_drafts"]
+        agent_drafts = agent_db["agent_drafts"]
         _create_index_safe(
             agent_drafts,
             [("contract_id", ASCENDING), ("user_id", ASCENDING), ("updated_at", DESCENDING)],
             "agent_drafts_contract_user_updated"
         )
 
-        # KPI register indexes
-        contract_kpis = db["contract_kpis"]
+        # KPI register indexes (contract_kpi_db)
+        contract_kpis = kpi_db["contract_kpis"]
         _create_unique_index_safe(
             contract_kpis,
             [("kpi_id", ASCENDING)],
@@ -406,7 +428,7 @@ def initialize_all_indexes(db):
             "kpis_document_page"
         )
 
-        contract_kpi_actuals = db["contract_kpi_actuals"]
+        contract_kpi_actuals = kpi_db["contract_kpi_actuals"]
         _create_index_safe(
             contract_kpi_actuals,
             [("kpi_id", ASCENDING), ("timestamp", DESCENDING)],
@@ -418,21 +440,21 @@ def initialize_all_indexes(db):
             "kpi_actuals_contract_timeline"
         )
 
-        contract_kpi_breaches = db["contract_kpi_breaches"]
+        contract_kpi_breaches = kpi_db["contract_kpi_breaches"]
         _create_index_safe(
             contract_kpi_breaches,
             [("contract_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)],
             "kpi_breaches_contract_status"
         )
 
-        contract_kpi_extraction_runs = db["contract_kpi_extraction_runs"]
+        contract_kpi_extraction_runs = kpi_db["contract_kpi_extraction_runs"]
         _create_index_safe(
             contract_kpi_extraction_runs,
             [("contract_id", ASCENDING), ("started_at", DESCENDING)],
             "kpi_runs_contract_started"
         )
 
-        contract_kpi_source_configs = db["contract_kpi_source_configs"]
+        contract_kpi_source_configs = kpi_db["contract_kpi_source_configs"]
         _create_index_safe(
             contract_kpi_source_configs,
             [("contract_id", ASCENDING), ("updated_at", DESCENDING)],
@@ -444,7 +466,7 @@ def initialize_all_indexes(db):
             "kpi_source_configs_due_fetches"
         )
 
-        contract_kpi_fetch_runs = db["contract_kpi_fetch_runs"]
+        contract_kpi_fetch_runs = kpi_db["contract_kpi_fetch_runs"]
         _create_index_safe(
             contract_kpi_fetch_runs,
             [("contract_id", ASCENDING), ("source_config_id", ASCENDING), ("started_at", DESCENDING)],
@@ -457,14 +479,14 @@ def initialize_all_indexes(db):
             "kpi_actuals_source_dedupe"
         )
 
-        contract_kpi_metric_catalog = db["contract_kpi_metric_catalog"]
+        contract_kpi_metric_catalog = kpi_db["contract_kpi_metric_catalog"]
         _create_unique_index_safe(
             contract_kpi_metric_catalog,
             [("project_id", ASCENDING), ("metric_key", ASCENDING)],
             "kpi_metric_catalog_project_key_unique"
         )
 
-        contract_kpi_governance_events = db["contract_kpi_governance_events"]
+        contract_kpi_governance_events = kpi_db["contract_kpi_governance_events"]
         _create_index_safe(
             contract_kpi_governance_events,
             [("contract_id", ASCENDING), ("kpi_id", ASCENDING), ("created_at", DESCENDING)],
@@ -476,7 +498,7 @@ def initialize_all_indexes(db):
             "kpi_governance_project_metric_created"
         )
 
-        contract_kpi_integration_profiles = db["contract_kpi_integration_profiles"]
+        contract_kpi_integration_profiles = kpi_db["contract_kpi_integration_profiles"]
         _create_unique_index_safe(
             contract_kpi_integration_profiles,
             [("profile_id", ASCENDING)],
@@ -488,7 +510,7 @@ def initialize_all_indexes(db):
             "kpi_integration_owner_source_status"
         )
 
-        contract_kpi_alert_rules = db["contract_kpi_alert_rules"]
+        contract_kpi_alert_rules = kpi_db["contract_kpi_alert_rules"]
         _create_unique_index_safe(
             contract_kpi_alert_rules,
             [("contract_id", ASCENDING), ("rule_id", ASCENDING)],
@@ -500,7 +522,7 @@ def initialize_all_indexes(db):
             "kpi_alert_rules_contract_event_active"
         )
 
-        contract_kpi_alerts = db["contract_kpi_alerts"]
+        contract_kpi_alerts = kpi_db["contract_kpi_alerts"]
         _create_unique_index_safe(
             contract_kpi_alerts,
             [("alert_key", ASCENDING)],
@@ -515,6 +537,19 @@ def initialize_all_indexes(db):
             contract_kpi_alerts,
             [("contract_id", ASCENDING), ("event_type", ASCENDING), ("status", ASCENDING)],
             "kpi_alerts_contract_event_status"
+        )
+
+        # Benchmark / eval collection indexes (contract_eval_db)
+        evaluation_runs = eval_db["evaluation_runs"]
+        _create_unique_index_safe(
+            evaluation_runs,
+            [("run_id", ASCENDING)],
+            "eval_runs_id_unique"
+        )
+        _create_index_safe(
+            evaluation_runs,
+            [("created_at", DESCENDING)],
+            "eval_runs_created_at_desc"
         )
 
         logger.info("Database indexes initialized successfully")

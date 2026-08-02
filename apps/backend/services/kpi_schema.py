@@ -11,7 +11,9 @@ import ast
 import logging
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+from services.obligation_extraction_schema import normalize_party_role, normalize_record_type
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,10 @@ RULE_TYPES = {
     "error_budget",
     "evidence",
     "qualitative",
+    # Phase-1 extraction types that are deterministic only after the referenced
+    # table/formula is supplied by the source system.
+    "reference_formula",
+    "lookup_table",
 }
 
 
@@ -327,6 +333,45 @@ def detect_composite_cycle(
 class KPISchemaV1toV2Migrator:
     """Converts legacy flat V1 KPI documents into structured V2 FlexField Rule Model documents."""
 
+    @staticmethod
+    def _record_role_and_type(v1_doc: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+        """Resolve the display taxonomy without defaulting every record to SLA."""
+        role = v1_doc.get("record_role")
+        phase1 = v1_doc.get("phase1") if isinstance(v1_doc.get("phase1"), dict) else {}
+        role = role or phase1.get("record_role")
+        raw_record_type = v1_doc.get("record_type") or phase1.get("record_type")
+        record_type = normalize_record_type(raw_record_type) if raw_record_type else None
+        record_type_map = {
+            "supporting_measurement": ("supporting_metric", "performance"),
+            "trackable_operational_obligation": ("obligation", "obligation"),
+            "reporting_or_evidence_obligation": ("obligation", "reporting"),
+            "financial_consequence": ("recovery", "penalty"),
+            "reference_only": ("reference_only", "reference"),
+            "process_only": ("process_only", "process"),
+        }
+        if record_type in record_type_map:
+            return record_type_map[record_type]
+        if role:
+            role_types = {
+                "primary_kpi": ("primary_kpi", "sla"),
+                "supporting_metric": ("supporting_metric", "performance"),
+                "financial_term": ("financial_term", "financial"),
+                "obligation": ("obligation", "obligation"),
+                "reference_only": ("reference_only", "obligation"),
+                "recovery": ("recovery", "penalty"),
+            }
+            if role in role_types:
+                return role_types[role]
+
+        text = " ".join(str(v1_doc.get(key) or "") for key in ("name", "kpi_name", "description", "quote", "clause_text")).lower()
+        if re.search(r"\b(fee|rate|price|payment|invoice|refund|credit|charge|cost|subscription)\b", text) or str(v1_doc.get("unit") or "").lower() in {"usd", "eur", "gbp", "$", "currency"}:
+            return "financial_term", "financial"
+        if re.search(r"\b(deadline|notice|notification|report|submission|retention|inspection|maintenance|documentation|root cause|dispatch)\b", text):
+            return "obligation", "obligation"
+        if re.search(r"\b(availability|uptime|latency|success rate|loss ratio|outage|reliability|efficiency|utilization|accuracy|mttd|mttr|throughput|isolation)\b", text):
+            return "supporting_metric", "performance"
+        return "obligation", "obligation"
+
     # Unit tokens we recognise in tiered-schedule clause text
     _UNIT_TOKENS = r"(?:%|ms|min|minutes?|hrs?|hours?|sec(?:onds?)?|events?|sites?|mbps|gbps|units?|calls?|days?|weeks?)"
     # Numeric value with an optional unit
@@ -390,7 +435,25 @@ class KPISchemaV1toV2Migrator:
                 "penalty_amount": penalty_amount,
             })
 
-        return tiers
+        # A consolidated citation can contain the same consequence schedule in
+        # both the article table and an exhibit.  Collapse exact consequence
+        # repeats while preferring the entry that carries the explicit breach
+        # range.  This prevents duplicated tiers without losing distinct bands.
+        deduped: List[Dict[str, Any]] = []
+        seen: Dict[Tuple[Any, Any], int] = {}
+        for tier in tiers:
+            amount = tier.get("penalty_amount") or tier.get("credit_pct")
+            unit = "penalty" if tier.get("penalty_amount") else "credit"
+            key = (str(amount), unit)
+            existing_index = seen.get(key)
+            if existing_index is None:
+                seen[key] = len(deduped)
+                deduped.append(tier)
+                continue
+            existing = deduped[existing_index]
+            if not existing.get("range") and tier.get("range"):
+                deduped[existing_index] = tier
+        return deduped
 
     @staticmethod
     def migrate_doc(v1_doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -407,11 +470,23 @@ class KPISchemaV1toV2Migrator:
                 name = re.sub(r"\s*\|\s*.*$", "", name)
                 name = re.sub(r"\s*Tier\s+\d+\s*$", "", name, flags=re.IGNORECASE)
                 identity["name"] = re.sub(r"^[|\s]+|[|\s]+$", "", name).strip() or identity["name"]
+            role, derived_type = KPISchemaV1toV2Migrator._record_role_and_type(v2_copy)
+            if role:
+                v2_copy["record_role"] = role
+            if derived_type:
+                identity["kpi_type"] = derived_type
                 v2_copy["identity"] = identity
 
             # --- Tier detection: always re-parse from clause_text (ground truth) ---
             # stale spec.tiers may have been stored from an old, broken regex run.
             cattr = v2_copy.get("custom_attributes") or {}
+            if isinstance(cattr, dict) and isinstance(cattr.get("custom_attributes"), dict):
+                nested = cattr.get("custom_attributes") or {}
+                v2_copy["custom_attributes"] = {
+                    **nested,
+                    **{k: v for k, v in cattr.items() if k != "custom_attributes"},
+                }
+                cattr = v2_copy["custom_attributes"]
             clause_text = str(cattr.get("clause_text") or cattr.get("quote") or identity.get("source_clause", {}).get("quote") or v2_copy.get("quote") or "")
             rule = dict(v2_copy.get("rule") or {})
             spec = dict(rule.get("spec") or {})
@@ -436,6 +511,12 @@ class KPISchemaV1toV2Migrator:
         contract_id = str(v1_doc.get("contract_id") or "")
         project_id = str(v1_doc.get("project_id") or "") if v1_doc.get("project_id") else None
         contract_name = v1_doc.get("contract_name") or "Contract"
+        raw_source_clause = v1_doc.get("source_clause")
+        if isinstance(raw_source_clause, dict):
+            source_quote = raw_source_clause.get("quote") or raw_source_clause.get("text") or ""
+        else:
+            source_quote = raw_source_clause or ""
+        source_quote = v1_doc.get("quote") or v1_doc.get("clause_text") or v1_doc.get("source_quote") or source_quote or v1_doc.get("definition") or ""
 
         # Identity
         raw_name = (v1_doc.get("identity", {}).get("name") if isinstance(v1_doc.get("identity"), dict) else None) or v1_doc.get("name") or v1_doc.get("kpi_name") or "Unnamed KPI"
@@ -444,11 +525,13 @@ class KPISchemaV1toV2Migrator:
         clean_name = re.sub(r"\s*Tier\s+\d+\s*$", "", clean_name, flags=re.IGNORECASE)
         clean_name = re.sub(r"^[|\s]+|[|\s]+$", "", clean_name).strip() or "Unnamed KPI"
 
+        record_role, derived_kpi_type = KPISchemaV1toV2Migrator._record_role_and_type(v1_doc)
         identity = {
             "name": clean_name,
-            "kpi_type": (v1_doc.get("identity", {}).get("kpi_type") if isinstance(v1_doc.get("identity"), dict) else None) or v1_doc.get("kpi_type") or "sla",
+            "kpi_type": derived_kpi_type or (v1_doc.get("identity", {}).get("kpi_type") if isinstance(v1_doc.get("identity"), dict) else None) or v1_doc.get("kpi_type") or "obligation",
             "canonical_metric_key": v1_doc.get("canonical_metric_key") or kpi_id,
             "party": v1_doc.get("party") or v1_doc.get("responsible_party"),
+            "party_role": normalize_party_role(v1_doc.get("party_role") or v1_doc.get("obligation_type") or v1_doc.get("party_type")),
             "business_owner": v1_doc.get("business_owner"),
             "technical_owner": v1_doc.get("technical_owner"),
             "responsible_party": v1_doc.get("responsible_party"),
@@ -456,7 +539,7 @@ class KPISchemaV1toV2Migrator:
             "project_id": project_id,
             "contract_name": contract_name,
             "source_clause": {
-                "quote": v1_doc.get("source_clause") or v1_doc.get("definition") or "",
+                "quote": source_quote,
                 "page_start": v1_doc.get("page_start"),
                 "page_end": v1_doc.get("page_end"),
                 "section_path": v1_doc.get("section_path") or v1_doc.get("structural_path") or v1_doc.get("section"),
@@ -465,7 +548,13 @@ class KPISchemaV1toV2Migrator:
         }
 
         # Rule
-        rule_type = v1_doc.get("rule_type") or v1_doc.get("type") or "threshold"
+        record_type = normalize_record_type(v1_doc.get("record_type"))
+        rule_type = v1_doc.get("rule_type") or v1_doc.get("type")
+        if not rule_type and record_type in {"trackable_operational_obligation", "reporting_or_evidence_obligation", "reference_only", "process_only"}:
+            rule_type = "evidence" if v1_doc.get("evidence_hypothesis") else "qualitative"
+        if not rule_type and record_type == "financial_consequence" and v1_doc.get("value") is None:
+            rule_type = "qualitative"
+        rule_type = rule_type or "threshold"
         target_schedule = v1_doc.get("target_schedule") or (v1_doc.get("custom_attributes") or {}).get("target_schedule") or []
         clause_text = str(v1_doc.get("clause_text") or v1_doc.get("quote") or v1_doc.get("source_quote") or "")
 
@@ -477,29 +566,32 @@ class KPISchemaV1toV2Migrator:
             rule_type = "tiered"
 
         operator = v1_doc.get("operator") or v1_doc.get("evaluation_rule", {}).get("operator") or ">="
-        unit = v1_doc.get("unit") or v1_doc.get("evaluation_rule", {}).get("unit") or "%"
+        measurement = v1_doc.get("measurement") if isinstance(v1_doc.get("measurement"), dict) else {}
+        unit = v1_doc.get("unit") or measurement.get("unit") or v1_doc.get("evaluation_rule", {}).get("unit") or "native"
         period_type = v1_doc.get("period_type") or v1_doc.get("frequency") or "monthly"
         evaluation_window = v1_doc.get("evaluation_window") or period_type
         aggregation = v1_doc.get("aggregation_type") or v1_doc.get("aggregation") or "monthly"
 
         spec: Dict[str, Any] = {}
+        primary_target = (
+            v1_doc.get("target_value")
+            if v1_doc.get("target_value") is not None
+            else v1_doc.get("value")
+        )
         if rule_type == "threshold":
-            target = (
-                v1_doc.get("target_value")
-                if v1_doc.get("target_value") is not None
-                else v1_doc.get("value")
-            )
-            spec = {"target": float(target) if isinstance(target, (int, float)) else target}
+            spec = {"target": float(primary_target) if isinstance(primary_target, (int, float)) else primary_target}
         elif rule_type == "range":
             spec = {
                 "min": v1_doc.get("value_min") if v1_doc.get("value_min") is not None else v1_doc.get("threshold_min", 0.0),
                 "max": v1_doc.get("value_max") if v1_doc.get("value_max") is not None else v1_doc.get("threshold_max", 100.0),
+                "target": float(primary_target) if isinstance(primary_target, (int, float)) else primary_target,
             }
         elif rule_type == "tiered":
             spec = {
                 "tiers": target_schedule or v1_doc.get("tiers") or [],
                 "interpolation": v1_doc.get("interpolation") or "step",
                 "modifiers": v1_doc.get("modifiers") or [],
+                "target": float(primary_target) if isinstance(primary_target, (int, float)) else primary_target,
             }
         elif rule_type == "deadline":
             spec = {
@@ -518,6 +610,18 @@ class KPISchemaV1toV2Migrator:
             spec = {"expected": v1_doc.get("expected") or True}
         elif rule_type == "qualitative":
             spec = {"description": v1_doc.get("description") or v1_doc.get("definition") or ""}
+        elif rule_type == "reference_formula":
+            spec = {
+                "target": v1_doc.get("target_value") if v1_doc.get("target_value") is not None else v1_doc.get("value"),
+                "reference": v1_doc.get("reference") or {},
+                "threshold_min": v1_doc.get("value_min") or v1_doc.get("threshold_min"),
+                "threshold_max": v1_doc.get("value_max") or v1_doc.get("threshold_max"),
+            }
+        elif rule_type == "lookup_table":
+            spec = {
+                "lookup_table": v1_doc.get("lookup_table") or {},
+                "target_type": "lookup_table",
+            }
         else:
             spec = {
                 "target": v1_doc.get("target_value") or v1_doc.get("value"),
@@ -568,7 +672,7 @@ class KPISchemaV1toV2Migrator:
 
         standard_v1_keys = {
             "_id", "kpi_id", "schema_version", "contract_id", "project_id", "contract_name",
-            "name", "kpi_name", "description", "kpi_type", "party", "operator", "value",
+            "name", "kpi_name", "description", "kpi_type", "party", "party_role", "obligation_type", "party_type", "operator", "value",
             "unit", "value_min", "value_max", "threshold_min", "threshold_max", "target_value",
             "baseline", "benchmark", "direction", "period_type", "evaluation_window", "frequency",
             "aggregation_type", "rule_type", "consequence_value", "consequence_unit",
@@ -587,7 +691,17 @@ class KPISchemaV1toV2Migrator:
             "source_chunk_level", "target_schedule", "checkpoint_dates", "grace_period_days",
             "lookback_window_days", "partial_period_policy", "late_data_policy", "business_hours",
             "blackout_windows", "severity_grace_periods", "reporting_lock", "missing_data_policy",
-            "error_budget", "section_tags"
+            "error_budget", "section_tags",
+            "record_id", "record_type", "record_role", "contract_family", "contract_type",
+            "canonical_metric_key", "target_type", "reference", "lookup_table",
+            "composite", "measurement", "recovery", "precondition", "cadence",
+            "evidence_hypothesis", "workshop_input", "evidence_flags",
+            "phase1", "phase2", "phase3", "phase4", "record_status",
+            "clause_ref", "source_evidence", "coverage"
+            ,"obligation", "obligation_action", "trigger", "scope", "acceptance_criteria",
+            "dependencies", "exceptions", "dependency_status", "dependency_owner", "dependency_party_role",
+            "trackability", "trackability_status", "schema_profile", "notes"
+            ,"tracking_readiness"
         }
 
         custom_attributes = v1_doc.get("custom_attributes") or {}
@@ -612,6 +726,24 @@ class KPISchemaV1toV2Migrator:
             "governance": governance,
             "custom_attributes": custom_attributes,
         }
+
+        # Preserve the phase-aware extraction contract. These fields are
+        # additive so existing V2 consumers keep working while tracking and
+        # source-linking services can use the richer record.
+        for phase_key in (
+            "record_id", "record_type", "record_role", "contract_family", "contract_type",
+            "canonical_metric_key", "target_type", "reference", "lookup_table",
+            "composite", "measurement", "recovery", "precondition", "cadence",
+            "evidence_hypothesis", "workshop_input", "evidence_flags",
+            "phase1", "phase2", "phase3", "phase4", "record_status",
+            "clause_ref", "source_evidence", "coverage", "party_role", "obligation_type", "party_type",
+            "obligation", "obligation_action", "trigger", "scope", "acceptance_criteria",
+            "dependencies", "exceptions", "dependency_status", "dependency_owner", "dependency_party_role",
+            "trackability", "trackability_status", "schema_profile", "notes",
+            "tracking_readiness",
+        ):
+            if phase_key in v1_doc:
+                v2_doc[phase_key] = v1_doc[phase_key]
 
         if "_id" in v1_doc:
             v2_doc["_id"] = v1_doc["_id"]
@@ -645,6 +777,12 @@ def flatten_for_legacy_frontend(v2_doc: Dict[str, Any]) -> Dict[str, Any]:
     governance = v2_doc.get("governance", {})
     source_clause = identity.get("source_clause", {}) if isinstance(identity.get("source_clause"), dict) else {}
     custom_attrs = v2_doc.get("custom_attributes", {}) if isinstance(v2_doc.get("custom_attributes"), dict) else {}
+    if isinstance(custom_attrs.get("custom_attributes"), dict):
+        nested = custom_attrs.get("custom_attributes") or {}
+        custom_attrs = {
+            **nested,
+            **{k: v for k, v in custom_attrs.items() if k != "custom_attributes"},
+        }
 
     target_val = spec.get("target") if "target" in spec else v2_doc.get("target_value")
 
@@ -660,6 +798,9 @@ def flatten_for_legacy_frontend(v2_doc: Dict[str, Any]) -> Dict[str, Any]:
         "kpi_type": identity.get("kpi_type"),
         "canonical_metric_key": identity.get("canonical_metric_key"),
         "party": identity.get("party"),
+        "party_role": normalize_party_role(identity.get("party_role")),
+        "obligation_type": normalize_party_role(identity.get("party_role")),
+        "party_type": normalize_party_role(identity.get("party_role")),
         "business_owner": identity.get("business_owner"),
         "technical_owner": identity.get("technical_owner"),
         "responsible_party": identity.get("responsible_party") or identity.get("party"),
@@ -724,6 +865,17 @@ def flatten_for_legacy_frontend(v2_doc: Dict[str, Any]) -> Dict[str, Any]:
             "ai_used": False,
         },
     }
+
+    for phase_key in (
+        "record_id", "record_type", "record_role", "contract_family", "contract_type",
+        "canonical_metric_key", "target_type", "reference", "lookup_table",
+        "composite", "measurement", "recovery", "precondition", "cadence",
+        "evidence_hypothesis", "workshop_input", "evidence_flags",
+        "phase1", "phase2", "phase3", "phase4", "record_status",
+        "clause_ref", "source_evidence", "coverage",
+    ):
+        if phase_key in v2_doc:
+            flat_doc[phase_key] = v2_doc[phase_key]
 
     for s_key in ("source_config_id", "source_config_status", "field_mappings", "last_tracking_backfill"):
         if s_key in v2_doc:
