@@ -4,17 +4,17 @@ import { useDropzone } from "react-dropzone"
 import {
   AlertCircle,
   CheckCircle,
-  ChevronDown,
-  ChevronUp,
   FileText,
   Loader2,
-  ShieldCheck,
   Trash2,
   UploadCloud,
   X,
+  Coins,
+  Save,
+  Users,
 } from "lucide-react"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
-import { Progress } from "@/components/ui/progress"
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+
 import { Button } from "@/components/ui/button"
 import { useAccountContext } from '@/app/context/AccountContext'
 import { toast } from "@/hooks/use-toast"
@@ -53,6 +53,7 @@ interface ContractRoles {
   approverUserId: string | null
   status: 'pending' | 'saving' | 'done' | 'error'
   error?: string
+  fileName?: string
 }
 
 interface FileUploadModalProps {
@@ -81,6 +82,7 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
   const [savedRoleTemplate, setSavedRoleTemplate] = useState<RoleTemplate | null>(null)
   const [contractRoles, setContractRoles] = useState<Record<string, ContractRoles>>({})
   const [showRolePanel, setShowRolePanel] = useState(false)
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
 
   const { selectedAccountId } = useAccountContext()
   const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL
@@ -96,7 +98,7 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
       setFiles([]); setError(null); setUploadProgress({}); setSessionStatus("idle")
       setTotalPages(0); setUploading(false); setAccountMembers([]); setIsLoadingMembers(false)
       setBulkEditorUserId(null); setBulkApproverUserId(null); setSavedRoleTemplate(null)
-      setContractRoles({}); setShowRolePanel(false)
+      setContractRoles({}); setShowRolePanel(false); setOpenDropdownId(null)
     }
   }, [isOpen])
 
@@ -201,7 +203,7 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
     const defaultApprover = bulkApproverUserId ?? savedRoleTemplate?.approverUserId ?? null
     const roles: Record<string, ContractRoles> = {}
     for (const r of success) {
-      roles[r.data.contract_id] = { editorUserId: defaultEditor, approverUserId: defaultApprover, status: 'pending' }
+      roles[r.data.contract_id] = { editorUserId: defaultEditor, approverUserId: defaultApprover, status: 'pending', fileName: r.fileName }
     }
     setContractRoles(roles)
     setSessionStatus("assigning"); setShowRolePanel(true)
@@ -279,7 +281,8 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
     disabled: uploading || sessionStatus === 'assigning' || sessionStatus === 'complete_success'
   })
 
-  const canUpload = files.length > 0 && !uploading && sessionStatus === 'idle'
+  const insufficientCredits = files.length > 0 && totalPages > userCredits
+  const canUpload = files.length > 0 && !uploading && sessionStatus === 'idle' && !insufficientCredits
   const isDone = sessionStatus === 'complete_success' || sessionStatus === 'complete_with_errors'
   const uploadedCount = files.filter(f => f.uploadResult?.status === 'success').length
   const allRolesDone = Object.values(contractRoles).every(r => r.status === 'done')
@@ -292,36 +295,57 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Upload contracts</h2>
-            <p className="mt-0.5 text-xs text-gray-500">
+            <DialogTitle className="text-base font-semibold text-gray-900">Upload contracts</DialogTitle>
+            <DialogDescription className="mt-0.5 text-xs text-gray-500">
               {sessionStatus === 'assigning' ? 'Assign workflow roles' : isDone ? `${uploadedCount} uploaded` : uploading ? 'Uploading...' : 'PDF files up to 50 MB'}
-            </p>
+            </DialogDescription>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-medium text-gray-500">{userCredits} credits</span>
+          <div className="flex items-center gap-3 pr-8">
+            <div className="flex items-center gap-1.5 rounded-full bg-gray-100/80 px-2.5 py-1 text-[11px] font-semibold text-gray-700">
+              <Coins className="h-3.5 w-3.5 text-gray-400" />
+              <span>{userCredits} credits</span>
+            </div>
           </div>
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
 
-          {/* === IDLE / COUNTING: Dropzone + bulk roles === */}
-          {(sessionStatus === 'idle' || sessionStatus === 'counting_pages') && (
+          {/* === IDLE / COUNTING / UPLOADING: Dropzone + bulk roles === */}
+          {(sessionStatus === 'idle' || sessionStatus === 'counting_pages' || sessionStatus === 'uploading') && (
             <>
               {/* Bulk role defaults */}
-              {isProAccount && accountMembers.length > 0 && (
+              {isProAccount && isLoadingMembers && (
+                <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3 animate-pulse">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="h-3.5 w-40 rounded bg-gray-200" />
+                    <div className="h-3 w-28 rounded bg-gray-200" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <div className="mb-1 h-2.5 w-12 rounded bg-gray-200" />
+                      <div className="h-8 rounded-lg bg-gray-200" />
+                    </div>
+                    <div>
+                      <div className="mb-1 h-2.5 w-14 rounded bg-gray-200" />
+                      <div className="h-8 rounded-lg bg-gray-200" />
+                    </div>
+                  </div>
+                </div>
+              )}
+              {isProAccount && !isLoadingMembers && accountMembers.length > 0 && (
                 <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
                   <div className="mb-2 flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
-                      <ShieldCheck className="h-3.5 w-3.5 text-gray-500" />
+                      <Users className="h-3.5 w-3.5 text-gray-500" />
                       <span className="text-xs font-medium text-gray-700">Default roles for this batch</span>
                     </div>
-                    <span className="text-[10px] text-gray-400">Applied to all contracts</span>
+                    <span className="text-[10px] text-gray-400">Applicable to all contracts</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <Label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-gray-400">Editor</Label>
-                      <Select value={bulkEditorUserId ?? "none"} onValueChange={v => setBulkEditorUserId(v === "none" ? null : v)}>
+                      <Select value={bulkEditorUserId ?? "none"} onValueChange={v => setBulkEditorUserId(v === "none" ? null : v)} open={openDropdownId === 'bulk-editor-pre'} onOpenChange={o => setOpenDropdownId(o ? 'bulk-editor-pre' : null)}>
                         <SelectTrigger className="h-8 rounded-lg border-gray-200 bg-white text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">None</SelectItem>
@@ -331,7 +355,7 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
                     </div>
                     <div>
                       <Label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-gray-400">Approver</Label>
-                      <Select value={bulkApproverUserId ?? "none"} onValueChange={v => setBulkApproverUserId(v === "none" ? null : v)}>
+                      <Select value={bulkApproverUserId ?? "none"} onValueChange={v => setBulkApproverUserId(v === "none" ? null : v)} open={openDropdownId === 'bulk-approver-pre'} onOpenChange={o => setOpenDropdownId(o ? 'bulk-approver-pre' : null)}>
                         <SelectTrigger className="h-8 rounded-lg border-gray-200 bg-white text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">None</SelectItem>
@@ -344,22 +368,37 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
               )}
 
               {/* Dropzone */}
-              <div
-                {...getRootProps()}
-                className={`cursor-pointer rounded-xl border-2 border-dashed transition-colors ${isDragActive ? "border-gray-900 bg-gray-50" : "border-gray-200 hover:border-gray-400"} ${uploading ? "pointer-events-none opacity-50" : ""}`}
-              >
-                <input {...getInputProps()} />
-                <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
-                    <UploadCloud className="h-5 w-5 text-gray-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{isDragActive ? "Drop files here" : "Drag & drop PDFs here"}</p>
-                    <p className="mt-0.5 text-xs text-gray-500">or click to browse</p>
+              {!uploading ? (
+                <div
+                  {...getRootProps()}
+                  className={`cursor-pointer rounded-xl border-2 border-dashed transition-colors ${isDragActive ? "border-[#015CA9] bg-[#015CA9]/5" : "border-gray-200 hover:border-gray-400"}`}
+                >
+                  <input {...getInputProps()} />
+                  <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
+                      <UploadCloud className="h-5 w-5 text-gray-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{isDragActive ? "Drop files here" : "Drag & drop PDFs here"}</p>
+                      <p className="mt-0.5 text-xs text-gray-500">or click to browse</p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex items-center gap-3 rounded-xl border border-[#015CA9]/20 bg-[#015CA9]/5 px-4 py-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-[#015CA9]" />
+                  <span className="text-sm font-medium text-[#015CA9]">Uploading {files.length} contract{files.length !== 1 ? 's' : ''}…</span>
+                </div>
+              )}
             </>
+          )}
+
+          {/* === CREDIT WARNING === */}
+          {insufficientCredits && !uploading && sessionStatus === 'idle' && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+              <span>Not enough credits — you need {totalPages} but have {userCredits}. Remove some files or upgrade your plan.</span>
+            </div>
           )}
 
           {/* === ERROR === */}
@@ -369,91 +408,98 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
             </div>
           )}
 
-          {/* === FILE LIST (uploading or after) === */}
-          {files.length > 0 && sessionStatus !== 'idle' && sessionStatus !== 'counting_pages' && (
-            <div className="space-y-1.5">
+          {/* === FILE LIST (All states except assigning/done) === */}
+          {files.length > 0 && sessionStatus !== 'assigning' && sessionStatus !== 'complete_success' && (
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-semibold text-gray-900">Selected contracts</span>
+                <span className="text-xs text-gray-400">{files.length} file{files.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="space-y-2">
               {files.map((file) => {
                 const progress = uploadProgress[file.name]
                 const result = file.uploadResult
-                const hasError = result?.status === 'error' || progress < 0
                 const isComplete = result?.status === 'success'
+                const hasError = result?.status === 'error' || progress < 0
+                const isUploading = uploading && !isComplete && !hasError
                 return (
-                  <div key={`${file.name}-${file.size}`} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${hasError ? "border-red-200 bg-red-50" : isComplete ? "border-green-100 bg-green-50/50" : "border-gray-100 bg-white"}`}>
-                    <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md ${hasError ? "bg-red-100" : isComplete ? "bg-green-100" : "bg-gray-100"}`}>
-                      {isComplete ? <CheckCircle className="h-3.5 w-3.5 text-green-600" /> : hasError ? <X className="h-3.5 w-3.5 text-red-500" /> : <FileText className="h-3.5 w-3.5 text-gray-500" />}
+                  <div key={`${file.name}-${file.size}`} className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 shadow-sm ${hasError ? "border-red-200 bg-red-50" : isComplete ? "border-green-200 bg-green-50" : "border-gray-200 bg-white"}`}>
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${hasError ? "bg-red-100 text-red-600" : isComplete ? "bg-green-100 text-green-600" : "bg-[#015CA9]/10 text-[#015CA9]"}`}>
+                        {isComplete ? <CheckCircle className="h-5 w-5" /> : hasError ? <X className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-gray-900">{file.name}</p>
+                        <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500">
+                          <span>{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                          {file.pageCount && (
+                             <>
+                               <span>•</span>
+                               <span>{file.pageCount} page{file.pageCount !== 1 ? 's' : ''}</span>
+                             </>
+                          )}
+
+                          {hasError && result?.status === 'error' && (
+                             <>
+                               <span>•</span>
+                               <span className="text-red-500 truncate">{result.message}</span>
+                             </>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium text-gray-900">{file.name}</p>
-                      {uploading && progress >= 0 && progress < 100 && <Progress value={progress} className="mt-1 h-1" />}
-                      {hasError && result?.status === 'error' && <p className="text-[10px] text-red-500">{result.message}</p>}
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      {isUploading ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-[#015CA9]" />
+                      ) : (sessionStatus === 'idle' || sessionStatus === 'counting_pages') ? (
+                        <Button variant="ghost" size="icon" onClick={() => removeFile(file.name)} className="h-8 w-8 text-gray-400 hover:text-red-600 hover:bg-red-50">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      ) : isComplete ? (
+                        <CheckCircle className="h-5 w-5 text-green-500" />
+                      ) : null}
                     </div>
-                    {uploading && progress >= 0 && progress < 100 && <span className="text-[10px] font-medium text-gray-500">{progress}%</span>}
                   </div>
                 )
               })}
+              </div>
             </div>
           )}
 
           {/* === ROLE ASSIGNMENT PANEL (pro, after upload) === */}
           {sessionStatus === 'assigning' && showRolePanel && contractEntries.length > 0 && (
-            <div className="mt-3 space-y-3">
+            <div className="mt-3 space-y-5">
+              {/* Success Banner */}
+              <div className="flex items-center gap-4 rounded-xl border border-green-200 bg-green-50 p-4">
+                 <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-green-100">
+                    <CheckCircle className="h-6 w-6 text-green-600" />
+                 </div>
+                 <div>
+                    <h3 className="text-sm font-semibold text-green-900">Upload Complete</h3>
+                    <p className="text-xs text-green-700">Successfully uploaded {uploadedCount} contract{uploadedCount !== 1 ? 's' : ''}. Please assign workflow roles below.</p>
+                 </div>
+              </div>
+
               {/* Bulk apply bar */}
               {accountMembers.length > 0 && (
-                <div className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2.5">
-                  <div className="grid min-w-0 flex-1 grid-cols-2 gap-2">
-                    <Select value={bulkEditorUserId ?? "none"} onValueChange={v => setBulkEditorUserId(v === "none" ? null : v)}>
-                      <SelectTrigger className="h-7 rounded-md border-gray-200 bg-white text-[11px]"><SelectValue placeholder="Editor" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        {accountMembers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Select value={bulkApproverUserId ?? "none"} onValueChange={v => setBulkApproverUserId(v === "none" ? null : v)}>
-                      <SelectTrigger className="h-7 rounded-md border-gray-200 bg-white text-[11px]"><SelectValue placeholder="Approver" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        {accountMembers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={applyBulkToAll} className="h-7 flex-shrink-0 rounded-md border-gray-200 px-2 text-[11px]">
-                    Apply all
-                  </Button>
-                </div>
-              )}
-
-              {/* Per-contract rows */}
-              <div className="divide-y divide-gray-100 rounded-lg border border-gray-100">
-                {contractEntries.map(([cid, roles]) => {
-                  const file = files.find(f => f.uploadResult?.status === 'success' && f.uploadResult.contractId === cid)
-                  const isDone = roles.status === 'done'
-                  const isSaving = roles.status === 'saving'
-                  const hasError = roles.status === 'error'
-                  return (
-                    <div key={cid} className={`px-3 py-2.5 ${hasError ? 'bg-red-50/50' : isDone ? 'bg-green-50/30' : 'bg-white'}`}>
-                      <div className="mb-1.5 flex items-center gap-2">
-                        <span className="truncate text-xs font-medium text-gray-800">{file?.name || cid}</span>
-                        {isDone && <CheckCircle className="h-3 w-3 flex-shrink-0 text-green-500" />}
-                        {hasError && <span className="text-[10px] text-red-500">{roles.error}</span>}
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Select
-                          value={roles.editorUserId ?? "none"}
-                          onValueChange={v => updateContractRole(cid, 'editorUserId', v === "none" ? null : v)}
-                          disabled={isSaving || isDone}
-                        >
-                          <SelectTrigger className="h-7 rounded-md border-gray-200 bg-white text-[11px]"><SelectValue placeholder="Editor" /></SelectTrigger>
+                <div>
+                  <Label className="mb-2 block text-sm font-semibold text-gray-900">Assign roles to all contracts</Label>
+                  <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end">
+                    <div className="grid min-w-0 flex-1 grid-cols-2 gap-3">
+                      <div>
+                        <Label className="mb-1.5 block text-[11px] font-medium text-gray-500">Editor</Label>
+                        <Select value={bulkEditorUserId ?? "none"} onValueChange={v => setBulkEditorUserId(v === "none" ? null : v)} open={openDropdownId === 'bulk-editor'} onOpenChange={o => setOpenDropdownId(o ? 'bulk-editor' : null)}>
+                          <SelectTrigger className="h-9 rounded-md border-gray-200 bg-white text-xs"><SelectValue placeholder="Select Editor" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="none">None</SelectItem>
                             {accountMembers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
                           </SelectContent>
                         </Select>
-                        <Select
-                          value={roles.approverUserId ?? "none"}
-                          onValueChange={v => updateContractRole(cid, 'approverUserId', v === "none" ? null : v)}
-                          disabled={isSaving || isDone}
-                        >
-                          <SelectTrigger className="h-7 rounded-md border-gray-200 bg-white text-[11px]"><SelectValue placeholder="Approver" /></SelectTrigger>
+                      </div>
+                      <div>
+                        <Label className="mb-1.5 block text-[11px] font-medium text-gray-500">Approver</Label>
+                        <Select value={bulkApproverUserId ?? "none"} onValueChange={v => setBulkApproverUserId(v === "none" ? null : v)} open={openDropdownId === 'bulk-approver'} onOpenChange={o => setOpenDropdownId(o ? 'bulk-approver' : null)}>
+                          <SelectTrigger className="h-9 rounded-md border-gray-200 bg-white text-xs"><SelectValue placeholder="Select Approver" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="none">None</SelectItem>
                             {accountMembers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
@@ -461,8 +507,67 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
                         </Select>
                       </div>
                     </div>
-                  )
-                })}
+                    <Button variant="outline" onClick={applyBulkToAll} className="h-9 flex-shrink-0 rounded-md border-gray-200 px-4 text-xs font-medium hover:border-[#015CA9] hover:text-[#015CA9]">
+                      Apply to all
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Per-contract rows */}
+              <div>
+                <Label className="mb-2 block text-sm font-semibold text-gray-900">Or assign individually</Label>
+                <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                  {contractEntries.map(([cid, roles]) => {
+                    const isDone = roles.status === 'done'
+                    const isSaving = roles.status === 'saving'
+                    const hasError = roles.status === 'error'
+                    return (
+                      <div key={cid} className={`p-4 ${hasError ? 'bg-red-50/50' : isDone ? 'bg-green-50/30' : 'bg-white'}`}>
+                        <div className="mb-3 flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-[#015CA9] flex-shrink-0" />
+                          <span className="truncate text-sm font-medium text-gray-900">{roles.fileName || cid}</span>
+                          {isDone && <CheckCircle className="h-4 w-4 flex-shrink-0 text-green-500 ml-auto" />}
+                          {hasError && <span className="text-xs text-red-500 ml-auto">{roles.error}</span>}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="mb-1 block text-[11px] font-medium text-gray-500">Editor</Label>
+                            <Select
+                              value={roles.editorUserId ?? "none"}
+                              onValueChange={v => updateContractRole(cid, 'editorUserId', v === "none" ? null : v)}
+                              disabled={isSaving || isDone}
+                              open={openDropdownId === `${cid}-editor`}
+                              onOpenChange={o => setOpenDropdownId(o ? `${cid}-editor` : null)}
+                            >
+                              <SelectTrigger className="h-8 rounded-md border-gray-200 bg-white text-xs"><SelectValue placeholder="Select editor" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">None</SelectItem>
+                                {accountMembers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label className="mb-1 block text-[11px] font-medium text-gray-500">Approver</Label>
+                            <Select
+                              value={roles.approverUserId ?? "none"}
+                              onValueChange={v => updateContractRole(cid, 'approverUserId', v === "none" ? null : v)}
+                              disabled={isSaving || isDone}
+                              open={openDropdownId === `${cid}-approver`}
+                              onOpenChange={o => setOpenDropdownId(o ? `${cid}-approver` : null)}
+                            >
+                              <SelectTrigger className="h-8 rounded-md border-gray-200 bg-white text-xs"><SelectValue placeholder="Select approver" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">None</SelectItem>
+                                {accountMembers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -478,13 +583,13 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
               {isDone ? 'Done' : 'Cancel'}
             </Button>
             {(sessionStatus === 'idle' || sessionStatus === 'counting_pages') && (
-              <Button onClick={handleUpload} disabled={!canUpload} className="h-8 rounded-lg bg-gray-900 px-4 text-xs text-white hover:bg-cs-primary/90">
-                {uploading ? <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" />Uploading</span> : `Upload ${files.length || ''}`}
+              <Button onClick={handleUpload} disabled={!canUpload} className="h-8 rounded-md bg-[#015CA9] px-4 text-xs text-white hover:bg-[#015CA9]/90">
+                Upload
               </Button>
             )}
             {sessionStatus === 'assigning' && (
-              <Button onClick={saveAllRoles} disabled={anySaving || allRolesDone} className="h-8 rounded-lg bg-gray-900 px-4 text-xs text-white hover:bg-cs-primary/90">
-                {anySaving ? <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving</span> : <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" />Save all roles</span>}
+              <Button onClick={saveAllRoles} disabled={anySaving || allRolesDone} className="h-8 rounded-md bg-[#015CA9] px-4 text-xs text-white hover:bg-[#015CA9]/90">
+                {anySaving ? <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving</span> : <span className="flex items-center gap-1.5"><Save className="h-3.5 w-3.5" />Save all roles</span>}
               </Button>
             )}
           </div>
