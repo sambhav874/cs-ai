@@ -1,8 +1,28 @@
-'use client'
+"use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import Link from "next/link";
+import dynamic from "next/dynamic";
+import { useParams, useRouter } from "next/navigation";
+
+const PDFViewerDynamic = dynamic(
+  () => import("@/components/PDFViewer/Sample"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-300 font-mono text-xs p-12">
+        <Loader2 className="h-6 w-6 animate-spin mr-2 text-amber-400" />
+        <span>Loading Official Contract PDF Document...</span>
+      </div>
+    ),
+  },
+);
 import {
   AlertCircle,
   ArrowLeft,
@@ -15,6 +35,7 @@ import {
   Download,
   ExternalLink,
   FileText,
+  Globe,
   Info,
   Loader2,
   Mail,
@@ -32,1241 +53,2185 @@ import {
   Filter,
   Search,
   Layers,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import { toast } from '@/hooks/use-toast'
-import { useAuth } from '@/hooks/useAuth'
-import { useBreadcrumbs } from '@/app/context/BreadcrumbContext'
-import KpiSourceFieldMapper from '@/components/kpis/KpiSourceFieldMapper'
-import { apiUploadWithProgress } from '@/lib/apiClient'
-import { detectKpiSourceFields, getDefaultKpiSourceMappings } from '@/lib/kpi-source-fields'
-import type { KpiSourceFieldMapping } from '@/lib/kpi-source-fields'
-import { motion } from 'framer-motion'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+  Sparkles,
+  Zap,
+  X,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { useBreadcrumbs } from "@/app/context/BreadcrumbContext";
+import KpiSourceFieldMapper from "@/components/kpis/KpiSourceFieldMapper";
+import { apiUploadWithProgress } from "@/lib/apiClient";
+import {
+  detectKpiSourceFields,
+  getDefaultKpiSourceMappings,
+} from "@/lib/kpi-source-fields";
+import type { KpiSourceFieldMapping } from "@/lib/kpi-source-fields";
+import { motion } from "framer-motion";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
-const USER_KPI_SOURCE_TYPES = new Set(['csv', 'xlsx', 'json', 'xml', 'manual_attestation'])
+const USER_KPI_SOURCE_TYPES = new Set([
+  "csv",
+  "xlsx",
+  "json",
+  "xml",
+  "rest_api",
+  "manual_attestation",
+  "oracle_fusion",
+  "sap_s4hana",
+  "oracle_db",
+  "sap_ariba",
+]);
 
-type PanelKey = 'intelligence' | 'review' | 'sources' | 'flags' | 'logs'
+const SOURCE_CONFIG_DEFAULTS: Record<
+  string,
+  { endpoint?: string; auth_type?: string; method?: string; note?: string }
+> = {
+  rest_api: {
+    method: "GET",
+    auth_type: "bearer",
+    note: "Enter the REST endpoint URL that returns JSON performance data.",
+  },
+  oracle_fusion: {
+    endpoint:
+      "https://your-tenant.fa.oraclecloud.com/fscmRestApi/resources/11.13.18.05",
+    auth_type: "basic",
+    method: "GET",
+    note: "Oracle Fusion Cloud REST API. Use Basic auth (username/password) or OAuth2.",
+  },
+  sap_s4hana: {
+    endpoint: "https://your-tenant.s4hana.cloud.sap/sap/opu/odata/sap",
+    auth_type: "basic",
+    method: "GET",
+    note: "SAP S/4HANA OData API endpoint. Use Basic auth or SAP destination.",
+  },
+  oracle_db: {
+    auth_type: "password",
+    note: "Oracle Database connection. Configure host, port, SID/service name, and credentials.",
+  },
+  sap_ariba: {
+    endpoint: "https://openapi.ariba.com",
+    auth_type: "oauth2",
+    method: "GET",
+    note: "SAP Ariba Open API. Requires OAuth2 client credentials and realm name.",
+  },
+};
+
+const SOURCE_TYPE_DISPLAY: Record<
+  string,
+  { label: string; businessObject?: string }
+> = {
+  csv: { label: "CSV Upload" },
+  xlsx: { label: "Excel Upload" },
+  json: { label: "JSON Feed" },
+  xml: { label: "XML Feed" },
+  rest_api: { label: "REST API" },
+  manual_attestation: { label: "Manual Attestation" },
+  oracle_fusion: { label: "Oracle Fusion", businessObject: "AP_INVOICES" },
+  sap_s4hana: {
+    label: "SAP S/4HANA",
+    businessObject: "FI_DOCUMNT / MM_EKKO",
+  },
+  oracle_db: { label: "Oracle Database" },
+  sap_ariba: {
+    label: "SAP Ariba",
+    businessObject: "Sourcing/Procurement",
+  },
+};
+
+function sourceTypeLabel(sourceType: string): string {
+  const entry = SOURCE_TYPE_DISPLAY[sourceType];
+  if (!entry) return titleCase(sourceType);
+  return entry.businessObject
+    ? `${entry.label} · ${entry.businessObject}`
+    : entry.label;
+}
+
+type PanelKey =
+  | "intelligence"
+  | "review"
+  | "heatmap"
+  | "sources"
+  | "flags"
+  | "logs"
+  | "recoveries";
 
 interface FullContractData {
-  _id: string
-  contract_name: string
-  status?: string
-  projectId?: string | null
-  project_id?: string | null
-  project_name?: string | null
-  project?: { _id?: string; name?: string | null } | null
+  _id: string;
+  contract_name: string;
+  status?: string;
+  projectId?: string | null;
+  project_id?: string | null;
+  project_name?: string | null;
+  project?: { _id?: string; name?: string | null } | null;
 }
 
 interface ContractKPI {
-  kpi_id: string
-  contract_id: string
-  document_id?: string | null
-  chunk_id?: string | null
-  contract_name?: string
-  name: string
-  description?: string
-  kpi_type?: string
-  record_type?: string
-  record_role?: 'primary_kpi' | 'supporting_metric' | 'obligation' | 'financial_term' | 'reference_only' | 'recovery' | string
-  party_role?: 'supplier' | 'client' | 'mutual' | null
-  party?: string | null
-  responsible_party?: string | null
-  obligation?: Record<string, any> | null
-  obligation_action?: string | null
-  trigger?: string | null
-  scope?: string | null
-  acceptance_criteria?: string | null
-  dependencies?: any[]
-  exceptions?: any[]
-  trackability?: Record<string, any> | null
-  trackability_status?: string | null
-  tracking_readiness?: { ready?: boolean; checks?: Record<string, boolean>; reason?: string | null } | null
-  operator?: string
-  value?: string | number | null
-  unit?: string | null
-  value_min?: number | null
-  value_max?: number | null
-  rule_type?: string | null
-  target_schedule?: Array<Record<string, any>>
+  kpi_id: string;
+  contract_id: string;
+  document_id?: string | null;
+  chunk_id?: string | null;
+  contract_name?: string;
+  name: string;
+  description?: string;
+  kpi_type?: string;
+  category?: string | null;
+  record_type?: string;
+  record_role?:
+  | "primary_kpi"
+  | "supporting_metric"
+  | "obligation"
+  | "financial_term"
+  | "reference_only"
+  | "recovery"
+  | string;
+  party_role?: "supplier" | "client" | "mutual" | null;
+  party?: string | null;
+  responsible_party?: string | null;
+  obligation?: Record<string, any> | null;
+  obligation_action?: string | null;
+  trigger?: string | null;
+  scope?: string | null;
+  acceptance_criteria?: string | null;
+  dependencies?: any[];
+  exceptions?: any[];
+  trackability?: Record<string, any> | null;
+  trackability_status?: string | null;
+  tracking_readiness?: {
+    ready?: boolean;
+    checks?: Record<string, boolean>;
+    reason?: string | null;
+  } | null;
+  operator?: string;
+  value?: string | number | null;
+  target_value?: string | number | null;
+  target_type?: string | null;
+  formula?: string | null;
+  unit?: string | null;
+  value_min?: number | null;
+  value_max?: number | null;
+  rule_type?: string | null;
+  target_schedule?: Array<Record<string, any>>;
   rule?: {
-    rule_type?: string
-    spec?: Record<string, any>
-  }
-  recovery?: Record<string, any> | null
-  phase1?: { recovery?: Record<string, any> | null } | null
-  custom_attributes?: Record<string, any> | null
-  consequence_value?: number | null
-  consequence_unit?: string | null
-  aggregation_type?: string | null
-  trigger_condition?: string | null
-  period_type?: string | null
-  evaluation_window?: string | null
-  source_config_id?: string | null
-  source_config_status?: string | null
-  field_mappings?: Array<Record<string, any>>
-  evaluation_rule?: Record<string, any>
-  remediation?: string | null
-  remediation_sla?: string | null
-  contact_email?: string | null
-  quote?: string
-  source_quote?: string
-  clause_text?: string
-  citation?: Record<string, any>
-  citation_details?: Record<string, any>
-  page_start?: number | null
-  page_end?: number | null
-  section?: string | null
-  section_path?: string | null
-  structural_path?: string | null
-  confidence?: number
-  confidence_reason?: string
-  notes?: string | null
-  needs_review?: boolean
-  status?: string
-  governance_status?: string | null
-  governance_version?: number | null
-  catalog_metric_key?: string | null
-  certified_at?: string | null
-  certified_by?: string | null
-  business_hours?: Record<string, any>
-  blackout_windows?: Array<Record<string, any>>
-  severity_grace_periods?: Record<string, any>
-  reporting_lock?: Record<string, any>
-  missing_data_policy?: string | null
-  error_budget?: Record<string, any>
-  is_recommended?: boolean
-  recommendation_reason?: string | null
-  tracking_status?: string | null
-  is_tracked?: boolean
+    rule_type?: string;
+    spec?: Record<string, any>;
+  };
+  recovery?: Record<string, any> | null;
+  phase1?: { recovery?: Record<string, any> | null } | null;
+  custom_attributes?: Record<string, any> | null;
+  consequence_value?: number | null;
+  consequence_unit?: string | null;
+  aggregation_type?: string | null;
+  trigger_condition?: string | null;
+  period_type?: string | null;
+  evaluation_window?: string | null;
+  source_config_id?: string | null;
+  source_config_status?: string | null;
+  field_mappings?: Array<Record<string, any>>;
+  evaluation_rule?: Record<string, any>;
+  source_requirements?: Record<string, any>;
+  remediation?: string | null;
+  remediation_sla?: string | null;
+  contact_email?: string | null;
+  quote?: string;
+  source_quote?: string;
+  clause_text?: string;
+  citation?: Record<string, any>;
+  citation_details?: Record<string, any>;
+  page_start?: number | null;
+  page_end?: number | null;
+  section?: string | null;
+  section_path?: string | null;
+  structural_path?: string | null;
+  confidence?: number;
+  confidence_reason?: string;
+  notes?: string | null;
+  needs_review?: boolean;
+  status?: string;
+  governance_status?: string | null;
+  governance_version?: number | null;
+  catalog_metric_key?: string | null;
+  certified_at?: string | null;
+  certified_by?: string | null;
+  business_hours?: Record<string, any>;
+  blackout_windows?: Array<Record<string, any>>;
+  severity_grace_periods?: Record<string, any>;
+  reporting_lock?: Record<string, any>;
+  missing_data_policy?: string | null;
+  error_budget?: Record<string, any>;
+  is_recommended?: boolean;
+  recommendation_reason?: string | null;
+  tracking_status?: string | null;
+  is_tracked?: boolean;
   last_tracking_backfill?: {
-    created_breach_count?: number
-    skipped_count?: number
-    actual_count?: number
-  } | null
+    created_breach_count?: number;
+    skipped_count?: number;
+    actual_count?: number;
+  } | null;
 }
 
 interface ContractKPISummary {
-  total?: number
-  by_type?: Record<string, number>
-  by_status?: Record<string, number>
+  total?: number;
+  by_type?: Record<string, number>;
+  by_status?: Record<string, number>;
 }
 
 interface ContractKPIActual {
-  actual_id: string
-  kpi_id: string
-  contract_id: string
-  value?: string | number | null
-  unit?: string | null
-  source?: string | null
-  metadata?: Record<string, any>
-  timestamp?: string
-  created_at?: string
-  duplicate_skipped?: boolean
+  actual_id: string;
+  kpi_id: string;
+  contract_id: string;
+  value?: string | number | null;
+  unit?: string | null;
+  source?: string | null;
+  metadata?: Record<string, any>;
+  timestamp?: string;
+  created_at?: string;
+  duplicate_skipped?: boolean;
 }
 
 interface ContractKPIBreach {
-  breach_id: string
-  kpi_id: string
-  contract_id: string
-  actual_value?: string | number | null
-  actual_unit?: string | null
-  expected_value?: string | number | null
-  operator?: string | null
-  is_breach?: boolean
-  status?: string
-  severity?: string
-  remediation?: string | null
-  remediation_sla?: string | null
-  breach_email_draft?: string | null
-  breach_email_to?: string | null
+  breach_id: string;
+  kpi_id: string;
+  contract_id: string;
+  actual_value?: string | number | null;
+  actual_unit?: string | null;
+  expected_value?: string | number | null;
+  operator?: string | null;
+  is_breach?: boolean;
+  status?: string;
+  severity?: string;
+  remediation?: string | null;
+  remediation_sla?: string | null;
+  breach_email_draft?: string | null;
+  breach_email_to?: string | null;
   breach_email_recipient_source?: {
-    source?: string
-    confidence?: string
-    matched_party?: string
-  } | null
-  penalty_amount?: number | null
-  penalty_triggered?: string | null
-  variance?: number | null
-  variance_percent?: number | null
-  burn_rate?: number | null
-  period_locked?: boolean | null
-  blackout_applied?: boolean | null
-  deadline_at?: string | null
-  sample_count?: number | null
-  source?: string | null
-  timestamp?: string
-  source_kpi?: { name?: string; quote?: string; contract_name?: string }
-  created_at?: string
+    source?: string;
+    confidence?: string;
+    matched_party?: string;
+  } | null;
+  penalty_amount?: number | null;
+  penalty_triggered?: string | null;
+  variance?: number | null;
+  variance_percent?: number | null;
+  burn_rate?: number | null;
+  period_locked?: boolean | null;
+  blackout_applied?: boolean | null;
+  deadline_at?: string | null;
+  sample_count?: number | null;
+  source?: string | null;
+  timestamp?: string;
+  period_end?: string | null;
+  source_kpi?: {
+    name?: string;
+    quote?: string;
+    contract_name?: string;
+    category?: string;
+    section?: string;
+  };
+  created_at?: string;
 }
 
 interface KPIPortfolio {
   summary?: {
-    contract_count?: number
-    contracts_with_kpis?: number
-    contracts_with_tracked_kpis?: number
-    kpi_count?: number
-    tracked_kpi_count?: number
-    open_breach_count?: number
-    source_count?: number
-    stale_source_count?: number
-    failed_source_count?: number
-    actual_count?: number
-    open_exposure?: number
-    coverage_percent?: number
-  }
-  connector_health?: Record<string, number>
-  risky_contracts?: Array<Record<string, any>>
-  upcoming_reporting_windows?: Array<Record<string, any>>
-  top_breaches?: ContractKPIBreach[]
+    contract_count?: number;
+    contracts_with_kpis?: number;
+    contracts_with_tracked_kpis?: number;
+    kpi_count?: number;
+    tracked_kpi_count?: number;
+    open_breach_count?: number;
+    source_count?: number;
+    stale_source_count?: number;
+    failed_source_count?: number;
+    actual_count?: number;
+    open_exposure?: number;
+    coverage_percent?: number;
+  };
+  connector_health?: Record<string, number>;
+  risky_contracts?: Array<Record<string, any>>;
+  upcoming_reporting_windows?: Array<Record<string, any>>;
+  top_breaches?: ContractKPIBreach[];
 }
 
 interface KPICatalogEntry {
-  metric_key: string
-  display_name?: string
-  description?: string
-  certified_status?: string
-  contract_family?: string
-  unit?: string
-  owner?: string
-  owners?: string[]
-  tags?: string[]
-  kpi_count?: number
-  tracked_count?: number
-  certified_count?: number
-  version?: number
-  source_clause_lineage?: Array<Record<string, any>>
+  metric_key: string;
+  display_name?: string;
+  description?: string;
+  certified_status?: string;
+  contract_family?: string;
+  unit?: string;
+  owner?: string;
+  owners?: string[];
+  tags?: string[];
+  kpi_count?: number;
+  tracked_count?: number;
+  certified_count?: number;
+  version?: number;
+  source_clause_lineage?: Array<Record<string, any>>;
 }
 
 interface KPIAlert {
-  alert_id: string
-  alert_key?: string
-  event_type?: string
-  contract_id?: string
-  kpi_id?: string
-  breach_id?: string
-  source_config_id?: string
-  severity?: string
-  status?: string
-  title?: string
-  message?: string
-  channels?: string[]
-  delivery?: Record<string, any>
-  last_seen_at?: string
-  created_at?: string
+  alert_id: string;
+  alert_key?: string;
+  event_type?: string;
+  contract_id?: string;
+  kpi_id?: string;
+  breach_id?: string;
+  source_config_id?: string;
+  severity?: string;
+  status?: string;
+  title?: string;
+  message?: string;
+  channels?: string[];
+  delivery?: Record<string, any>;
+  last_seen_at?: string;
+  created_at?: string;
 }
 
 interface KPISourceCatalogItem {
-  source_type: string
-  label: string
-  family?: string
-  auth_types?: string[]
-  cadences?: string[]
-  enabled_for_contract_users?: boolean
+  source_type: string;
+  label: string;
+  family?: string;
+  auth_types?: string[];
+  cadences?: string[];
+  enabled_for_contract_users?: boolean;
+}
+
+interface KPIIntegrationProfile {
+  profile_id: string;
+  source_type: string;
+  display_name: string;
+  status?: string;
+  endpoint?: string | null;
+  method?: string | null;
+  auth_type?: string | null;
+  record_path?: string | null;
+  data_path?: string | null;
+  dedupe_key?: string | null;
+  watermark_field?: string | null;
+  field_mappings?: Array<Record<string, any>>;
+  sample_payload?: any;
+  schedule?: { cadence?: string; timezone?: string };
 }
 
 interface KPISourceConfig {
-  source_config_id: string
-  contract_id: string
-  project_id?: string | null
-  display_name: string
-  source_type: string
-  connector_family?: string
-  status?: string
-  enabled?: boolean
-  auth_type?: string
-  schedule?: { cadence?: string; timezone?: string; start_at?: string | null }
-  next_run_at?: string | null
-  last_run_at?: string | null
-  last_success_at?: string | null
-  last_error?: string | null
-  endpoint?: string | null
-  signed_url?: string | null
-  method?: string | null
-  file_format?: string | null
-  schema_fields?: Array<Record<string, any>>
-  sample_payload?: any
-  record_path?: string | null
-  field_mappings?: Array<Record<string, any>>
-  validation_rules?: Array<Record<string, any>>
-  dedupe_key?: string | null
-  watermark_field?: string | null
-  watermark_value?: string | null
-  kpi_ids?: string[]
-  kpi_bindings?: KPISourceBinding[]
-  last_fetch_status?: Record<string, any>
+  source_config_id: string;
+  contract_id: string;
+  project_id?: string | null;
+  display_name: string;
+  source_type: string;
+  runtime_source_type?: string;
+  connector_family?: string;
+  status?: string;
+  enabled?: boolean;
+  auth_type?: string;
+  credential_ref?: string | null;
+  schedule?: { cadence?: string; timezone?: string; start_at?: string | null };
+  next_run_at?: string | null;
+  last_run_at?: string | null;
+  last_success_at?: string | null;
+  last_error?: string | null;
+  endpoint?: string | null;
+  signed_url?: string | null;
+  method?: string | null;
+  file_format?: string | null;
+  schema_fields?: Array<Record<string, any>>;
+  sample_payload?: any;
+  record_path?: string | null;
+  data_path?: string | null;
+  field_mappings?: Array<Record<string, any>>;
+  validation_rules?: Array<Record<string, any>>;
+  dedupe_key?: string | null;
+  watermark_field?: string | null;
+  watermark_value?: string | null;
+  kpi_ids?: string[];
+  kpi_bindings?: KPISourceBinding[];
+  last_fetch_status?: Record<string, any>;
+  headers?: Record<string, string> | null;
 }
 
 interface KPISourceBinding {
-  binding_id?: string
-  kpi_id: string
-  enabled?: boolean
-  match_rule?: Record<string, any> | null
-  field_mappings?: Array<Record<string, any>>
-  aggregation?: string | null
-  unit_override?: string | null
-  dedupe_key_override?: string | null
-  watermark_field_override?: string | null
-  validation_status?: string | Record<string, any> | null
+  binding_id?: string;
+  kpi_id: string;
+  enabled?: boolean;
+  match_rule?: Record<string, any> | null;
+  field_mappings?: Array<Record<string, any>>;
+  aggregation?: string | null;
+  unit_override?: string | null;
+  dedupe_key_override?: string | null;
+  watermark_field_override?: string | null;
+  validation_status?: string | Record<string, any> | null;
 }
 
 interface KPISourceFetchRun {
-  run_id: string
-  contract_id?: string
-  source_config_id: string
-  source_type?: string
-  status?: string
-  trigger_type?: string
-  started_at?: string
-  finished_at?: string
-  duration_ms?: number
-  records_fetched?: number
-  records_accepted?: number
-  records_skipped?: number
-  created_actual_count?: number
-  created_breach_count?: number
-  deferred_evaluation_count?: number
-  normalized_preview?: Array<Record<string, any>>
-  skipped_rows?: Array<Record<string, any>>
-  errors?: string[]
-  watermark_before?: any
-  watermark_after?: any
+  run_id: string;
+  contract_id?: string;
+  source_config_id: string;
+  source_type?: string;
+  status?: string;
+  trigger_type?: string;
+  started_at?: string;
+  finished_at?: string;
+  duration_ms?: number;
+  records_fetched?: number;
+  records_accepted?: number;
+  records_skipped?: number;
+  created_actual_count?: number;
+  created_breach_count?: number;
+  deferred_evaluation_count?: number;
+  normalized_preview?: Array<Record<string, any>>;
+  skipped_rows?: Array<Record<string, any>>;
+  errors?: string[];
+  watermark_before?: any;
+  watermark_after?: any;
 }
 
 interface KPISourceRunDetail {
-  fetch_run: KPISourceFetchRun
-  created_actuals: ContractKPIActual[]
-  created_breaches: ContractKPIBreach[]
-  normalized_rows?: Array<Record<string, any>>
-  skipped_rows?: Array<Record<string, any>>
+  fetch_run: KPISourceFetchRun;
+  created_actuals: ContractKPIActual[];
+  created_breaches: ContractKPIBreach[];
+  raw_records?: Array<Record<string, any>>;
+  normalized_rows?: Array<Record<string, any>>;
+  skipped_rows?: Array<Record<string, any>>;
 }
 
-const titleCase = (value?: string | null) => (
+const titleCase = (value?: string | null) =>
   value
-    ? value.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b\w/g, (letter) => letter.toUpperCase())
-    : 'Not specified'
-)
+    ? value
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    : "Not specified";
 
 const isKpiTracked = (kpi?: ContractKPI | null) => {
-  const status = String(kpi?.tracking_status || '').toLowerCase()
-  return Boolean(kpi?.is_tracked || status === 'tracked' || status === 'active')
-}
+  const status = String(kpi?.tracking_status || "").toLowerCase();
+  return Boolean(
+    kpi?.is_tracked || status === "tracked" || status === "active",
+  );
+};
 
 const isKpiRecommended = (kpi?: ContractKPI | null) => {
-  const status = String(kpi?.tracking_status || '').toLowerCase()
-  return Boolean(kpi?.is_recommended || status === 'recommended')
-}
+  const status = String(kpi?.tracking_status || "").toLowerCase();
+  return Boolean(kpi?.is_recommended || status === "recommended");
+};
 
 const toNumber = (value?: string | number | null) => {
-  if (value == null || value === '') return null
-  const parsed = Number(String(value).replace(/[^0-9.-]/g, ''))
-  return Number.isFinite(parsed) ? parsed : null
-}
+  if (value == null || value === "") return null;
+  const parsed = Number(String(value).replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
-const money = (value: number) => new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-}).format(Math.max(0, value))
+const money = (value: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(Math.max(0, value));
 
 const tierScheduleFor = (kpi: ContractKPI): Array<Record<string, any>> => {
+  const lt =
+    (kpi as any).measurement?.lookup_table ||
+    (kpi as any).lookup_table ||
+    (kpi as any).measurement?.price_structure;
+  const ltRows = Array.isArray(lt)
+    ? lt
+    : lt && typeof lt === "object" && Array.isArray(lt.rows)
+      ? lt.rows
+      : [];
+
   const sources = [
+    ltRows,
     kpi.target_schedule,
     kpi.rule?.spec?.tiers,
     kpi.recovery?.target_schedule,
     kpi.phase1?.recovery?.target_schedule,
     kpi.custom_attributes?.target_schedule,
-  ]
-  const merged: Array<Record<string, any>> = []
-  const seen = new Set<string>()
+  ];
+  const merged: Array<Record<string, any>> = [];
+  const seen = new Set<string>();
   for (const source of sources) {
-    if (!Array.isArray(source)) continue
+    if (!Array.isArray(source)) continue;
     for (const tier of source) {
-      if (!tier || typeof tier !== 'object') continue
-      const key = JSON.stringify(tier)
-      if (seen.has(key)) continue
-      seen.add(key)
-      merged.push(tier)
+      if (!tier || typeof tier !== "object") continue;
+      const key = JSON.stringify(tier);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(tier);
     }
   }
-  return merged
-}
+  return merged;
+};
 
 const formatKpiValue = (kpi: ContractKPI) => {
-  const tiers = tierScheduleFor(kpi)
-  const ruleType = String(kpi.rule_type || kpi.rule?.rule_type || '').toLowerCase()
-  if (ruleType === 'tiered' || tiers.length > 0) {
-    return `Tiered schedule · ${tiers.length} tier${tiers.length === 1 ? '' : 's'}`
+  const tiers = tierScheduleFor(kpi);
+  const ruleType = String(
+    kpi.rule_type || kpi.rule?.rule_type || kpi.target_type || "",
+  ).toLowerCase();
+  if (
+    ruleType === "tiered" ||
+    ruleType === "lookup_table" ||
+    tiers.length > 0
+  ) {
+    return `Tiered schedule · ${tiers.length} tier${tiers.length === 1 ? "" : "s"}`;
   }
 
-  const pieces: string[] = []
-  if (kpi.operator && kpi.operator !== '=') pieces.push(kpi.operator)
-  if (kpi.value_min != null || kpi.value_max != null) {
-    pieces.push(`${kpi.value_min ?? '?'}${kpi.value_max != null ? ` - ${kpi.value_max}` : ''}`)
-  } else if (kpi.value != null && kpi.value !== '') {
-    pieces.push(String(kpi.value))
+  const val =
+    kpi.value ?? kpi.target_value ?? (kpi as any).measurement?.threshold;
+  const hasValue = val != null && val !== "";
+  const hasMinMax = kpi.value_min != null || kpi.value_max != null;
+
+  if (!hasValue && !hasMinMax) {
+    const formulaStr =
+      kpi.formula ||
+      (kpi as any).measurement?.formula ||
+      kpi.rule?.spec?.formula ||
+      (kpi as any).measurement_scope ||
+      (kpi as any).measurement?.measurement_scope;
+    if (
+      formulaStr ||
+      ruleType === "reference_formula" ||
+      kpi.target_type === "reference_formula"
+    ) {
+      return formulaStr || "Referenced in text";
+    }
+    return "Not specified";
   }
-  if (kpi.unit) pieces.push(kpi.unit)
-  return pieces.length ? pieces.join(' ') : 'Not specified'
-}
+
+  const pieces: string[] = [];
+  if (kpi.operator && kpi.operator !== "=" && kpi.operator !== "conforms_to") {
+    pieces.push(kpi.operator);
+  }
+
+  if (hasMinMax) {
+    pieces.push(
+      `${kpi.value_min ?? "?"}${kpi.value_max != null ? ` - ${kpi.value_max}` : ""}`,
+    );
+  } else if (hasValue) {
+    pieces.push(String(val));
+  }
+
+  if (kpi.unit && kpi.unit !== "native" && kpi.unit !== "None") {
+    pieces.push(kpi.unit);
+  }
+
+  return pieces.length ? pieces.join(" ") : "Not specified";
+};
 
 const formatConsequence = (kpi: ContractKPI) => {
-  const pieces: string[] = []
-  if (kpi.consequence_value != null) pieces.push(String(kpi.consequence_value))
-  if (kpi.consequence_unit) pieces.push(kpi.consequence_unit)
-  if (kpi.aggregation_type) pieces.push(`(${titleCase(kpi.aggregation_type)})`)
-  return pieces.length ? pieces.join(' ') : 'Not specified'
-}
+  const pieces: string[] = [];
+  if (kpi.consequence_value != null) pieces.push(String(kpi.consequence_value));
+  if (kpi.consequence_unit) pieces.push(kpi.consequence_unit);
+  if (kpi.aggregation_type) pieces.push(`(${titleCase(kpi.aggregation_type)})`);
+  return pieces.length ? pieces.join(" ") : "Not specified";
+};
 
 const severityFor = (breach: ContractKPIBreach, kpi?: ContractKPI) => {
-  if (!breach.is_breach) return 'OK'
-  if (breach.severity) return titleCase(breach.severity)
-  const exposure = Math.abs(toNumber(kpi?.consequence_value) || 0)
-  if (exposure >= 50000) return 'Critical'
-  if (exposure >= 10000) return 'High'
-  if (exposure > 0) return 'Medium'
-  return 'Low'
-}
+  if (!breach.is_breach) return "OK";
+  if (breach.severity) return titleCase(breach.severity);
+  const exposure = Math.abs(toNumber(kpi?.consequence_value) || 0);
+  if (exposure >= 50000) return "Critical";
+  if (exposure >= 10000) return "High";
+  if (exposure > 0) return "Medium";
+  return "Low";
+};
 
 const statusTone = (value?: string | null) => {
-  const status = String(value || '').toLowerCase()
-  if (['approved', 'tracked', 'ready', 'mapped', 'enabled', 'clear', 'ok', 'completed'].includes(status)) {
-    return 'border-gray-300 bg-white text-gray-800'
+  const status = String(value || "").toLowerCase();
+  if (status === "in_action") {
+    return "border-blue-300 bg-blue-50 text-blue-800";
   }
-  if (['open', 'failed', 'last_fetch_failed', 'critical', 'high'].some((item) => status.includes(item))) {
-    return 'border-gray-400 bg-white text-gray-950'
+  if (
+    [
+      "approved",
+      "tracked",
+      "ready",
+      "mapped",
+      "enabled",
+      "clear",
+      "ok",
+      "completed",
+    ].includes(status)
+  ) {
+    return "border-gray-300 bg-white text-gray-800";
   }
-  if (['review', 'recommended', 'draft', 'pending', 'medium'].some((item) => status.includes(item))) {
-    return 'border-gray-200 bg-gray-50 text-gray-700'
+  if (
+    ["open", "failed", "last_fetch_failed", "critical", "high"].some((item) =>
+      status.includes(item),
+    )
+  ) {
+    return "border-gray-400 bg-white text-gray-950";
   }
-  return 'border-gray-200 bg-gray-50 text-gray-600'
-}
+  if (
+    ["review", "recommended", "draft", "pending", "medium"].some((item) =>
+      status.includes(item),
+    )
+  ) {
+    return "border-gray-200 bg-gray-50 text-gray-700";
+  }
+  return "border-gray-200 bg-gray-50 text-gray-600";
+};
 
 const kpiCode = (kpi: ContractKPI, index: number) => {
-  return String(index + 1)
-}
+  return String(index + 1);
+};
 
-const sourceBindingId = (sourceConfigId: string, kpiId: string, index: number) => {
-  const seed = `${sourceConfigId}:${kpiId}:${index}`
-  let hash = 0
+const sourceBindingId = (
+  sourceConfigId: string,
+  kpiId: string,
+  index: number,
+) => {
+  const seed = `${sourceConfigId}:${kpiId}:${index}`;
+  let hash = 0;
   for (let offset = 0; offset < seed.length; offset += 1) {
-    hash = ((hash << 5) - hash + seed.charCodeAt(offset)) | 0
+    hash = ((hash << 5) - hash + seed.charCodeAt(offset)) | 0;
   }
-  return `bind_${Math.abs(hash).toString(16)}`
-}
+  return `bind_${Math.abs(hash).toString(16)}`;
+};
 
-const normalizeFieldMappings = (fieldMappings?: Array<Record<string, any>>): KpiSourceFieldMapping[] => (
+const AIRPORT_DEMO_SOURCE_KPI_CODES: Record<string, Set<string>> = {
+  csv: new Set(["SGHA-1.1-LANDING", "SGHA-1.3-PASSENGER", "SGHA-1.5-PARKING"]),
+  json: new Set(["SGHA-2.3-PASSENGER-SERVICES", "SGHA-2.3-RAMP-HANDLING"]),
+  rest_api: new Set(["SGHA-2.7-ELECTRICITY", "SGHA-2.8-DEICING", "SGHA-2.12-CANCELLATION"]),
+  sap_s4hana: new Set(["SGHA-1.6-EXTRA-HOURS", "SGHA-2.16-RETURN-TO-RAMP"]),
+};
+
+const airportDemoSourceCodes = (config: KPISourceConfig) =>
+  /airport|ground handling|ground operations/i.test(String(config.display_name || ""))
+    ? AIRPORT_DEMO_SOURCE_KPI_CODES[config.source_type] || null
+    : null;
+
+const isAirportDemoSource = (config: KPISourceConfig) =>
+  Boolean(airportDemoSourceCodes(config));
+
+const normalizeFieldMappings = (
+  fieldMappings?: Array<Record<string, any>>,
+): KpiSourceFieldMapping[] =>
   (fieldMappings || [])
-    .filter((mapping) => mapping && typeof mapping === 'object')
-    .map((mapping) => ({ ...mapping }))
-)
+    .filter((mapping) => mapping && typeof mapping === "object")
+    .map((mapping) => ({ ...mapping }));
 
-const mappingForField = (fieldMappings: Array<Record<string, any>> | undefined, kpiField: string) => (
-  (fieldMappings || []).find((mapping) => String(mapping.kpi_field || mapping.target_field || mapping.target || mapping.field || '') === kpiField)
-)
+const mappingForField = (
+  fieldMappings: Array<Record<string, any>> | undefined,
+  kpiField: string,
+) =>
+  (fieldMappings || []).find(
+    (mapping) =>
+      String(
+        mapping.kpi_field ||
+        mapping.target_field ||
+        mapping.target ||
+        mapping.field ||
+        "",
+      ) === kpiField,
+  );
 
-const sourceFieldFor = (fieldMappings: Array<Record<string, any>> | undefined, kpiField: string) => (
-  String(mappingForField(fieldMappings, kpiField)?.source_field || mappingForField(fieldMappings, kpiField)?.source || '')
-)
+const sourceFieldFor = (
+  fieldMappings: Array<Record<string, any>> | undefined,
+  kpiField: string,
+) =>
+  String(
+    mappingForField(fieldMappings, kpiField)?.source_field ||
+    mappingForField(fieldMappings, kpiField)?.source ||
+    "",
+  );
 
 const setFieldMapping = (
   fieldMappings: Array<Record<string, any>> | undefined,
   kpiField: string,
   sourceField: string,
-  transform = 'string',
+  transform = "string",
 ) => {
-  const mappings = normalizeFieldMappings(fieldMappings)
-  const index = mappings.findIndex((mapping) => String(mapping.kpi_field || mapping.target_field || mapping.target || mapping.field || '') === kpiField)
-  const normalizedSourceField = sourceField.trim()
+  const mappings = normalizeFieldMappings(fieldMappings);
+  const index = mappings.findIndex(
+    (mapping) =>
+      String(
+        mapping.kpi_field ||
+        mapping.target_field ||
+        mapping.target ||
+        mapping.field ||
+        "",
+      ) === kpiField,
+  );
+  const normalizedSourceField = sourceField.trim();
   if (!normalizedSourceField) {
-    if (index >= 0) mappings.splice(index, 1)
-    return mappings
+    if (index >= 0) mappings.splice(index, 1);
+    return mappings;
   }
-  const next = { kpi_field: kpiField, source_field: normalizedSourceField, transform }
-  if (index >= 0) mappings[index] = { ...mappings[index], ...next }
-  else mappings.push(next)
-  return mappings
-}
+  const next = {
+    kpi_field: kpiField,
+    source_field: normalizedSourceField,
+    transform,
+  };
+  if (index >= 0) mappings[index] = { ...mappings[index], ...next };
+  else mappings.push(next);
+  return mappings;
+};
 
 const bindingsForSource = (config: KPISourceConfig, kpis: ContractKPI[]) => {
-  const explicitBindings = Array.isArray(config.kpi_bindings) && config.kpi_bindings.length > 0
-  const bindingByKpiId = new Map<string, KPISourceBinding>()
-  ;(config.kpi_bindings || []).forEach((binding) => {
-    if (binding?.kpi_id) bindingByKpiId.set(String(binding.kpi_id), binding)
-  })
-  const legacyKpiIds = new Set((config.kpi_ids || []).map(String))
-  return kpis.map((kpi, index) => {
-    const existing = bindingByKpiId.get(kpi.kpi_id)
+  const allowedCodes = airportDemoSourceCodes(config);
+  const scopedKpis = allowedCodes
+    ? kpis.filter((kpi) => allowedCodes.has(kpi.kpi_id.split(":").pop() || kpi.kpi_id))
+    : kpis;
+  const explicitBindings =
+    Array.isArray(config.kpi_bindings) && config.kpi_bindings.length > 0;
+  const bindingByKpiId = new Map<string, KPISourceBinding>();
+  (config.kpi_bindings || []).forEach((binding) => {
+    if (binding?.kpi_id) bindingByKpiId.set(String(binding.kpi_id), binding);
+  });
+  const legacyKpiIds = new Set((config.kpi_ids || []).map(String));
+  return scopedKpis.map((kpi, index) => {
+    const existing = bindingByKpiId.get(kpi.kpi_id);
     return {
-      binding_id: existing?.binding_id || sourceBindingId(config.source_config_id, kpi.kpi_id, index + 1),
+      binding_id:
+        existing?.binding_id ||
+        sourceBindingId(config.source_config_id, kpi.kpi_id, index + 1),
       kpi_id: kpi.kpi_id,
-      enabled: existing ? existing.enabled !== false : !explicitBindings && legacyKpiIds.has(kpi.kpi_id),
+      enabled: existing
+        ? existing.enabled !== false
+        : !explicitBindings && legacyKpiIds.has(kpi.kpi_id),
       match_rule: existing?.match_rule || {},
       field_mappings: normalizeFieldMappings(existing?.field_mappings),
-      aggregation: existing?.aggregation || kpi.aggregation_type || 'latest',
+      aggregation: existing?.aggregation || kpi.aggregation_type || "latest",
       unit_override: existing?.unit_override || null,
       dedupe_key_override: existing?.dedupe_key_override || null,
       watermark_field_override: existing?.watermark_field_override || null,
       validation_status: existing?.validation_status || null,
-    } satisfies KPISourceBinding
-  })
-}
+    } satisfies KPISourceBinding;
+  });
+};
 
-const enabledKpiIdsForSource = (config: KPISourceConfig, kpis?: ContractKPI[]) => {
-  const bindings = kpis ? bindingsForSource(config, kpis) : (config.kpi_bindings || [])
-  const ids = bindings.filter((binding) => binding.enabled !== false).map((binding) => String(binding.kpi_id))
-  if (ids.length || (config.kpi_bindings || []).length) return Array.from(new Set(ids))
-  return Array.from(new Set((config.kpi_ids || []).map(String).filter(Boolean)))
-}
+const enabledKpiIdsForSource = (
+  config: KPISourceConfig,
+  kpis?: ContractKPI[],
+) => {
+  const bindings = kpis
+    ? bindingsForSource(config, kpis)
+    : config.kpi_bindings || [];
+  const ids = bindings
+    .filter((binding) => binding.enabled !== false)
+    .map((binding) => String(binding.kpi_id));
+  if (ids.length || (config.kpi_bindings || []).length)
+    return Array.from(new Set(ids));
+  return Array.from(
+    new Set((config.kpi_ids || []).map(String).filter(Boolean)),
+  );
+};
 
 const upsertSourceBinding = (
   config: KPISourceConfig,
   kpis: ContractKPI[],
   nextBinding: KPISourceBinding,
-) => bindingsForSource(config, kpis).map((binding) => (
-  binding.kpi_id === nextBinding.kpi_id ? { ...binding, ...nextBinding } : binding
-))
+) =>
+  bindingsForSource(config, kpis).map((binding) =>
+    binding.kpi_id === nextBinding.kpi_id
+      ? { ...binding, ...nextBinding }
+      : binding,
+  );
 
-const bindingEffectiveMappings = (config: KPISourceConfig, binding?: KPISourceBinding | null) => (
-  binding?.field_mappings?.length ? binding.field_mappings : config.field_mappings || []
-)
+const bindingEffectiveMappings = (
+  config: KPISourceConfig,
+  binding?: KPISourceBinding | null,
+) =>
+  binding?.field_mappings?.length
+    ? binding.field_mappings
+    : config.field_mappings || [];
 
-const bindingStatus = (config: KPISourceConfig, binding: KPISourceBinding, enabledCount: number) => {
-  if (binding.enabled === false) return 'disabled'
-  const mappings = bindingEffectiveMappings(config, binding)
-  const hasValue = Boolean(sourceFieldFor(mappings, 'actual_value') || sourceFieldFor(mappings, 'value'))
-  if (!hasValue) return 'missing_value_field'
-  if (!sourceFieldFor(mappings, 'timestamp')) return 'missing_timestamp'
-  if (enabledCount > 1 && !Object.keys(binding.match_rule || {}).length && !binding.field_mappings?.length) return 'no_match_rule'
-  return 'valid'
-}
+const bindingStatus = (
+  config: KPISourceConfig,
+  binding: KPISourceBinding,
+  enabledCount: number,
+) => {
+  if (binding.enabled === false) return "disabled";
+  const mappings = bindingEffectiveMappings(config, binding);
+  const hasValue = Boolean(
+    sourceFieldFor(mappings, "actual_value") ||
+    sourceFieldFor(mappings, "value"),
+  );
+  if (!hasValue) return "missing_value_field";
+  if (!sourceFieldFor(mappings, "timestamp")) return "missing_timestamp";
+  if (
+    enabledCount > 1 &&
+    !Object.keys(binding.match_rule || {}).length &&
+    !binding.field_mappings?.length
+  )
+    return "no_match_rule";
+  return "valid";
+};
 
 const bindingStatusLabel = (status: string) => {
-  if (status === 'missing_value_field') return 'Missing value'
-  if (status === 'missing_timestamp') return 'Missing timestamp'
-  if (status === 'no_match_rule') return 'Needs rule'
-  return titleCase(status)
-}
+  if (status === "missing_value_field") return "Missing value";
+  if (status === "missing_timestamp") return "Missing timestamp";
+  if (status === "no_match_rule") return "Needs rule";
+  return titleCase(status);
+};
 
-const quoteFor = (kpi: ContractKPI) => (
-  kpi.citation?.quote || kpi.citation_details?.quote || kpi.source_quote || kpi.quote || kpi.clause_text || ''
-)
+const quoteFor = (kpi: ContractKPI | any) =>
+  kpi.identity?.source_clause?.quote ||
+  kpi.source_evidence?.[0]?.quote ||
+  kpi.phase1?.quote ||
+  kpi.citation?.quote ||
+  kpi.citation_details?.quote ||
+  kpi.source_quote ||
+  kpi.quote ||
+  kpi.clause_text ||
+  "";
 
 const formatDateTime = (value?: string | null) => {
-  if (!value) return 'Not stamped'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
-}
+  if (!value) return "Not stamped";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+};
 
-const actualLabel = (actual?: ContractKPIActual | null, kpi?: ContractKPI | null) => {
-  if (!actual) return 'No actual'
-  return `${actual.value ?? 'N/A'} ${actual.unit || kpi?.unit || ''}`.trim()
-}
+const actualLabel = (
+  actual?: ContractKPIActual | null,
+  kpi?: ContractKPI | null,
+) => {
+  if (!actual) return "No actual";
+  return `${actual.value ?? "N/A"} ${actual.unit || kpi?.unit || ""}`.trim();
+};
 
-const actualTimestamp = (actual?: ContractKPIActual | null) => actual?.timestamp || actual?.created_at || null
+const actualTimestamp = (actual?: ContractKPIActual | null) =>
+  actual?.timestamp || actual?.created_at || null;
 
-const expectedFor = (breach: ContractKPIBreach, kpi?: ContractKPI | null) => (
-  `${breach.operator || kpi?.operator || ''} ${breach.expected_value ?? kpi?.value_min ?? kpi?.value ?? 'N/A'} ${kpi?.unit || breach.actual_unit || ''}`.trim()
-)
+const expectedFor = (breach: ContractKPIBreach, kpi?: ContractKPI | null) =>
+  `${breach.operator || kpi?.operator || ""} ${breach.expected_value ?? kpi?.value_min ?? kpi?.value ?? "N/A"} ${kpi?.unit || breach.actual_unit || ""}`.trim();
 
-const breachNarrative = (breach: ContractKPIBreach, kpi?: ContractKPI | null) => {
-  const actual = `${breach.actual_value ?? 'N/A'} ${breach.actual_unit || kpi?.unit || ''}`.trim()
-  const expected = expectedFor(breach, kpi)
-  if (!breach.is_breach) return `Actual value ${actual} meets the contract threshold (${expected}).`
+const breachNarrative = (
+  breach: ContractKPIBreach,
+  kpi?: ContractKPI | null,
+) => {
+  const actual =
+    `${breach.actual_value ?? "N/A"} ${breach.actual_unit || kpi?.unit || ""}`.trim();
+  const expected = expectedFor(breach, kpi);
+  if (!breach.is_breach)
+    return `Actual value ${actual} meets the contract threshold (${expected}).`;
 
-  const operator = String(breach.operator || kpi?.operator || '').trim()
-  const actualNumber = toNumber(breach.actual_value)
-  const expectedNumber = toNumber(breach.expected_value ?? kpi?.value_min ?? kpi?.value)
+  const operator = String(breach.operator || kpi?.operator || "").trim();
+  const actualNumber = toNumber(breach.actual_value);
+  const expectedNumber = toNumber(
+    breach.expected_value ?? kpi?.value_min ?? kpi?.value,
+  );
   if (actualNumber != null && expectedNumber != null) {
-    if ((operator.includes('>') || operator === 'min') && actualNumber < expectedNumber) {
-      return `Actual value ${actual} fell below the contractual threshold (${expected}).`
+    if (
+      (operator.includes(">") || operator === "min") &&
+      actualNumber < expectedNumber
+    ) {
+      return `Actual value ${actual} fell below the contractual threshold (${expected}).`;
     }
-    if ((operator.includes('<') || operator === 'max') && actualNumber > expectedNumber) {
-      return `Actual value ${actual} exceeded the contractual threshold (${expected}).`
+    if (
+      (operator.includes("<") || operator === "max") &&
+      actualNumber > expectedNumber
+    ) {
+      return `Actual value ${actual} exceeded the contractual threshold (${expected}).`;
     }
   }
-  return `Actual value ${actual} violated the contractual threshold (${expected}).`
-}
+  return `Actual value ${actual} violated the contractual threshold (${expected}).`;
+};
 
 const buildEscalationDraft = (breach: ContractKPIBreach, kpi?: ContractKPI) => {
-  const expected = expectedFor(breach, kpi)
-  const actual = `${breach.actual_value ?? 'not reported'} ${breach.actual_unit || kpi?.unit || ''}`.trim()
+  const expected = expectedFor(breach, kpi);
+  const unit = kpi?.unit || breach.actual_unit || "";
+  const actual =
+    `${breach.actual_value ?? "not reported"} ${breach.actual_unit || unit}`.trim();
+  const penalty = toNumber(breach.penalty_amount ?? kpi?.consequence_value);
+  const penaltyText = penalty ? `${penalty.toLocaleString()} ${unit}`.trim() : "not defined in the agreement";
+  const variance = breach.variance_percent;
+  const varianceText = variance !== null && variance !== undefined ? `${variance >= 0 ? "+" : ""}${variance.toFixed(1)}%` : "N/A";
+  const severity = breach.severity || "Medium";
+  const contract = breach.source_kpi?.contract_name || kpi?.contract_name || "the agreement";
+  const section = kpi?.section || "";
+  const clause = kpi?.quote || "";
+  const period = breach.period_end || breach.timestamp || breach.created_at;
+  const periodText = period ? new Date(period).toISOString().slice(0, 10) : "N/A";
+  const remediation = breach.remediation || kpi?.remediation || "Please review the discrepancy, confirm the root cause, and provide a corrective action plan.";
+  const sla = breach.remediation_sla || kpi?.remediation_sla || "7 days";
+  const clauseBlock = section || clause ? `\nClause reference: ${section}\n"${clause}"\n` : "";
+  const kpiName = kpi?.name || breach.source_kpi?.name || breach.kpi_id;
   return [
-    `Breach alert for ${kpi?.name || breach.source_kpi?.name || breach.kpi_id}`,
-    '',
-    `Expected: ${expected}`,
-    `Actual: ${actual}`,
-    `Status: ${breach.status || (breach.is_breach ? 'open' : 'clear')}`,
-    `Remediation: ${breach.remediation || kpi?.remediation || 'Please provide corrective action and owner update.'}`,
-  ].join('\n')
-}
+    `Subject: Breach alert for ${kpiName} (${severity} severity)`,
+    "",
+    "Hi,",
+    "",
+    `This is an automated compliance alert regarding ${contract}.`,
+    "",
+    `KPI: ${kpiName}`,
+    `Severity: ${severity}`,
+    `Result: Actual ${actual} vs expected ${expected} — variance ${varianceText}.`,
+    `Period: ${periodText}`,
+    `Source: ${breach.source || kpi?.source_requirements?.source_type || "operations feed"}`,
+    `Penalty exposure: ${penaltyText}`,
+    `Required action: ${remediation} Please complete within ${sla}.`,
+    clauseBlock,
+    "Please investigate and confirm the corrective action by return.",
+    "",
+    "Best regards,",
+  ].join("\n");
+};
 
 const chartPointsFor = (actuals: ContractKPIActual[]) => {
-  const ordered = [...actuals].sort((left, right) => (
-    new Date(actualTimestamp(left) || 0).getTime() - new Date(actualTimestamp(right) || 0).getTime()
-  ))
+  const ordered = [...actuals].sort(
+    (left, right) =>
+      new Date(actualTimestamp(left) || 0).getTime() -
+      new Date(actualTimestamp(right) || 0).getTime(),
+  );
   return ordered.map((actual, index) => ({
-    xLabel: actualTimestamp(actual) ? new Date(actualTimestamp(actual) as string).toLocaleDateString() : `#${index + 1}`,
+    xLabel: actualTimestamp(actual)
+      ? new Date(actualTimestamp(actual) as string).toLocaleDateString()
+      : `#${index + 1}`,
     value: toNumber(actual.value) ?? 0,
-  }))
-}
+  }));
+};
 
-type IngestionMode = 'manual' | 'scheduled' | 'realtime' | 'attestation'
+type IngestionMode = "manual" | "scheduled" | "realtime" | "attestation";
 
 const ingestionModeFor = (source?: KPISourceConfig | null): IngestionMode => {
-  if (!source) return 'manual'
-  if (source.source_type === 'manual_attestation') return 'attestation'
-  const cadence = String(source.schedule?.cadence || '').toLowerCase()
-  if (['webhook', 'real_time', 'realtime', 'on_file_arrival'].includes(cadence)) return 'realtime'
-  if (source.enabled || !['', 'manual'].includes(cadence)) return 'scheduled'
-  return 'manual'
-}
+  if (!source) return "manual";
+  if (source.source_type === "manual_attestation") return "attestation";
+  const cadence = String(source.schedule?.cadence || "").toLowerCase();
+  if (["webhook", "real_time", "realtime", "on_file_arrival"].includes(cadence))
+    return "realtime";
+  if (source.enabled || !["", "manual"].includes(cadence)) return "scheduled";
+  return "manual";
+};
 
 const ingestionModeLabel = (source?: KPISourceConfig | null) => {
-  const mode = ingestionModeFor(source)
-  if (mode === 'scheduled') return `Scheduled ${titleCase(source?.schedule?.cadence || 'polling')}`
-  if (mode === 'realtime') return 'Webhook / realtime'
-  if (mode === 'attestation') return 'Manual attestation'
-  return 'Manual fetch'
-}
+  const mode = ingestionModeFor(source);
+  if (mode === "scheduled")
+    return `Scheduled ${titleCase(source?.schedule?.cadence || "polling")}`;
+  if (mode === "realtime") return "Webhook / realtime";
+  if (mode === "attestation") return "Manual attestation";
+  return "Manual fetch";
+};
 
-const runDisplayTime = (run: KPISourceFetchRun) => formatDateTime(run.finished_at || run.started_at)
+const runDisplayTime = (run: KPISourceFetchRun) =>
+  formatDateTime(run.finished_at || run.started_at);
 
 const runDuration = (run: KPISourceFetchRun) => {
   if (run.duration_ms != null) {
-    if (run.duration_ms < 1000) return `${run.duration_ms}ms`
-    return `${(run.duration_ms / 1000).toFixed(1)}s`
+    if (run.duration_ms < 1000) return `${run.duration_ms}ms`;
+    return `${(run.duration_ms / 1000).toFixed(1)}s`;
   }
   if (run.started_at && run.finished_at) {
-    const delta = new Date(run.finished_at).getTime() - new Date(run.started_at).getTime()
-    if (Number.isFinite(delta) && delta >= 0) return `${(delta / 1000).toFixed(1)}s`
+    const delta =
+      new Date(run.finished_at).getTime() - new Date(run.started_at).getTime();
+    if (Number.isFinite(delta) && delta >= 0)
+      return `${(delta / 1000).toFixed(1)}s`;
   }
-  return 'running'
-}
+  return "running";
+};
 
 const sourceEndpointLabel = (source?: KPISourceConfig | null) => {
-  if (!source) return 'Actual ingestion'
-  if (source.endpoint) return `${source.method || 'GET'} ${source.endpoint}`
-  if (source.signed_url) return 'Signed file URL'
-  if (source.source_type === 'manual_attestation') return 'Workspace attestation'
-  if (['csv', 'xlsx', 'json', 'xml'].includes(source.source_type)) return `${titleCase(source.source_type)} upload sample`
-  return titleCase(source.source_type)
-}
+  if (!source) return "Actual ingestion";
+  if (source.endpoint) return `${source.method || "GET"} ${source.endpoint}`;
+  if (source.signed_url) return "Signed file URL";
+  if (source.source_type === "manual_attestation")
+    return "Workspace attestation";
+  if (["csv", "xlsx", "json", "xml"].includes(source.source_type))
+    return `${titleCase(source.source_type)} upload sample`;
+  return titleCase(source.source_type);
+};
 
 export default function ContractKpiManagementPage() {
-  const { setBreadcrumbs } = useBreadcrumbs()
-  const router = useRouter()
-  const params = useParams()
-  const contractId = typeof params?.contract_id === 'string' ? params.contract_id : ''
-  const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL
-  const { token, authChecked, isAuthenticated, authenticatedFetch } = useAuth()
+  const { setBreadcrumbs } = useBreadcrumbs();
+  const router = useRouter();
+  const params = useParams();
+  const contractId =
+    typeof params?.contract_id === "string" ? params.contract_id : "";
+  const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL;
+  const { token, authChecked, isAuthenticated, authenticatedFetch } = useAuth();
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const [activePanel, setActivePanel] = useState<PanelKey>('review')
-  const [contract, setContract] = useState<FullContractData | null>(null)
-  const [kpis, setKpis] = useState<ContractKPI[]>([])
-  const [summary, setSummary] = useState<ContractKPISummary | null>(null)
-  const [actuals, setActuals] = useState<ContractKPIActual[]>([])
-  const [breaches, setBreaches] = useState<ContractKPIBreach[]>([])
-  const [portfolio, setPortfolio] = useState<KPIPortfolio | null>(null)
-  const [catalogEntries, setCatalogEntries] = useState<KPICatalogEntry[]>([])
-  const [kpiAlerts, setKpiAlerts] = useState<KPIAlert[]>([])
-  const [sourceCatalog, setSourceCatalog] = useState<KPISourceCatalogItem[]>([])
-  const [sourceConfigs, setSourceConfigs] = useState<KPISourceConfig[]>([])
-  const [sourceRuns, setSourceRuns] = useState<Record<string, KPISourceFetchRun[]>>({})
-  const [runDetails, setRunDetails] = useState<Record<string, KPISourceRunDetail | { error: string }>>({})
-  const [sourceResults, setSourceResults] = useState<Record<string, any>>({})
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
-  const [samplePayload, setSamplePayload] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
-  const [isExtracting, setIsExtracting] = useState(false)
-  const [isUploading, setIsUploading] = useState(false)
-  const [isSavingSource, setIsSavingSource] = useState(false)
-  const [isRunningSource, setIsRunningSource] = useState(false)
-  const [isCreatingAlertRules, setIsCreatingAlertRules] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [activePanel, setActivePanel] = useState<PanelKey>("review");
+  const [contract, setContract] = useState<FullContractData | null>(null);
+  const [kpis, setKpis] = useState<ContractKPI[]>([]);
+  const [summary, setSummary] = useState<ContractKPISummary | null>(null);
+  const [actuals, setActuals] = useState<ContractKPIActual[]>([]);
+  const [breaches, setBreaches] = useState<ContractKPIBreach[]>([]);
+  const [portfolio, setPortfolio] = useState<KPIPortfolio | null>(null);
+  const [catalogEntries, setCatalogEntries] = useState<KPICatalogEntry[]>([]);
+  const [kpiAlerts, setKpiAlerts] = useState<KPIAlert[]>([]);
+  const [sourceCatalog, setSourceCatalog] = useState<KPISourceCatalogItem[]>(
+    [],
+  );
+  const [recentProfiles, setRecentProfiles] = useState<KPIIntegrationProfile[]>(
+    [],
+  );
+  const [sourceConfigs, setSourceConfigs] = useState<KPISourceConfig[]>([]);
+  const [sourceRuns, setSourceRuns] = useState<
+    Record<string, KPISourceFetchRun[]>
+  >({});
+  const [runDetails, setRunDetails] = useState<
+    Record<string, KPISourceRunDetail | { error: string }>
+  >({});
+  const [sourceResults, setSourceResults] = useState<Record<string, any>>({});
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const [samplePayload, setSamplePayload] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSavingSource, setIsSavingSource] = useState(false);
+  const [isRunningSource, setIsRunningSource] = useState(false);
+  const [isCreatingAlertRules, setIsCreatingAlertRules] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const sortedKpis = useMemo(() => (
-    [...kpis].sort((left, right) => (
-      Number(isKpiTracked(right)) - Number(isKpiTracked(left)) ||
-      (left.page_start || 9999) - (right.page_start || 9999) ||
-      (left.kpi_type || '').localeCompare(right.kpi_type || '') ||
-      left.name.localeCompare(right.name)
-    ))
-  ), [kpis])
-  const kpiById = useMemo(() => new Map(kpis.map((kpi) => [kpi.kpi_id, kpi])), [kpis])
-  const trackedKpis = useMemo(() => sortedKpis.filter(isKpiTracked), [sortedKpis])
-  const activeBreaches = useMemo(() => (
-    breaches.filter((breach) => isKpiTracked(kpiById.get(breach.kpi_id)) && breach.is_breach && breach.status !== 'resolved')
-  ), [breaches, kpiById])
-  const visibleBreaches = useMemo(() => (
-    breaches.filter((breach) => isKpiTracked(kpiById.get(breach.kpi_id)))
-  ), [breaches, kpiById])
-  const deferredCount = sortedKpis.filter((kpi) => kpi.status !== 'ignored' && !isKpiTracked(kpi)).length
-  const recommendedTrackCount = sortedKpis.filter((kpi) => isKpiRecommended(kpi) && !isKpiTracked(kpi) && kpi.status !== 'ignored').length
-  const exposure = activeBreaches.reduce((total, breach) => total + Math.abs(toNumber(kpiById.get(breach.kpi_id)?.consequence_value) || 0), 0)
-  const openAlertCount = kpiAlerts.filter((alert) => String(alert.status || 'open').toLowerCase() === 'open').length
-  const certifiedMetricCount = catalogEntries.filter((entry) => String(entry.certified_status || '').toLowerCase() === 'certified').length
+  const sortedKpis = useMemo(
+    () =>
+      [...kpis].sort(
+        (left, right) =>
+          Number(isKpiTracked(right)) - Number(isKpiTracked(left)) ||
+          (left.page_start || 9999) - (right.page_start || 9999) ||
+          (left.kpi_type || "").localeCompare(right.kpi_type || "") ||
+          left.name.localeCompare(right.name),
+      ),
+    [kpis],
+  );
+  const kpiById = useMemo(
+    () => new Map(kpis.map((kpi) => [kpi.kpi_id, kpi])),
+    [kpis],
+  );
+  const trackedKpis = useMemo(
+    () => sortedKpis.filter(isKpiTracked),
+    [sortedKpis],
+  );
+  const airportDemoFlagsReady = useMemo(() => {
+    const demoSources = sourceConfigs.filter((config) => isAirportDemoSource(config));
+    if (!demoSources.length) return true;
+    const expectedCounts: Record<string, number> = {
+      csv: 3,
+      json: 2,
+      rest_api: 3,
+      sap_s4hana: 2,
+    };
+    const completedRun = (config: KPISourceConfig) => {
+      const status = String(config.last_fetch_status?.status || "").toLowerCase();
+      return Boolean(config.last_run_at) && !["failed", "validation_failed", "last_fetch_failed"].includes(status);
+    };
+    return Object.entries(expectedCounts).every(([sourceType, expected]) =>
+      demoSources.some(
+        (config) =>
+          config.source_type === sourceType &&
+          enabledKpiIdsForSource(config, kpis).length === expected &&
+          completedRun(config),
+      ),
+    );
+  }, [kpis, sourceConfigs]);
+  const airportDemoCompletedSourceCount = useMemo(
+    () =>
+      sourceConfigs.filter(
+        (config) => {
+          const status = String(config.last_fetch_status?.status || "").toLowerCase();
+          return (
+            isAirportDemoSource(config) &&
+            Boolean(config.last_run_at) &&
+            !["failed", "validation_failed", "last_fetch_failed"].includes(status)
+          );
+        },
+      ).length,
+    [sourceConfigs],
+  );
+  const activeBreaches = useMemo(
+    () =>
+      (airportDemoFlagsReady ? breaches : []).filter(
+        (breach) =>
+          isKpiTracked(kpiById.get(breach.kpi_id)) &&
+          breach.is_breach &&
+          breach.status !== "resolved",
+      ),
+    [airportDemoFlagsReady, breaches, kpiById],
+  );
+  const visibleBreaches = useMemo(
+    () =>
+      (airportDemoFlagsReady ? breaches : []).filter((breach) =>
+        isKpiTracked(kpiById.get(breach.kpi_id)),
+      ),
+    [airportDemoFlagsReady, breaches, kpiById],
+  );
+  const deferredCount = sortedKpis.filter(
+    (kpi) => kpi.status !== "ignored" && !isKpiTracked(kpi),
+  ).length;
+  const recommendedTrackCount = sortedKpis.filter(
+    (kpi) =>
+      isKpiRecommended(kpi) && !isKpiTracked(kpi) && kpi.status === "approved",
+  ).length;
+  const exposure = activeBreaches.reduce(
+    (total, breach) =>
+      total +
+      Math.abs(toNumber(kpiById.get(breach.kpi_id)?.consequence_value) || 0),
+    0,
+  );
+  const openAlertCount = kpiAlerts.filter(
+    (alert) => String(alert.status || "open").toLowerCase() === "open",
+  ).length;
+  const certifiedMetricCount = catalogEntries.filter(
+    (entry) =>
+      String(entry.certified_status || "").toLowerCase() === "certified",
+  ).length;
   const complianceRate = trackedKpis.length
-    ? Math.max(0, Math.round(((trackedKpis.length - activeBreaches.length) / trackedKpis.length) * 100))
-    : 0
-  const userSourceCatalog = useMemo(() => (
-    sourceCatalog.filter((source) => source.enabled_for_contract_users !== false && USER_KPI_SOURCE_TYPES.has(source.source_type))
-  ), [sourceCatalog])
-  const userSourceConfigs = useMemo(() => (
-    sourceConfigs.filter((config) => USER_KPI_SOURCE_TYPES.has(config.source_type))
-  ), [sourceConfigs])
+    ? Math.max(
+      0,
+      Math.round(
+        ((trackedKpis.length - activeBreaches.length) / trackedKpis.length) *
+        100,
+      ),
+    )
+    : 0;
+  const userSourceCatalog = useMemo(
+    () =>
+      sourceCatalog.filter(
+        (source) =>
+          source.enabled_for_contract_users !== false &&
+          USER_KPI_SOURCE_TYPES.has(source.source_type),
+      ),
+    [sourceCatalog],
+  );
+  const userSourceConfigs = useMemo(
+    () =>
+      sourceConfigs.filter((config) =>
+        USER_KPI_SOURCE_TYPES.has(config.source_type),
+      ),
+    [sourceConfigs],
+  );
   const sourcesByKpiId = useMemo(() => {
-    const grouped = new Map<string, KPISourceConfig[]>()
+    const grouped = new Map<string, KPISourceConfig[]>();
     const add = (kpiId: string | undefined | null, source: KPISourceConfig) => {
-      if (!kpiId) return
-      const current = grouped.get(kpiId) || []
-      if (!current.some((item) => item.source_config_id === source.source_config_id)) {
-        current.push(source)
-        grouped.set(kpiId, current)
+      if (!kpiId) return;
+      const current = grouped.get(kpiId) || [];
+      if (
+        !current.some(
+          (item) => item.source_config_id === source.source_config_id,
+        )
+      ) {
+        current.push(source);
+        grouped.set(kpiId, current);
       }
-    }
+    };
     userSourceConfigs.forEach((config) => {
-      enabledKpiIdsForSource(config, kpis).forEach((kpiId) => add(kpiId, config))
-    })
+      enabledKpiIdsForSource(config, kpis).forEach((kpiId) =>
+        add(kpiId, config),
+      );
+    });
     kpis.forEach((kpi) => {
-      const legacy = userSourceConfigs.find((config) => config.source_config_id === kpi.source_config_id)
-      if (legacy) add(kpi.kpi_id, legacy)
-    })
-    return grouped
-  }, [kpis, userSourceConfigs])
-  const selectedSource = useMemo(() => (
-    userSourceConfigs.find((config) => config.source_config_id === selectedSourceId) || userSourceConfigs[0] || null
-  ), [userSourceConfigs, selectedSourceId])
-  const allFetchRuns = useMemo(() => (
-    userSourceConfigs
-      .flatMap((config) => (sourceRuns[config.source_config_id] || []).map((run) => ({ ...run, source_config_id: run.source_config_id || config.source_config_id })))
-      .sort((left, right) => new Date(right.started_at || right.finished_at || 0).getTime() - new Date(left.started_at || left.finished_at || 0).getTime())
-  ), [sourceRuns, userSourceConfigs])
+      const legacy = userSourceConfigs.find(
+        (config) => config.source_config_id === kpi.source_config_id,
+      );
+      if (legacy) add(kpi.kpi_id, legacy);
+    });
+    return grouped;
+  }, [kpis, userSourceConfigs]);
+  const selectedSource = useMemo(
+    () =>
+      userSourceConfigs.find(
+        (config) => config.source_config_id === selectedSourceId,
+      ) ||
+      userSourceConfigs[0] ||
+      null,
+    [userSourceConfigs, selectedSourceId],
+  );
+  const allFetchRuns = useMemo(
+    () =>
+      userSourceConfigs
+        .flatMap((config) =>
+          (sourceRuns[config.source_config_id] || []).map((run) => ({
+            ...run,
+            source_config_id: run.source_config_id || config.source_config_id,
+          })),
+        )
+        .sort(
+          (left, right) =>
+            new Date(right.started_at || right.finished_at || 0).getTime() -
+            new Date(left.started_at || left.finished_at || 0).getTime(),
+        ),
+    [sourceRuns, userSourceConfigs],
+  );
   const actualsByKpiId = useMemo(() => {
-    const grouped = new Map<string, ContractKPIActual[]>()
+    const grouped = new Map<string, ContractKPIActual[]>();
     actuals.forEach((actual) => {
-      const list = grouped.get(actual.kpi_id) || []
-      list.push(actual)
-      grouped.set(actual.kpi_id, list)
-    })
-    return grouped
-  }, [actuals])
+      const list = grouped.get(actual.kpi_id) || [];
+      list.push(actual);
+      grouped.set(actual.kpi_id, list);
+    });
+    return grouped;
+  }, [actuals]);
 
   useEffect(() => {
     if (!selectedSource) {
-      setSamplePayload('')
-      return
+      setSamplePayload("");
+      return;
     }
     setSamplePayload(
       selectedSource.sample_payload == null
-        ? ''
-        : typeof selectedSource.sample_payload === 'string'
+        ? ""
+        : typeof selectedSource.sample_payload === "string"
           ? selectedSource.sample_payload
-          : JSON.stringify(selectedSource.sample_payload, null, 2)
-    )
-  }, [selectedSource?.source_config_id])
+          : JSON.stringify(selectedSource.sample_payload, null, 2),
+    );
+  }, [selectedSource?.source_config_id]);
 
   useEffect(() => {
     if (!selectedSourceId && sourceConfigs[0]?.source_config_id) {
-      setSelectedSourceId(sourceConfigs[0].source_config_id)
+      setSelectedSourceId(sourceConfigs[0].source_config_id);
     }
-  }, [sourceConfigs, selectedSourceId])
+  }, [sourceConfigs, selectedSourceId]);
 
   useEffect(() => {
     if (contract) {
       setBreadcrumbs([
         { label: "Projects", href: "/dashboard?view=all" },
-        { label: contract.project?.name || "Contract", href: `/dashboard?project=${contract.project_id || contract.projectId || contract.project?._id || ''}` },
-        { label: contract.contract_name || "Contract", href: `/contracts/${contractId}` },
-        { label: "KPI Management", href: `/contracts/${contractId}/kpis` }
+        {
+          label: contract.project?.name || "Contract",
+          href: `/dashboard?project=${contract.project_id || contract.projectId || contract.project?._id || ""}`,
+        },
+        {
+          label: contract.contract_name || "Contract",
+          href: `/contracts/${contractId}`,
+        },
+        { label: "KPI Management", href: `/contracts/${contractId}/kpis` },
       ]);
     } else {
       setBreadcrumbs([
         { label: "Projects", href: "/dashboard?view=all" },
-        { label: "KPI Management", href: `/contracts/${contractId}/kpis` }
+        { label: "KPI Management", href: `/contracts/${contractId}/kpis` },
       ]);
     }
   }, [contract, contractId, setBreadcrumbs]);
 
-  const loadFetchRuns = useCallback(async (config: KPISourceConfig) => {
-    if (!apiUrl || !config?.source_config_id) return
-    const result = await authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(config.source_config_id)}/fetch-runs`)
-    if (!result.error) {
-      setSourceRuns((current) => ({
-        ...current,
-        [config.source_config_id]: Array.isArray(result.data?.fetch_runs) ? result.data.fetch_runs : [],
-      }))
-    }
-  }, [apiUrl, authenticatedFetch, contractId])
+  const loadFetchRuns = useCallback(
+    async (config: KPISourceConfig) => {
+      if (!apiUrl || !config?.source_config_id) return;
+      const result = await authenticatedFetch(
+        `${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(config.source_config_id)}/fetch-runs`,
+      );
+      if (!result.error) {
+        setSourceRuns((current) => ({
+          ...current,
+          [config.source_config_id]: Array.isArray(result.data?.fetch_runs)
+            ? result.data.fetch_runs
+            : [],
+        }));
+      }
+    },
+    [apiUrl, authenticatedFetch, contractId],
+  );
 
-  const loadRunDetail = useCallback(async (sourceConfigId: string, runId: string) => {
-    if (!apiUrl || !sourceConfigId || !runId || runDetails[runId]) return
-    const result = await authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(sourceConfigId)}/fetch-runs/${encodeURIComponent(runId)}`)
-    setRunDetails((current) => ({
-      ...current,
-      [runId]: result.error ? { error: result.error } : result.data,
-    }))
-  }, [apiUrl, authenticatedFetch, contractId, runDetails])
+  const loadRunDetail = useCallback(
+    async (sourceConfigId: string, runId: string) => {
+      if (!apiUrl || !sourceConfigId || !runId || runDetails[runId]) return;
+      const result = await authenticatedFetch(
+        `${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(sourceConfigId)}/fetch-runs/${encodeURIComponent(runId)}`,
+      );
+      setRunDetails((current) => ({
+        ...current,
+        [runId]: result.error ? { error: result.error } : result.data,
+      }));
+    },
+    [apiUrl, authenticatedFetch, contractId, runDetails],
+  );
 
   const loadWorkspace = useCallback(async () => {
-    if (!apiUrl || !contractId || !authChecked || !isAuthenticated) return
-    setIsLoading(true)
-    setError(null)
+    if (!apiUrl || !contractId || !authChecked || !isAuthenticated) return;
+    setIsLoading(true);
+    setError(null);
     try {
-      const [contractResult, kpiResult, actualResult, breachResult, catalogResult, sourceResult] = await Promise.all([
+      const [
+        contractResult,
+        kpiResult,
+        actualResult,
+        breachResult,
+        sourceResult,
+      ] = await Promise.all([
         authenticatedFetch(`${apiUrl}/contracts/${contractId}`),
         authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis`),
         authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/actuals`),
         authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/breaches`),
-        authenticatedFetch(`${apiUrl}/kpis/source-catalog?scope=user`),
-        authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/source-configs`),
-      ])
-      const firstError = [contractResult, kpiResult, actualResult, breachResult, catalogResult, sourceResult].find((result) => result.error)
-      if (firstError?.error) throw new Error(firstError.error)
-      const loadedContract = contractResult.data || null
-      setContract(loadedContract)
-      setKpis(Array.isArray(kpiResult.data?.kpis) ? kpiResult.data.kpis : [])
-      setSummary(kpiResult.data?.summary || null)
-      setActuals(Array.isArray(actualResult.data?.actuals) ? actualResult.data.actuals : [])
-      setBreaches(Array.isArray(breachResult.data?.breaches) ? breachResult.data.breaches : [])
-      setSourceCatalog(Array.isArray(catalogResult.data?.sources) ? catalogResult.data.sources : [])
-      setSourceConfigs(Array.isArray(sourceResult.data?.source_configs) ? sourceResult.data.source_configs : [])
+        authenticatedFetch(
+          `${apiUrl}/contracts/${contractId}/kpis/source-configs`,
+        ),
+      ]);
+      const firstError = [
+        contractResult,
+        kpiResult,
+        actualResult,
+        breachResult,
+        sourceResult,
+      ].find((result) => result.error);
+      if (firstError?.error) throw new Error(firstError.error);
+      const loadedContract = contractResult.data || null;
+      setContract(loadedContract);
+      setKpis(Array.isArray(kpiResult.data?.kpis) ? kpiResult.data.kpis : []);
+      setSummary(kpiResult.data?.summary || null);
+      setActuals(
+        Array.isArray(actualResult.data?.actuals)
+          ? actualResult.data.actuals
+          : [],
+      );
+      setBreaches(
+        Array.isArray(breachResult.data?.breaches)
+          ? breachResult.data.breaches
+          : [],
+      );
+      setSourceConfigs(
+        Array.isArray(sourceResult.data?.source_configs)
+          ? sourceResult.data.source_configs
+          : [],
+      );
 
-      const projectId = loadedContract?.projectId || loadedContract?.project_id || loadedContract?.project?._id
+      const projectId =
+        loadedContract?.projectId ||
+        loadedContract?.project_id ||
+        loadedContract?.project?._id;
+      setIsLoading(false);
+      void Promise.all([
+        authenticatedFetch(`${apiUrl}/kpis/source-catalog?scope=user`),
+        authenticatedFetch(`${apiUrl}/kpis/integrations/profiles/recent`),
+      ]).then(([catalogResult, recentProfilesResult]) => {
+        if (!catalogResult.error)
+          setSourceCatalog(
+            Array.isArray(catalogResult.data?.sources)
+              ? catalogResult.data.sources
+              : [],
+          );
+        if (!recentProfilesResult.error)
+          setRecentProfiles(
+            Array.isArray(recentProfilesResult.data?.profiles)
+              ? recentProfilesResult.data.profiles
+              : [],
+          );
+      });
       if (projectId) {
-        const [portfolioResult, metricCatalogResult, alertsResult] = await Promise.all([
+        void Promise.all([
           authenticatedFetch(`${apiUrl}/projects/${projectId}/kpis/portfolio`),
           authenticatedFetch(`${apiUrl}/projects/${projectId}/kpis/catalog`),
           authenticatedFetch(`${apiUrl}/projects/${projectId}/kpis/alerts`),
-        ])
-        if (!portfolioResult.error) setPortfolio(portfolioResult.data || null)
-        if (!metricCatalogResult.error) setCatalogEntries(Array.isArray(metricCatalogResult.data?.entries) ? metricCatalogResult.data.entries : [])
-        if (!alertsResult.error) setKpiAlerts(Array.isArray(alertsResult.data?.alerts) ? alertsResult.data.alerts : [])
+        ]).then(([portfolioResult, metricCatalogResult, alertsResult]) => {
+          if (!portfolioResult.error) setPortfolio(portfolioResult.data || null);
+          if (!metricCatalogResult.error)
+            setCatalogEntries(
+              Array.isArray(metricCatalogResult.data?.entries)
+                ? metricCatalogResult.data.entries
+                : [],
+            );
+          if (!alertsResult.error)
+            setKpiAlerts(
+              Array.isArray(alertsResult.data?.alerts)
+                ? alertsResult.data.alerts
+                : [],
+            );
+        });
       } else {
-        setPortfolio(null)
-        setCatalogEntries([])
-        setKpiAlerts([])
+        setPortfolio(null);
+        setCatalogEntries([]);
+        setKpiAlerts([]);
       }
     } catch (loadError) {
-      const message = loadError instanceof Error ? loadError.message : 'Unable to load KPI management.'
-      setError(message)
+      const message =
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load KPI management.";
+      setError(message);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }, [apiUrl, authChecked, authenticatedFetch, contractId, isAuthenticated])
+  }, [apiUrl, authChecked, authenticatedFetch, contractId, isAuthenticated]);
 
   useEffect(() => {
-    void loadWorkspace()
-  }, [loadWorkspace])
+    void loadWorkspace();
+  }, [loadWorkspace]);
 
   useEffect(() => {
-    if (selectedSource) void loadFetchRuns(selectedSource)
-  }, [loadFetchRuns, selectedSource?.source_config_id])
+    if (selectedSource) void loadFetchRuns(selectedSource);
+  }, [loadFetchRuns, selectedSource?.source_config_id]);
 
   useEffect(() => {
     userSourceConfigs.forEach((config) => {
-      if (!sourceRuns[config.source_config_id]) void loadFetchRuns(config)
-    })
-  }, [loadFetchRuns, sourceRuns, userSourceConfigs])
+      if (!sourceRuns[config.source_config_id]) void loadFetchRuns(config);
+    });
+  }, [loadFetchRuns, sourceRuns, userSourceConfigs]);
 
   const updateKpi = async (kpi: ContractKPI, updates: Partial<ContractKPI>) => {
-    if (!apiUrl) return null
-    const normalizedUpdates: Partial<ContractKPI> = { ...updates }
-    const numericUpdates = normalizedUpdates as Record<'value_min' | 'value_max' | 'consequence_value', unknown>
-    ;(['value_min', 'value_max', 'consequence_value'] as const).forEach((key) => {
-      const value = numericUpdates[key]
-      if (value === undefined) return
-      numericUpdates[key] = value === null || String(value).trim() === '' ? null : Number(value)
-    })
-    const previous = kpis
-    setKpis((current) => current.map((item) => item.kpi_id === kpi.kpi_id ? { ...item, ...normalizedUpdates } : item))
-    const result = await authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/${encodeURIComponent(kpi.kpi_id)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(normalizedUpdates),
-    })
+    if (!apiUrl) return null;
+    const normalizedUpdates: Partial<ContractKPI> = { ...updates };
+    const numericUpdates = normalizedUpdates as Record<
+      "value_min" | "value_max" | "consequence_value",
+      unknown
+    >;
+    (["value_min", "value_max", "consequence_value"] as const).forEach(
+      (key) => {
+        const value = numericUpdates[key];
+        if (value === undefined) return;
+        numericUpdates[key] =
+          value === null || String(value).trim() === "" ? null : Number(value);
+      },
+    );
+    const previous = kpis;
+    setKpis((current) =>
+      current.map((item) =>
+        item.kpi_id === kpi.kpi_id ? { ...item, ...normalizedUpdates } : item,
+      ),
+    );
+    const result = await authenticatedFetch(
+      `${apiUrl}/contracts/${contractId}/kpis/${encodeURIComponent(kpi.kpi_id)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(normalizedUpdates),
+      },
+    );
     if (result.error) {
-      setKpis(previous)
-      toast({ title: 'Could not update KPI', description: result.error, variant: 'destructive' })
-      return null
+      setKpis(previous);
+      toast({
+        title: "Could not update KPI",
+        description: result.error,
+        variant: "destructive",
+      });
+      return null;
     }
-    const updated = result.data as ContractKPI
-    setKpis((current) => current.map((item) => item.kpi_id === updated.kpi_id ? updated : item))
-    return updated
-  }
+    const updated = result.data as ContractKPI;
+    setKpis((current) =>
+      current.map((item) => (item.kpi_id === updated.kpi_id ? updated : item)),
+    );
+    return updated;
+  };
 
   const extractKpis = async () => {
-    if (!apiUrl) return
-    setIsExtracting(true)
-    const result = await authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/extract`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ replace_drafts: true, ai_provider: 'groq' }),
-    })
-    setIsExtracting(false)
+    if (!apiUrl) return;
+    setIsExtracting(true);
+    const result = await authenticatedFetch(
+      `${apiUrl}/contracts/${contractId}/kpis/extract`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ replace_drafts: true, ai_provider: "groq" }),
+      },
+    );
+    setIsExtracting(false);
     if (result.error) {
-      toast({ title: 'Could not extract KPIs', description: result.error, variant: 'destructive' })
-      return
+      toast({
+        title: "Could not extract KPIs",
+        description: result.error,
+        variant: "destructive",
+      });
+      return;
     }
-    toast({ title: 'KPIs extracted', description: `${result.data?.kpi_count ?? result.data?.kpis?.length ?? 0} KPI candidates ready.` })
-    await loadWorkspace()
-  }
+    toast({
+      title: "KPIs extracted",
+      description: `${result.data?.kpi_count ?? result.data?.kpis?.length ?? 0} KPI candidates ready.`,
+    });
+    await loadWorkspace();
+  };
 
   const acceptAll = async () => {
-    const candidates = kpis.filter((kpi) => kpi.status !== 'approved' && kpi.status !== 'ignored')
-    await Promise.all(candidates.map((kpi) => updateKpi(kpi, { status: 'approved' })))
-    toast({ title: 'KPI candidates accepted', description: `${candidates.length} KPI${candidates.length === 1 ? '' : 's'} accepted.` })
-  }
+    const candidates = kpis.filter(
+      (kpi) => kpi.status !== "approved" && kpi.status !== "ignored",
+    );
+    await Promise.all(
+      candidates.map((kpi) =>
+        updateKpi(kpi, {
+          status: "approved",
+          ...(isKpiRecommended(kpi)
+            ? { tracking_status: "tracked", is_tracked: true }
+            : {}),
+        }),
+      ),
+    );
+    toast({
+      title: "KPI candidates accepted",
+      description: `${candidates.length} KPI${candidates.length === 1 ? "" : "s"} accepted${recommendedTrackCount ? ` · ${recommendedTrackCount} recommended activated for tracking` : ""}.`,
+    });
+  };
 
   const trackRecommended = async () => {
-    const candidates = kpis.filter((kpi) => isKpiRecommended(kpi) && !isKpiTracked(kpi) && kpi.status !== 'ignored')
-    const updated = await Promise.all(candidates.map((kpi) => updateKpi(kpi, { status: 'approved', tracking_status: 'tracked', is_tracked: true })))
-    const backfilled = updated.reduce((total, item) => total + Number(item?.last_tracking_backfill?.created_breach_count || 0), 0)
-    await loadWorkspace()
+    const candidates = kpis.filter(
+      (kpi) =>
+        isKpiRecommended(kpi) &&
+        !isKpiTracked(kpi) &&
+        kpi.status === "approved",
+    );
+    const updated = await Promise.all(
+      candidates.map((kpi) =>
+        updateKpi(kpi, { tracking_status: "tracked", is_tracked: true }),
+      ),
+    );
+    const backfilled = updated.reduce(
+      (total, item) =>
+        total + Number(item?.last_tracking_backfill?.created_breach_count || 0),
+      0,
+    );
+    await loadWorkspace();
     toast({
-      title: 'Recommended KPIs tracked',
-      description: backfilled ? `${backfilled} existing actual${backfilled === 1 ? '' : 's'} evaluated immediately.` : `${candidates.length} KPI${candidates.length === 1 ? '' : 's'} activated.`,
-    })
-  }
+      title: "Recommended KPIs tracked",
+      description: backfilled
+        ? `${backfilled} existing actual${backfilled === 1 ? "" : "s"} evaluated immediately.`
+        : `${candidates.length} KPI${candidates.length === 1 ? "" : "s"} activated.`,
+    });
+  };
 
   const uploadActuals = async (files: FileList | File[] | File) => {
-    if (!apiUrl || !token) return
-    const fileList = Array.from(files instanceof File ? [files] : files)
-    if (!fileList.length) return
+    if (!apiUrl || !token) return;
+    const fileList = Array.from(files instanceof File ? [files] : files);
+    if (!fileList.length) return;
 
-    setIsUploading(true)
-    let totalCount = 0
-    let totalBreaches = 0
-    let successCount = 0
-    let errorMessages: string[] = []
+    setIsUploading(true);
+    let totalCount = 0;
+    let totalBreaches = 0;
+    let successCount = 0;
+    let errorMessages: string[] = [];
 
     for (const file of fileList) {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('evaluate', 'true')
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("evaluate", "true");
       try {
-        const result = await apiUploadWithProgress<any>(`${apiUrl}/contracts/${contractId}/kpis/actuals/upload`, formData)
-        if (result.error) throw new Error(result.error || `Unable to upload ${file.name}`)
-        const payload = result.data || {}
-        totalCount += payload.count || 0
-        totalBreaches += payload.breaches?.length || 0
-        successCount++
+        const result = await apiUploadWithProgress<any>(
+          `${apiUrl}/contracts/${contractId}/kpis/actuals/upload`,
+          formData,
+        );
+        if (result.error)
+          throw new Error(result.error || `Unable to upload ${file.name}`);
+        const payload = result.data || {};
+        totalCount += payload.count || 0;
+        totalBreaches += payload.breaches?.length || 0;
+        successCount++;
       } catch (uploadError) {
-        errorMessages.push(`${file.name}: ${uploadError instanceof Error ? uploadError.message : 'Upload failed'}`)
+        errorMessages.push(
+          `${file.name}: ${uploadError instanceof Error ? uploadError.message : "Upload failed"}`,
+        );
       }
     }
 
-    setIsUploading(false)
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    setIsUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
 
     if (successCount > 0) {
       toast({
-        title: `${successCount} file${successCount === 1 ? '' : 's'} ingested successfully!`,
+        title: `${successCount} file${successCount === 1 ? "" : "s"} ingested successfully!`,
         description: `${totalCount} actual rows mapped, ${totalBreaches} compliance evaluations generated.`,
-      })
-      setActivePanel('logs')
-      await loadWorkspace()
+      });
+      setActivePanel("logs");
+      await loadWorkspace();
     }
     if (errorMessages.length > 0) {
       toast({
-        title: 'Some files failed to upload',
-        description: errorMessages.join('; '),
-        variant: 'destructive',
-      })
+        title: "Some files failed to upload",
+        description: errorMessages.join("; "),
+        variant: "destructive",
+      });
     }
-  }
+  };
 
-  const defaultMappings = getDefaultKpiSourceMappings()
+  const defaultMappings = getDefaultKpiSourceMappings();
 
   const createSource = async (source: KPISourceCatalogItem) => {
-    if (!apiUrl) return null
-    setIsSavingSource(true)
-    const visibleKpis = sortedKpis.filter((kpi) => kpi.status !== 'ignored')
-    const initialKpiIds: string[] = []
+    if (!apiUrl) return null;
+    setIsSavingSource(true);
+    const visibleKpis = sortedKpis.filter((kpi) => kpi.status !== "ignored");
+    const initialKpiIds: string[] = [];
     const initialBindings = visibleKpis.map((kpi, index) => ({
-      binding_id: sourceBindingId('new_source', kpi.kpi_id, index + 1),
+      binding_id: sourceBindingId("new_source", kpi.kpi_id, index + 1),
       kpi_id: kpi.kpi_id,
       enabled: false,
       field_mappings: [],
-      aggregation: 'latest',
-    }))
+      aggregation: "latest",
+    }));
 
-    const result = await authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/source-configs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        display_name: source.label,
-        source_type: source.source_type,
-        file_format: source.source_type === 'manual_attestation' ? 'json' : source.source_type,
-        auth_type: source.auth_types?.[0] || 'none',
-        status: initialKpiIds.length ? 'mapped' : 'draft',
-        enabled: true,
-        schedule: {
-          cadence: 'manual',
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-        },
-        dedupe_key: 'source_record_id',
-        watermark_field: 'timestamp',
-        field_mappings: defaultMappings,
-        kpi_ids: initialKpiIds,
-        kpi_bindings: initialBindings,
-        validation_rules: [
-          { field: 'actual_value', rule: 'required_numeric' },
-          { field: 'timestamp', rule: 'required_datetime' },
-        ],
-      }),
-    })
-    setIsSavingSource(false)
+    const result = await authenticatedFetch(
+      `${apiUrl}/contracts/${contractId}/kpis/source-configs`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          display_name: source.label,
+          source_type: source.source_type,
+          file_format:
+            source.source_type === "manual_attestation"
+              ? "json"
+              : source.source_type,
+          auth_type: source.auth_types?.[0] || "none",
+          status: initialKpiIds.length ? "mapped" : "draft",
+          enabled: true,
+          schedule: {
+            cadence: "manual",
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          },
+          dedupe_key: "source_record_id",
+          watermark_field: "timestamp",
+          field_mappings: defaultMappings,
+          kpi_ids: initialKpiIds,
+          kpi_bindings: initialBindings,
+          validation_rules: [
+            { field: "actual_value", rule: "required_numeric" },
+            { field: "timestamp", rule: "required_datetime" },
+          ],
+        }),
+      },
+    );
+    setIsSavingSource(false);
     if (result.error) {
-      toast({ title: 'Could not create source', description: result.error, variant: 'destructive' })
-      return null
+      toast({
+        title: "Could not create source",
+        description: result.error,
+        variant: "destructive",
+      });
+      return null;
     }
-    const created = result.data as KPISourceConfig
-    setSourceConfigs((current) => [created, ...current])
-    setSelectedSourceId(created.source_config_id)
-    return created
-  }
+    const created = result.data as KPISourceConfig;
+    setSourceConfigs((current) => [created, ...current]);
+    setSelectedSourceId(created.source_config_id);
+    return created;
+  };
 
-  const uploadSourceSampleFile = async (config: KPISourceConfig, file: File) => {
-    if (!apiUrl || !token) return
-    setIsSavingSource(true)
-    const formData = new FormData()
-    formData.append('file', file)
+  const uploadSourceSampleFile = async (
+    config: KPISourceConfig,
+    file: File,
+  ) => {
+    if (!apiUrl || !token) return;
+    setIsSavingSource(true);
+    const formData = new FormData();
+    formData.append("file", file);
     try {
-      const response = await fetch(`${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(config.source_config_id)}/sample-upload`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.detail || 'Failed to parse sample file.')
+      const response = await fetch(
+        `${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(config.source_config_id)}/sample-upload`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        },
+      );
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(data.detail || "Failed to parse sample file.");
       if (data.source_config) {
-        setSourceConfigs((current) => current.map((item) => item.source_config_id === data.source_config.source_config_id ? data.source_config : item))
+        setSourceConfigs((current) =>
+          current.map((item) =>
+            item.source_config_id === data.source_config.source_config_id
+              ? data.source_config
+              : item,
+          ),
+        );
       }
       if (data.sample_payload) {
-        setSamplePayload(typeof data.sample_payload === 'string' ? data.sample_payload : JSON.stringify(data.sample_payload, null, 2))
+        setSamplePayload(
+          typeof data.sample_payload === "string"
+            ? data.sample_payload
+            : JSON.stringify(data.sample_payload, null, 2),
+        );
       }
       toast({
-        title: 'Sample file uploaded & auto-mapped!',
+        title: "Sample file uploaded & auto-mapped!",
         description: `Parsed ${data.record_count || 0} rows. ${data.field_mappings?.length || 0} fields auto-mapped.`,
-      })
+      });
     } catch (uploadError) {
       toast({
-        title: 'Sample upload failed',
-        description: uploadError instanceof Error ? uploadError.message : 'Invalid file format.',
-        variant: 'destructive',
-      })
+        title: "Sample upload failed",
+        description:
+          uploadError instanceof Error
+            ? uploadError.message
+            : "Invalid file format.",
+        variant: "destructive",
+      });
     } finally {
-      setIsSavingSource(false)
+      setIsSavingSource(false);
     }
-  }
+  };
 
-  const updateSource = async (config: KPISourceConfig, updates: Partial<KPISourceConfig>) => {
-    if (!apiUrl) return null
+  const deleteSource = async (config: KPISourceConfig) => {
+    if (!apiUrl) return;
+    if (!window.confirm(`Delete ${config.display_name}?`)) return;
+    setIsSavingSource(true);
+    const result = await authenticatedFetch(
+      `${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(config.source_config_id)}`,
+      { method: "DELETE" },
+    );
+    setIsSavingSource(false);
+    if (result.error) {
+      toast({
+        title: "Could not delete source",
+        description: result.error,
+        variant: "destructive",
+      });
+      return;
+    }
+    setSourceConfigs((current) =>
+      current.filter((item) => item.source_config_id !== config.source_config_id),
+    );
+    setSelectedSourceId((current) =>
+      current === config.source_config_id ? null : current,
+    );
+    setSourceResults((current) => {
+      const next = { ...current };
+      delete next[config.source_config_id];
+      return next;
+    });
+    toast({ title: "Source deleted" });
+  };
+
+  const updateSource = async (
+    config: KPISourceConfig,
+    updates: Partial<KPISourceConfig>,
+  ) => {
+    if (!apiUrl) return null;
     const payload = {
       ...config,
       ...updates,
       schedule: { ...(config.schedule || {}), ...(updates.schedule || {}) },
-    }
-    setIsSavingSource(true)
-    const result = await authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(config.source_config_id)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    setIsSavingSource(false)
+    };
+    setIsSavingSource(true);
+    const result = await authenticatedFetch(
+      `${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(config.source_config_id)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+    setIsSavingSource(false);
     if (result.error) {
-      toast({ title: 'Could not save source', description: result.error, variant: 'destructive' })
-      return null
+      toast({
+        title: "Could not save source",
+        description: result.error,
+        variant: "destructive",
+      });
+      return null;
     }
-    setSourceConfigs((current) => current.map((item) => item.source_config_id === result.data.source_config_id ? result.data : item))
-    return result.data as KPISourceConfig
-  }
+    setSourceConfigs((current) =>
+      current.map((item) =>
+        item.source_config_id === result.data.source_config_id
+          ? result.data
+          : item,
+      ),
+    );
+    return result.data as KPISourceConfig;
+  };
 
   const toggleSourceKpi = async (config: KPISourceConfig, kpi: ContractKPI) => {
-    const currentBindings = bindingsForSource(config, sortedKpis.filter((item) => item.status !== 'ignored'))
-    const currentBinding = currentBindings.find((binding) => binding.kpi_id === kpi.kpi_id)
+    const currentBindings = bindingsForSource(
+      config,
+      sortedKpis.filter((item) => item.status !== "ignored"),
+    );
+    const currentBinding = currentBindings.find(
+      (binding) => binding.kpi_id === kpi.kpi_id,
+    );
     const nextBinding = {
       ...(currentBinding || {
-        binding_id: sourceBindingId(config.source_config_id, kpi.kpi_id, currentBindings.length + 1),
+        binding_id: sourceBindingId(
+          config.source_config_id,
+          kpi.kpi_id,
+          currentBindings.length + 1,
+        ),
         kpi_id: kpi.kpi_id,
       }),
       enabled: !(currentBinding?.enabled !== false),
-    }
-    const nextBindings = currentBindings.map((binding) => (
-      binding.kpi_id === kpi.kpi_id ? nextBinding : binding
-    ))
-    const nextKpiIds = Array.from(new Set(nextBindings.filter((binding) => binding.enabled !== false).map((binding) => binding.kpi_id)))
+    };
+    const nextBindings = currentBindings.map((binding) =>
+      binding.kpi_id === kpi.kpi_id ? nextBinding : binding,
+    );
+    const nextKpiIds = Array.from(
+      new Set(
+        nextBindings
+          .filter((binding) => binding.enabled !== false)
+          .map((binding) => binding.kpi_id),
+      ),
+    );
     await updateSource(config, {
       kpi_bindings: nextBindings,
       kpi_ids: nextKpiIds,
-      status: nextKpiIds.length ? (config.enabled ? 'enabled' : 'mapped') : 'draft',
-      field_mappings: config.field_mappings?.length ? config.field_mappings : defaultMappings,
-    })
-  }
+      status: nextKpiIds.length
+        ? config.enabled
+          ? "enabled"
+          : "mapped"
+        : "draft",
+      field_mappings: config.field_mappings?.length
+        ? config.field_mappings
+        : defaultMappings,
+    });
+  };
 
-  const updateSourceBinding = async (config: KPISourceConfig, nextBinding: KPISourceBinding) => {
-    const visibleKpis = sortedKpis.filter((kpi) => kpi.status !== 'ignored')
-    const nextBindings = upsertSourceBinding(config, visibleKpis, nextBinding)
-    const nextKpiIds = Array.from(new Set(nextBindings.filter((binding) => binding.enabled !== false).map((binding) => binding.kpi_id)))
+  const updateSourceBinding = async (
+    config: KPISourceConfig,
+    nextBinding: KPISourceBinding,
+  ) => {
+    const visibleKpis = sortedKpis.filter((kpi) => kpi.status !== "ignored");
+    const nextBindings = upsertSourceBinding(config, visibleKpis, nextBinding);
+    const nextKpiIds = Array.from(
+      new Set(
+        nextBindings
+          .filter((binding) => binding.enabled !== false)
+          .map((binding) => binding.kpi_id),
+      ),
+    );
     await updateSource(config, {
       kpi_bindings: nextBindings,
       kpi_ids: nextKpiIds,
-      status: nextKpiIds.length ? (config.enabled ? 'enabled' : 'mapped') : 'draft',
-      field_mappings: config.field_mappings?.length ? config.field_mappings : defaultMappings,
-    })
-  }
+      status: nextKpiIds.length
+        ? config.enabled
+          ? "enabled"
+          : "mapped"
+        : "draft",
+      field_mappings: config.field_mappings?.length
+        ? config.field_mappings
+        : defaultMappings,
+    });
+  };
 
-  const applyIngestionMode = async (config: KPISourceConfig, mode: IngestionMode) => {
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-    const baseStatus = enabledKpiIdsForSource(config, sortedKpis).length ? 'mapped' : 'ready'
-    const updates: Partial<KPISourceConfig> = mode === 'scheduled'
-      ? { enabled: true, status: 'enabled', schedule: { ...(config.schedule || {}), cadence: config.schedule?.cadence && config.schedule.cadence !== 'manual' ? config.schedule.cadence : 'daily', timezone } }
-      : mode === 'realtime'
-        ? { enabled: true, status: 'enabled', schedule: { ...(config.schedule || {}), cadence: 'webhook', timezone } }
-        : mode === 'attestation'
-          ? { source_type: 'manual_attestation', file_format: 'json', enabled: false, status: baseStatus, schedule: { ...(config.schedule || {}), cadence: 'manual', timezone } } as Partial<KPISourceConfig>
-          : { enabled: false, status: baseStatus, schedule: { ...(config.schedule || {}), cadence: 'manual', timezone } }
-    await updateSource(config, updates)
-  }
+  const applyIngestionMode = async (
+    config: KPISourceConfig,
+    mode: IngestionMode,
+  ) => {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    const baseStatus = enabledKpiIdsForSource(config, sortedKpis).length
+      ? "mapped"
+      : "ready";
+    const updates: Partial<KPISourceConfig> =
+      mode === "scheduled"
+        ? {
+          enabled: true,
+          status: "enabled",
+          schedule: {
+            ...(config.schedule || {}),
+            cadence:
+              config.schedule?.cadence && config.schedule.cadence !== "manual"
+                ? config.schedule.cadence
+                : "daily",
+            timezone,
+          },
+        }
+        : mode === "realtime"
+          ? {
+            enabled: true,
+            status: "enabled",
+            schedule: {
+              ...(config.schedule || {}),
+              cadence: "webhook",
+              timezone,
+            },
+          }
+          : mode === "attestation"
+            ? ({
+              source_type: "manual_attestation",
+              file_format: "json",
+              enabled: false,
+              status: baseStatus,
+              schedule: {
+                ...(config.schedule || {}),
+                cadence: "manual",
+                timezone,
+              },
+            } as Partial<KPISourceConfig>)
+            : {
+              enabled: false,
+              status: baseStatus,
+              schedule: {
+                ...(config.schedule || {}),
+                cadence: "manual",
+                timezone,
+              },
+            };
+    await updateSource(config, updates);
+  };
 
   const saveSamplePayload = async (config: KPISourceConfig) => {
-    const trimmed = samplePayload.trim()
-    let parsed: any = trimmed || null
-    if (trimmed && (config.source_type === 'json' || trimmed.startsWith('{') || trimmed.startsWith('['))) {
+    const trimmed = samplePayload.trim();
+    let parsed: any = trimmed || null;
+    if (
+      trimmed &&
+      (config.source_type === "json" ||
+        trimmed.startsWith("{") ||
+        trimmed.startsWith("["))
+    ) {
       try {
-        parsed = JSON.parse(trimmed)
+        parsed = JSON.parse(trimmed);
       } catch {
-        toast({ title: 'Invalid JSON sample', description: 'Fix the payload before saving.', variant: 'destructive' })
-        return
+        toast({
+          title: "Invalid JSON sample",
+          description: "Fix the payload before saving.",
+          variant: "destructive",
+        });
+        return;
       }
     }
-    await updateSource(config, { sample_payload: parsed } as Partial<KPISourceConfig>)
-    toast({ title: 'Sample saved' })
-  }
+    await updateSource(config, {
+      sample_payload: parsed,
+    } as Partial<KPISourceConfig>);
+    toast({ title: "Sample saved" });
+  };
 
-  const runSourceAction = async (config: KPISourceConfig, action: 'test' | 'fetch') => {
-    if (!apiUrl) return
-    const payloadStr = samplePayload.trim()
-    if (!payloadStr && !config.sample_payload) {
+  const runSourceAction = async (
+    config: KPISourceConfig,
+    action: "test" | "fetch",
+  ) => {
+    if (!apiUrl) return null;
+    const payloadStr = samplePayload.trim();
+    const isFileSource = [
+      "csv",
+      "xlsx",
+      "json",
+      "xml",
+      "manual_attestation",
+    ].includes(config.source_type);
+    if (isFileSource && !payloadStr && !config.sample_payload) {
       toast({
-        title: 'Please attach a data file',
-        description: 'Select your CSV, Excel, JSON, or XML file to ingest actuals.',
-      })
+        title: "Please attach a data file",
+        description:
+          "Select a CSV, Excel, JSON, or XML file before validating this source.",
+      });
       if (fileInputRef.current) {
-        fileInputRef.current.click()
+        fileInputRef.current.click();
       }
-      return
+      return null;
     }
-    setIsRunningSource(true)
+    setIsRunningSource(true);
     const payload = payloadStr
       ? (() => {
-          try {
-            return JSON.parse(samplePayload)
-          } catch {
-            return samplePayload
-          }
-        })()
-      : undefined
-    const result = await authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(config.source_config_id)}/${action}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(action === 'fetch' ? { trigger_type: 'manual', evaluate: true, payload } : { payload }),
-    })
-    setIsRunningSource(false)
+        try {
+          return JSON.parse(samplePayload);
+        } catch {
+          return samplePayload;
+        }
+      })()
+      : undefined;
+    const result = await authenticatedFetch(
+      `${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(config.source_config_id)}/${action}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          action === "fetch"
+            ? { trigger_type: "manual", evaluate: true, payload }
+            : { payload },
+        ),
+      },
+    );
+    setIsRunningSource(false);
     if (result.error) {
-      toast({ title: action === 'fetch' ? 'Fetch failed' : 'Validation failed', description: result.error, variant: 'destructive' })
-      return
+      toast({
+        title: action === "fetch" ? "Fetch failed" : "Validation failed",
+        description: result.error,
+        variant: "destructive",
+      });
+      return null;
     }
-    setSourceResults((current) => ({ ...current, [config.source_config_id]: result.data }))
+    setSourceResults((current) => ({
+      ...current,
+      [config.source_config_id]: result.data,
+    }));
     if (result.data?.source_config) {
-      setSourceConfigs((current) => current.map((item) => item.source_config_id === result.data.source_config.source_config_id ? result.data.source_config : item))
+      setSourceConfigs((current) =>
+        current.map((item) =>
+          item.source_config_id === result.data.source_config.source_config_id
+            ? result.data.source_config
+            : item,
+        ),
+      );
     }
-    await Promise.all([loadWorkspace(), loadFetchRuns(config)])
-    toast({ title: action === 'fetch' ? 'Source fetch complete' : 'Source validation complete' })
-  }
+    await Promise.all([loadWorkspace(), loadFetchRuns(config)]);
+    toast({
+      title:
+        action === "fetch"
+          ? "Source fetch complete"
+          : "Source validation complete",
+    });
+    return result.data;
+  };
+
+  const testSourceConfiguration = async (
+    config: KPISourceConfig,
+    updates: Partial<KPISourceConfig>,
+  ) => {
+    const saved = await updateSource(config, updates);
+    if (!saved) return null;
+    return runSourceAction(saved, "test");
+  };
 
   const flagRemediationEmail = async (breach: ContractKPIBreach) => {
-    if (!apiUrl || !breach.breach_id) return null
-    const result = await authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/breaches/${encodeURIComponent(breach.breach_id)}/flag-remediation-email`, {
-      method: 'POST',
-    })
+    if (!apiUrl || !breach.breach_id) return null;
+    const result = await authenticatedFetch(
+      `${apiUrl}/contracts/${contractId}/kpis/breaches/${encodeURIComponent(breach.breach_id)}/flag-remediation-email`,
+      {
+        method: "POST",
+      },
+    );
     if (result.error) {
-      toast({ title: 'Could not prepare escalation', description: result.error, variant: 'destructive' })
-      return null
+      toast({
+        title: "Could not prepare escalation",
+        description: result.error,
+        variant: "destructive",
+      });
+      return null;
     }
-    const updated = result.data as ContractKPIBreach
-    setBreaches((current) => current.map((item) => item.breach_id === updated.breach_id ? updated : item))
-    return updated
-  }
+    const updated = result.data as ContractKPIBreach;
+    setBreaches((current) =>
+      current.map((item) =>
+        item.breach_id === updated.breach_id ? updated : item,
+      ),
+    );
+    return updated;
+  };
 
-  const certifyKpi = async (kpi: ContractKPI, governanceStatus: 'reviewed' | 'certified' | 'deprecated') => {
-    if (!apiUrl) return null
-    const result = await authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/${encodeURIComponent(kpi.kpi_id)}/certify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: governanceStatus, notes: `Marked ${governanceStatus} from KPI workspace.` }),
-    })
+  const certifyKpi = async (
+    kpi: ContractKPI,
+    governanceStatus: "reviewed" | "certified" | "deprecated",
+  ) => {
+    if (!apiUrl) return null;
+    const result = await authenticatedFetch(
+      `${apiUrl}/contracts/${contractId}/kpis/${encodeURIComponent(kpi.kpi_id)}/certify`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: governanceStatus,
+          notes: `Marked ${governanceStatus} from KPI workspace.`,
+        }),
+      },
+    );
     if (result.error) {
-      toast({ title: 'Could not update governance', description: result.error, variant: 'destructive' })
-      return null
+      toast({
+        title: "Could not update governance",
+        description: result.error,
+        variant: "destructive",
+      });
+      return null;
     }
-    const updated = result.data as ContractKPI
-    setKpis((current) => current.map((item) => item.kpi_id === updated.kpi_id ? updated : item))
-    await loadWorkspace()
-    toast({ title: 'KPI governance updated', description: `${updated.name || 'KPI'} is now ${titleCase(governanceStatus)}.` })
-    return updated
-  }
+    const updated = result.data as ContractKPI;
+    setKpis((current) =>
+      current.map((item) => (item.kpi_id === updated.kpi_id ? updated : item)),
+    );
+    await loadWorkspace();
+    toast({
+      title: "KPI governance updated",
+      description: `${updated.name || "KPI"} is now ${titleCase(governanceStatus)}.`,
+    });
+    return updated;
+  };
 
   const createDefaultAlertRules = async () => {
-    if (!apiUrl) return
-    setIsCreatingAlertRules(true)
+    if (!apiUrl) return;
+    setIsCreatingAlertRules(true);
     const rules = [
-      { name: 'Breach created', event_type: 'breach_created', severity_min: 'Low', channels: ['in_app'] },
-      { name: 'Source stale', event_type: 'source_stale', severity_min: 'Medium', channels: ['in_app'] },
-      { name: 'Missing actual', event_type: 'missing_actual', severity_min: 'Medium', channels: ['in_app'] },
-      { name: 'Connector failed', event_type: 'connector_failed', severity_min: 'High', channels: ['in_app'] },
-      { name: 'Upcoming deadline', event_type: 'upcoming_deadline', severity_min: 'Medium', channels: ['in_app'] },
-      { name: 'Burn rate risk', event_type: 'burn_rate_risk', severity_min: 'Medium', channels: ['in_app'] },
-    ]
-    const results = await Promise.all(rules.map((rule) => authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis/alert-rules`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(rule),
-    })))
-    setIsCreatingAlertRules(false)
-    const failed = results.find((result) => result.error)
+      {
+        name: "Breach created",
+        event_type: "breach_created",
+        severity_min: "Low",
+        channels: ["in_app"],
+      },
+      {
+        name: "Source stale",
+        event_type: "source_stale",
+        severity_min: "Medium",
+        channels: ["in_app"],
+      },
+      {
+        name: "Missing actual",
+        event_type: "missing_actual",
+        severity_min: "Medium",
+        channels: ["in_app"],
+      },
+      {
+        name: "Connector failed",
+        event_type: "connector_failed",
+        severity_min: "High",
+        channels: ["in_app"],
+      },
+      {
+        name: "Upcoming deadline",
+        event_type: "upcoming_deadline",
+        severity_min: "Medium",
+        channels: ["in_app"],
+      },
+      {
+        name: "Burn rate risk",
+        event_type: "burn_rate_risk",
+        severity_min: "Medium",
+        channels: ["in_app"],
+      },
+    ];
+    const results = await Promise.all(
+      rules.map((rule) =>
+        authenticatedFetch(
+          `${apiUrl}/contracts/${contractId}/kpis/alert-rules`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(rule),
+          },
+        ),
+      ),
+    );
+    setIsCreatingAlertRules(false);
+    const failed = results.find((result) => result.error);
     if (failed?.error) {
-      toast({ title: 'Could not create alert rules', description: failed.error, variant: 'destructive' })
-      return
+      toast({
+        title: "Could not create alert rules",
+        description: failed.error,
+        variant: "destructive",
+      });
+      return;
     }
-    await loadWorkspace()
-    toast({ title: 'Alert rules ready', description: 'ContractSense will now surface KPI intelligence alerts for this contract.' })
-  }
+    await loadWorkspace();
+    toast({
+      title: "Alert rules ready",
+      description:
+        "ContractSense will now surface KPI intelligence alerts for this contract.",
+    });
+  };
 
   const exportSnapshot = () => {
-    const blob = new Blob([JSON.stringify({ contract, kpis, actuals, breaches, sourceConfigs, exported_at: new Date().toISOString() }, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${(contract?.contract_name || 'contract').replace(/[^a-z0-9]+/gi, '_').toLowerCase()}_kpis.json`
-    link.click()
-    URL.revokeObjectURL(url)
-  }
+    const blob = new Blob(
+      [
+        JSON.stringify(
+          {
+            contract,
+            kpis,
+            actuals,
+            breaches,
+            sourceConfigs,
+            exported_at: new Date().toISOString(),
+          },
+          null,
+          2,
+        ),
+      ],
+      { type: "application/json" },
+    );
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${(contract?.contract_name || "contract").replace(/[^a-z0-9]+/gi, "_").toLowerCase()}_kpis.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (!authChecked || isAuthenticated === null) {
-    return <LoadingState label="Checking access..." />
+    return <LoadingState label="Checking access..." />;
   }
 
   if (!isAuthenticated) {
-    return <LoadingState label="Redirecting..." />
+    return <LoadingState label="Redirecting..." />;
   }
 
-  const sourceResult = selectedSource ? sourceResults[selectedSource.source_config_id] : null
+  const sourceResult = selectedSource
+    ? sourceResults[selectedSource.source_config_id]
+    : null;
 
   return (
     <div className="min-h-screen bg-[#F9F9FF] font-InterVar text-gray-950">
@@ -1277,8 +2242,8 @@ export default function ContractKpiManagementPage() {
         accept=".csv,.xlsx,.xls,.json,.xml"
         className="hidden"
         onChange={(event) => {
-          const files = event.target.files
-          if (files && files.length) void uploadActuals(files)
+          const files = event.target.files;
+          if (files && files.length) void uploadActuals(files);
         }}
       />
 
@@ -1286,45 +2251,107 @@ export default function ContractKpiManagementPage() {
         <div className="px-4 py-4 md:px-8">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0">
-
               <h1 className="truncate text-2xl font-semibold tracking-tight text-gray-950">
-                {contract?.contract_name || 'Contract Obligation Management'}
+                {contract?.contract_name || "Contract Obligation Management"}
               </h1>
               <div className="mt-3 flex flex-wrap gap-2 text-xs">
                 <Pill tone="emerald">{trackedKpis.length} tracked</Pill>
                 <Pill tone="amber">{deferredCount} deferred</Pill>
-                <Pill tone={activeBreaches.length ? 'red' : 'emerald'}>{activeBreaches.length} open flags</Pill>
+                <Pill tone={activeBreaches.length ? "red" : "emerald"}>
+                  {activeBreaches.length} open flags
+                </Pill>
                 <Pill tone="blue">{actuals.length} actuals</Pill>
               </div>
             </div>
 
             <div className="flex shrink-0 flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5 text-xs" onClick={() => fileInputRef.current?.click()} disabled={isUploading || !kpis.length}>
-                {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5 text-xs"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading || !kpis.length}
+              >
+                {isUploading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Upload className="h-3.5 w-3.5" />
+                )}
                 Upload Actuals
               </Button>
-              <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5 text-xs" onClick={exportSnapshot} disabled={!kpis.length}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5 text-xs"
+                onClick={exportSnapshot}
+                disabled={!kpis.length}
+              >
                 <Download className="h-3.5 w-3.5" />
                 Export
               </Button>
-              <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5 text-xs" onClick={() => void loadWorkspace()} disabled={isLoading}>
-                <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5 text-xs"
+                onClick={() => void loadWorkspace()}
+                disabled={isLoading}
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`}
+                />
                 Refresh
               </Button>
-              <Button type="button" size="sm" className="h-9 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90" onClick={extractKpis} disabled={isExtracting}>
-                {isExtracting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BarChart3 className="h-3.5 w-3.5" />}
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
+                onClick={extractKpis}
+                disabled={isExtracting}
+              >
+                {isExtracting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <BarChart3 className="h-3.5 w-3.5" />
+                )}
                 Extract Operational Obligations
               </Button>
             </div>
           </div>
 
           <div className="mt-5 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
-            <Metric label="Compliance" value={`${complianceRate}%`} detail={`${Math.max(trackedKpis.length - activeBreaches.length, 0)} clear`} />
-            <Metric label="Register" value={`${kpis.length}`} detail={`${summary?.total || kpis.length} extracted records`} />
-            <Metric label="Tracking" value={`${trackedKpis.length}/${kpis.length || 0}`} detail={`${deferredCount} deferred`} />
-            <Metric label="Flags" value={`${activeBreaches.length}`} detail={`${visibleBreaches.length} evaluations`} />
-            <Metric label="Exposure" value={money(exposure)} detail="current open risk" />
-            <Metric label="Intelligence" value={`${openAlertCount}`} detail={`${certifiedMetricCount} certified`} />
+            <Metric
+              label="Compliance"
+              value={`${complianceRate}%`}
+              detail={`${Math.max(trackedKpis.length - activeBreaches.length, 0)} clear`}
+            />
+            <Metric
+              label="Register"
+              value={`${kpis.length}`}
+              detail={`${summary?.total || kpis.length} extracted records`}
+            />
+            <Metric
+              label="Tracking"
+              value={`${trackedKpis.length}/${kpis.length || 0}`}
+              detail={`${deferredCount} deferred`}
+            />
+            <Metric
+              label="Flags"
+              value={`${activeBreaches.length}`}
+              detail={`${visibleBreaches.length} evaluations`}
+            />
+            <Metric
+              label="Exposure"
+              value={money(exposure)}
+              detail="current open risk"
+            />
+            <Metric
+              label="Intelligence"
+              value={`${openAlertCount}`}
+              detail={`${certifiedMetricCount} certified`}
+            />
           </div>
         </div>
       </header>
@@ -1332,25 +2359,65 @@ export default function ContractKpiManagementPage() {
       <main className="grid gap-5 px-4 py-5 md:px-8 xl:grid-cols-[220px_1fr]">
         <aside className="h-fit rounded-lg border border-gray-200 bg-white p-2">
           {[
-            { id: 'intelligence', label: 'Intelligence', icon: <Network className="h-4 w-4" />, count: openAlertCount },
-            { id: 'review', label: 'Review & Track', icon: <ShieldCheck className="h-4 w-4" />, count: kpis.length },
-            { id: 'sources', label: 'Actual Sources', icon: <UploadCloud className="h-4 w-4" />, count: userSourceConfigs.length },
-            { id: 'flags', label: 'Compliance Flags', icon: <AlertCircle className="h-4 w-4" />, count: activeBreaches.length },
-            { id: 'logs', label: 'Performance Logs', icon: <Clock className="h-4 w-4" />, count: allFetchRuns.length },
+            {
+              id: "intelligence",
+              label: "Intelligence",
+              icon: <Network className="h-4 w-4" />,
+              count: openAlertCount,
+            },
+            {
+              id: "review",
+              label: "Review & Track",
+              icon: <ShieldCheck className="h-4 w-4" />,
+              count: kpis.length,
+            },
+            {
+              id: "heatmap",
+              label: "KPI Heatmap",
+              icon: <Layers className="h-4 w-4" />,
+              count: trackedKpis.length,
+            },
+            {
+              id: "sources",
+              label: "Actual Sources",
+              icon: <UploadCloud className="h-4 w-4" />,
+              count: userSourceConfigs.length,
+            },
+            {
+              id: "flags",
+              label: "Compliance Flags",
+              icon: <AlertCircle className="h-4 w-4" />,
+              count: activeBreaches.length,
+            },
+            {
+              id: "recoveries",
+              label: "Recoveries Management",
+              icon: <RefreshCw className="h-4 w-4" />,
+              count: activeBreaches.length,
+            },
+            {
+              id: "logs",
+              label: "Performance Logs",
+              icon: <Clock className="h-4 w-4" />,
+              count: allFetchRuns.length,
+            },
           ].map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setActivePanel(item.id as PanelKey)}
-              className={`mb-1 flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors ${
-                activePanel === item.id ? 'bg-cs-primary text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-950'
-              }`}
+              className={`mb-1 flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors ${activePanel === item.id
+                ? "bg-cs-primary text-white"
+                : "text-gray-600 hover:bg-gray-50 hover:text-gray-950"
+                }`}
             >
               <span className="flex min-w-0 items-center gap-2">
                 {item.icon}
                 <span className="truncate">{item.label}</span>
               </span>
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${activePanel === item.id ? 'bg-white/15 text-white' : 'bg-gray-100 text-gray-500'}`}>
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[10px] ${activePanel === item.id ? "bg-white/15 text-white" : "bg-gray-100 text-gray-500"}`}
+              >
                 {item.count}
               </span>
             </button>
@@ -1361,8 +2428,10 @@ export default function ContractKpiManagementPage() {
           {isLoading ? (
             <LoadingState label="Loading KPI workspace..." embedded />
           ) : error ? (
-            <div className="rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800">{error}</div>
-          ) : activePanel === 'intelligence' ? (
+            <div className="rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800">
+              {error}
+            </div>
+          ) : activePanel === "intelligence" ? (
             <IntelligencePanel
               portfolio={portfolio}
               catalogEntries={catalogEntries}
@@ -1371,7 +2440,7 @@ export default function ContractKpiManagementPage() {
               onCreateDefaultAlerts={createDefaultAlertRules}
               isCreatingAlertRules={isCreatingAlertRules}
             />
-          ) : activePanel === 'review' ? (
+          ) : activePanel === "review" ? (
             <ReviewPanel
               kpis={sortedKpis}
               sourceConfigs={sourceConfigs}
@@ -1383,46 +2452,77 @@ export default function ContractKpiManagementPage() {
               onUpdateKpi={updateKpi}
               onCertifyKpi={certifyKpi}
               onOpenClause={(kpi) => {
-                const citation = kpi.citation || kpi.citation_details || {}
-                const page = citation.page ?? citation.page_start ?? kpi.page_start
-                const quote = quoteFor(kpi)
-                const citationKey = `kpi_${kpi.kpi_id || Date.now()}`
-                window.sessionStorage.setItem(`contractsense:kpiCitation:${citationKey}`, JSON.stringify({
-                  quote,
-                  page,
-                  kpi_id: kpi.kpi_id,
-                  document_id: citation.document_id || citation.doc_id || kpi.document_id || kpi.contract_id || contractId,
-                  filename: citation.filename || kpi.contract_name || contract?.contract_name || null,
-                }))
-                router.push(`/contracts/${kpi.contract_id || contractId}?kpi_citation=${encodeURIComponent(citationKey)}`)
+                const citation = kpi.citation || kpi.citation_details || {};
+                const page =
+                  citation.page ?? citation.page_start ?? kpi.page_start;
+                const quote = quoteFor(kpi);
+                const citationKey = `kpi_${kpi.kpi_id || Date.now()}`;
+                window.sessionStorage.setItem(
+                  `contractsense:kpiCitation:${citationKey}`,
+                  JSON.stringify({
+                    quote,
+                    page,
+                    kpi_id: kpi.kpi_id,
+                    document_id:
+                      citation.document_id ||
+                      citation.doc_id ||
+                      kpi.document_id ||
+                      kpi.contract_id ||
+                      contractId,
+                    filename:
+                      citation.filename ||
+                      kpi.contract_name ||
+                      contract?.contract_name ||
+                      null,
+                  }),
+                );
+                router.push(
+                  `/contracts/${kpi.contract_id || contractId}?kpi_citation=${encodeURIComponent(citationKey)}`,
+                );
               }}
               recommendedTrackCount={recommendedTrackCount}
             />
-          ) : activePanel === 'sources' ? (
-            <SourcesPanel
+          ) : activePanel === "heatmap" ? (
+            <KpiHeatmapPanel
+              kpis={sortedKpis}
+              actuals={actuals}
+              breaches={breaches}
+            />
+          ) : activePanel === "sources" ? (
+            <GuidedSourcesPanel
               sourceCatalog={userSourceCatalog}
+              recentProfiles={recentProfiles}
               sourceConfigs={userSourceConfigs}
               selectedSource={selectedSource}
-              selectedRuns={selectedSource ? sourceRuns[selectedSource.source_config_id] || [] : []}
+              selectedRuns={
+                selectedSource
+                  ? sourceRuns[selectedSource.source_config_id] || []
+                  : []
+              }
               sourceResult={sourceResult}
               kpis={sortedKpis}
               trackedKpis={trackedKpis}
-              samplePayload={samplePayload}
               isSavingSource={isSavingSource}
               isRunningSource={isRunningSource}
               onSelectSource={setSelectedSourceId}
               onCreateSource={createSource}
               onUpdateSource={updateSource}
               onUpdateSourceBinding={updateSourceBinding}
-              onToggleSourceKpi={toggleSourceKpi}
-              onApplyIngestionMode={applyIngestionMode}
-              onSaveSample={saveSamplePayload}
-              onSamplePayloadChange={setSamplePayload}
+              onDeleteSource={deleteSource}
               onRunSourceAction={runSourceAction}
+              onTestSourceConfiguration={testSourceConfiguration}
               onUploadSampleFile={uploadSourceSampleFile}
             />
-          ) : activePanel === 'flags' ? (
-            <FlagsPanel breaches={visibleBreaches} kpiById={kpiById} onFlagRemediationEmail={flagRemediationEmail} />
+          ) : activePanel === "recoveries" ? (
+            <RecoveriesPanel breaches={visibleBreaches} kpiById={kpiById} />
+          ) : activePanel === "flags" ? (
+            <FlagsPanel
+              breaches={visibleBreaches}
+              kpiById={kpiById}
+              flagsReady={airportDemoFlagsReady}
+              completedSourceCount={airportDemoCompletedSourceCount}
+              onFlagRemediationEmail={flagRemediationEmail}
+            />
           ) : (
             <LogsPanel
               actuals={actuals}
@@ -1436,37 +2536,69 @@ export default function ContractKpiManagementPage() {
         </section>
       </main>
     </div>
-  )
+  );
 }
 
-function LoadingState({ label, embedded = false }: { label: string; embedded?: boolean }) {
+function LoadingState({
+  label,
+  embedded = false,
+}: {
+  label: string;
+  embedded?: boolean;
+}) {
   return (
-    <div className={`${embedded ? 'min-h-[420px]' : 'min-h-screen'} flex items-center justify-center bg-neutral-50 text-sm text-gray-500`}>
+    <div
+      className={`${embedded ? "min-h-[420px]" : "min-h-screen"} flex items-center justify-center bg-neutral-50 text-sm text-gray-500`}
+    >
       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
       {label}
     </div>
-  )
+  );
 }
 
-function Pill({ children, tone = 'gray' }: { children: React.ReactNode; tone?: 'gray' | 'emerald' | 'amber' | 'red' | 'blue' }) {
+function Pill({
+  children,
+  tone = "gray",
+}: {
+  children: React.ReactNode;
+  tone?: "gray" | "emerald" | "amber" | "red" | "blue";
+}) {
   const classes = {
-    gray: 'border-gray-200 bg-gray-50 text-gray-600',
-    emerald: 'border-gray-200 bg-white text-gray-700',
-    amber: 'border-gray-200 bg-gray-50 text-gray-700',
-    red: 'border-gray-300 bg-white text-gray-950',
-    blue: 'border-gray-200 bg-white text-gray-700',
-  }[tone]
-  return <span className={`inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold ${classes}`}>{children}</span>
+    gray: "border-gray-200 bg-gray-50 text-gray-600",
+    emerald: "border-gray-200 bg-white text-gray-700",
+    amber: "border-gray-200 bg-gray-50 text-gray-700",
+    red: "border-gray-300 bg-white text-gray-950",
+    blue: "border-gray-200 bg-white text-gray-700",
+  }[tone];
+  return (
+    <span
+      className={`inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold ${classes}`}
+    >
+      {children}
+    </span>
+  );
 }
 
-function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
+function Metric({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold tracking-normal text-gray-950">{value}</p>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+        {label}
+      </p>
+      <p className="mt-2 text-2xl font-semibold tracking-normal text-gray-950">
+        {value}
+      </p>
       <p className="mt-1 text-xs text-gray-500">{detail}</p>
     </div>
-  )
+  );
 }
 
 function IntelligencePanel({
@@ -1477,58 +2609,114 @@ function IntelligencePanel({
   onCreateDefaultAlerts,
   isCreatingAlertRules,
 }: {
-  portfolio: KPIPortfolio | null
-  catalogEntries: KPICatalogEntry[]
-  alerts: KPIAlert[]
-  contractId: string
-  onCreateDefaultAlerts: () => void | Promise<void>
-  isCreatingAlertRules: boolean
+  portfolio: KPIPortfolio | null;
+  catalogEntries: KPICatalogEntry[];
+  alerts: KPIAlert[];
+  contractId: string;
+  onCreateDefaultAlerts: () => void | Promise<void>;
+  isCreatingAlertRules: boolean;
 }) {
-  const summary = portfolio?.summary || {}
-  const health = portfolio?.connector_health || {}
-  const openAlerts = alerts.filter((alert) => String(alert.status || 'open').toLowerCase() === 'open')
-  const certified = catalogEntries.filter((entry) => String(entry.certified_status || '').toLowerCase() === 'certified')
+  const summary = portfolio?.summary || {};
+  const health = portfolio?.connector_health || {};
+  const openAlerts = alerts.filter(
+    (alert) => String(alert.status || "open").toLowerCase() === "open",
+  );
+  const certified = catalogEntries.filter(
+    (entry) =>
+      String(entry.certified_status || "").toLowerCase() === "certified",
+  );
 
   return (
     <div className="space-y-4">
       <div className="grid gap-3 xl:grid-cols-4">
-        <Metric label="Portfolio Coverage" value={`${summary.coverage_percent ?? 0}%`} detail={`${summary.contracts_with_kpis ?? 0}/${summary.contract_count ?? 0} contracts`} />
-        <Metric label="Monitored Obligations" value={`${summary.tracked_kpi_count ?? 0}`} detail={`${summary.kpi_count ?? 0} in catalog`} />
-        <Metric label="Open Alerts" value={`${openAlerts.length}`} detail={`${summary.open_breach_count ?? 0} breach flags`} />
-        <Metric label="Source Health" value={`${health.healthy ?? 0}`} detail={`${health.stale ?? 0} stale · ${health.failed ?? 0} failed`} />
+        <Metric
+          label="Portfolio Coverage"
+          value={`${summary.coverage_percent ?? 0}%`}
+          detail={`${summary.contracts_with_kpis ?? 0}/${summary.contract_count ?? 0} contracts`}
+        />
+        <Metric
+          label="Monitored Obligations"
+          value={`${summary.tracked_kpi_count ?? 0}`}
+          detail={`${summary.kpi_count ?? 0} in catalog`}
+        />
+        <Metric
+          label="Open Alerts"
+          value={`${openAlerts.length}`}
+          detail={`${summary.open_breach_count ?? 0} breach flags`}
+        />
+        <Metric
+          label="Source Health"
+          value={`${health.healthy ?? 0}`}
+          detail={`${health.stale ?? 0} stale · ${health.failed ?? 0} failed`}
+        />
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white">
         <div className="flex flex-col gap-3 border-b border-gray-100 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-gray-950">ContractSense Alerts</h2>
-            <p className="mt-1 text-xs text-gray-500">Exceptions are generated from agreement obligations, source evidence, and deterministic evaluation state.</p>
+            <h2 className="text-base font-semibold text-gray-950">
+              ContractSense Alerts
+            </h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Exceptions are generated from agreement obligations, source
+              evidence, and deterministic evaluation state.
+            </p>
           </div>
-          <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={onCreateDefaultAlerts} disabled={isCreatingAlertRules}>
-            {isCreatingAlertRules ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            onClick={onCreateDefaultAlerts}
+            disabled={isCreatingAlertRules}
+          >
+            {isCreatingAlertRules ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Bell className="h-3.5 w-3.5" />
+            )}
             Default Rules
           </Button>
         </div>
         {!alerts.length ? (
-          <div className="px-4 py-8 text-sm text-gray-500">No obligation exceptions yet.</div>
+          <div className="px-4 py-8 text-sm text-gray-500">
+            No obligation exceptions yet.
+          </div>
         ) : (
           <div className="divide-y divide-gray-100">
             {alerts.slice(0, 8).map((alert) => (
-              <div key={alert.alert_id || alert.alert_key} className="grid gap-3 px-4 py-3 lg:grid-cols-[1fr_150px_140px] lg:items-center">
+              <div
+                key={alert.alert_id || alert.alert_key}
+                className="grid gap-3 px-4 py-3 lg:grid-cols-[1fr_150px_140px] lg:items-center"
+              >
                 <div className="min-w-0">
                   <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone(alert.severity || 'medium')}`}>{titleCase(alert.severity || 'Medium')}</span>
-                    <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-semibold text-gray-500">{titleCase(alert.event_type || 'alert')}</span>
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone(alert.severity || "medium")}`}
+                    >
+                      {titleCase(alert.severity || "Medium")}
+                    </span>
+                    <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                      {titleCase(alert.event_type || "alert")}
+                    </span>
                   </div>
-                  <p className="truncate text-sm font-semibold text-gray-950">{alert.title || 'KPI alert'}</p>
-                  <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{alert.message || 'Review this ContractSense KPI signal.'}</p>
+                  <p className="truncate text-sm font-semibold text-gray-950">
+                    {alert.title || "KPI alert"}
+                  </p>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">
+                    {alert.message || "Review this ContractSense KPI signal."}
+                  </p>
                 </div>
                 <div className="text-xs text-gray-500">
-                  <p className="font-semibold text-gray-800">{titleCase(alert.status || 'open')}</p>
-                  <p>{formatDateTime(alert.last_seen_at || alert.created_at)}</p>
+                  <p className="font-semibold text-gray-800">
+                    {titleCase(alert.status || "open")}
+                  </p>
+                  <p>
+                    {formatDateTime(alert.last_seen_at || alert.created_at)}
+                  </p>
                 </div>
                 <Link
-                  href={`/contracts/${alert.contract_id || contractId}/kpis${alert.kpi_id ? `?kpi_id=${encodeURIComponent(alert.kpi_id)}` : ''}`}
+                  href={`/contracts/${alert.contract_id || contractId}/kpis${alert.kpi_id ? `?kpi_id=${encodeURIComponent(alert.kpi_id)}` : ""}`}
                   className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-gray-200 bg-white px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                 >
                   Open KPI
@@ -1544,13 +2732,20 @@ function IntelligencePanel({
         <section className="rounded-lg border border-gray-200 bg-white">
           <div className="flex items-center justify-between border-b border-gray-100 p-4">
             <div>
-              <h2 className="text-base font-semibold text-gray-950">Metric Catalog</h2>
-              <p className="mt-1 text-xs text-gray-500">{certified.length} certified metrics across this project.</p>
+              <h2 className="text-base font-semibold text-gray-950">
+                Metric Catalog
+              </h2>
+              <p className="mt-1 text-xs text-gray-500">
+                {certified.length} certified metrics across this project.
+              </p>
             </div>
             <Pill tone="blue">{catalogEntries.length}</Pill>
           </div>
           {!catalogEntries.length ? (
-            <div className="px-4 py-8 text-sm text-gray-500">Extract or certify KPIs to populate the ContractSense metric catalog.</div>
+            <div className="px-4 py-8 text-sm text-gray-500">
+              Extract or certify KPIs to populate the ContractSense metric
+              catalog.
+            </div>
           ) : (
             <div className="max-h-[420px] overflow-auto">
               <table className="min-w-full text-left text-xs">
@@ -1566,22 +2761,33 @@ function IntelligencePanel({
                   {catalogEntries.slice(0, 30).map((entry) => (
                     <tr key={entry.metric_key}>
                       <td className="px-3 py-2">
-                        <p className="font-semibold text-gray-950">{entry.display_name || entry.metric_key}</p>
-                        <p className="mt-0.5 max-w-[360px] truncate text-[11px] text-gray-400">{entry.description || entry.metric_key}</p>
+                        <p className="font-semibold text-gray-950">
+                          {entry.display_name || entry.metric_key}
+                        </p>
+                        <p className="mt-0.5 max-w-[360px] truncate text-[11px] text-gray-400">
+                          {entry.description || entry.metric_key}
+                        </p>
                       </td>
                       <td className="px-3 py-2">
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone(entry.certified_status || 'draft')}`}>
-                          {titleCase(entry.certified_status || 'draft')} v{entry.version || 1}
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone(entry.certified_status || "draft")}`}
+                        >
+                          {titleCase(entry.certified_status || "draft")} v
+                          {entry.version || 1}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-gray-600">
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-gray-900">{entry.tracked_count || 0}</span>
+                          <span className="font-semibold text-gray-900">
+                            {entry.tracked_count || 0}
+                          </span>
                           <span className="text-gray-400">of</span>
                           <span>{entry.kpi_count || 0}</span>
                         </div>
                       </td>
-                      <td className="max-w-[160px] truncate px-3 py-2 text-gray-600">{entry.owner || entry.owners?.[0] || 'Unassigned'}</td>
+                      <td className="max-w-[160px] truncate px-3 py-2 text-gray-600">
+                        {entry.owner || entry.owners?.[0] || "Unassigned"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1594,41 +2800,74 @@ function IntelligencePanel({
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             <div className="mb-3 flex items-center gap-2">
               <Settings2 className="h-4 w-4 text-gray-500" />
-              <h2 className="text-sm font-semibold text-gray-950">Risky Contracts</h2>
+              <h2 className="text-sm font-semibold text-gray-950">
+                Risky Contracts
+              </h2>
             </div>
             <div className="space-y-2">
               {(portfolio?.risky_contracts || []).slice(0, 6).map((row) => (
-                <Link key={String(row.contract_id)} href={`/contracts/${row.contract_id}/kpis`} className="block rounded-md border border-gray-200 bg-white px-3 py-2 hover:bg-gray-50">
+                <Link
+                  key={String(row.contract_id)}
+                  href={`/contracts/${row.contract_id}/kpis`}
+                  className="block rounded-md border border-gray-200 bg-white px-3 py-2 hover:bg-gray-50"
+                >
                   <div className="flex justify-between gap-2">
-                    <span className="truncate text-xs font-semibold text-gray-900">{row.contract_name || row.contract_id}</span>
-                    <span className="text-xs font-semibold text-gray-500">{row.open_breach_count || 0} flags</span>
+                    <span className="truncate text-xs font-semibold text-gray-900">
+                      {row.contract_name || row.contract_id}
+                    </span>
+                    <span className="text-xs font-semibold text-gray-500">
+                      {row.open_breach_count || 0} flags
+                    </span>
                   </div>
-                  <p className="mt-1 text-[11px] text-gray-500">{row.tracked_count || 0} tracked · {row.stale_source_count || 0} stale sources</p>
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    {row.tracked_count || 0} tracked ·{" "}
+                    {row.stale_source_count || 0} stale sources
+                  </p>
                 </Link>
               ))}
-              {!(portfolio?.risky_contracts || []).length && <p className="text-sm text-gray-500">No risky contracts detected.</p>}
+              {!(portfolio?.risky_contracts || []).length && (
+                <p className="text-sm text-gray-500">
+                  No risky contracts detected.
+                </p>
+              )}
             </div>
           </div>
 
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             <div className="mb-3 flex items-center gap-2">
               <Clock className="h-4 w-4 text-gray-500" />
-              <h2 className="text-sm font-semibold text-gray-950">Upcoming Windows</h2>
+              <h2 className="text-sm font-semibold text-gray-950">
+                Upcoming Windows
+              </h2>
             </div>
             <div className="space-y-2">
-              {(portfolio?.upcoming_reporting_windows || []).slice(0, 6).map((window) => (
-                <div key={`${window.kpi_id}-${window.due_at}`} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                  <p className="truncate text-xs font-semibold text-gray-900">{window.name || window.kpi_id}</p>
-                  <p className="mt-1 text-[11px] text-gray-500">{formatDateTime(window.due_at)} · {titleCase(window.frequency || window.window || 'window')}</p>
-                </div>
-              ))}
-              {!(portfolio?.upcoming_reporting_windows || []).length && <p className="text-sm text-gray-500">No reporting windows due soon.</p>}
+              {(portfolio?.upcoming_reporting_windows || [])
+                .slice(0, 6)
+                .map((window) => (
+                  <div
+                    key={`${window.kpi_id}-${window.due_at}`}
+                    className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2"
+                  >
+                    <p className="truncate text-xs font-semibold text-gray-900">
+                      {window.name || window.kpi_id}
+                    </p>
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      {formatDateTime(window.due_at)} ·{" "}
+                      {titleCase(window.frequency || window.window || "window")}
+                    </p>
+                  </div>
+                ))}
+              {!(portfolio?.upcoming_reporting_windows || []).length && (
+                <p className="text-sm text-gray-500">
+                  No reporting windows due soon.
+                </p>
+              )}
             </div>
           </div>
         </section>
       </div>
     </div>
-  )
+  );
 }
 
 function ReviewPanel({
@@ -1636,6 +2875,7 @@ function ReviewPanel({
   sourcesByKpiId,
   actualsByKpiId,
   breaches,
+  sourceConfigs,
   recommendedTrackCount,
   onAcceptAll,
   onTrackRecommended,
@@ -1643,164 +2883,327 @@ function ReviewPanel({
   onCertifyKpi,
   onOpenClause,
 }: {
-  kpis: ContractKPI[]
-  sourceConfigs: KPISourceConfig[]
-  sourcesByKpiId: Map<string, KPISourceConfig[]>
-  actualsByKpiId: Map<string, ContractKPIActual[]>
-  breaches: ContractKPIBreach[]
-  recommendedTrackCount: number
-  onAcceptAll: () => void | Promise<void>
-  onTrackRecommended: () => void | Promise<void>
-  onUpdateKpi: (kpi: ContractKPI, updates: Partial<ContractKPI>) => Promise<ContractKPI | null>
-  onCertifyKpi: (kpi: ContractKPI, status: 'reviewed' | 'certified' | 'deprecated') => Promise<ContractKPI | null>
-  onOpenClause: (kpi: ContractKPI) => void
+  kpis: ContractKPI[];
+  sourceConfigs: KPISourceConfig[];
+  sourcesByKpiId: Map<string, KPISourceConfig[]>;
+  actualsByKpiId: Map<string, ContractKPIActual[]>;
+  breaches: ContractKPIBreach[];
+  recommendedTrackCount: number;
+  onAcceptAll: () => void | Promise<void>;
+  onTrackRecommended: () => void | Promise<void>;
+  onUpdateKpi: (
+    kpi: ContractKPI,
+    updates: Partial<ContractKPI>,
+  ) => Promise<ContractKPI | null>;
+  onCertifyKpi: (
+    kpi: ContractKPI,
+    status: "reviewed" | "certified" | "deprecated",
+  ) => Promise<ContractKPI | null>;
+  onOpenClause: (kpi: ContractKPI) => void;
 }) {
-  const [expandedKpiId, setExpandedKpiId] = useState<string | null>(kpis.find(isKpiTracked)?.kpi_id || kpis[0]?.kpi_id || null)
-  const [editingKpiId, setEditingKpiId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'all' | 'supplier' | 'client' | 'mutual' | 'sla' | 'penalty' | 'deadline' | 'tracked' | 'review' | 'approved'>('all')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [pagination, setPagination] = useState({ currentPage: 1, itemsPerPage: 10 })
+  const { token } = useAuth();
+  const params = useParams();
+  const contractId =
+    typeof params?.contract_id === "string" ? params.contract_id : "";
+  const [expandedKpiId, setExpandedKpiId] = useState<string | null>(
+    kpis.find(isKpiTracked)?.kpi_id || kpis[0]?.kpi_id || null,
+  );
+  const [isContractPaneOpen, setIsContractPaneOpen] = useState(false);
+  const [editingKpiId, setEditingKpiId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<
+    | "all"
+    | "supplier"
+    | "client"
+    | "mutual"
+    | "sla"
+    | "penalty"
+    | "deadline"
+    | "tracked"
+    | "review"
+    | "approved"
+  >("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    itemsPerPage: 10,
+  });
   const breachByKpiId = useMemo(() => {
-    const mapping = new Map<string, ContractKPIBreach[]>()
+    const mapping = new Map<string, ContractKPIBreach[]>();
     breaches.forEach((breach) => {
-      const list = mapping.get(breach.kpi_id) || []
-      list.push(breach)
-      mapping.set(breach.kpi_id, list)
-    })
-    return mapping
-  }, [breaches])
+      const list = mapping.get(breach.kpi_id) || [];
+      list.push(breach);
+      mapping.set(breach.kpi_id, list);
+    });
+    return mapping;
+  }, [breaches]);
 
   // Helper to categorize Supplier vs Client Obligation
-  const getObligationType = (kpi: ContractKPI): 'supplier' | 'client' | 'mutual' | 'unresolved' => {
-    const obType = String(kpi.party_role || (kpi as any).obligation_type || (kpi as any).party_type || '').toLowerCase()
-    if (obType === 'mutual') return 'mutual'
-    if (obType === 'supplier') return 'supplier'
-    if (obType === 'client') return 'client'
+  const getObligationType = (
+    kpi: ContractKPI,
+  ): "supplier" | "client" | "mutual" | "unresolved" => {
+    const obType = String(
+      kpi.party_role ||
+      (kpi as any).obligation_type ||
+      (kpi as any).party_type ||
+      "",
+    ).toLowerCase();
+    if (obType === "mutual") return "mutual";
+    if (obType === "supplier") return "supplier";
+    if (obType === "client") return "client";
 
-    const partyStr = String(kpi.party || (kpi as any).responsible_party || (kpi as any).business_owner || '').toLowerCase()
-    const quoteStr = String(quoteFor(kpi) || '').toLowerCase()
-    const combined = `${partyStr} ${quoteStr}`
+    const partyStr = String(
+      kpi.party ||
+      (kpi as any).responsible_party ||
+      (kpi as any).business_owner ||
+      "",
+    ).toLowerCase();
+    const quoteStr = String(quoteFor(kpi) || "").toLowerCase();
+    const combined = `${partyStr} ${quoteStr}`;
 
-    if (/\b(client|customer|operator|buyer|purchaser|owner|company|enterprise|subscriber|lessee|licensee|principal|agency|authority)\b/.test(partyStr)) {
-      return 'client'
+    if (
+      /\b(client|customer|operator|buyer|purchaser|owner|company|enterprise|subscriber|lessee|licensee|principal|agency|authority)\b/.test(
+        partyStr,
+      )
+    ) {
+      return "client";
     }
-    if (/\b(supplier|provider|vendor|contractor|managed services provider|seller|developer|manufacturer|subcontractor|lessor|concessionaire|licensor|gnodeb|service provider|partner|consultant|builder|epc)\b/.test(partyStr)) {
-      return 'supplier'
+    if (
+      /\b(supplier|provider|vendor|contractor|managed services provider|seller|developer|manufacturer|subcontractor|lessor|concessionaire|licensor|gnodeb|service provider|partner|consultant|builder|epc)\b/.test(
+        partyStr,
+      )
+    ) {
+      return "supplier";
     }
-    if (/\b(client|customer|operator|buyer|purchaser|owner|company|enterprise|subscriber|lessee|licensee|principal|agency|authority)\b/.test(combined) && /\b(shall pay|shall provide access|shall notify|shall furnish|shall reimburse|shall grant|responsible for providing)\b/.test(combined)) {
-      return 'client'
+    if (
+      /\b(client|customer|operator|buyer|purchaser|owner|company|enterprise|subscriber|lessee|licensee|principal|agency|authority)\b/.test(
+        combined,
+      ) &&
+      /\b(shall pay|shall provide access|shall notify|shall furnish|shall reimburse|shall grant|responsible for providing)\b/.test(
+        combined,
+      )
+    ) {
+      return "client";
     }
-    return 'unresolved'
-  }
+    return "unresolved";
+  };
 
   // Helper to categorize KPI type
   const getCategory = (kpi: ContractKPI) => {
-    const kpiType = String(kpi.kpi_type || '').toLowerCase()
-    const recordType = String(kpi.record_type || '').toLowerCase()
-    const role = String(kpi.record_role || '').toLowerCase()
-    const ruleType = String((kpi as any).rule_type || (kpi as any).rule?.rule_type || '').toLowerCase()
-    if (recordType === 'supporting_measurement' || role === 'primary_kpi' || kpiType === 'sla' || kpiType === 'performance') return 'sla'
-    if (recordType === 'financial_consequence' || kpiType === 'penalty' || kpi.consequence_value != null) return 'penalty'
-    if (kpiType === 'deadline' || kpiType === 'notice' || ruleType === 'deadline') return 'deadline'
-    if (!kpiType && (ruleType === 'tiered' || ruleType === 'threshold')) return 'sla'
-    return 'other'
-  }
+    const kpiType = String(kpi.kpi_type || "").toLowerCase();
+    const recordType = String(kpi.record_type || "").toLowerCase();
+    const role = String(kpi.record_role || "").toLowerCase();
+    const ruleType = String(
+      (kpi as any).rule_type || (kpi as any).rule?.rule_type || "",
+    ).toLowerCase();
+    if (
+      recordType === "supporting_measurement" ||
+      role === "primary_kpi" ||
+      kpiType === "sla" ||
+      kpiType === "performance"
+    )
+      return "sla";
+    if (
+      recordType === "financial_consequence" ||
+      kpiType === "penalty" ||
+      kpi.consequence_value != null
+    )
+      return "penalty";
+    if (
+      kpiType === "deadline" ||
+      kpiType === "notice" ||
+      ruleType === "deadline"
+    )
+      return "deadline";
+    if (!kpiType && (ruleType === "tiered" || ruleType === "threshold"))
+      return "sla";
+    return "other";
+  };
 
-  const supplierCount = useMemo(() => kpis.filter((kpi) => getObligationType(kpi) === 'supplier').length, [kpis])
-  const primaryKpiCount = useMemo(() => kpis.filter((kpi) => kpi.record_role === 'primary_kpi').length, [kpis])
-  const clientCount = useMemo(() => kpis.filter((kpi) => getObligationType(kpi) === 'client').length, [kpis])
-  const mutualCount = useMemo(() => kpis.filter((kpi) => getObligationType(kpi) === 'mutual').length, [kpis])
-  const slaCount = useMemo(() => kpis.filter((kpi) => getCategory(kpi) === 'sla').length, [kpis])
-  const penaltyCount = useMemo(() => kpis.filter((kpi) => getCategory(kpi) === 'penalty').length, [kpis])
-  const deadlineCount = useMemo(() => kpis.filter((kpi) => getCategory(kpi) === 'deadline').length, [kpis])
-  const trackedCount = useMemo(() => kpis.filter(isKpiTracked).length, [kpis])
-  const reviewCount = useMemo(() => kpis.filter((kpi) => kpi.status !== 'approved' && kpi.status !== 'ignored').length, [kpis])
-  const approvedCount = useMemo(() => kpis.filter((kpi) => kpi.status === 'approved').length, [kpis])
+  const supplierCount = useMemo(
+    () => kpis.filter((kpi) => getObligationType(kpi) === "supplier").length,
+    [kpis],
+  );
+  const primaryKpiCount = useMemo(
+    () => kpis.filter((kpi) => kpi.record_role === "primary_kpi").length,
+    [kpis],
+  );
+  const clientCount = useMemo(
+    () => kpis.filter((kpi) => getObligationType(kpi) === "client").length,
+    [kpis],
+  );
+  const mutualCount = useMemo(
+    () => kpis.filter((kpi) => getObligationType(kpi) === "mutual").length,
+    [kpis],
+  );
+  const slaCount = useMemo(
+    () => kpis.filter((kpi) => getCategory(kpi) === "sla").length,
+    [kpis],
+  );
+  const penaltyCount = useMemo(
+    () => kpis.filter((kpi) => getCategory(kpi) === "penalty").length,
+    [kpis],
+  );
+  const deadlineCount = useMemo(
+    () => kpis.filter((kpi) => getCategory(kpi) === "deadline").length,
+    [kpis],
+  );
+  const trackedCount = useMemo(() => kpis.filter(isKpiTracked).length, [kpis]);
+  const reviewCount = useMemo(
+    () =>
+      kpis.filter(
+        (kpi) => kpi.status !== "approved" && kpi.status !== "ignored",
+      ).length,
+    [kpis],
+  );
+  const approvedCount = useMemo(
+    () => kpis.filter((kpi) => kpi.status === "approved").length,
+    [kpis],
+  );
 
   const filteredKpis = useMemo(() => {
     return kpis.filter((kpi) => {
       // 1. Tab filter
-      if (activeTab === 'supplier' && getObligationType(kpi) !== 'supplier') return false
-      if (activeTab === 'client' && getObligationType(kpi) !== 'client') return false
-      if (activeTab === 'mutual' && getObligationType(kpi) !== 'mutual') return false
-      if (activeTab === 'sla' && getCategory(kpi) !== 'sla') return false
-      if (activeTab === 'penalty' && getCategory(kpi) !== 'penalty') return false
-      if (activeTab === 'deadline' && getCategory(kpi) !== 'deadline') return false
-      if (activeTab === 'tracked' && !isKpiTracked(kpi)) return false
-      if (activeTab === 'review' && (kpi.status === 'approved' || kpi.status === 'ignored')) return false
-      if (activeTab === 'approved' && kpi.status !== 'approved') return false
+      if (activeTab === "supplier" && getObligationType(kpi) !== "supplier")
+        return false;
+      if (activeTab === "client" && getObligationType(kpi) !== "client")
+        return false;
+      if (activeTab === "mutual" && getObligationType(kpi) !== "mutual")
+        return false;
+      if (activeTab === "sla" && getCategory(kpi) !== "sla") return false;
+      if (activeTab === "penalty" && getCategory(kpi) !== "penalty")
+        return false;
+      if (activeTab === "deadline" && getCategory(kpi) !== "deadline")
+        return false;
+      if (activeTab === "tracked" && !isKpiTracked(kpi)) return false;
+      if (
+        activeTab === "review" &&
+        (kpi.status === "approved" || kpi.status === "ignored")
+      )
+        return false;
+      if (activeTab === "approved" && kpi.status !== "approved") return false;
 
       // 2. Search query filter
       if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase()
-        const nameMatch = (kpi.name || '').toLowerCase().includes(query)
-        const idMatch = (kpi.kpi_id || '').toLowerCase().includes(query)
-        const sectionMatch = (kpi.structural_path || kpi.section_path || kpi.section || '').toLowerCase().includes(query)
-        const partyMatch = (kpi.party || (kpi as any).responsible_party || '').toLowerCase().includes(query)
-        const quoteMatch = (quoteFor(kpi) || '').toLowerCase().includes(query)
-        if (!(nameMatch || idMatch || sectionMatch || partyMatch || quoteMatch)) return false
+        const query = searchQuery.toLowerCase();
+        const nameMatch = (kpi.name || "").toLowerCase().includes(query);
+        const idMatch = (kpi.kpi_id || "").toLowerCase().includes(query);
+        const sectionMatch = (
+          kpi.structural_path ||
+          kpi.section_path ||
+          kpi.section ||
+          ""
+        )
+          .toLowerCase()
+          .includes(query);
+        const partyMatch = (kpi.party || (kpi as any).responsible_party || "")
+          .toLowerCase()
+          .includes(query);
+        const quoteMatch = (quoteFor(kpi) || "").toLowerCase().includes(query);
+        if (!(nameMatch || idMatch || sectionMatch || partyMatch || quoteMatch))
+          return false;
       }
-      
-      return true
-    })
-  }, [kpis, activeTab, searchQuery])
 
-  const totalPages = Math.max(1, Math.ceil(filteredKpis.length / pagination.itemsPerPage));
-  const paginatedKpis = filteredKpis.slice((pagination.currentPage - 1) * pagination.itemsPerPage, pagination.currentPage * pagination.itemsPerPage);
+      return true;
+    });
+  }, [kpis, activeTab, searchQuery]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredKpis.length / pagination.itemsPerPage),
+  );
+  const paginatedKpis = filteredKpis.slice(
+    (pagination.currentPage - 1) * pagination.itemsPerPage,
+    pagination.currentPage * pagination.itemsPerPage,
+  );
 
   if (!kpis.length) {
     return (
       <div className="flex min-h-[460px] flex-col items-center justify-center rounded-lg border border-gray-200 bg-white px-6 text-center">
         <BarChart3 className="h-8 w-8 text-gray-300" />
-        <h2 className="mt-3 text-base font-semibold text-gray-950">No trackable obligations yet</h2>
+        <h2 className="mt-3 text-base font-semibold text-gray-950">
+          No trackable obligations yet
+        </h2>
       </div>
-    )
+    );
   }
 
   return (
     <div className="space-y-4">
-      <PerformanceSummaryCards kpis={kpis} actualsByKpiId={actualsByKpiId} breaches={breaches} />
+      <PerformanceSummaryCards
+        kpis={kpis}
+        actualsByKpiId={actualsByKpiId}
+        breaches={breaches}
+        sourcesByKpiId={sourcesByKpiId}
+        sourceConfigs={sourceConfigs}
+      />
 
       <div className="rounded-md border bg-card overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-border bg-[#F9FAFC] p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-foreground">Trackable Operational Obligations</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Showing {filteredKpis.length} of {kpis.length} extracted contract records ({primaryKpiCount || slaCount} supporting measurements · {supplierCount} Supplier · {clientCount} Client · {mutualCount} Mutual).</p>
+            <h2 className="text-base font-semibold text-foreground">
+              Trackable Operational Obligations
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Showing {filteredKpis.length} of {kpis.length} extracted contract
+              records ({primaryKpiCount || slaCount} supporting measurements ·{" "}
+              {supplierCount} Supplier · {clientCount} Client · {mutualCount}{" "}
+              Mutual).
+            </p>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
-            <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={onAcceptAll}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 text-xs"
+              onClick={onAcceptAll}
+            >
               <CheckCircle2 className="h-3.5 w-3.5" />
               Accept All
             </Button>
-            <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs text-foreground/80" onClick={onTrackRecommended} disabled={recommendedTrackCount === 0}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 text-xs text-foreground/80"
+              onClick={onTrackRecommended}
+              disabled={recommendedTrackCount === 0}
+            >
               <Play className="h-3.5 w-3.5" />
               Track Recommended
             </Button>
           </div>
         </div>
-        
+
         {/* Category Tabs & Real-Time Search */}
         <div className="flex flex-col gap-3 p-4 border-b border-border sm:flex-row sm:items-center sm:justify-between bg-background">
           <div className="flex flex-wrap items-center gap-1.5">
             {[
-              { id: 'all', label: `All (${kpis.length})` },
-              { id: 'supplier', label: `Supplier Obligations (${supplierCount})` },
-              { id: 'client', label: `Client Obligations (${clientCount})` },
-              { id: 'mutual', label: `Mutual Obligations (${mutualCount})` },
-              { id: 'sla', label: `Core SLAs (${slaCount})` },
-              { id: 'penalty', label: `Penalties (${penaltyCount})` },
-              { id: 'deadline', label: `Deadlines (${deadlineCount})` },
-              { id: 'tracked', label: `Tracked (${trackedCount})` },
-              { id: 'review', label: `To Review (${reviewCount})` },
-              { id: 'approved', label: `Approved (${approvedCount})` },
+              { id: "all", label: `All (${kpis.length})` },
+              {
+                id: "supplier",
+                label: `Supplier Obligations (${supplierCount})`,
+              },
+              { id: "client", label: `Client Obligations (${clientCount})` },
+              { id: "mutual", label: `Mutual Obligations (${mutualCount})` },
+              { id: "sla", label: `Core SLAs (${slaCount})` },
+              { id: "penalty", label: `Penalties (${penaltyCount})` },
+              { id: "deadline", label: `Deadlines (${deadlineCount})` },
+              { id: "tracked", label: `Tracked (${trackedCount})` },
+              { id: "review", label: `To Review (${reviewCount})` },
+              { id: "approved", label: `Approved (${approvedCount})` },
             ].map((tab) => (
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => { setActiveTab(tab.id as any); setPagination(p => ({ ...p, currentPage: 1 })) }}
-                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
-                  activeTab === tab.id ? 'bg-[#015CA9] text-white shadow-sm' : 'bg-muted/50 text-gray-700 hover:bg-muted'
-                }`}
+                onClick={() => {
+                  setActiveTab(tab.id as any);
+                  setPagination((p) => ({ ...p, currentPage: 1 }));
+                }}
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${activeTab === tab.id
+                  ? "bg-[#015CA9] text-white shadow-sm"
+                  : "bg-muted/50 text-gray-700 hover:bg-muted"
+                  }`}
               >
                 {tab.label}
               </button>
@@ -1814,7 +3217,10 @@ function ReviewPanel({
                 type="text"
                 placeholder="Search obligation, section, quote..."
                 value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setPagination(p => ({ ...p, currentPage: 1 })) }}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPagination((p) => ({ ...p, currentPage: 1 }));
+                }}
                 className="h-8 w-full rounded-md border border-gray-400 bg-[#FFFFFF] pl-8 pr-3 text-xs text-foreground outline-none focus:border-[#015CA9] focus:ring-1 focus:ring-[#015CA9]"
               />
             </div>
@@ -1824,51 +3230,77 @@ function ReviewPanel({
         <Table>
           <TableHeader>
             <TableRow className="bg-[#FBFCFD] hover:bg-[#FBFCFD]">
-              <TableHead className="w-[60px] font-semibold text-foreground/90 text-center">S.no.</TableHead>
-              <TableHead className="w-[280px] font-semibold text-foreground/90">Obligation</TableHead>
-              <TableHead className="font-semibold text-foreground/90">Status</TableHead>
-              <TableHead className="font-semibold text-foreground/90">Target / Acceptance</TableHead>
-              <TableHead className="font-semibold text-foreground/90">Sources</TableHead>
-              <TableHead className="text-right pr-4 font-semibold text-foreground/90">Actions</TableHead>
+              <TableHead className="w-[60px] font-semibold text-foreground/90 text-center">
+                S.no.
+              </TableHead>
+              <TableHead className="w-[280px] font-semibold text-foreground/90">
+                Obligation
+              </TableHead>
+              <TableHead className="font-semibold text-foreground/90">
+                Status
+              </TableHead>
+              <TableHead className="font-semibold text-foreground/90">
+                Target / Acceptance
+              </TableHead>
+              <TableHead className="font-semibold text-foreground/90">
+                Sources
+              </TableHead>
+              <TableHead className="text-right pr-4 font-semibold text-foreground/90">
+                Actions
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {paginatedKpis.map((kpi, i) => {
-              const index = (pagination.currentPage - 1) * pagination.itemsPerPage + i;
-              const tracked = isKpiTracked(kpi)
-              const obType = getObligationType(kpi)
-              const sources = sourcesByKpiId.get(kpi.kpi_id) || []
-              const backfilled = Number(kpi.last_tracking_backfill?.created_breach_count || 0)
-              const kpiActuals = actualsByKpiId.get(kpi.kpi_id) || []
-              const kpiBreaches = breachByKpiId.get(kpi.kpi_id) || []
-              const latestActual = [...kpiActuals].sort((left, right) => (
-                new Date(actualTimestamp(right) || 0).getTime() - new Date(actualTimestamp(left) || 0).getTime()
-              ))[0]
-              const latestFlag = kpiBreaches.find((breach) => breach.is_breach) || kpiBreaches[0]
-              const expanded = expandedKpiId === kpi.kpi_id
-              const editing = editingKpiId === kpi.kpi_id
+              const index =
+                (pagination.currentPage - 1) * pagination.itemsPerPage + i;
+              const tracked = isKpiTracked(kpi);
+              const obType = getObligationType(kpi);
+              const sources = sourcesByKpiId.get(kpi.kpi_id) || [];
+              const backfilled = Number(
+                kpi.last_tracking_backfill?.created_breach_count || 0,
+              );
+              const kpiActuals = actualsByKpiId.get(kpi.kpi_id) || [];
+              const kpiBreaches = breachByKpiId.get(kpi.kpi_id) || [];
+              const latestActual = [...kpiActuals].sort(
+                (left, right) =>
+                  new Date(actualTimestamp(right) || 0).getTime() -
+                  new Date(actualTimestamp(left) || 0).getTime(),
+              )[0];
+              const latestFlag =
+                kpiBreaches.find((breach) => breach.is_breach) ||
+                kpiBreaches[0];
+              const expanded = expandedKpiId === kpi.kpi_id;
+              const editing = editingKpiId === kpi.kpi_id;
               return (
                 <React.Fragment key={kpi.kpi_id || `${kpi.name}-${index}`}>
-                  <TableRow className={`bg-[#FFFFFF] hover:bg-muted/15 transition-colors cursor-pointer ${expanded ? 'bg-muted/15' : ''}`} onClick={() => setExpandedKpiId(expanded ? null : kpi.kpi_id)}>
+                  <TableRow
+                    className={`bg-[#FFFFFF] hover:bg-muted/15 transition-colors cursor-pointer ${expanded ? "bg-muted/15" : ""}`}
+                    onClick={() =>
+                      setExpandedKpiId(expanded ? null : kpi.kpi_id)
+                    }
+                  >
                     <TableCell className="align-middle py-4 text-sm font-semibold text-center text-foreground">
                       {index + 1}.
                     </TableCell>
                     <TableCell className="align-middle py-4">
                       <div className="min-w-0 flex-1">
-                        <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-foreground">{kpi.name}</h3>
+                        <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-foreground">
+                          {kpi.name}
+                        </h3>
                       </div>
                     </TableCell>
                     <TableCell className="align-middle py-4">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {obType === 'supplier' ? (
+                        {obType === "supplier" ? (
                           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
                             Supplier
                           </span>
-                        ) : obType === 'client' ? (
+                        ) : obType === "client" ? (
                           <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">
                             Client
                           </span>
-                        ) : obType === 'mutual' ? (
+                        ) : obType === "mutual" ? (
                           <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-800">
                             Mutual
                           </span>
@@ -1877,10 +3309,26 @@ function ReviewPanel({
                             Needs review
                           </span>
                         )}
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${kpi.status === 'approved' ? 'border-green-200 bg-green-50 text-green-700' : statusTone(kpi.status || 'review')}`}>{titleCase(kpi.status || 'review')}</span>
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tracked ? 'border-[#015CA9]/30 bg-[#015CA9]/10 text-[#015CA9]' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>{tracked ? 'Tracked' : 'Deferred'}</span>
-                        {isKpiRecommended(kpi) && !tracked && <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700">Recommended</span>}
-                        {backfilled > 0 && <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700">{backfilled} backfilled</span>}
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${kpi.status === "approved" ? "border-green-200 bg-green-50 text-green-700" : statusTone(kpi.status || "review")}`}
+                        >
+                          {titleCase(kpi.status || "review")}
+                        </span>
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${tracked ? "border-[#015CA9]/30 bg-[#015CA9]/10 text-[#015CA9]" : "border-gray-200 bg-gray-50 text-gray-600"}`}
+                        >
+                          {tracked ? "Tracked" : "Deferred"}
+                        </span>
+                        {isKpiRecommended(kpi) && !tracked && (
+                          <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700">
+                            Recommended
+                          </span>
+                        )}
+                        {backfilled > 0 && (
+                          <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700">
+                            {backfilled} backfilled
+                          </span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="align-middle font-medium text-sm text-foreground/80">
@@ -1888,58 +3336,126 @@ function ReviewPanel({
                     </TableCell>
                     <TableCell className="align-middle py-4">
                       <div className="flex flex-wrap gap-1">
-                        {sources.length ? sources.slice(0, 3).map((source) => (
-                          <span key={source.source_config_id} className="max-w-[128px] truncate rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                            {source.display_name}
+                        {sources.length ? (
+                          sources.slice(0, 3).map((source) => (
+                            <span
+                              key={source.source_config_id}
+                              className="max-w-[128px] truncate rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                            >
+                              {source.display_name}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs font-semibold text-muted-foreground">
+                            Not configured
                           </span>
-                        )) : (
-                          <span className="text-xs font-semibold text-muted-foreground">Not configured</span>
                         )}
-                        {sources.length > 3 && <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] text-muted-foreground">+{sources.length - 3}</span>}
+                        {sources.length > 3 && (
+                          <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] text-muted-foreground">
+                            +{sources.length - 3}
+                          </span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="align-middle text-right pr-4">
                       <div className="flex flex-wrap justify-end gap-1.5">
-                        {kpi.status !== 'approved' && (
-                          <Button type="button" variant="outline" size="sm" className="h-8 text-xs border-green-200 hover:bg-green-50 hover:text-green-700" onClick={(e) => { e.stopPropagation(); onUpdateKpi(kpi, { status: 'approved' }); }}>
+                        {kpi.status !== "approved" && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs border-green-200 hover:bg-green-50 hover:text-green-700"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onUpdateKpi(kpi, { status: "approved" });
+                            }}
+                          >
                             Accept
                           </Button>
                         )}
-                        {!tracked && kpi.status !== 'ignored' && (
-                          <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs border-[#015CA9]/30 hover:bg-[#015CA9]/10 hover:text-[#015CA9]" onClick={(e) => { e.stopPropagation(); onUpdateKpi(kpi, { status: 'approved', tracking_status: 'tracked', is_tracked: true }); }}>
+                        {!tracked && kpi.status === "approved" && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 text-xs border-[#015CA9]/30 hover:bg-[#015CA9]/10 hover:text-[#015CA9]"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onUpdateKpi(kpi, {
+                                tracking_status: "tracked",
+                                is_tracked: true,
+                              });
+                            }}
+                          >
                             <Play className="h-3.5 w-3.5" />
                             Track
                           </Button>
                         )}
-                        {tracked && kpi.status === 'approved' && (
-                          <Button type="button" variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={(e) => { e.stopPropagation(); setExpandedKpiId(expanded ? null : kpi.kpi_id); }}>
+                        {!tracked &&
+                          kpi.status !== "approved" &&
+                          kpi.status !== "ignored" && (
+                            <span className="inline-flex h-8 items-center rounded-md border border-gray-200 bg-gray-50 px-2 text-xs font-semibold text-gray-500">
+                              Accept to track
+                            </span>
+                          )}
+                        {tracked && kpi.status === "approved" && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs font-semibold"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedKpiId(expanded ? null : kpi.kpi_id);
+                            }}
+                          >
                             View
                           </Button>
                         )}
                       </div>
                     </TableCell>
                   </TableRow>
-                  
-
                 </React.Fragment>
-              )
+              );
             })}
           </TableBody>
         </Table>
-        
+
         {filteredKpis.length > 0 && (
           <div className="flex items-center justify-between border-t border-border/50 p-4">
             <p className="text-sm text-muted-foreground">
               Showing {paginatedKpis.length} of {filteredKpis.length} KPIs
             </p>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="h-8" onClick={() => setPagination(p => ({...p, currentPage: Math.max(1, p.currentPage - 1)}))} disabled={pagination.currentPage === 1}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={() =>
+                  setPagination((p) => ({
+                    ...p,
+                    currentPage: Math.max(1, p.currentPage - 1),
+                  }))
+                }
+                disabled={pagination.currentPage === 1}
+              >
                 Previous
               </Button>
               <span className="text-sm font-medium text-foreground">
                 Page {pagination.currentPage} of {totalPages}
               </span>
-              <Button variant="outline" size="sm" className="h-8" onClick={() => setPagination(p => ({...p, currentPage: Math.min(totalPages, p.currentPage + 1)}))} disabled={pagination.currentPage === totalPages}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={() =>
+                  setPagination((p) => ({
+                    ...p,
+                    currentPage: Math.min(totalPages, p.currentPage + 1),
+                  }))
+                }
+                disabled={pagination.currentPage === totalPages}
+              >
                 Next
               </Button>
             </div>
@@ -1947,1630 +3463,5011 @@ function ReviewPanel({
         )}
       </div>
 
-      <Dialog open={!!expandedKpiId} onOpenChange={(open) => !open && setExpandedKpiId(null)}>
+      <Dialog
+        open={!!expandedKpiId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setExpandedKpiId(null);
+            setIsContractPaneOpen(false);
+          }
+        }}
+      >
         {(() => {
-          const kpi = kpis.find(k => k.kpi_id === expandedKpiId)
-          if (!kpi) return null
-          const kpiActuals = actualsByKpiId.get(kpi.kpi_id) || []
-          const kpiBreaches = breaches.filter((b) => b.kpi_id === kpi.kpi_id)
-          const tracked = isKpiTracked(kpi)
-          const editing = editingKpiId === kpi.kpi_id
-          const latestActual = kpiActuals.length > 0 ? [...kpiActuals].sort((a, b) => new Date(actualTimestamp(b) || 0).getTime() - new Date(actualTimestamp(a) || 0).getTime())[0] : null
-          const latestFlag = kpiBreaches.length > 0 ? [...kpiBreaches].sort((a, b) => new Date(b.created_at || b.timestamp || 0).getTime() - new Date(a.created_at || a.timestamp || 0).getTime())[0] : null
-          const sources = sourcesByKpiId.get(kpi.kpi_id) || []
-          const tierSchedule = tierScheduleFor(kpi)
-          const tierColumns = Array.from(new Set(tierSchedule.flatMap((tier) => Object.keys(tier))))
+          const kpi = kpis.find((k) => k.kpi_id === expandedKpiId);
+          if (!kpi) return null;
+          const kpiActuals = actualsByKpiId.get(kpi.kpi_id) || [];
+          const kpiBreaches = breaches.filter((b) => b.kpi_id === kpi.kpi_id);
+          const tracked = isKpiTracked(kpi);
+          const editing = editingKpiId === kpi.kpi_id;
+          const latestActual =
+            kpiActuals.length > 0
+              ? [...kpiActuals].sort(
+                (a, b) =>
+                  new Date(actualTimestamp(b) || 0).getTime() -
+                  new Date(actualTimestamp(a) || 0).getTime(),
+              )[0]
+              : null;
+          const latestFlag =
+            kpiBreaches.length > 0
+              ? [...kpiBreaches].sort(
+                (a, b) =>
+                  new Date(b.created_at || b.timestamp || 0).getTime() -
+                  new Date(a.created_at || a.timestamp || 0).getTime(),
+              )[0]
+              : null;
+          const sources = sourcesByKpiId.get(kpi.kpi_id) || [];
+          const tierSchedule = tierScheduleFor(kpi);
+          const tierColumns = Array.from(
+            new Set(tierSchedule.flatMap((tier) => Object.keys(tier))),
+          );
           return (
-            <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col overflow-hidden sm:rounded-xl p-0 gap-0">
+            <DialogContent
+              className={
+                isContractPaneOpen
+                  ? "max-w-7xl w-[82vw] max-h-[88vh] h-[88vh] flex flex-row overflow-hidden rounded-xl p-0 gap-0 border border-gray-200 shadow-sm bg-white"
+                  : "max-w-4xl max-h-[90vh] flex flex-col overflow-hidden rounded-xl p-0 gap-0 border border-gray-200 shadow-sm transition-all duration-300 bg-white"
+              }
+            >
               <DialogHeader className="sr-only">
                 <DialogTitle>KPI Details</DialogTitle>
                 <DialogDescription>Details for {kpi.name}</DialogDescription>
               </DialogHeader>
-              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-6 py-4 pr-12 shrink-0">
-                <h4 className="text-sm font-semibold text-foreground">Obligation Details</h4>
-                <div className="flex flex-wrap items-center gap-2">
-                                <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => setEditingKpiId(editing ? null : kpi.kpi_id)}>
-                                  {editing ? 'Done Editing' : 'Edit KPI'}
-                                </Button>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="outline" size="sm" className="h-8 w-8 p-0">
-                                      <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end" className="w-40">
-                                    <DropdownMenuItem onClick={() => onCertifyKpi(kpi, 'reviewed')}>
-                                      <ShieldCheck className="mr-2 h-4 w-4" /> Review
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => onCertifyKpi(kpi, 'certified')}>
-                                      <BookOpen className="mr-2 h-4 w-4" /> Certify
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onUpdateKpi(kpi, { status: 'ignored', is_tracked: false, tracking_status: 'ignored' })}>
-                                      <AlertCircle className="mr-2 h-4 w-4" /> Remove
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem className="text-muted-foreground focus:text-muted-foreground" onClick={() => onCertifyKpi(kpi, 'deprecated')}>
-                                      <Clock className="mr-2 h-4 w-4" /> Deprecate
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
+
+              {/* Left Pane: Obligation Details */}
+              <div
+                className={
+                  isContractPaneOpen
+                    ? "w-1/2 flex flex-col overflow-hidden border-r border-gray-200 shrink-0 bg-white h-full"
+                    : "w-full flex flex-col overflow-hidden h-full"
+                }
+              >
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 px-6 py-4 pr-12 shrink-0 bg-white">
+                  <h4 className="text-sm font-semibold text-gray-900">
+                    Obligation Details
+                  </h4>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs border-gray-200 hover:border-[#015CA9] hover:text-[#015CA9] rounded-md"
+                      onClick={() =>
+                        setEditingKpiId(editing ? null : kpi.kpi_id)
+                      }
+                    >
+                      {editing ? "Done Editing" : "Edit KPI"}
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-8 p-0 border-gray-200"
+                        >
+                          <MoreHorizontal className="h-4 w-4 text-[#A7A9AC]" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-40">
+                        <DropdownMenuItem
+                          onClick={() => onCertifyKpi(kpi, "reviewed")}
+                        >
+                          <ShieldCheck className="mr-2 h-4 w-4 text-[#015CA9]" />{" "}
+                          Review
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => onCertifyKpi(kpi, "certified")}
+                        >
+                          <BookOpen className="mr-2 h-4 w-4 text-[#015CA9]" />{" "}
+                          Certify
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-[#EE3224] focus:text-[#EE3224]"
+                          onClick={() =>
+                            onUpdateKpi(kpi, {
+                              status: "ignored",
+                              is_tracked: false,
+                              tracking_status: "ignored",
+                            })
+                          }
+                        >
+                          <AlertCircle className="mr-2 h-4 w-4" /> Remove
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-[#A7A9AC] focus:text-[#A7A9AC]"
+                          onClick={() => onCertifyKpi(kpi, "deprecated")}
+                        >
+                          <Clock className="mr-2 h-4 w-4" /> Deprecate
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+                  <div>
+                    {editing ? (
+                      <div className="grid gap-4 lg:grid-cols-4">
+                        <EditableKpiField
+                          label="KPI Name"
+                          value={kpi.name}
+                          onCommit={(value) =>
+                            onUpdateKpi(kpi, { name: value })
+                          }
+                          wide
+                        />
+                        <EditableKpiField
+                          label="Operator"
+                          value={kpi.operator || ""}
+                          onCommit={(value) =>
+                            onUpdateKpi(kpi, { operator: value })
+                          }
+                        />
+                        <EditableKpiField
+                          label="Unit"
+                          value={kpi.unit || ""}
+                          onCommit={(value) =>
+                            onUpdateKpi(kpi, { unit: value })
+                          }
+                        />
+                        <EditableKpiField
+                          label="Threshold Min"
+                          value={kpi.value_min ?? kpi.value ?? ""}
+                          onCommit={(value) =>
+                            onUpdateKpi(kpi, { value_min: value as any })
+                          }
+                        />
+                        <EditableKpiField
+                          label="Threshold Max"
+                          value={kpi.value_max ?? ""}
+                          onCommit={(value) =>
+                            onUpdateKpi(kpi, { value_max: value as any })
+                          }
+                        />
+                        <EditableKpiField
+                          label="Responsible Party"
+                          value={kpi.party || kpi.responsible_party || ""}
+                          onCommit={(value) =>
+                            onUpdateKpi(kpi, { party: value })
+                          }
+                        />
+                        <EditableKpiField
+                          label="Trigger"
+                          value={kpi.trigger_condition || ""}
+                          onCommit={(value) =>
+                            onUpdateKpi(kpi, { trigger_condition: value })
+                          }
+                          wide
+                        />
+                        <EditableKpiField
+                          label="Remediation"
+                          value={kpi.remediation || ""}
+                          onCommit={(value) =>
+                            onUpdateKpi(kpi, { remediation: value })
+                          }
+                          wide
+                        />
+                      </div>
+                    ) : (
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <DetailTile
+                          label="Latest Actual"
+                          value={actualLabel(latestActual, kpi)}
+                          tone={latestFlag?.is_breach ? "amber" : "gray"}
+                        />
+                        <DetailTile
+                          label="Last Flag"
+                          value={
+                            latestFlag
+                              ? latestFlag.is_breach
+                                ? `${severityFor(latestFlag, kpi)} · open`
+                                : "Clear"
+                              : "No evaluation"
+                          }
+                          tone={latestFlag?.is_breach ? "amber" : "gray"}
+                        />
+                        <DetailTile
+                          label="Target / Acceptance"
+                          value={formatKpiValue(kpi)}
+                          tone="blue"
+                        />
+                        <DetailTile
+                          label="Trigger"
+                          value={kpi.trigger_condition || "Not specified"}
+                          tone="amber"
+                        />
+                        <DetailTile
+                          label="Penalty"
+                          value={formatConsequence(kpi)}
+                          tone={
+                            kpi.consequence_value != null ? "amber" : "gray"
+                          }
+                        />
+                        <DetailTile
+                          label="Owner"
+                          value={
+                            kpi.party ||
+                            kpi.responsible_party ||
+                            "Not specified"
+                          }
+                        />
+                        <DetailTile
+                          label="Party role"
+                          value={kpi.party_role || "Needs review"}
+                          tone={kpi.party_role ? "gray" : "amber"}
+                        />
+                        <DetailTile
+                          label="Tracking readiness"
+                          value={
+                            kpi.trackability_status ||
+                            kpi.tracking_status ||
+                            "Not classified"
+                          }
+                          tone={
+                            kpi.trackability_status === "trackable"
+                              ? "blue"
+                              : "amber"
+                          }
+                        />
+                      </div>
+                    )}
+
+                    {!editing && (
+                      <div className="mt-6 grid gap-3 md:grid-cols-2">
+                        <DetailTile
+                          label="Required action"
+                          value={
+                            kpi.obligation_action ||
+                            kpi.obligation?.action ||
+                            kpi.description ||
+                            "Not specified"
+                          }
+                        />
+                        <DetailTile
+                          label="Scope / dependency"
+                          value={
+                            kpi.scope ||
+                            (kpi.dependencies || []).join(", ") ||
+                            "Not specified"
+                          }
+                        />
+                      </div>
+                    )}
+
+                    {tierSchedule.length > 0 && (
+                      <div className="border-t border-gray-200 pt-6 mt-6">
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <h4 className="text-sm font-semibold text-gray-900">
+                              Tiered Performance Schedule
+                            </h4>
+                            <p className="mt-1 text-xs text-[#A7A9AC]">
+                              All extracted thresholds and consequences for this
+                              KPI.
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-[#015CA9]/30 bg-[#015CA9]/10 px-2.5 py-0.5 text-xs font-semibold text-[#015CA9]">
+                            {tierSchedule.length} tier
+                            {tierSchedule.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                        <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+                          <table className="min-w-full text-left text-xs">
+                            <thead className="bg-gray-50 text-[10px] font-bold uppercase tracking-wide text-[#A7A9AC] border-b border-gray-200">
+                              <tr>
+                                {tierColumns.map((column) => (
+                                  <th
+                                    key={column}
+                                    className="whitespace-nowrap px-3.5 py-2.5"
+                                  >
+                                    {titleCase(column)}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {tierSchedule.map((tier, index) => (
+                                <tr
+                                  key={`${kpi.kpi_id}-tier-${index}`}
+                                  className="hover:bg-gray-50 transition-colors"
+                                >
+                                  {tierColumns.map((column) => (
+                                    <td
+                                      key={`${index}-${column}`}
+                                      className="whitespace-nowrap px-3.5 py-2.5 font-medium text-gray-900"
+                                    >
+                                      {displayCell(tier[column])}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Contract Evidence */}
+                    <div className="border-t border-gray-200 pt-6 mt-6">
+                      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="text-sm font-semibold text-gray-900">
+                          Contract Evidence
+                        </h4>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={`h-8 gap-1.5 text-xs transition-all shadow-sm rounded-md font-semibold ${isContractPaneOpen
+                            ? "bg-[#015CA9] hover:bg-[#014c8c] text-white border-transparent"
+                            : "border-gray-200 text-[#015CA9] hover:border-[#015CA9] hover:bg-[#015CA9]/5"
+                            }`}
+                          onClick={() =>
+                            setIsContractPaneOpen(!isContractPaneOpen)
+                          }
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                          {isContractPaneOpen
+                            ? "Close Contract Viewer"
+                            : "Refer Contract"}
+                        </Button>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-[#A7A9AC]">
+                          {kpi.structural_path ||
+                            kpi.section_path ||
+                            kpi.section ||
+                            "Clause location not captured"}
+                        </p>
+                        <blockquote className="border-l-4 border-[#015CA9] pl-4 text-sm leading-relaxed text-gray-900 max-h-32 overflow-auto bg-gray-50/60 p-3 rounded-r-md border-y border-r border-gray-200">
+                          {quoteFor(kpi) ||
+                            kpi.confidence_reason ||
+                            kpi.recommendation_reason ||
+                            "No source quote captured."}
+                        </blockquote>
+                      </div>
+                    </div>
+
+                    <SlaPolicyStrip kpi={kpi} />
+                  </div>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-                <div>
 
-                            {editing ? (
-                              <div className="grid gap-4 lg:grid-cols-4">
-                                <EditableKpiField label="KPI Name" value={kpi.name} onCommit={(value) => onUpdateKpi(kpi, { name: value })} wide />
-                                <EditableKpiField label="Operator" value={kpi.operator || ''} onCommit={(value) => onUpdateKpi(kpi, { operator: value })} />
-                                <EditableKpiField label="Unit" value={kpi.unit || ''} onCommit={(value) => onUpdateKpi(kpi, { unit: value })} />
-                                <EditableKpiField label="Threshold Min" value={kpi.value_min ?? kpi.value ?? ''} onCommit={(value) => onUpdateKpi(kpi, { value_min: value as any })} />
-                                <EditableKpiField label="Threshold Max" value={kpi.value_max ?? ''} onCommit={(value) => onUpdateKpi(kpi, { value_max: value as any })} />
-                                <EditableKpiField label="Responsible Party" value={kpi.party || kpi.responsible_party || ''} onCommit={(value) => onUpdateKpi(kpi, { party: value })} />
-                                <EditableKpiField label="Trigger" value={kpi.trigger_condition || ''} onCommit={(value) => onUpdateKpi(kpi, { trigger_condition: value })} wide />
-                                <EditableKpiField label="SLA" value={kpi.remediation_sla || ''} onCommit={(value) => onUpdateKpi(kpi, { remediation_sla: value })} />
-                                <EditableKpiField label="Penalty" value={kpi.consequence_value ?? ''} onCommit={(value) => onUpdateKpi(kpi, { consequence_value: value as any })} />
-                                <EditableKpiField label="Remediation" value={kpi.remediation || ''} onCommit={(value) => onUpdateKpi(kpi, { remediation: value })} wide />
-                              </div>
-                            ) : (
-                              <div className="grid gap-x-8 gap-y-6 grid-cols-2 md:grid-cols-4">
-                                <DetailTile label="Latest Actual" value={latestActual ? actualLabel(latestActual, kpi) : 'No actuals'} tone={latestFlag?.is_breach ? 'amber' : 'gray'} />
-                                <DetailTile label="Last Flag" value={latestFlag ? (latestFlag.is_breach ? `${severityFor(latestFlag, kpi)} · open` : 'Clear') : 'No evaluation'} tone={latestFlag?.is_breach ? 'amber' : 'gray'} />
-                                <DetailTile label="Target / Acceptance" value={formatKpiValue(kpi)} tone="blue" />
-                                <DetailTile label="Trigger" value={kpi.trigger_condition || 'Not specified'} tone="amber" />
-                                <DetailTile label="Penalty" value={formatConsequence(kpi)} tone={kpi.consequence_value != null ? 'amber' : 'gray'} />
-                                <DetailTile label="Owner" value={kpi.party || kpi.responsible_party || 'Not specified'} />
-                                <DetailTile label="Party role" value={kpi.party_role || 'Needs review'} tone={kpi.party_role ? 'gray' : 'amber'} />
-                                <DetailTile label="Tracking readiness" value={kpi.trackability_status || 'Not classified'} tone={kpi.trackability_status === 'trackable' ? 'blue' : 'amber'} />
-                                <DetailTile label="Sources" value={sources.length ? `${sources.length} assigned` : 'None'} tone={sources.length ? 'blue' : 'amber'} />
-                              </div>
-                            )}
-                          </div>
+              {/* Right Pane: Side-by-Side PDF Viewer */}
+              {isContractPaneOpen && (
+                <div className="w-1/2 flex flex-col bg-white text-gray-900 overflow-hidden max-h-[88vh] border-l border-gray-200 shrink-0 h-full relative">
+                  {/* Target Verbatim Clause Highlight Banner */}
+                  <div className="p-4 bg-[#015CA9]/5 border-b border-gray-200 shrink-0 space-y-1.5 relative">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-bold tracking-wide text-[#015CA9] uppercase">
+                        <Sparkles className="h-3.5 w-3.5 text-[#015CA9]" />{" "}
+                        Target Verbatim Clause Highlight
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsContractPaneOpen(false)}
+                        className="text-gray-400 hover:text-gray-700 p-1 rounded-md hover:bg-gray-200/60 transition-colors"
+                        title="Close Contract Viewer"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <blockquote className="border-l-4 border-[#015CA9] pl-3 py-2 text-xs font-semibold text-gray-900 leading-relaxed bg-white rounded-r-md border border-gray-200 max-h-24 overflow-y-auto font-sans shadow-sm">
+                      "{quoteFor(kpi)}"
+                    </blockquote>
+                  </div>
 
-                          {!editing && (
-                            <div className="mt-6 grid gap-3 md:grid-cols-2">
-                              <DetailTile label="Required action" value={kpi.obligation_action || kpi.obligation?.action || kpi.description || 'Not specified'} />
-                              <DetailTile label="Scope / dependency" value={kpi.scope || (kpi.dependencies || []).join(', ') || 'Not specified'} />
-                            </div>
-                          )}
-
-                          {tierSchedule.length > 0 && (
-                            <div className="border-t border-border pt-6 mt-6">
-                              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                                <div>
-                                  <h4 className="text-sm font-semibold text-foreground">Tiered Performance Schedule</h4>
-                                  <p className="mt-1 text-xs text-muted-foreground">All extracted thresholds and consequences for this KPI.</p>
-                                </div>
-                                <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700">
-                                  {tierSchedule.length} tier{tierSchedule.length === 1 ? '' : 's'}
-                                </span>
-                              </div>
-                              <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-                                <table className="min-w-full text-left text-xs">
-                                  <thead className="bg-gray-50 text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                                    <tr>
-                                      {tierColumns.map((column) => (
-                                        <th key={column} className="whitespace-nowrap px-3 py-2">{titleCase(column)}</th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-gray-100">
-                                    {tierSchedule.map((tier, index) => (
-                                      <tr key={`${kpi.kpi_id}-tier-${index}`}>
-                                        {tierColumns.map((column) => (
-                                          <td key={`${index}-${column}`} className="whitespace-nowrap px-3 py-2 font-medium text-gray-800">
-                                            {displayCell(tier[column])}
-                                          </td>
-                                        ))}
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Contract Evidence (Priority 2) */}
-                          <div className="border-t border-border pt-6 mt-6">
-                            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                              <h4 className="text-sm font-semibold text-foreground">Contract Evidence</h4>
-                              <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => onOpenClause(kpi)}>
-                                <FileText className="h-3.5 w-3.5" />
-                                Refer Contract
-                              </Button>
-                            </div>
-                            <div className="space-y-2">
-                              <p className="text-xs font-medium text-muted-foreground">{kpi.structural_path || kpi.section_path || kpi.section || 'Clause location not captured'}</p>
-                              <blockquote className="border-l-2 border-muted pl-4 text-sm leading-relaxed text-foreground/90 max-h-32 overflow-auto">
-                                {quoteFor(kpi) || kpi.confidence_reason || kpi.recommendation_reason || 'No source quote captured.'}
-                              </blockquote>
-                            </div>
-                          </div>
-                    {(() => {
-                      const cattrs = (kpi as any).custom_attributes || {};
-                      const rawKeys = Object.keys(cattrs);
-
-                      // Standard system keys to ignore (since they are rendered elsewhere in the card)
-                      const ignoredKeys = new Set([
-                        'clause_text', 'quote', 'source_quote', 'run_id', 'document_id', 'user_id',
-                        'citation', 'citation_details', 'breach_email_template', 'value_candidates',
-                        'source_requirements', 'rule_version', 'ai_generated_only_at_extraction',
-                        'ai_extraction_provider', 'char_start', 'char_end', 'chunk_id', 'chunk_level',
-                        'source_chunk_level', 'definition', 'formula', 'confidence', 'confidence_reason',
-                        'needs_review', 'extraction_method'
-                      ]);
-
-                      // Flatten any inner 'custom_attributes' dictionary if present
-                      const flattenedAttrs: Record<string, any> = {};
-                      const processObj = (obj: Record<string, any>, prefix = '') => {
-                        for (const [k, v] of Object.entries(obj)) {
-                          if (ignoredKeys.has(k) || v == null || v === '') continue;
-                          if (k === 'custom_attributes' && typeof v === 'object') {
-                            processObj(v, prefix);
-                          } else if (prefix) {
-                            flattenedAttrs[`${prefix}_${k}`] = v;
-                          } else {
-                            flattenedAttrs[k] = v;
-                          }
-                        }
-                      };
-                      processObj(cattrs);
-
-                      const attrEntries = Object.entries(flattenedAttrs);
-                      if (attrEntries.length === 0) return null;
-
-                      return (
-                        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-indigo-100 bg-indigo-50/40 p-2.5 text-xs">
-                          <span className="font-bold text-indigo-900 uppercase tracking-wide text-[10px] mr-1 flex items-center gap-1">
-                            <Layers className="h-3 w-3 text-indigo-600" /> Domain Attributes:
-                          </span>
-                          {attrEntries.map(([attrKey, attrVal]) => {
-                            const formattedKey = titleCase(attrKey.replace(/_/g, ' '));
-                            
-                            // 1. Primitive string/number/boolean
-                            if (typeof attrVal !== 'object') {
-                              const isPenalty = attrKey.includes('penalty');
-                              const isWindow = attrKey.includes('window');
-                              const toneBg = isPenalty ? 'bg-rose-100/80 text-rose-900' : isWindow ? 'bg-blue-100/80 text-blue-900' : 'bg-indigo-100/80 text-indigo-900';
-                              return (
-                                <span key={attrKey} className={`inline-flex items-center gap-1 rounded px-2 py-0.5 font-medium ${toneBg}`}>
-                                  <span className="font-semibold opacity-75">{formattedKey}:</span> {String(attrVal)}
-                                </span>
-                              );
-                            }
-
-                            // 2. Array of primitives or objects
-                            if (Array.isArray(attrVal)) {
-                              if (attrVal.length === 0) return null;
-                              const displayStr = attrVal.map(item => typeof item === 'object' ? JSON.stringify(item) : String(item)).join(', ');
-                              return (
-                                <span key={attrKey} className="inline-flex items-center gap-1 rounded bg-indigo-100/80 px-2 py-0.5 font-medium text-indigo-900">
-                                  <span className="font-semibold opacity-75">{formattedKey}:</span> {displayStr}
-                                </span>
-                              );
-                            }
-
-                            // 3. Nested dictionary object
-                            const subEntries = Object.entries(attrVal).filter(([_, v]) => v != null && v !== '');
-                            if (subEntries.length === 0) return null;
-
-                            return subEntries.map(([subK, subV]) => {
-                              const subLabel = `${formattedKey} (${titleCase(subK.replace(/_/g, ' '))})`;
-                              const subValStr = typeof subV === 'object' ? JSON.stringify(subV) : String(subV);
-                              return (
-                                <span key={`${attrKey}.${subK}`} className="inline-flex items-center gap-1 rounded bg-indigo-100/80 px-2 py-0.5 font-medium text-indigo-900">
-                                  <span className="font-semibold opacity-75">{subLabel}:</span> {subValStr}
-                                </span>
-                              );
-                            });
-                          })}
-                        </div>
-                      );
-                    })()}
-
-
-                          {/* Historical Logs (Priority 4) */}
-                                                    {tracked && (
-                            <>
-    {/* Monitoring (Priority 3) */}
-                          {tracked ? (
-                            <div className="border-t border-border pt-6 mt-6">
-                              <h4 className="mb-4 text-sm font-semibold text-foreground">Monitoring</h4>
-                                <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)]">
-                                  <KpiHistoryChart kpi={kpi} actuals={kpiActuals} breaches={kpiBreaches} />
-                                  <KpiActualHistory kpi={kpi} actuals={kpiActuals} />
-                                </div>
-                            </div>
-                          ) : (
-                            <div className="border-t border-border pt-6 mt-6">
-                              <h4 className="mb-4 text-sm font-semibold text-foreground">Monitoring</h4>
-                              <div className="rounded-lg border border-dashed border-gray-300 bg-white px-4 py-3 text-sm text-gray-600">
-                                This KPI is accepted or pending but not actively tracked. Use Track to start evaluating historical actuals and future source runs.
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Historical Logs (Priority 4) */}
-                          <KpiBreachStrip kpi={kpi} breaches={kpiBreaches} />
-
-                          
-                            </>
-                          )}
-
-                          <SlaPolicyStrip kpi={kpi} />
-                        </div>
+                  {/* PDF Render Canvas Stream */}
+                  <div className="flex-1 w-full h-full relative overflow-hidden bg-white">
+                    <PDFViewerDynamic
+                      contractId={kpi.contract_id || contractId}
+                      searchKey={kpi.kpi_id}
+                      searchValue={quoteFor(kpi)}
+                      token={token || ""}
+                    />
+                  </div>
+                </div>
+              )}
             </DialogContent>
-          )
+          );
         })()}
       </Dialog>
     </div>
-  )
+  );
 }
+
+type ExtraChartKey =
+  | "recoveries"
+  | "category"
+  | "penalty"
+  | "turnaround"
+  | "landing"
+  | "occasions";
+
+const EXTRA_CHARTS: Array<{ key: ExtraChartKey; label: string }> = [
+  { key: "recoveries", label: "Recoveries Pipeline" },
+  { key: "category", label: "Breaches by Category" },
+  { key: "penalty", label: "Penalty Exposure" },
+  { key: "turnaround", label: "Turnaround Charge by Seat Band" },
+  { key: "landing", label: "Landing Charge vs MTOW" },
+  { key: "occasions", label: "Per-Occasion Charges Ranked" },
+];
 
 function PerformanceSummaryCards({
   kpis,
   actualsByKpiId,
   breaches,
+  sourcesByKpiId,
+  sourceConfigs,
 }: {
-  kpis: ContractKPI[]
-  actualsByKpiId: Map<string, ContractKPIActual[]>
-  breaches: ContractKPIBreach[]
+  kpis: ContractKPI[];
+  actualsByKpiId: Map<string, ContractKPIActual[]>;
+  breaches: ContractKPIBreach[];
+  sourcesByKpiId: Map<string, KPISourceConfig[]>;
+  sourceConfigs: KPISourceConfig[];
 }) {
-  const tracked = kpis.filter(isKpiTracked)
-  const actuals = Array.from(actualsByKpiId.values()).flat()
-  const openFlags = breaches.filter((breach) => breach.is_breach && breach.status !== 'resolved')
+  const tracked = kpis.filter(isKpiTracked);
+  const actuals = Array.from(actualsByKpiId.values()).flat();
+  const openFlags = breaches.filter(
+    (breach) => breach.is_breach && breach.status !== "resolved",
+  );
+  const resolvedCount = breaches.filter((b) => b.status === "resolved").length;
+  const totalExposure = openFlags.reduce(
+    (sum, b) => sum + (Number(b.penalty_amount) || 0),
+    0,
+  );
+  const coveragePercent = kpis.length
+    ? Math.round((tracked.length / kpis.length) * 100)
+    : 0;
+  const recoveryRate =
+    breaches.length > 0
+      ? Math.round((resolvedCount / breaches.length) * 100)
+      : 0;
   const typeCounts = kpis.reduce<Record<string, number>>((acc, kpi) => {
-    const label = titleCase(kpi.kpi_type || 'other')
-    acc[label] = (acc[label] || 0) + 1
-    return acc
-  }, {})
+    const label = titleCase(kpi.kpi_type || "other");
+    acc[label] = (acc[label] || 0) + 1;
+    return acc;
+  }, {});
+  const linkedSourceCount = sourceConfigs.filter(
+    (config) =>
+      (Array.isArray(config.kpi_bindings) && config.kpi_bindings.length > 0) ||
+      (Array.isArray(config.kpi_ids) && config.kpi_ids.length > 0) ||
+      config.status === "linked" ||
+      config.status === "mapped",
+  ).length;
+  const [chartsOpen, setChartsOpen] = useState(false);
 
   return (
-    <div className="grid gap-3 xl:grid-cols-3">
-      <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-950">Performance Trend</h3>
-          <Pill tone="blue">{actuals.length} actuals</Pill>
-        </div>
-        <OverallSparkline actuals={actuals} />
-      </section>
-      <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-950">KPI Coverage</h3>
-          <Pill tone="emerald">{tracked.length}/{kpis.length}</Pill>
-        </div>
-        <HorizontalMiniBars values={Object.entries(typeCounts).map(([label, value]) => ({ label, value }))} />
-      </section>
-      <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-950">Compliance Flags</h3>
-          <Pill tone={openFlags.length ? 'red' : 'emerald'}>{openFlags.length} open</Pill>
-        </div>
-        <FlagDonut open={openFlags.length} clear={Math.max(tracked.length - openFlags.length, 0)} />
-      </section>
-    </div>
-  )
-}
-
-function OverallSparkline({ actuals }: { actuals: ContractKPIActual[] }) {
-  const points = chartPointsFor(actuals).slice(-18)
-  return <Sparkline values={points.length ? points.map((point) => point.value) : [0, 0, 0, 0]} labels={points.map((point) => point.xLabel)} heightClass="h-36" />
-}
-
-function HorizontalMiniBars({ values }: { values: Array<{ label: string; value: number }> }) {
-  const rows = values.length ? values : [{ label: 'No extracted KPIs', value: 1 }]
-  const max = Math.max(...rows.map((row) => row.value), 1)
-  return (
-    <div className="space-y-3">
-      {rows.slice(0, 5).map((row, index) => (
-        <div key={row.label}>
-          <div className="mb-1 flex justify-between gap-2 text-xs">
-            <span className="truncate text-gray-600">{row.label}</span>
-            <span className="font-semibold text-gray-950">{row.value}</span>
-          </div>
-          <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.max(8, (row.value / max) * 100)}%` }}
-              transition={{ duration: 0.8, delay: index * 0.1, ease: 'easeOut' }}
-              className="h-2 rounded-full bg-blue-600"
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function FlagDonut({ open, clear }: { open: number; clear: number }) {
-  const total = Math.max(open + clear, 1)
-  const openPercent = (open / total) * 100
-  return (
-    <div className="flex items-center gap-4">
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
-        className="relative h-28 w-28 shrink-0 rounded-full shadow-sm"
-        style={{ background: `conic-gradient(#ef4444 0 ${openPercent}%, #e5e7eb ${openPercent}% 100%)` }}
-      >
-        <div className="absolute inset-7 flex items-center justify-center rounded-full bg-white text-lg font-semibold text-gray-950">{open}</div>
-      </motion.div>
-      <div className="space-y-2 text-xs text-gray-600">
-        <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-sm" /> Open flags <strong>{open}</strong></div>
-        <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-gray-300" /> Clear tracked <strong>{clear}</strong></div>
-      </div>
-    </div>
-  )
-}
-
-function EditableKpiField({
-  label,
-  value,
-  onCommit,
-  wide = false,
-}: {
-  label: string
-  value: string | number | null
-  onCommit: (value: string) => unknown | Promise<unknown>
-  wide?: boolean
-}) {
-  return (
-    <label className={`block rounded-md border border-gray-200 bg-white px-3 py-2 ${wide ? 'lg:col-span-2' : ''}`}>
-      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">{label}</span>
-      <input
-        defaultValue={value ?? ''}
-        onBlur={(event) => {
-          const next = event.target.value
-          if (next !== String(value ?? '')) void onCommit(next)
-        }}
-        className="mt-1 h-8 w-full border-0 bg-transparent p-0 text-sm font-semibold text-gray-900 outline-none focus:ring-0"
-      />
-    </label>
-  )
-}
-
-function KpiHistoryChart({ kpi, actuals, breaches }: { kpi: ContractKPI; actuals: ContractKPIActual[]; breaches: ContractKPIBreach[] }) {
-  const points = chartPointsFor(actuals)
-  const latestBreach = breaches.find((breach) => breach.is_breach)
-  return (
-    <section className="rounded-lg border border-gray-200 bg-white p-4">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h4 className="text-sm font-semibold text-gray-950">Tracked Performance</h4>
-          <p className="mt-1 text-xs text-gray-500">Historical actuals against the contract threshold.</p>
-        </div>
-        <Pill tone={latestBreach ? 'red' : 'emerald'}>{latestBreach ? 'Flagged' : 'Monitoring'}</Pill>
-      </div>
-      <Sparkline
-        values={points.length ? points.map((point) => point.value) : []}
-        labels={points.map((point) => point.xLabel)}
-        threshold={toNumber(kpi.value_min ?? kpi.value)}
-        heightClass="h-44"
-      />
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <DetailTile label="Target" value={formatKpiValue(kpi)} tone="blue" />
-        <DetailTile label="Latest" value={actuals.length ? actualLabel([...actuals].sort((left, right) => new Date(actualTimestamp(right) || 0).getTime() - new Date(actualTimestamp(left) || 0).getTime())[0], kpi) : 'No actual'} />
-        <DetailTile label="Samples" value={`${actuals.length}`} />
-      </div>
-    </section>
-  )
-}
-
-function Sparkline({ values, labels, threshold, heightClass }: { values: number[]; labels?: string[]; threshold?: number | null; heightClass: string }) {
-  const data = values.length >= 2 ? values : values.length === 1 ? [values[0], values[0]] : [0, 0]
-  const thresholdValue = threshold ?? undefined
-  const min = Math.min(...data, thresholdValue ?? data[0], 0)
-  const max = Math.max(...data, thresholdValue ?? data[0], 1)
-  const range = Math.max(max - min, 1)
-  const coords = data.map((value, index) => {
-    const x = (index / Math.max(data.length - 1, 1)) * 320
-    const y = 150 - ((value - min) / range) * 120
-    return `${x},${y}`
-  }).join(' ')
-  const thresholdY = thresholdValue == null ? null : 150 - ((thresholdValue - min) / range) * 120
-
-  return (
-    <div className={`${heightClass} rounded-md border border-gray-200 bg-white p-3 shadow-sm`}>
-      {values.length ? (
-        <svg viewBox="0 0 320 170" className="h-full w-full overflow-visible">
-          <defs>
-            <linearGradient id="sparkline-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#4f46e5" />
-              <stop offset="100%" stopColor="#06b6d4" />
-            </linearGradient>
-          </defs>
-          <line x1="0" y1="150" x2="320" y2="150" stroke="#e5e7eb" />
-          {thresholdY != null && (
-            <>
-              <line x1="0" y1={thresholdY} x2="320" y2={thresholdY} stroke="#9ca3af" strokeDasharray="6 5" />
-              <text x="4" y={Math.max(12, thresholdY - 6)} fill="#6b7280" fontSize="10">target {thresholdValue}</text>
-            </>
-          )}
-          <motion.polyline
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{ duration: 1.5, ease: 'easeInOut' }}
-            points={coords}
-            fill="none"
-            stroke="url(#sparkline-gradient)"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          {data.map((value, index) => {
-            const [x, y] = coords.split(' ')[index].split(',').map(Number)
-            return (
-              <motion.circle
-                key={`${value}-${index}`}
-                cx={x}
-                cy={y}
-                r="3.5"
-                fill="#4f46e5"
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.3, delay: index * 0.05 + 0.5 }}
-              />
-            )
-          })}
-          {labels?.length ? <text x="0" y="168" fill="#6b7280" fontSize="10">{labels[0]}</text> : null}
-          {labels?.length ? <text x="320" y="168" textAnchor="end" fill="#6b7280" fontSize="10">{labels[labels.length - 1]}</text> : null}
-        </svg>
-      ) : (
-        <div className="flex h-full items-center justify-center text-sm text-gray-400">No actual history yet.</div>
-      )}
-    </div>
-  )
-}
-
-function KpiActualHistory({ kpi, actuals }: { kpi: ContractKPI; actuals: ContractKPIActual[] }) {
-  const rows = [...actuals].sort((left, right) => new Date(actualTimestamp(right) || 0).getTime() - new Date(actualTimestamp(left) || 0).getTime())
-  return (
-    <section className="rounded-lg border border-gray-200 bg-white">
-      <div className="border-b border-gray-100 px-4 py-3">
-        <h4 className="text-sm font-semibold text-gray-950">Historical Actual Logs</h4>
-        <p className="mt-1 text-xs text-gray-500">Stored actuals for this tracked KPI.</p>
-      </div>
-      {!rows.length ? (
-        <div className="px-4 py-10 text-center text-sm text-gray-400">No actual logs recorded yet.</div>
-      ) : (
-        <div className="max-h-[240px] overflow-auto">
-          <table className="min-w-full text-left text-xs">
-            <thead className="sticky top-0 bg-gray-50 text-[10px] font-bold uppercase tracking-wide text-gray-400">
-              <tr>
-                <th className="px-3 py-2">Actual</th>
-                <th className="px-3 py-2">Source</th>
-                <th className="px-3 py-2">Timestamp</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {rows.map((actual) => (
-                <tr key={actual.actual_id || `${actual.kpi_id}-${actualTimestamp(actual)}`}>
-                  <td className="px-3 py-2 font-mono text-gray-900">{actualLabel(actual, kpi)}</td>
-                  <td className="max-w-[160px] truncate px-3 py-2 text-gray-600">{actual.source || 'manual'}</td>
-                  <td className="px-3 py-2 text-gray-500">{formatDateTime(actualTimestamp(actual))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  )
-}
-
-function KpiBreachStrip({ kpi, breaches }: { kpi: ContractKPI; breaches: ContractKPIBreach[] }) {
-  if (breaches.length === 0) {
-    return null
-  }
-  return (
-    <div className="mt-6">
-      <h5 className="mb-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Compliance Evaluations</h5>
-      <RecordPreviewTable rows={breaches} empty="No evaluations" />
-    </div>
-  )
-}
-
-function SlaPolicyStrip({ kpi }: { kpi: ContractKPI }) {
-  const businessHoursEnabled = Boolean(kpi.business_hours?.enabled || kpi.business_hours?.business_days_only)
-  const blackoutCount = Array.isArray(kpi.blackout_windows) ? kpi.blackout_windows.length : 0
-  const lockDays = kpi.reporting_lock?.lock_after_days
-  const errorBudget = kpi.error_budget || {}
-  const hasPolicy = businessHoursEnabled || blackoutCount || lockDays || kpi.missing_data_policy || Object.keys(errorBudget).length
-  if (!hasPolicy) return null
-  const budgetText = Object.keys(errorBudget).length
-    ? `${errorBudget.consumed ?? 0}/${errorBudget.budget ?? errorBudget.allowed ?? 'budget'}`
-    : 'Not configured'
-  return (
-    <details className="border-t border-border pt-6 mt-6 group">
-      <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-foreground hover:text-muted-foreground list-none [&::-webkit-details-marker]:hidden">
-        <ChevronDown className="h-4 w-4 transition-transform group-open:-rotate-180" />
-        Advanced SLA/SLO Policy
-      </summary>
-      <div className="mt-4 grid gap-x-8 gap-y-6 grid-cols-2 xl:grid-cols-5 pl-6">
-        <DetailTile label="Business Hours" value={businessHoursEnabled ? `${kpi.business_hours?.start || '09:00'}-${kpi.business_hours?.end || '17:00'}` : 'Calendar time'} tone={businessHoursEnabled ? 'blue' : 'gray'} />
-        <DetailTile label="Blackouts" value={blackoutCount ? `${blackoutCount} window${blackoutCount === 1 ? '' : 's'}` : 'None'} tone={blackoutCount ? 'amber' : 'gray'} />
-        <DetailTile label="Reporting Lock" value={lockDays ? `${lockDays} day${Number(lockDays) === 1 ? '' : 's'}` : 'Unlocked'} />
-        <DetailTile label="Missing Data" value={titleCase(kpi.missing_data_policy || 'flag missing evidence')} tone="amber" />
-        <DetailTile label="Error Budget" value={budgetText} tone={Object.keys(errorBudget).length ? 'blue' : 'gray'} />
-      </div>
-    </details>
-  )
-}
-
-function DetailTile({ label, value, tone = 'gray' }: { label: string; value: string; tone?: 'gray' | 'blue' | 'amber' }) {
-  const textColor = {
-    gray: 'text-foreground',
-    blue: 'text-[#015CA9]',
-    amber: 'text-amber-700',
-  }[tone]
-  return (
-    <div className="min-w-0 flex flex-col gap-1">
-      <p className="text-[13px] font-medium text-muted-foreground">{label}</p>
-      <p className={`truncate text-sm font-semibold ${textColor}`}>{value}</p>
-    </div>
-  )
-}
-
-function displayCell(value: any) {
-  if (value == null || value === '') return '—'
-  if (typeof value === 'object') return JSON.stringify(value)
-  return String(value)
-}
-
-function previewColumns(rows: Array<Record<string, any>>) {
-  const preferred = ['row', 'kpi_id', 'kpi_name', 'actual_value', 'value', 'unit', 'timestamp', 'period', 'source_record_id', 'record_id', 'reason', 'actual_id', 'status']
-  const keys = new Set<string>()
-  rows.slice(0, 8).forEach((row) => Object.keys(row || {}).forEach((key) => keys.add(key)))
-  const ordered = preferred.filter((key) => keys.has(key))
-  Array.from(keys).forEach((key) => {
-    if (!ordered.includes(key) && ordered.length < 7) ordered.push(key)
-  })
-  return ordered.length ? ordered : preferred.slice(0, 5)
-}
-
-function RecordPreviewTable({ rows, empty }: { rows: Array<Record<string, any>>; empty: string }) {
-  if (!rows.length) {
-    return <div className="rounded-md border border-dashed border-gray-200 bg-white px-3 py-4 text-sm text-gray-400">{empty}</div>
-  }
-  const columns = previewColumns(rows)
-  return (
-    <div className="max-h-64 overflow-auto rounded-md border border-gray-200 bg-white">
-      <table className="min-w-full text-left text-xs">
-        <thead className="sticky top-0 bg-gray-50 text-[10px] font-bold uppercase tracking-wide text-gray-400">
-          <tr>
-            {columns.map((column) => <th key={column} className="px-3 py-2">{column.replace(/_/g, ' ')}</th>)}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {rows.slice(0, 50).map((row, rowIndex) => (
-            <tr key={`${row.actual_id || row.source_record_id || row.record_id || rowIndex}`} className="bg-white">
-              {columns.map((column) => (
-                <td key={column} className="max-w-[220px] truncate px-3 py-2 text-gray-700" title={displayCell(row[column])}>
-                  {displayCell(row[column])}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {rows.length > 50 && <div className="border-t border-gray-100 px-3 py-2 text-xs text-gray-400">Showing 50 of {rows.length} rows.</div>}
-    </div>
-  )
-}
-
-function RunPreviewBlock({ title, rows, empty }: { title: string; rows: Array<Record<string, any>>; empty: string }) {
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{title}</p>
-        <span className="text-xs font-semibold text-gray-500">{rows.length}</span>
-      </div>
-      <RecordPreviewTable rows={rows} empty={empty} />
-    </div>
-  )
-}
-
-function SourceKpiBindingEditor({
-  config,
-  kpis,
-  selectedBindingKpiId,
-  disabled,
-  onSelectBinding,
-  onToggleSourceKpi,
-  onUpdateBinding,
-  onUpdateSource,
-}: {
-  config: KPISourceConfig
-  kpis: ContractKPI[]
-  selectedBindingKpiId?: string | null
-  disabled: boolean
-  onSelectBinding: (kpiId: string) => void
-  onToggleSourceKpi: (config: KPISourceConfig, kpi: ContractKPI) => void | Promise<void>
-  onUpdateBinding: (config: KPISourceConfig, binding: KPISourceBinding) => void | Promise<void>
-  onUpdateSource: (config: KPISourceConfig, updates: Partial<KPISourceConfig>) => void | Promise<KPISourceConfig | null>
-}) {
-  const [searchQuery, setSearchQuery] = useState('')
-
-  if (!kpis.length) {
-    return <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500">No obligation records available to assign.</div>
-  }
-
-  const bindings = bindingsForSource(config, kpis)
-  const enabledCount = bindings.filter((b) => b.enabled !== false).length
-
-  const filtered = kpis
-    .map((kpi, idx) => ({ kpi, idx }))
-    .filter(({ kpi }) => {
-      if (!searchQuery.trim()) return true
-      const q = searchQuery.toLowerCase()
-      return kpi.name.toLowerCase().includes(q) || (kpi.kpi_type || '').toLowerCase().includes(q)
-    })
-
-  const linkAll = async () => {
-    const allKpiIds = kpis.map((k) => k.kpi_id)
-    const newBindings = kpis.map((kpi, idx) => ({
-      binding_id: sourceBindingId(config.source_config_id, kpi.kpi_id, idx + 1),
-      kpi_id: kpi.kpi_id,
-      enabled: true,
-      field_mappings: [],
-      aggregation: 'latest',
-    }))
-    await onUpdateSource(config, {
-      kpi_ids: allKpiIds,
-      kpi_bindings: newBindings,
-      status: 'mapped',
-      enabled: true,
-    })
-  }
-
-  const unlinkAll = async () => {
-    const newBindings = bindings.map((b) => ({ ...b, enabled: false }))
-    await onUpdateSource(config, {
-      kpi_ids: [],
-      kpi_bindings: newBindings,
-    })
-  }
-
-  const smartMatch = async () => {
-    const sourceLabel = (config.display_name || config.source_type || '').toLowerCase()
-    const schemaFields = (config.schema_fields || []).map((f) => String(f).toLowerCase())
-
-    const matchedKpiIds: string[] = []
-    const newBindings = kpis.map((kpi, idx) => {
-      const kName = (kpi.name || '').toLowerCase()
-      const section = (kpi.structural_path || kpi.section_path || kpi.section || '').toLowerCase()
-      const quote = (quoteFor(kpi) || '').toLowerCase()
-
-      let isMatch = false
-      if (schemaFields.length) {
-        isMatch = schemaFields.some((field) => kName.includes(field) || field.includes(kName) || (kpi.kpi_id && field.includes(kpi.kpi_id.toLowerCase())))
-      }
-      if (!isMatch) {
-        const terms = sourceLabel.replace(/(upload|feed|workbook|csv|xlsx|json|xml|source|manual|attestation)/gi, '').trim().split(/\s+/).filter((b) => b.length > 2)
-        if (terms.length) {
-          isMatch = terms.some((term) => kName.includes(term) || section.includes(term) || quote.includes(term))
-        }
-      }
-
-      if (isMatch) matchedKpiIds.push(kpi.kpi_id)
-      return {
-        binding_id: sourceBindingId(config.source_config_id, kpi.kpi_id, idx + 1),
-        kpi_id: kpi.kpi_id,
-        enabled: isMatch,
-        field_mappings: [],
-        aggregation: 'latest',
-      }
-    })
-
-    await onUpdateSource(config, {
-      kpi_ids: matchedKpiIds,
-      kpi_bindings: newBindings,
-      status: matchedKpiIds.length ? 'mapped' : 'draft',
-    })
-  }
-
-  return (
-    <div className="space-y-2">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <button type="button" disabled={disabled} onClick={smartMatch} className="rounded-md border border-cs-primary/30 bg-cs-primary/5 px-2.5 py-1 text-[11px] font-semibold text-cs-primary hover:bg-cs-primary/10 disabled:opacity-40">
-            Smart Match
-          </button>
-          <button type="button" disabled={disabled} onClick={linkAll} className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40">
-            Link All ({kpis.length})
-          </button>
-          <button type="button" disabled={disabled} onClick={unlinkAll} className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-40">
-            Unlink All
-          </button>
-          <span className="ml-1 text-xs font-semibold text-gray-400">{enabledCount} linked</span>
-        </div>
-        <input
-          type="text"
-          placeholder="Search obligations..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="h-7 w-44 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-800 placeholder:text-gray-400"
+    <div className="space-y-5">
+      {/* ── Headline KPI Strip ── */}
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <HeadlineCard
+          label="Total Penalty Exposure"
+          value={totalExposure > 0 ? `${totalExposure.toLocaleString()}` : "—"}
+          unit="SEK"
+          tone={totalExposure > 0 ? "red" : "neutral"}
+        />
+        <HeadlineCard
+          label="Open Compliance Flags"
+          value={String(openFlags.length)}
+          unit={`of ${breaches.length}`}
+          tone={openFlags.length > 0 ? "red" : "green"}
+        />
+        <HeadlineCard
+          label="KPI Coverage"
+          value={`${coveragePercent}`}
+          unit="%"
+          tone="blue"
+          detail={`${tracked.length} of ${kpis.length} tracked`}
+        />
+        <HeadlineCard
+          label="Recovery Rate"
+          value={breaches.length > 0 ? `${recoveryRate}` : "—"}
+          unit="%"
+          tone={recoveryRate >= 80 ? "green" : recoveryRate > 0 ? "amber" : "neutral"}
+          detail={`${resolvedCount} resolved`}
         />
       </div>
 
-      {/* Clean checklist */}
-      <div className="max-h-[400px] overflow-y-auto rounded-md border border-gray-200">
-        {filtered.map(({ kpi, idx }) => {
-          const binding = bindings[idx]
-          const isEnabled = binding.enabled !== false
-          const kpiType = String(kpi.kpi_type || (kpi as any).rule_type || '').toLowerCase()
-          const typeBadge = kpiType === 'sla' || kpiType === 'performance' ? 'SLA'
-            : kpiType === 'penalty' ? 'Penalty'
-            : kpiType === 'deadline' || kpiType === 'notice' ? 'Deadline'
-            : 'KPI'
-
-          return (
-            <div
-              key={kpi.kpi_id}
-              className={`flex items-center gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0 ${isEnabled ? 'bg-white' : 'bg-gray-50/50'}`}
-            >
-              <input
-                type="checkbox"
-                checked={isEnabled}
-                disabled={disabled}
-                onChange={() => {
-                  onSelectBinding(kpi.kpi_id)
-                  void onToggleSourceKpi(config, kpi)
-                }}
-                className="h-4 w-4 shrink-0 rounded border-gray-300 text-cs-primary focus:ring-cs-primary"
-              />
-              <div className="min-w-0 flex-1">
-                <p className={`truncate text-xs font-semibold ${isEnabled ? 'text-gray-900' : 'text-gray-500'}`}>{kpi.name}</p>
-                {(kpi as any).target_value != null && (
-                  <p className="mt-0.5 truncate text-[11px] text-gray-400">Target: {formatKpiValue(kpi)}</p>
-                )}
-              </div>
-              <span className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-semibold text-gray-500">{typeBadge}</span>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function SourcesPanel({
-  sourceCatalog,
-  sourceConfigs,
-  selectedSource,
-  selectedRuns,
-  sourceResult,
-  kpis,
-  trackedKpis,
-  samplePayload,
-  isSavingSource,
-  isRunningSource,
-  onSelectSource,
-  onCreateSource,
-  onUpdateSource,
-  onUpdateSourceBinding,
-  onToggleSourceKpi,
-  onApplyIngestionMode,
-  onSaveSample,
-  onSamplePayloadChange,
-  onRunSourceAction,
-  onUploadSampleFile,
-}: {
-  sourceCatalog: KPISourceCatalogItem[]
-  sourceConfigs: KPISourceConfig[]
-  selectedSource: KPISourceConfig | null
-  selectedRuns: KPISourceFetchRun[]
-  sourceResult: any
-  kpis: ContractKPI[]
-  trackedKpis: ContractKPI[]
-  samplePayload: string
-  isSavingSource: boolean
-  isRunningSource: boolean
-  onSelectSource: (sourceId: string) => void
-  onCreateSource: (source: KPISourceCatalogItem) => void | Promise<KPISourceConfig | null>
-  onUpdateSource: (config: KPISourceConfig, updates: Partial<KPISourceConfig>) => void | Promise<KPISourceConfig | null>
-  onUpdateSourceBinding: (config: KPISourceConfig, binding: KPISourceBinding) => void | Promise<void>
-  onToggleSourceKpi: (config: KPISourceConfig, kpi: ContractKPI) => void | Promise<void>
-  onApplyIngestionMode: (config: KPISourceConfig, mode: IngestionMode) => void | Promise<void>
-  onSaveSample: (config: KPISourceConfig) => void | Promise<void>
-  onSamplePayloadChange: (value: string) => void
-  onRunSourceAction: (config: KPISourceConfig, action: 'test' | 'fetch') => void | Promise<void>
-  onUploadSampleFile?: (config: KPISourceConfig, file: File) => void | Promise<void>
-}) {
-  const sourceFileInputRef = useRef<HTMLInputElement | null>(null)
-  const dropzoneFileInputRef = useRef<HTMLInputElement | null>(null)
-  const section4FileInputRef = useRef<HTMLInputElement | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
-
-  const handleDropzoneFile = async (files: FileList | File[] | File) => {
-    const fileList = Array.from(files instanceof File ? [files] : files)
-    if (!fileList.length) return
-
-    for (const file of fileList) {
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'csv'
-      const catalogType = ext === 'xlsx' || ext === 'xls' ? 'xlsx' : ext === 'json' ? 'json' : ext === 'xml' ? 'xml' : 'csv'
-      const matchedCatalog = sourceCatalog.find((s) => s.source_type === catalogType) || sourceCatalog[0]
-      if (!matchedCatalog) continue
-
-      const created = await onCreateSource(matchedCatalog)
-      if (created && onUploadSampleFile) {
-        await onUploadSampleFile(created, file)
-      }
-    }
-  }
-  const visibleKpis = kpis.filter((kpi) => kpi.status !== 'ignored')
-  const selectedBindings = selectedSource ? bindingsForSource(selectedSource, visibleKpis) : []
-  const enabledBindings = selectedBindings.filter((binding) => binding.enabled !== false)
-  const [selectedBindingKpiId, setSelectedBindingKpiId] = useState<string | null>(null)
-  const selectedBinding = selectedBindings.find((binding) => binding.kpi_id === selectedBindingKpiId)
-    || enabledBindings[0]
-    || selectedBindings[0]
-    || null
-  const selectedBindingKpi = selectedBinding ? visibleKpis.find((kpi) => kpi.kpi_id === selectedBinding.kpi_id) || null : null
-  const selectedKpiCount = enabledBindings.length
-
-  useEffect(() => {
-    if (!selectedSource) {
-      setSelectedBindingKpiId(null)
-      return
-    }
-    const bindings = bindingsForSource(selectedSource, visibleKpis)
-    const stillVisible = bindings.some((binding) => binding.kpi_id === selectedBindingKpiId)
-    if (!stillVisible) {
-      setSelectedBindingKpiId(
-        bindings.find((binding) => binding.enabled !== false)?.kpi_id
-        || bindings[0]?.kpi_id
-        || null
-      )
-    }
-  }, [selectedSource?.source_config_id, selectedBindingKpiId, visibleKpis])
-
-  const updateMapping = (field: string, sourceField: string, transform?: string) => {
-    if (!selectedSource || !selectedBinding) return
-    const baseMappings = selectedBinding.field_mappings?.length
-      ? selectedBinding.field_mappings
-      : normalizeFieldMappings(selectedSource.field_mappings?.length ? selectedSource.field_mappings : getDefaultKpiSourceMappings())
-    const field_mappings = setFieldMapping(baseMappings, field, sourceField, transform || mappingForField(baseMappings, field)?.transform || 'string')
-    void onUpdateSourceBinding(selectedSource, {
-      ...selectedBinding,
-      enabled: true,
-      field_mappings,
-    })
-  }
-  const useSelectedBindingDefaults = () => {
-    if (!selectedSource || !selectedBinding) return
-    void onUpdateSourceBinding(selectedSource, { ...selectedBinding, field_mappings: [] })
-  }
-  const overrideSelectedBinding = () => {
-    if (!selectedSource || !selectedBinding) return
-    void onUpdateSourceBinding(selectedSource, {
-      ...selectedBinding,
-      enabled: true,
-      field_mappings: normalizeFieldMappings(selectedSource.field_mappings?.length ? selectedSource.field_mappings : getDefaultKpiSourceMappings()),
-    })
-  }
-  const updateSourceDefaultMapping = (field: string, sourceField: string, transform?: string) => {
-    if (!selectedSource) return
-    const field_mappings = setFieldMapping(selectedSource.field_mappings, field, sourceField, transform || mappingForField(selectedSource.field_mappings, field)?.transform || 'string')
-    void onUpdateSource(selectedSource, { field_mappings })
-  }
-  const selectedMapperMappings = selectedSource && selectedBinding
-    ? bindingEffectiveMappings(selectedSource, selectedBinding)
-    : selectedSource?.field_mappings || []
-  const selectedBindingHasOverrides = Boolean(selectedBinding?.field_mappings?.length)
-  const updateSelectedBindingValue = (updates: Partial<KPISourceBinding>) => {
-    if (!selectedSource || !selectedBinding) return
-    void onUpdateSourceBinding(selectedSource, { ...selectedBinding, ...updates })
-  }
-  const validationRows = sourceResult?.normalized_rows || sourceResult?.fetch_run?.normalized_preview || []
-  const skippedRows = sourceResult?.skipped_rows || []
-
-  return (
-    <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
-      <aside className="space-y-4">
-        <section className="rounded-lg border border-gray-200 bg-white p-3">
+      {/* ── Compliance Status ── */}
+      <SectionHeader title="Compliance Status" />
+      <div className="grid gap-3 xl:grid-cols-3">
+        <section className="group rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-200 flex flex-col">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-950">Sources</h2>
-            <Pill tone="blue">{sourceConfigs.length}</Pill>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Performance Trend
+            </h3>
+            <span className="inline-flex items-center rounded-md border border-gray-100 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-500">
+              {actuals.length} actuals
+            </span>
           </div>
-          <div className="space-y-2">
-            {sourceConfigs.length ? sourceConfigs.map((config) => (
-              <button
-                key={config.source_config_id}
-                type="button"
-                onClick={() => onSelectSource(config.source_config_id)}
-                className={`w-full rounded-lg border p-3 text-left transition-colors ${selectedSource?.source_config_id === config.source_config_id ? 'border-gray-400 bg-gray-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-gray-950">{config.display_name}</p>
-                    <p className="mt-0.5 text-xs text-gray-500">{titleCase(config.source_type)} · {enabledKpiIdsForSource(config, visibleKpis).length} KPI{enabledKpiIdsForSource(config, visibleKpis).length === 1 ? '' : 's'}</p>
-                  </div>
-                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone(config.last_error ? 'failed' : config.status || 'draft')}`}>
-                    {titleCase(config.last_error ? 'failed' : config.status || 'draft')}
-                  </span>
-                </div>
-              </button>
-            )) : (
-              <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500">No sources yet.</div>
-            )}
+          <div className="flex-1">
+            <OverallSparkline actuals={actuals} />
+          </div>
+          <p className="mt-3 text-[11px] leading-4 text-gray-400">
+            Y-axis: recorded actual value per KPI (units vary — SEK, tonnes,
+            hours). Gradient = oldest → newest.
+          </p>
+        </section>
+        <section className="group rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-200 flex flex-col">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              KPI Coverage
+            </h3>
+            <span className="inline-flex items-center rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">
+              {tracked.length} of {kpis.length} tracked
+            </span>
+          </div>
+          <div className="flex-1">
+            <HorizontalMiniBars
+              values={Object.entries(typeCounts).map(([label, value]) => ({
+                label,
+                value,
+              }))}
+            />
+          </div>
+          <p className="mt-3 text-[11px] leading-4 text-gray-400">
+            {tracked.length} of {kpis.length} extracted obligations actively
+            monitored.
+          </p>
+        </section>
+        <section className="group rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-200 flex flex-col">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Compliance Flags
+            </h3>
+            <span
+              className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium ${openFlags.length
+                ? "border border-red-100 bg-red-50 text-red-600"
+                : "border border-green-100 bg-green-50 text-green-600"
+                }`}
+            >
+              {openFlags.length} open
+            </span>
+          </div>
+          <div className="flex-1 flex items-center">
+            <FlagDonut
+              open={openFlags.length}
+              clear={Math.max(tracked.length - openFlags.length, 0)}
+            />
           </div>
         </section>
+      </div>
 
-        <section className="rounded-lg border border-gray-200 bg-white p-3">
-          <h2 className="mb-3 text-sm font-semibold text-gray-950">Add Source</h2>
-          <div className="grid gap-2">
-            {sourceCatalog.map((source) => (
-              <button
-                key={source.source_type}
-                type="button"
-                onClick={() => onCreateSource(source)}
-                disabled={isSavingSource}
-                className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left hover:border-gray-400 hover:bg-gray-50 disabled:opacity-60"
-              >
-                <span>
-                  <span className="block text-sm font-semibold text-gray-900">{source.label}</span>
-                  <span className="block text-xs text-gray-400">{titleCase(source.source_type)}</span>
+      {/* ── Financial Exposure ── */}
+      {linkedSourceCount > 0 && (
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => setChartsOpen((open) => !open)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-gray-100 bg-white px-3 py-2.5 text-xs font-semibold text-gray-500 shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-200 hover:text-gray-700"
+          >
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${chartsOpen ? "rotate-180" : ""}`}
+            />
+            {chartsOpen
+              ? "Hide financial & rate charts"
+              : "Show financial exposure & rate reference charts"}
+          </button>
+          {chartsOpen && (
+            <>
+              <SectionHeader title="Financial Exposure" />
+              <div className="flex gap-3">
+                {(["recoveries", "category", "penalty"] as ExtraChartKey[]).map(
+                  (key) => (
+                    <section
+                      key={key}
+                      className="group flex min-h-0 flex-1 flex-col rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-200"
+                    >
+                      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        {EXTRA_CHARTS.find((c) => c.key === key)?.label}
+                      </h3>
+                      {key === "recoveries" ? (
+                        <RecoveryPipelineChart breaches={breaches} />
+                      ) : key === "category" ? (
+                        <BreachesByCategoryChart
+                          openFlags={openFlags}
+                          kpis={kpis}
+                        />
+                      ) : (
+                        <PenaltyExposureChart openFlags={openFlags} />
+                      )}
+                    </section>
+                  ),
+                )}
+              </div>
+              <SectionHeader title="Contract Rate Reference" />
+              <div className="flex gap-3">
+                {(["turnaround", "landing", "occasions"] as ExtraChartKey[]).map(
+                  (key) => (
+                    <section
+                      key={key}
+                      className="group flex min-h-0 flex-1 flex-col rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-200"
+                    >
+                      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        {EXTRA_CHARTS.find((c) => c.key === key)?.label}
+                      </h3>
+                      {key === "turnaround" ? (
+                        <TurnaroundSeatBandChart kpis={kpis} />
+                      ) : key === "landing" ? (
+                        <LandingChargeCurveChart kpis={kpis} />
+                      ) : (
+                        <PerOccasionChargesChart kpis={kpis} />
+                      )}
+                    </section>
+                  ),
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      {linkedSourceCount === 0 && (
+        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-6">
+          <p className="text-xs font-semibold text-gray-700">
+            Link a source to unlock financial exposure &amp; rate charts
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            Recoveries pipeline, severity mix, penalty exposure, turnaround
+            pricing, the landing MTOW curve, and per-occasion charges light up
+            once a source is mapped.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">
+        {title}
+      </h2>
+      <div className="h-px flex-1 bg-gray-100" />
+    </div>
+  );
+}
+
+function HeadlineCard({
+  label,
+  value,
+  unit,
+  tone,
+  detail,
+}: {
+  label: string;
+  value: string;
+  unit: string;
+  tone: "red" | "green" | "blue" | "amber" | "neutral";
+  detail?: string;
+}) {
+  const accent = {
+    red: "border-l-red-500",
+    green: "border-l-green-500",
+    blue: "border-l-blue-500",
+    amber: "border-l-amber-500",
+    neutral: "border-l-gray-300",
+  }[tone];
+  const valueColor = {
+    red: "text-red-600",
+    green: "text-green-600",
+    blue: "text-blue-600",
+    amber: "text-amber-600",
+    neutral: "text-gray-500",
+  }[tone];
+  return (
+    <div
+      className={`group rounded-xl border border-gray-100 border-l-[3px] ${accent} bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:shadow-md`}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+        {label}
+      </p>
+      <div className="mt-1 flex items-baseline gap-1.5">
+        <span className={`text-2xl font-bold tracking-tight ${valueColor}`}>
+          {value}
+        </span>
+        {unit && (
+          <span className="text-xs font-medium text-gray-400">{unit}</span>
+        )}
+      </div>
+      {detail && (
+        <p className="mt-0.5 text-[11px] text-gray-400">{detail}</p>
+      )}
+    </div>
+  );
+}
+
+function RecoveryPipelineChart({
+  breaches,
+}: {
+  breaches: ContractKPIBreach[];
+}) {
+  const openFlags = breaches.filter(
+    (breach) => breach.is_breach && breach.status !== "resolved",
+  );
+  const counts: Record<string, number> = { open: 0, acknowledged: 0, reminded: 0, escalated: 0, in_action: 0 };
+  openFlags.forEach((breach) => {
+    const key = String(breach.status || "open");
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  const resolved = breaches.filter((breach) => breach.status === "resolved").length;
+  const rows = [
+    { label: "Open", value: counts.open, color: "#ef4444" },
+    { label: "In Action", value: counts.in_action, color: "#3b82f6" },
+    { label: "Ack", value: counts.acknowledged || 0, color: "#f59e0b" },
+    { label: "Reminded", value: counts.reminded || 0, color: "#8b5cf6" },
+    { label: "Escalated", value: counts.escalated || 0, color: "#a855f7" },
+    { label: "Resolved", value: resolved, color: "#22c55e" },
+  ];
+  const max = Math.max(...rows.map((row) => row.value), 1);
+  const withRemedy = openFlags.filter((breach) => breach.remediation).length;
+  const withSla = openFlags.filter((breach) => breach.remediation_sla).length;
+  const daysOpen = openFlags
+    .map((breach) => {
+      const raw = breach.created_at || breach.timestamp;
+      const parsed = raw ? Date.parse(String(raw)) : NaN;
+      return Number.isFinite(parsed)
+        ? Math.max(0, (Date.now() - parsed) / 86400000)
+        : null;
+    })
+    .filter((days): days is number => days != null);
+  const avgDays = daysOpen.length
+    ? Math.round(daysOpen.reduce((sum, days) => sum + days, 0) / daysOpen.length)
+    : 0;
+  const oldestDays = daysOpen.length ? Math.round(Math.max(...daysOpen)) : 0;
+  return (
+    <div>
+      <div className="flex items-end justify-between gap-2">
+        {rows.map((row) => (
+          <div key={row.label} className="flex flex-1 flex-col items-center gap-1.5 group/bar cursor-default">
+            <span className="text-sm font-semibold text-gray-900 tabular-nums">{row.value}</span>
+            <div className="flex h-24 w-full items-end rounded-lg bg-gray-50">
+              <motion.div
+                initial={{ height: 0 }}
+                animate={{ height: `${Math.max(6, (row.value / max) * 100)}%` }}
+                transition={{ duration: 0.7, ease: "easeOut" }}
+                className="w-full rounded-lg transition-all duration-200 group-hover/bar:opacity-80"
+                style={{ backgroundColor: row.color }}
+              />
+            </div>
+            <span className="text-[10px] font-medium text-gray-400">{row.label}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-auto pt-3 grid grid-cols-3 gap-2 text-xs">
+        <div className="rounded-lg bg-gray-50 p-2.5">
+          <span className="block text-[10px] font-medium text-gray-400 uppercase tracking-wide">Remedies</span>
+          <span className="text-sm font-semibold text-gray-700 tabular-nums">
+            {withRemedy}/{openFlags.length}
+          </span>
+        </div>
+        <div className="rounded-lg bg-gray-50 p-2.5">
+          <span className="block text-[10px] font-medium text-gray-400 uppercase tracking-wide">SLA set</span>
+          <span className="text-sm font-semibold text-gray-700 tabular-nums">
+            {withSla}/{openFlags.length}
+          </span>
+        </div>
+        <div className="rounded-lg bg-gray-50 p-2.5">
+          <span className="block text-[10px] font-medium text-gray-400 uppercase tracking-wide">Flag age</span>
+          <span className="text-sm font-semibold text-gray-700 tabular-nums">
+            avg {avgDays}d · oldest {oldestDays}d
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BreachesByCategoryChart({
+  openFlags,
+  kpis,
+}: {
+  openFlags: ContractKPIBreach[];
+  kpis: ContractKPI[];
+}) {
+  const kpiById = useMemo(
+    () => new Map(kpis.map((kpi) => [kpi.kpi_id, kpi])),
+    [kpis],
+  );
+  const total = openFlags.length;
+  const breachesByCategory = openFlags.reduce<
+    Record<string, { count: number; hasCritical: boolean; hasHigh: boolean }>
+  >((acc, breach) => {
+    const kpi = kpiById.get(breach.kpi_id);
+    const cat = kpi?.category || breach.source_kpi?.category || "other";
+    if (!acc[cat]) acc[cat] = { count: 0, hasCritical: false, hasHigh: false };
+    acc[cat].count += 1;
+    if (breach.severity === "critical") acc[cat].hasCritical = true;
+    if (breach.severity === "high") acc[cat].hasHigh = true;
+    return acc;
+  }, {});
+  const sorted = Object.entries(breachesByCategory)
+    .sort((a, b) => b[1].count - a[1].count);
+  const maxCount = Math.max(...sorted.map(([, v]) => v.count), 1);
+  const formatCategory = (cat: string) =>
+    cat
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  const topCategory = sorted[0];
+  const insightText = topCategory
+    ? `${formatCategory(topCategory[0])} accounts for ${topCategory[1].count} of ${total} open breaches — the highest concentration of risk.`
+    : "No open breaches by category.";
+  return (
+    <div className="flex flex-1 flex-col">
+      <div className="mb-3 flex items-baseline justify-between">
+        <span className="text-2xl font-bold text-gray-950 tabular-nums">
+          {total}
+        </span>
+        <span className="text-[11px] text-gray-400">
+          {total === 1 ? "flag" : "flags"} by category
+        </span>
+      </div>
+      {sorted.length > 0 ? (
+        <div className="flex flex-1 flex-col gap-2.5">
+          {sorted.map(([cat, data]) => (
+            <div key={cat} className="group/row cursor-default">
+              <div className="mb-1 flex items-center justify-between gap-2 text-[11px]">
+                <span className="flex items-center gap-1.5 text-gray-500 group-hover/row:text-gray-700 transition-colors">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{
+                      backgroundColor: data.hasCritical
+                        ? "#dc2626"
+                        : data.hasHigh
+                          ? "#f59e0b"
+                          : "#3b82f6",
+                    }}
+                  />
+                  {formatCategory(cat)}
                 </span>
-                <Plus className="h-4 w-4 text-gray-400" />
+                <span className="font-semibold text-gray-700 tabular-nums">
+                  {data.count}
+                </span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full bg-gray-50">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{
+                    width: `${Math.max(8, (data.count / maxCount) * 100)}%`,
+                  }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  className="h-3 rounded-full bg-blue-500 transition-all duration-200 group-hover/row:bg-blue-600"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-gray-200 p-6 text-xs text-gray-400">
+          No open breaches.
+        </div>
+      )}
+      <p className="mt-auto pt-3 text-[11px] leading-4 text-gray-400">
+        {insightText}
+      </p>
+    </div>
+  );
+}
+
+const kpiCodeFor = (kpi: ContractKPI) =>
+  kpi.kpi_id.split(":").slice(-1)[0] || kpi.kpi_id;
+
+function TurnaroundSeatBandChart({ kpis }: { kpis: ContractKPI[] }) {
+  const byCode = (code: string) =>
+    kpis.find((kpi) => kpiCodeFor(kpi) === code);
+  const passenger = byCode("SGHA-2.3-PASSENGER-SERVICES");
+  const ramp = byCode("SGHA-2.3-RAMP-HANDLING");
+  const bands = (passenger?.target_schedule || []).map((entry) => {
+    const seats = String(entry.seats || entry.condition || "—");
+    const rampEntry = (ramp?.target_schedule || []).find(
+      (item) => String(item.seats || item.condition) === seats,
+    );
+    return {
+      seats,
+      passenger: Number(entry.price ?? entry.value) || 0,
+      ramp: Number(rampEntry?.price ?? rampEntry?.value) || 0,
+    };
+  });
+  const max = Math.max(
+    ...bands.map((band) => Math.max(band.passenger, band.ramp)),
+    1,
+  );
+  const barHeight = 200;
+  return (
+    <div className="flex h-full flex-col">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span className="text-[11px] text-gray-400">
+          SEK per turnaround, by aircraft seat band
+        </span>
+        <span className="flex items-center gap-3 text-[10px] font-medium text-gray-500">
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-sm bg-blue-500" /> Passenger
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-sm bg-green-500" /> Ramp
+          </span>
+        </span>
+      </div>
+
+      <div className="flex items-end justify-between gap-2" style={{ height: barHeight + 24 }}>
+        {bands.map((band) => (
+          <div
+            key={band.seats}
+            className="flex flex-1 flex-col items-center gap-1.5 group/band cursor-default"
+          >
+            <div className="flex items-end justify-center gap-1">
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-[10px] font-semibold text-blue-600 tabular-nums">
+                  {band.passenger.toLocaleString()}
+                </span>
+                <div className="flex w-8 items-end rounded-t-md bg-gray-50" style={{ height: barHeight }}>
+                  <motion.div
+                    initial={{ height: 0 }}
+                    animate={{
+                      height: `${Math.max(4, (band.passenger / max) * barHeight)}px`,
+                    }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                    className="w-full rounded-t-md bg-blue-500 transition-all duration-200 group-hover/band:bg-blue-600"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-[10px] font-semibold text-green-600 tabular-nums">
+                  {band.ramp.toLocaleString()}
+                </span>
+                <div className="flex w-8 items-end rounded-t-md bg-gray-50" style={{ height: barHeight }}>
+                  <motion.div
+                    initial={{ height: 0 }}
+                    animate={{
+                      height: `${Math.max(4, (band.ramp / max) * barHeight)}px`,
+                    }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                    className="w-full rounded-t-md bg-green-500 transition-all duration-200 group-hover/band:bg-green-600"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <span className="text-[10px] font-medium text-gray-400">
+              {band.seats} seats
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-auto pt-3 text-[11px] text-gray-400">
+        Ramp handling prices above passenger services at every seat band; the gap
+        widens as aircraft size grows (3051→4679 vs 3543→5172 SEK per turnaround).
+      </p>
+    </div>
+  );
+}
+
+function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] }) {
+    const rows = openFlags
+      .filter((breach) => breach.penalty_amount)
+      .map((breach) => ({
+        label: breach.kpi_id.split(":").slice(-1)[0] || "KPI",
+        amount: Number(breach.penalty_amount) || 0,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+    const totalExposure = rows.reduce((sum, row) => sum + row.amount, 0);
+    const max = Math.max(...rows.map((row) => row.amount), 1);
+    return (
+      <div>
+        <div className="mb-4 rounded-lg bg-red-50 p-3 text-center">
+          <span className="block text-[10px] font-semibold uppercase tracking-wide text-red-400">
+            Total Exposure
+          </span>
+          <span className="mt-1 block text-2xl font-bold text-red-600 tabular-nums">
+            {totalExposure.toLocaleString()} <span className="text-sm font-medium">SEK</span>
+          </span>
+        </div>
+        {rows.length ? (
+          <div className="space-y-3">
+            {rows.map((row, index) => (
+              <div key={row.label} className="group/row cursor-default">
+                <div className="mb-1.5 flex justify-between gap-2 text-[11px]">
+                  <span className="truncate text-gray-500 group-hover/row:text-gray-700 transition-colors">
+                    {row.label}
+                  </span>
+                  <span className="font-semibold text-gray-700 tabular-nums">
+                    {row.amount.toLocaleString()} SEK
+                  </span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-gray-100">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.max(6, (row.amount / max) * 100)}%` }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                    className="h-3 rounded-full bg-red-500 transition-all duration-200 group-hover/row:bg-red-600"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-xs text-gray-400">
+            No penalty-bearing breaches in this contract.
+          </div>
+        )}
+        <p className="mt-auto pt-3 text-[11px] leading-4 text-gray-400">
+          Per-incident consequence values. Exposure = incident count × per-unit
+          rate.
+        </p>
+      </div>
+    );
+  }
+
+  function LandingChargeCurveChart({ kpis }: { kpis: ContractKPI[] }) {
+    const landing = kpis.find((kpi) => kpiCodeFor(kpi) === "SGHA-1.1-LANDING");
+    const schedule = landing?.target_schedule || [];
+
+    const findEntry = (keywords: string[], exclude?: string[]) =>
+      schedule.find((entry) => {
+        const cond = String(entry.condition || "").toLowerCase();
+        if (exclude?.some((ex) => cond.includes(ex))) return false;
+        return keywords.some((kw) => cond.includes(kw));
+      });
+
+    const under =
+      findEntry(["less than", "under", "< 25", "below"], ["more", "above", "≥"]) ||
+      schedule.find((e) => {
+        const v = Number(e.seats || e.value);
+        return v > 0 && v < 25;
+      }) ||
+      schedule[0];
+
+    const over =
+      findEntry(["25 tonnes or more", "≥25", ">=25", "25 t or", "over 25"], ["less", "under", "<"]) ||
+      schedule.find((e) => {
+        const v = Number(e.seats || e.value);
+        return v >= 25;
+      }) ||
+      schedule[1];
+
+    const flatMin = Number(under?.minimum_fee) || 0;
+    const underRate = Number(under?.price ?? under?.value) || 0;
+    const base = Number(over?.base) || 0;
+    const overRate = Number(over?.price ?? over?.value) || 0;
+    const crossTonnes = flatMin > 0 && underRate > 0 ? flatMin / underRate : 0;
+    const breakTonnes = 25;
+    const maxTonnes = 60;
+    const chargeAt25 = base + overRate * breakTonnes;
+    const maxCharge = Math.max(base + overRate * maxTonnes, chargeAt25, flatMin + 100);
+    const width = 320;
+    const height = 170;
+    const padL = 36;
+    const padR = 12;
+    const padT = 14;
+    const padB = 26;
+    const x = (tonnes: number) =>
+      padL + (tonnes / maxTonnes) * (width - padL - padR);
+    const y = (charge: number) =>
+      padT + (1 - charge / maxCharge) * (height - padT - padB);
+    const chargeAt = (tonnes: number) => {
+      if (tonnes < breakTonnes) {
+        return Math.max(flatMin, underRate * tonnes);
+      }
+      return base + overRate * tonnes;
+    };
+    const points: Array<[number, number]> = [];
+    for (let tonnes = 0; tonnes <= Math.max(crossTonnes, breakTonnes); tonnes += 0.5) {
+      points.push([tonnes, chargeAt(tonnes)]);
+    }
+    points.push([breakTonnes, chargeAt(breakTonnes - 0.01)]);
+    points.push([breakTonnes, chargeAt(breakTonnes)]);
+    for (let tonnes = breakTonnes; tonnes <= maxTonnes; tonnes += 1) {
+      points.push([tonnes, chargeAt(tonnes)]);
+    }
+    const path = points
+      .map(([tonnes, charge], index) =>
+        `${index === 0 ? "M" : "L"} ${x(tonnes).toFixed(1)} ${y(charge).toFixed(1)}`,
+      )
+      .join(" ");
+    const yTicks = 4;
+    return (
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-[11px] text-gray-500">
+            Landing charge (SEK) vs MTOW tonnes
+          </span>
+          <span className="text-[10px] font-medium text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">
+            kink at 25 t
+          </span>
+        </div>
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
+          <defs>
+            <linearGradient id="landing-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#3b82f6" />
+              <stop offset="100%" stopColor="#2563eb" />
+            </linearGradient>
+          </defs>
+          {Array.from({ length: yTicks + 1 }, (_, i) => {
+            const yPos = padT + (i / yTicks) * (height - padT - padB);
+            const val = maxCharge - (i / yTicks) * maxCharge;
+            return (
+              <g key={i}>
+                <line x1={padL} y1={yPos} x2={width - padR} y2={yPos} stroke="#f3f4f6" strokeWidth="0.5" />
+                <text x={padL - 4} y={yPos + 3} textAnchor="end" fill="#9ca3af" fontSize="8" fontFamily="system-ui">
+                  {Math.round(val).toLocaleString()}
+                </text>
+              </g>
+            );
+          })}
+          <line
+            x1={x(breakTonnes)}
+            y1={padT}
+            x2={x(breakTonnes)}
+            y2={height - padB}
+            stroke="#d1d5db"
+            strokeDasharray="4 3"
+            strokeWidth="0.8"
+          />
+          <path d={path} fill="none" stroke="url(#landing-gradient)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+          <line
+            x1={padL}
+            y1={y(flatMin)}
+            x2={x(breakTonnes)}
+            y2={y(flatMin)}
+            stroke="#3b82f6"
+            strokeDasharray="4 3"
+            strokeWidth="0.8"
+            strokeOpacity="0.4"
+          />
+          <circle cx={x(breakTonnes)} cy={y(chargeAt(breakTonnes - 0.01))} r="3.5" fill="white" stroke="#3b82f6" strokeWidth="2" />
+          <circle cx={x(breakTonnes)} cy={y(chargeAt(breakTonnes))} r="4" fill="white" stroke="#3b82f6" strokeWidth="2" />
+          <rect x={x(breakTonnes) + 6} y={padT + 2} width="84" height="20" rx="4" fill="#eff6ff" fillOpacity="0.95" />
+          <text x={x(breakTonnes) + 10} y={padT + 15} fontSize="8" fill="#1d4ed8" fontWeight="500" fontFamily="system-ui">
+            ≥25t: {base.toLocaleString()}+{overRate}/t → {chargeAt25.toLocaleString()} SEK
+          </text>
+          <rect x={padL + 2} y={y(flatMin) - 16} width="56" height="13" rx="3" fill="#eff6ff" fillOpacity="0.9" />
+          <text x={padL + 5} y={y(flatMin) - 6} fontSize="8" fill="#1d4ed8" fontWeight="500" fontFamily="system-ui">
+            {flatMin.toLocaleString()} SEK min
+          </text>
+          <text x={padL} y={height - 8} fontSize="9" fill="#9ca3af" fontFamily="system-ui">
+            0 t
+          </text>
+          <text x={x(maxTonnes) - 30} y={height - 8} fontSize="9" fill="#9ca3af" fontFamily="system-ui">
+            {maxTonnes} t MTOW
+          </text>
+        </svg>
+        <p className="mt-2 text-[11px] text-gray-500">
+          Flat {flatMin.toLocaleString()} SEK until cross-over, then {underRate} SEK/t
+          (≈{Math.round(chargeAt(breakTonnes - 0.01)).toLocaleString()} SEK just below
+          the {breakTonnes}t mark), then a hard jump to {base.toLocaleString()} + {overRate}/t ={" "}
+          {chargeAt25.toLocaleString()} SEK at {breakTonnes}t.
+        </p>
+      </div>
+    );
+  }
+
+  function perOccasionChargeEntries(kpis: ContractKPI[]) {
+    const byCode = (code: string) =>
+      kpis.find((kpi) => kpiCodeFor(kpi) === code);
+    const entries: Array<{ label: string; value: number }> = [];
+    const extraHours = byCode("SGHA-1.6-EXTRA-HOURS");
+    if (extraHours) {
+      entries.push({ label: "Extra opening hours (manhour)", value: Number(extraHours.value) || 0 });
+    }
+    const deicing = byCode("SGHA-2.8-DEICING-SERVICE");
+    if (deicing) {
+      entries.push({ label: "De-icing fixed charge", value: Number(deicing.value) || 0 });
+    }
+    const toilet = byCode("SGHA-2.10-TOILET-WATER");
+    if (toilet) {
+      entries.push({ label: "Toilet & water service", value: Number(toilet.value) || 0 });
+    }
+    const tow = byCode("SGHA-2.9-TOWING");
+    const nonscheduled = (tow?.target_schedule || []).find(
+      (entry) => entry.flight_type === "nonscheduled",
+    );
+    if (nonscheduled) {
+      entries.push({ label: "Tow/pushback (nonscheduled)", value: Number(nonscheduled.price ?? nonscheduled.value) || 0 });
+    }
+    (byCode("SGHA-2.7-ELECTRICITY")?.target_schedule || []).forEach((entry) => {
+      if (entry.outlet) {
+        entries.push({ label: `Electricity ${entry.outlet} (day)`, value: Number(entry.price ?? entry.value) || 0 });
+      }
+    });
+    return entries.sort((a, b) => b.value - a.value);
+  }
+
+  function PerOccasionChargesChart({ kpis }: { kpis: ContractKPI[] }) {
+    const rows = perOccasionChargeEntries(kpis);
+    const max = Math.max(...rows.map((row) => row.value), 1);
+    const hasDeicing = rows.some((row) => row.label.toLowerCase().includes("de-icing"));
+    return (
+      <div>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <span className="text-[11px] text-gray-400">
+            SEK per occasion, sorted by value
+          </span>
+          <span className="text-[11px] font-semibold text-gray-700">
+            {rows.length} charges
+          </span>
+        </div>
+        {rows.length ? (
+          <div className="space-y-3">
+            {rows.map((row, index) => (
+              <div key={row.label} className="group/row cursor-default">
+                <div className="mb-1.5 flex justify-between gap-2 text-[11px]">
+                  <span className="truncate text-gray-500 group-hover/row:text-gray-700 transition-colors">
+                    {row.label}
+                  </span>
+                  <span className="font-semibold text-gray-700 tabular-nums">
+                    {row.value.toLocaleString()} SEK
+                  </span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-gray-100">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${(row.value / max) * 100}%` }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                    className="h-3 rounded-full bg-blue-500 transition-all duration-200 group-hover/row:bg-blue-600"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-xs text-gray-400">
+            No flat per-occasion charges found in the register.
+          </div>
+        )}
+        {hasDeicing && (
+          <p className="mt-3 text-[11px] leading-4 text-gray-400 italic">
+            De-icing charge is fixed + variable (fluid-dependent), not a pure flat
+            rate.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  function OverallSparkline({ actuals }: { actuals: ContractKPIActual[] }) {
+    const points = chartPointsFor(actuals).slice(-18);
+    return (
+      <Sparkline
+        values={points.length ? points.map((point) => point.value) : [0, 0, 0, 0]}
+        labels={points.map((point) => point.xLabel)}
+        heightClass="h-36"
+        unit="mixed"
+      />
+    );
+  }
+
+  function HorizontalMiniBars({
+    values,
+  }: {
+    values: Array<{ label: string; value: number }>;
+  }) {
+    const rows = values.length
+      ? values
+      : [{ label: "No extracted KPIs", value: 1 }];
+    const max = Math.max(...rows.map((row) => row.value), 1);
+    return (
+      <div className="space-y-2.5">
+        {rows.slice(0, 5).map((row, index) => (
+          <div key={row.label} className="group/bar cursor-default">
+            <div className="mb-1 flex justify-between gap-2 text-[11px]">
+              <span className="truncate text-gray-500 group-hover/bar:text-gray-700 transition-colors">
+                {row.label}
+              </span>
+              <span className="font-semibold text-gray-700 tabular-nums">{row.value}</span>
+            </div>
+            <div className="h-3 rounded-full bg-gray-100 overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${Math.max(8, (row.value / max) * 100)}%` }}
+                transition={{
+                  duration: 0.5,
+                  ease: "easeOut",
+                }}
+                className="h-3 rounded-full bg-blue-500 transition-all duration-200 group-hover/bar:bg-blue-600"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  function FlagDonut({ open, clear }: { open: number; clear: number }) {
+    const total = Math.max(open + clear, 1);
+    const openPercent = (open / total) * 100;
+    return (
+      <div className="flex items-center gap-5">
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="relative h-28 w-28 shrink-0 rounded-full"
+          style={{
+            background: `conic-gradient(${open > 0 ? "#ef4444" : "#22c55e"} 0 ${openPercent}%, #d1d5db ${openPercent}% 100%)`,
+            boxShadow: open > 0 ? "0 0 0 3px rgba(239, 68, 68, 0.08)" : "0 0 0 3px rgba(34, 197, 94, 0.08)",
+          }}
+        >
+          <div className="absolute inset-6 flex items-center justify-center rounded-full bg-white text-lg font-bold text-gray-950 shadow-inner">
+            {open}
+          </div>
+        </motion.div>
+        <div className="space-y-2.5 text-xs">
+          <div className="flex items-center gap-2.5">
+            <span
+              className="h-2.5 w-2.5 rounded-full shadow-sm"
+              style={{ backgroundColor: open > 0 ? "#ef4444" : "#22c55e" }}
+            />
+            <span className="text-gray-500">
+              Open flags <strong className="text-gray-900">{open}</strong>
+            </span>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-gray-300" />
+            <span className="text-gray-500">
+              Clear tracked <strong className="text-gray-900">{clear}</strong>
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function EditableKpiField({
+    label,
+    value,
+    onCommit,
+    wide = false,
+  }: {
+    label: string;
+    value: string | number | null;
+    onCommit: (value: string) => unknown | Promise<unknown>;
+    wide?: boolean;
+  }) {
+    return (
+      <label
+        className={`block rounded-md border border-gray-200 bg-white px-3 py-2 ${wide ? "lg:col-span-2" : ""}`}
+      >
+        <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+          {label}
+        </span>
+        <input
+          defaultValue={value ?? ""}
+          onBlur={(event) => {
+            const next = event.target.value;
+            if (next !== String(value ?? "")) void onCommit(next);
+          }}
+          className="mt-1 h-8 w-full border-0 bg-transparent p-0 text-sm font-semibold text-gray-900 outline-none focus:ring-0"
+        />
+      </label>
+    );
+  }
+
+  function KpiHistoryChart({
+    kpi,
+    actuals,
+    breaches,
+  }: {
+    kpi: ContractKPI;
+    actuals: ContractKPIActual[];
+    breaches: ContractKPIBreach[];
+  }) {
+    const points = chartPointsFor(actuals);
+    const latestBreach = breaches.find((breach) => breach.is_breach);
+    return (
+      <section className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h4 className="text-sm font-semibold text-gray-950">
+              Tracked Performance
+            </h4>
+            <p className="mt-1 text-xs text-gray-500">
+              Historical actuals against the contract threshold.
+            </p>
+          </div>
+          <Pill tone={latestBreach ? "red" : "emerald"}>
+            {latestBreach ? "Flagged" : "Monitoring"}
+          </Pill>
+        </div>
+        <Sparkline
+          values={points.length ? points.map((point) => point.value) : []}
+          labels={points.map((point) => point.xLabel)}
+          threshold={toNumber(kpi.value_min ?? kpi.value)}
+          heightClass="h-44"
+        />
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <DetailTile label="Target" value={formatKpiValue(kpi)} tone="blue" />
+          <DetailTile
+            label="Latest"
+            value={
+              actuals.length
+                ? actualLabel(
+                  [...actuals].sort(
+                    (left, right) =>
+                      new Date(actualTimestamp(right) || 0).getTime() -
+                      new Date(actualTimestamp(left) || 0).getTime(),
+                  )[0],
+                  kpi,
+                )
+                : "No actual"
+            }
+          />
+          <DetailTile label="Samples" value={`${actuals.length}`} />
+        </div>
+      </section>
+    );
+  }
+
+  function Sparkline({
+    values,
+    labels,
+    threshold,
+    heightClass,
+    unit,
+  }: {
+    values: number[];
+    labels?: string[];
+    threshold?: number | null;
+    heightClass: string;
+    unit?: string;
+  }) {
+    const data =
+      values.length >= 2
+        ? values
+        : values.length === 1
+          ? [values[0], values[0]]
+          : [0, 0];
+    const thresholdValue = threshold ?? undefined;
+    const min = Math.min(...data, thresholdValue ?? data[0], 0);
+    const max = Math.max(...data, thresholdValue ?? data[0], 1);
+    const range = Math.max(max - min, 1);
+    const coords = data
+      .map((value, index) => {
+        const x = (index / Math.max(data.length - 1, 1)) * 320;
+        const y = 140 - ((value - min) / range) * 110;
+        return `${x},${y}`;
+      })
+      .join(" ");
+    const thresholdY =
+      thresholdValue == null
+        ? null
+        : 140 - ((thresholdValue - min) / range) * 110;
+    const gradId = `sp-${unit || "def"}`;
+
+    return (
+      <div
+        className={`${heightClass} rounded-lg border border-gray-100 bg-gradient-to-br from-gray-50/50 to-white p-3`}
+      >
+        {values.length ? (
+          <svg viewBox="0 0 320 170" className="h-full w-full overflow-visible">
+            <defs>
+              <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.6" />
+                <stop offset="100%" stopColor="#3b82f6" />
+              </linearGradient>
+              <linearGradient id={`${gradId}-a`} x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.06" />
+                <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.01" />
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="140" x2="320" y2="140" stroke="#e5e7eb" strokeWidth="0.5" />
+            {[0, 1, 2, 3].map((i) => {
+              const yPos = 140 - (i / 3) * 110;
+              const val = min + (i / 3) * range;
+              return (
+                <g key={i}>
+                  <line x1="0" y1={yPos} x2="320" y2={yPos} stroke="#f9fafb" strokeWidth="0.5" />
+                  <text x="-2" y={yPos + 3} textAnchor="end" fill="#d1d5db" fontSize="8" fontFamily="system-ui">
+                    {Math.round(val).toLocaleString()}
+                  </text>
+                </g>
+              );
+            })}
+            {thresholdY != null && (
+              <>
+                <line
+                  x1="0"
+                  y1={thresholdY}
+                  x2="320"
+                  y2={thresholdY}
+                  stroke="#3b82f6"
+                  strokeDasharray="6 4"
+                  strokeWidth="0.8"
+                  strokeOpacity="0.4"
+                />
+                <rect x="2" y={Math.max(8, thresholdY - 14)} width="52" height="13" rx="3" fill="#eff6ff" fillOpacity="0.9" />
+                <text
+                  x="5"
+                  y={Math.max(18, thresholdY - 4)}
+                  fill="#1d4ed8"
+                  fontSize="8"
+                  fontWeight="500"
+                  fontFamily="system-ui"
+                >
+                  target {thresholdValue?.toLocaleString()}
+                </text>
+              </>
+            )}
+            {data.length > 1 && (
+              <motion.polygon
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 1, delay: 0.5 }}
+                points={`0,140 ${coords} 320,140`}
+                fill={`url(#${gradId}-a)`}
+              />
+            )}
+            <motion.polyline
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 1.5, ease: "easeInOut" }}
+              points={coords}
+              fill="none"
+              stroke={`url(#${gradId})`}
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {data.map((value, index) => {
+              const [cx, cy] = coords.split(" ")[index].split(",").map(Number);
+              return (
+                <motion.g key={`${value}-${index}`}>
+                  <motion.circle
+                    cx={cx}
+                    cy={cy}
+                    r="5"
+                    fill="white"
+                    stroke="#3b82f6"
+                    strokeWidth="2"
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.3, delay: 0.5 }}
+                  />
+                  <motion.circle
+                    cx={cx}
+                    cy={cy}
+                    r="2"
+                    fill="#3b82f6"
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.3, delay: 0.6 }}
+                  />
+                </motion.g>
+              );
+            })}
+            {labels?.length ? (
+              <text x="0" y="164" fill="#9ca3af" fontSize="9" fontFamily="system-ui">
+                {labels[0]}
+              </text>
+            ) : null}
+            {labels?.length && labels.length > 1 ? (
+              <text x="320" y="164" textAnchor="end" fill="#9ca3af" fontSize="9" fontFamily="system-ui">
+                {labels[labels.length - 1]}
+              </text>
+            ) : null}
+          </svg>
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-gray-400">
+            No actual history yet.
+          </div>
+        )}
+        {unit && (
+          <div className="mt-1 flex items-center justify-end gap-1.5">
+            <svg viewBox="0 0 32 8" className="h-2 w-8">
+              <defs>
+                <linearGradient id={`${gradId}-l`} x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.6" />
+                  <stop offset="100%" stopColor="#3b82f6" />
+                </linearGradient>
+              </defs>
+              <rect x="0" y="2" width="32" height="4" rx="2" fill={`url(#${gradId}-l)`} />
+            </svg>
+            <span className="text-[9px] text-gray-400">oldest → newest</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function KpiActualHistory({
+    kpi,
+    actuals,
+  }: {
+    kpi: ContractKPI;
+    actuals: ContractKPIActual[];
+  }) {
+    const rows = [...actuals].sort(
+      (left, right) =>
+        new Date(actualTimestamp(right) || 0).getTime() -
+        new Date(actualTimestamp(left) || 0).getTime(),
+    );
+    return (
+      <section className="rounded-lg border border-gray-200 bg-white">
+        <div className="border-b border-gray-100 px-4 py-3">
+          <h4 className="text-sm font-semibold text-gray-950">
+            Historical Actual Logs
+          </h4>
+          <p className="mt-1 text-xs text-gray-500">
+            Stored actuals for this tracked KPI.
+          </p>
+        </div>
+        {!rows.length ? (
+          <div className="px-4 py-10 text-center text-sm text-gray-400">
+            No actual logs recorded yet.
+          </div>
+        ) : (
+          <div className="max-h-[240px] overflow-auto">
+            <table className="min-w-full text-left text-xs">
+              <thead className="sticky top-0 bg-gray-50 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                <tr>
+                  <th className="px-3 py-2">Actual</th>
+                  <th className="px-3 py-2">Source</th>
+                  <th className="px-3 py-2">Timestamp</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {rows.map((actual) => (
+                  <tr
+                    key={
+                      actual.actual_id ||
+                      `${actual.kpi_id}-${actualTimestamp(actual)}`
+                    }
+                  >
+                    <td className="px-3 py-2 font-mono text-gray-900">
+                      {actualLabel(actual, kpi)}
+                    </td>
+                    <td className="max-w-[160px] truncate px-3 py-2 text-gray-600">
+                      {actual.source || "manual"}
+                    </td>
+                    <td className="px-3 py-2 text-gray-500">
+                      {formatDateTime(actualTimestamp(actual))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  function KpiBreachStrip({
+    kpi,
+    breaches,
+  }: {
+    kpi: ContractKPI;
+    breaches: ContractKPIBreach[];
+  }) {
+    if (breaches.length === 0) {
+      return null;
+    }
+    return (
+      <div className="mt-6">
+        <h5 className="mb-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Compliance Evaluations
+        </h5>
+        <RecordPreviewTable rows={breaches} empty="No evaluations" />
+      </div>
+    );
+  }
+
+  function SlaPolicyStrip({ kpi }: { kpi: ContractKPI }) {
+    const businessHoursEnabled = Boolean(
+      kpi.business_hours?.enabled || kpi.business_hours?.business_days_only,
+    );
+    const blackoutCount = Array.isArray(kpi.blackout_windows)
+      ? kpi.blackout_windows.length
+      : 0;
+    const lockDays = kpi.reporting_lock?.lock_after_days;
+    const errorBudget = kpi.error_budget || {};
+    const hasPolicy =
+      businessHoursEnabled ||
+      blackoutCount ||
+      lockDays ||
+      kpi.missing_data_policy ||
+      Object.keys(errorBudget).length;
+    if (!hasPolicy) return null;
+    const budgetText = Object.keys(errorBudget).length
+      ? `${errorBudget.consumed ?? 0}/${errorBudget.budget ?? errorBudget.allowed ?? "budget"}`
+      : "Not configured";
+    return (
+      <details className="border-t border-border pt-6 mt-6 group">
+        <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-foreground hover:text-muted-foreground list-none [&::-webkit-details-marker]:hidden">
+          <ChevronDown className="h-4 w-4 transition-transform group-open:-rotate-180" />
+          Advanced SLA/SLO Policy
+        </summary>
+        <div className="mt-4 grid gap-x-8 gap-y-6 grid-cols-2 xl:grid-cols-5 pl-6">
+          <DetailTile
+            label="Business Hours"
+            value={
+              businessHoursEnabled
+                ? `${kpi.business_hours?.start || "09:00"}-${kpi.business_hours?.end || "17:00"}`
+                : "Calendar time"
+            }
+            tone={businessHoursEnabled ? "blue" : "gray"}
+          />
+          <DetailTile
+            label="Blackouts"
+            value={
+              blackoutCount
+                ? `${blackoutCount} window${blackoutCount === 1 ? "" : "s"}`
+                : "None"
+            }
+            tone={blackoutCount ? "amber" : "gray"}
+          />
+          <DetailTile
+            label="Reporting Lock"
+            value={
+              lockDays
+                ? `${lockDays} day${Number(lockDays) === 1 ? "" : "s"}`
+                : "Unlocked"
+            }
+          />
+          <DetailTile
+            label="Missing Data"
+            value={titleCase(kpi.missing_data_policy || "flag missing evidence")}
+            tone="amber"
+          />
+          <DetailTile
+            label="Error Budget"
+            value={budgetText}
+            tone={Object.keys(errorBudget).length ? "blue" : "gray"}
+          />
+        </div>
+      </details>
+    );
+  }
+
+  function DetailTile({
+    label,
+    value,
+    tone = "gray",
+  }: {
+    label: string;
+    value: string;
+    tone?: "gray" | "blue" | "amber";
+  }) {
+    const textColor = {
+      gray: "text-foreground",
+      blue: "text-[#015CA9]",
+      amber: "text-amber-700",
+    }[tone];
+    return (
+      <div className="min-w-0 flex flex-col gap-1">
+        <p className="text-[13px] font-medium text-muted-foreground">{label}</p>
+        <p className={`text-xs font-semibold break-words whitespace-normal leading-relaxed ${textColor}`}>{value}</p>
+      </div>
+    );
+  }
+
+  function displayCell(value: any) {
+    if (value == null || value === "") return "—";
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  }
+
+  function previewColumns(rows: Array<Record<string, any>>) {
+    const preferred = [
+      "row",
+      "kpi_id",
+      "kpi_name",
+      "actual_value",
+      "value",
+      "unit",
+      "timestamp",
+      "period",
+      "source_record_id",
+      "record_id",
+      "reason",
+      "actual_id",
+      "status",
+    ];
+    const keys = new Set<string>();
+    rows
+      .slice(0, 8)
+      .forEach((row) => Object.keys(row || {}).forEach((key) => keys.add(key)));
+    const ordered = preferred.filter((key) => keys.has(key));
+    Array.from(keys).forEach((key) => {
+      if (!ordered.includes(key) && ordered.length < 7) ordered.push(key);
+    });
+    return ordered.length ? ordered : preferred.slice(0, 5);
+  }
+
+  function RecordPreviewTable({
+    rows,
+    empty,
+  }: {
+    rows: Array<Record<string, any>>;
+    empty: string;
+  }) {
+    if (!rows.length) {
+      return (
+        <div className="rounded-md border border-dashed border-gray-200 bg-white px-3 py-4 text-sm text-gray-400">
+          {empty}
+        </div>
+      );
+    }
+    const columns = previewColumns(rows);
+    return (
+      <div className="max-h-64 overflow-auto rounded-md border border-gray-200 bg-white">
+        <table className="min-w-full text-left text-xs">
+          <thead className="sticky top-0 bg-gray-50 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+            <tr>
+              {columns.map((column) => (
+                <th key={column} className="px-3 py-2">
+                  {column.replace(/_/g, " ")}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {rows.slice(0, 50).map((row, rowIndex) => (
+              <tr
+                key={`${row.actual_id || row.source_record_id || row.record_id || rowIndex}`}
+                className="bg-white"
+              >
+                {columns.map((column) => (
+                  <td
+                    key={column}
+                    className="max-w-[220px] truncate px-3 py-2 text-gray-700"
+                    title={displayCell(row[column])}
+                  >
+                    {displayCell(row[column])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {rows.length > 50 && (
+          <div className="border-t border-gray-100 px-3 py-2 text-xs text-gray-400">
+            Showing 50 of {rows.length} rows.
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function RunPreviewBlock({
+    title,
+    rows,
+    empty,
+  }: {
+    title: string;
+    rows: Array<Record<string, any>>;
+    empty: string;
+  }) {
+    return (
+      <div>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
+            {title}
+          </p>
+          <span className="text-xs font-semibold text-gray-500">
+            {rows.length}
+          </span>
+        </div>
+        <RecordPreviewTable rows={rows} empty={empty} />
+      </div>
+    );
+  }
+
+  function SourceKpiBindingEditor({
+    config,
+    kpis,
+    selectedBindingKpiId,
+    disabled,
+    onSelectBinding,
+    onToggleSourceKpi,
+    onUpdateBinding,
+    onUpdateSource,
+  }: {
+    config: KPISourceConfig;
+    kpis: ContractKPI[];
+    selectedBindingKpiId?: string | null;
+    disabled: boolean;
+    onSelectBinding: (kpiId: string) => void;
+    onToggleSourceKpi: (
+      config: KPISourceConfig,
+      kpi: ContractKPI,
+    ) => void | Promise<void>;
+    onUpdateBinding: (
+      config: KPISourceConfig,
+      binding: KPISourceBinding,
+    ) => void | Promise<void>;
+    onUpdateSource: (
+      config: KPISourceConfig,
+      updates: Partial<KPISourceConfig>,
+    ) => void | Promise<KPISourceConfig | null>;
+  }) {
+    const [searchQuery, setSearchQuery] = useState("");
+    const [suggestedKpiIds, setSuggestedKpiIds] = useState<string[]>([]);
+
+    if (!kpis.length) {
+      return (
+        <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-sm text-gray-500">
+          No obligation records available to assign.
+        </div>
+      );
+    }
+
+    const bindings = bindingsForSource(config, kpis);
+    const enabledCount = bindings.filter((b) => b.enabled !== false).length;
+
+    const filtered = kpis
+      .map((kpi, idx) => ({ kpi, idx }))
+      .filter(({ kpi }) => {
+        if (!searchQuery.trim()) return true;
+        const q = searchQuery.toLowerCase();
+        return (
+          kpi.name.toLowerCase().includes(q) ||
+          (kpi.kpi_type || "").toLowerCase().includes(q)
+        );
+      });
+
+    const linkAll = async () => {
+      const allKpiIds = kpis.map((k) => k.kpi_id);
+      const newBindings = kpis.map((kpi, idx) => ({
+        binding_id: sourceBindingId(config.source_config_id, kpi.kpi_id, idx + 1),
+        kpi_id: kpi.kpi_id,
+        enabled: true,
+        field_mappings: [],
+        aggregation: "latest",
+      }));
+      await onUpdateSource(config, {
+        kpi_ids: allKpiIds,
+        kpi_bindings: newBindings,
+        status: "mapped",
+        enabled: true,
+      });
+    };
+
+    const unlinkAll = async () => {
+      const newBindings = bindings.map((b) => ({ ...b, enabled: false }));
+      await onUpdateSource(config, {
+        kpi_ids: [],
+        kpi_bindings: newBindings,
+      });
+    };
+
+    const smartMatch = async () => {
+      const sourceLabel =
+        `${config.display_name || ""} ${config.source_type || ""}`.toLowerCase();
+      const schemaFields = (config.schema_fields || [])
+        .map((field) => (typeof field === "string" ? field : field?.name))
+        .filter(Boolean)
+        .map((field) => String(field).toLowerCase());
+      const stopWords = new Set([
+        "the",
+        "and",
+        "for",
+        "with",
+        "from",
+        "service",
+        "source",
+        "actual",
+        "value",
+        "data",
+        "metric",
+        "kpi",
+        "upload",
+        "feed",
+        "workbook",
+        "csv",
+        "xlsx",
+        "json",
+        "xml",
+        "manual",
+      ]);
+      const words = (value: string) =>
+        value
+          .replace(/[^a-z0-9]+/g, " ")
+          .split(/\s+/)
+          .filter((word) => word.length > 2 && !stopWords.has(word));
+      const sourceTerms = words(sourceLabel);
+      const fieldTerms = schemaFields.flatMap(words);
+      const uniqueTerms = new Set([...sourceTerms, ...fieldTerms]);
+
+      const scored = kpis.map((kpi) => {
+        const kpiText =
+          `${kpi.name} ${kpi.kpi_id} ${kpi.description || ""} ${kpi.structural_path || kpi.section_path || kpi.section || ""} ${quoteFor(kpi)}`.toLowerCase();
+        const kpiTerms = new Set(words(kpiText));
+        let score = 0;
+        uniqueTerms.forEach((term) => {
+          if (kpiTerms.has(term)) score += fieldTerms.includes(term) ? 2 : 1;
+        });
+        if (
+          schemaFields.some(
+            (field) =>
+              field === kpi.kpi_id.toLowerCase() ||
+              field.includes(kpi.kpi_id.toLowerCase()),
+          )
+        )
+          score += 5;
+        return { id: kpi.kpi_id, score };
+      });
+      const nextSuggestions = scored
+        .filter((item) => item.score >= 2)
+        .sort((left, right) => right.score - left.score)
+        .map((item) => item.id);
+      setSuggestedKpiIds(nextSuggestions);
+    };
+
+    const applySuggestedMatches = async () => {
+      const matched = new Set(suggestedKpiIds);
+      const newBindings = kpis.map((kpi, idx) => ({
+        binding_id: sourceBindingId(config.source_config_id, kpi.kpi_id, idx + 1),
+        kpi_id: kpi.kpi_id,
+        enabled: matched.has(kpi.kpi_id),
+        field_mappings:
+          bindings.find((binding) => binding.kpi_id === kpi.kpi_id)
+            ?.field_mappings || [],
+        aggregation:
+          bindings.find((binding) => binding.kpi_id === kpi.kpi_id)
+            ?.aggregation || "latest",
+      }));
+      await onUpdateSource(config, {
+        kpi_ids: suggestedKpiIds,
+        kpi_bindings: newBindings,
+        status: suggestedKpiIds.length ? "mapped" : "draft",
+      });
+      setSuggestedKpiIds([]);
+    };
+
+    return (
+      <div className="space-y-2">
+        {/* Toolbar */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={smartMatch}
+              className="rounded-md border border-cs-primary/30 bg-cs-primary/5 px-2.5 py-1 text-[11px] font-semibold text-cs-primary hover:bg-cs-primary/10 disabled:opacity-40"
+            >
+              Suggest Matches
+            </button>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={linkAll}
+              className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+            >
+              Link All ({kpis.length})
+            </button>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={unlinkAll}
+              className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+            >
+              Unlink All
+            </button>
+            <span className="ml-1 text-xs font-semibold text-gray-400">
+              {enabledCount} linked
+            </span>
+          </div>
+
+          {suggestedKpiIds.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+              <span>
+                <strong>{suggestedKpiIds.length}</strong> likely match
+                {suggestedKpiIds.length === 1 ? "" : "es"} found from source
+                fields and names. Review the checked rows, then apply.
+              </span>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => void applySuggestedMatches()}
+                className="rounded-md bg-cs-primary px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-cs-primary/90 disabled:opacity-40"
+              >
+                Apply suggestions
+              </button>
+            </div>
+          )}
+          <input
+            type="text"
+            placeholder="Search obligations..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-7 w-44 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-800 placeholder:text-gray-400"
+          />
+        </div>
+
+        {/* Clean checklist */}
+        <div className="max-h-[400px] overflow-y-auto rounded-md border border-gray-200">
+          {filtered.map(({ kpi, idx }) => {
+            const binding = bindings[idx];
+            const isEnabled = binding.enabled !== false;
+            const kpiType = String(
+              kpi.kpi_type || (kpi as any).rule_type || "",
+            ).toLowerCase();
+            const typeBadge =
+              kpiType === "sla" || kpiType === "performance"
+                ? "SLA"
+                : kpiType === "penalty"
+                  ? "Penalty"
+                  : kpiType === "deadline" || kpiType === "notice"
+                    ? "Deadline"
+                    : "KPI";
+
+            return (
+              <div
+                key={kpi.kpi_id}
+                className={`flex items-center gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0 ${isEnabled ? "bg-white" : "bg-gray-50/50"}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isEnabled}
+                  disabled={disabled}
+                  onChange={() => {
+                    onSelectBinding(kpi.kpi_id);
+                    void onToggleSourceKpi(config, kpi);
+                  }}
+                  className="h-4 w-4 shrink-0 rounded border-gray-300 text-cs-primary focus:ring-cs-primary"
+                />
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`truncate text-xs font-semibold ${isEnabled ? "text-gray-900" : "text-gray-500"}`}
+                  >
+                    {kpi.name}
+                  </p>
+                  {(kpi as any).target_value != null && (
+                    <p className="mt-0.5 truncate text-[11px] text-gray-400">
+                      Target: {formatKpiValue(kpi)}
+                    </p>
+                  )}
+                </div>
+                <span className="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                  {typeBadge}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  const SEEDED_DEMO_ROWS: Record<string, Array<Record<string, any>>> = {
+    csv: [
+      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 2850.00, timestamp: "2025-11-15T09:00:00", event_id: "csv-ARN-SGHA-1.1-LANDING-01", unit: "SEK per tonne", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "SGA", source_type: "csv" },
+      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 3120.50, timestamp: "2025-11-20T10:30:00", event_id: "csv-ARN-SGHA-1.1-LANDING-02", unit: "SEK per tonne", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "SGA", source_type: "csv" },
+      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 4350.00, timestamp: "2025-12-01T08:15:00", event_id: "csv-ARN-SGHA-1.1-LANDING-03", unit: "SEK per tonne", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "SGA", source_type: "csv" },
+      { kpi_code: "SGHA-1.3-PASSENGER", kpi_name: "Passenger Fee", actual_value: 185.00, timestamp: "2025-11-15T09:00:00", event_id: "csv-ARN-SGHA-1.3-PASSENGER-01", unit: "SEK per pax", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "SGA", source_type: "csv" },
+      { kpi_code: "SGHA-1.3-PASSENGER", kpi_name: "Passenger Fee", actual_value: 192.00, timestamp: "2025-11-20T10:30:00", event_id: "csv-ARN-SGHA-1.3-PASSENGER-02", unit: "SEK per pax", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "SGA", source_type: "csv" },
+      { kpi_code: "SGHA-1.5-PARKING", kpi_name: "Parking Charge", actual_value: 4200.00, timestamp: "2025-11-15T09:00:00", event_id: "csv-ARN-SGHA-1.5-PARKING-01", unit: "SEK per hour", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "SGA", source_type: "csv" },
+      { kpi_code: "SGHA-1.5-PARKING", kpi_name: "Parking Charge", actual_value: 3800.00, timestamp: "2025-12-01T08:15:00", event_id: "csv-ARN-SGHA-1.5-PARKING-02", unit: "SEK per hour", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "SGA", source_type: "csv" },
+      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 2990.00, timestamp: "2025-12-05T11:00:00", event_id: "csv-OSL-SGHA-1.1-LANDING-04", unit: "SEK per tonne", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK433", terminal: "T1", stand: "08", supplier: "SGA", source_type: "csv" },
+    ],
+    json: [
+      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 3051.00, recorded_at: "2025-11-15T09:00:00", record_id: "json-ARN-SGHA-2.3-PASSENGER-01", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "Swedavia", source_type: "json" },
+      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 3538.00, recorded_at: "2025-11-20T10:30:00", record_id: "json-ARN-SGHA-2.3-PASSENGER-02", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "Swedavia", source_type: "json" },
+      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 3868.00, recorded_at: "2025-12-01T08:15:00", record_id: "json-CPH-SGHA-2.3-PASSENGER-03", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "Swedavia", source_type: "json" },
+      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 3543.00, recorded_at: "2025-11-15T09:00:00", record_id: "json-ARN-SGHA-2.3-RAMP-01", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "Swedavia", source_type: "json" },
+      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 4030.00, recorded_at: "2025-11-20T10:30:00", record_id: "json-ARN-SGHA-2.3-RAMP-02", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "Swedavia", source_type: "json" },
+      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 4523.00, recorded_at: "2025-12-01T08:15:00", record_id: "json-CPH-SGHA-2.3-RAMP-03", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "Swedavia", source_type: "json" },
+      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 4679.00, recorded_at: "2025-12-05T11:00:00", record_id: "json-OSL-SGHA-2.3-PASSENGER-04", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK433", terminal: "T1", stand: "08", supplier: "Swedavia", source_type: "json" },
+      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 5172.00, recorded_at: "2025-12-05T11:00:00", record_id: "json-OSL-SGHA-2.3-RAMP-04", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK433", terminal: "T1", stand: "08", supplier: "Swedavia", source_type: "json" },
+    ],
+    rest_api: [
+      { kpi_code: "SGHA-2.7-ELECTRICITY", kpi_name: "Ground Power Electricity Charge", metric_value: 119.00, observed_at: "2025-11-15T09:00:00", event_id: "rest-ARN-SGHA-2.7-ELECTRICITY-01", unit: "SEK/day", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "Swedavia", source_type: "rest_api" },
+      { kpi_code: "SGHA-2.7-ELECTRICITY", kpi_name: "Ground Power Electricity Charge", metric_value: 151.00, observed_at: "2025-11-20T10:30:00", event_id: "rest-ARN-SGHA-2.7-ELECTRICITY-02", unit: "SEK/day", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "Swedavia", source_type: "rest_api" },
+      { kpi_code: "SGHA-2.8-DEICING", kpi_name: "De-icing Fluid Charge", metric_value: 17.31, observed_at: "2025-12-01T08:15:00", event_id: "rest-CPH-SGHA-2.8-DEICING-01", unit: "SEK per liter", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "Swedavia", source_type: "rest_api" },
+      { kpi_code: "SGHA-2.8-DEICING", kpi_name: "De-icing Fluid Charge", metric_value: 19.50, observed_at: "2025-12-05T11:00:00", event_id: "rest-OSL-SGHA-2.8-DEICING-02", unit: "SEK per liter", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK433", terminal: "T1", stand: "08", supplier: "Swedavia", source_type: "rest_api" },
+      { kpi_code: "SGHA-2.12-CANCELLATION", kpi_name: "Cancellation Handling Fee", metric_value: 2500.00, observed_at: "2025-11-15T09:00:00", event_id: "rest-ARN-SGHA-2.12-CANCEL-01", unit: "SEK per cancellation", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "Swedavia", source_type: "rest_api" },
+      { kpi_code: "SGHA-2.7-ELECTRICITY", kpi_name: "Ground Power Electricity Charge", metric_value: 135.00, observed_at: "2025-12-08T14:00:00", event_id: "rest-ARN-SGHA-2.7-ELECTRICITY-03", unit: "SEK/day", period: "2025-12", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK445", terminal: "T5", stand: "16", supplier: "Swedavia", source_type: "rest_api" },
+      { kpi_code: "SGHA-2.8-DEICING", kpi_name: "De-icing Fluid Charge", metric_value: 16.80, observed_at: "2025-12-10T07:30:00", event_id: "rest-ARN-SGHA-2.8-DEICING-03", unit: "SEK per liter", period: "2025-12", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK451", terminal: "T5", stand: "20", supplier: "Swedavia", source_type: "rest_api" },
+      { kpi_code: "SGHA-2.12-CANCELLATION", kpi_name: "Cancellation Handling Fee", metric_value: 2800.00, observed_at: "2025-12-12T16:45:00", event_id: "rest-CPH-SGHA-2.12-CANCEL-02", unit: "SEK per cancellation", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK460", terminal: "T3", stand: "18", supplier: "Swedavia", source_type: "rest_api" },
+    ],
+    sap_s4hana: [
+      { kpi_code: "SGHA-1.6-EXTRA-HOURS", kpi_name: "Extra Opening Hours", amount: 1244.00, posting_date: "2025-11-15T09:00:00", document_id: "sap-ARN-SGHA-1.6-EXTRA-01", unit: "SEK per manhour", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", company_code: "SAS-ARN", source_type: "sap_s4hana" },
+      { kpi_code: "SGHA-1.6-EXTRA-HOURS", kpi_name: "Extra Opening Hours", amount: 1244.00, posting_date: "2025-11-20T10:30:00", document_id: "sap-ARN-SGHA-1.6-EXTRA-02", unit: "SEK per manhour", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", company_code: "SAS-ARN", source_type: "sap_s4hana" },
+      { kpi_code: "SGHA-1.6-EXTRA-HOURS", kpi_name: "Extra Opening Hours", amount: 1244.00, posting_date: "2025-12-01T08:15:00", document_id: "sap-CPH-SGHA-1.6-EXTRA-03", unit: "SEK per manhour", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", company_code: "SAS-ARN", source_type: "sap_s4hana" },
+      { kpi_code: "SGHA-2.16-RETURN-TO-RAMP", kpi_name: "Return to Ramp Handling", amount: 3500.00, posting_date: "2025-11-15T09:00:00", document_id: "sap-ARN-SGHA-2.16-RTR-01", unit: "SEK per event", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", company_code: "SAS-ARN", source_type: "sap_s4hana" },
+      { kpi_code: "SGHA-2.16-RETURN-TO-RAMP", kpi_name: "Return to Ramp Handling", amount: 3500.00, posting_date: "2025-12-05T11:00:00", document_id: "sap-OSL-SGHA-2.16-RTR-02", unit: "SEK per event", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", company_code: "SAS-ARN", source_type: "sap_s4hana" },
+      { kpi_code: "SGHA-1.6-EXTRA-HOURS", kpi_name: "Extra Opening Hours", amount: 1244.00, posting_date: "2025-12-08T14:00:00", document_id: "sap-ARN-SGHA-1.6-EXTRA-04", unit: "SEK per manhour", period: "2025-12", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", company_code: "SAS-ARN", source_type: "sap_s4hana" },
+      { kpi_code: "SGHA-2.16-RETURN-TO-RAMP", kpi_name: "Return to Ramp Handling", amount: 3500.00, posting_date: "2025-12-10T07:30:00", document_id: "sap-ARN-SGHA-2.16-RTR-03", unit: "SEK per event", period: "2025-12", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", company_code: "SAS-ARN", source_type: "sap_s4hana" },
+      { kpi_code: "SGHA-1.6-EXTRA-HOURS", kpi_name: "Extra Opening Hours", amount: 1244.00, posting_date: "2025-12-12T16:45:00", document_id: "sap-CPH-SGHA-1.6-EXTRA-05", unit: "SEK per manhour", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", company_code: "SAS-ARN", source_type: "sap_s4hana" },
+    ],
+  };
+
+  function GuidedSourcesPanel({
+    sourceCatalog,
+    recentProfiles,
+    sourceConfigs,
+    selectedSource,
+    selectedRuns,
+    sourceResult,
+    kpis,
+    trackedKpis,
+    isSavingSource,
+    isRunningSource,
+    onSelectSource,
+    onCreateSource,
+    onUpdateSource,
+    onUpdateSourceBinding,
+    onDeleteSource,
+    onRunSourceAction,
+    onTestSourceConfiguration,
+    onUploadSampleFile,
+  }: {
+    sourceCatalog: KPISourceCatalogItem[];
+    recentProfiles: KPIIntegrationProfile[];
+    sourceConfigs: KPISourceConfig[];
+    selectedSource: KPISourceConfig | null;
+    selectedRuns: KPISourceFetchRun[];
+    sourceResult: any;
+    kpis: ContractKPI[];
+    trackedKpis: ContractKPI[];
+    isSavingSource: boolean;
+    isRunningSource: boolean;
+    onSelectSource: (sourceId: string) => void;
+    onCreateSource: (
+      source: KPISourceCatalogItem,
+    ) => void | Promise<KPISourceConfig | null>;
+    onUpdateSource: (
+      config: KPISourceConfig,
+      updates: Partial<KPISourceConfig>,
+    ) => void | Promise<KPISourceConfig | null>;
+    onUpdateSourceBinding: (
+      config: KPISourceConfig,
+      binding: KPISourceBinding,
+    ) => void | Promise<void>;
+    onDeleteSource: (config: KPISourceConfig) => void | Promise<void>;
+    onRunSourceAction: (
+      config: KPISourceConfig,
+      action: "test" | "fetch",
+    ) => void | Promise<any>;
+    onTestSourceConfiguration: (
+      config: KPISourceConfig,
+      updates: Partial<KPISourceConfig>,
+    ) => void | Promise<any>;
+    onUploadSampleFile?: (
+      config: KPISourceConfig,
+      file: File,
+    ) => void | Promise<void>;
+  }) {
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const perSourceInputRef = useRef<HTMLInputElement | null>(null);
+    const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
+    const [configModalSource, setConfigModalSource] =
+      useState<KPISourceConfig | null>(null);
+    const [step, setStep] = useState<"connect" | "match" | "ingest">("connect");
+    const [showSourceChoices, setShowSourceChoices] = useState(false);
+    const [smartMatched, setSmartMatched] = useState(false);
+    const [fieldOverrides, setFieldOverrides] = useState<Record<string, string>>(
+      {},
+    );
+    const visibleKpis = kpis.filter((kpi) => kpi.status !== "ignored");
+    const bindings = selectedSource
+      ? bindingsForSource(selectedSource, visibleKpis)
+      : [];
+    const enabledBindings = bindings.filter(
+      (binding) => binding.enabled !== false,
+    );
+    const previewRows = useMemo(() => {
+      const sourceType = selectedSource?.source_type;
+      if (sourceType && SEEDED_DEMO_ROWS[sourceType]) {
+        return SEEDED_DEMO_ROWS[sourceType].slice(0, 8);
+      }
+      const rows =
+        sourceResult?.available_data ||
+        sourceResult?.normalized_rows ||
+        selectedSource?.sample_payload ||
+        [];
+      return Array.isArray(rows)
+        ? rows.filter((row) => row && typeof row === "object").slice(0, 8)
+        : [];
+    }, [selectedSource?.sample_payload, selectedSource?.source_type, sourceResult]);
+    const previewFields = useMemo(
+      () =>
+        Array.from(new Set(previewRows.flatMap((row) => Object.keys(row)))).slice(
+          0,
+          8,
+        ),
+      [previewRows],
+    );
+    const normalize = (value: unknown) =>
+      String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    const rowLabel = (row: Record<string, any>) =>
+      String(
+        row.kpi_name ||
+        row.metric_name ||
+        row.metric ||
+        row.name ||
+        row.kpi_id ||
+        row.metric_id ||
+        "",
+      );
+    const findKpi = (row: Record<string, any>) => {
+      const label = normalize(rowLabel(row));
+      const id = String(row.kpi_id || row.metric_id || "");
+      return (
+        visibleKpis.find((kpi) => kpi.kpi_id === id) ||
+        visibleKpis.find((kpi) => normalize(kpi.name) === label) ||
+        visibleKpis.find((kpi) => label && normalize(kpi.name).includes(label)) ||
+        null
+      );
+    };
+    const findField = (fields: string[], names: readonly string[]) =>
+      fields.find((field) =>
+        names.some((name) => normalize(field).includes(name)),
+      ) || "";
+    const sourceFieldSuggestions = {
+      actual_value:
+        fieldOverrides.actual_value ||
+        findField(previewFields, [
+          "actualvalue",
+          "value",
+          "actual",
+          "score",
+          "amount",
+          "result",
+        ]),
+      timestamp:
+        fieldOverrides.timestamp ||
+        findField(previewFields, [
+          "timestamp",
+          "date",
+          "eventtime",
+          "recordedat",
+          "observedat",
+          "datetime",
+          "createdat",
+        ]),
+      source_record_id:
+        fieldOverrides.source_record_id ||
+        findField(previewFields, [
+          "sourcerecordid",
+          "recordid",
+          "id",
+          "eventid",
+          "uuid",
+          "rowid",
+        ]),
+      unit:
+        fieldOverrides.unit ||
+        findField(previewFields, ["unit", "uom", "dimension"]),
+      period:
+        fieldOverrides.period ||
+        findField(previewFields, ["period", "interval", "window", "month"]),
+    };
+    const hasMeasurementFields = Boolean(
+      sourceFieldSuggestions.actual_value && sourceFieldSuggestions.timestamp,
+    );
+    const createFieldBinding = (kpi: ContractKPI) => {
+      if (!selectedSource) return null;
+      return {
+        binding_id: sourceBindingId(
+          selectedSource.source_config_id,
+          kpi.kpi_id,
+          1,
+        ),
+        kpi_id: kpi.kpi_id,
+        enabled: true,
+        match_rule: {},
+        aggregation: kpi.aggregation_type || "latest",
+        unit_override: null,
+        dedupe_key_override: sourceFieldSuggestions.source_record_id || null,
+        watermark_field_override: sourceFieldSuggestions.timestamp || null,
+        validation_status: null,
+        field_mappings: Object.entries(sourceFieldSuggestions)
+          .filter(([, value]) => Boolean(value))
+          .map(([kpi_field, source_field]) => ({
+            kpi_field,
+            source_field,
+            transform:
+              kpi_field === "actual_value"
+                ? "number"
+                : kpi_field === "timestamp"
+                  ? "datetime"
+                  : "string",
+          })),
+      } satisfies KPISourceBinding;
+    };
+    const smartMatch = async () => {
+      if (!selectedSource || !visibleKpis.length) return;
+      const rawRows =
+        sourceResult?.available_data ||
+        sourceResult?.normalized_rows ||
+        selectedSource?.sample_payload ||
+        [];
+      const sourceRows = Array.isArray(rawRows)
+        ? rawRows.filter(
+          (row: any) => row && typeof row === "object",
+        )
+        : [];
+      const previewCodes = new Set(
+        sourceRows
+          .map((row: any) => row?.kpi_code || row?.kpiCode)
+          .filter(Boolean)
+          .map(String),
+      );
+      const acceptedKpis = visibleKpis.filter(
+        (kpi) => kpi.status === "approved" || isKpiTracked(kpi),
+      );
+      const allowedCodes = airportDemoSourceCodes(selectedSource);
+      const sourceKpis = allowedCodes
+        ? acceptedKpis.filter((kpi) => allowedCodes.has(kpi.kpi_id.split(":").pop() || kpi.kpi_id))
+        : acceptedKpis;
+      const scopedKpis = acceptedKpis.filter((kpi) =>
+        previewCodes.has(kpi.kpi_id.split(":").pop() || kpi.kpi_id),
+      );
+      const targetKpis = sourceKpis.length
+        ? sourceKpis
+        : scopedKpis.length
+        ? scopedKpis
+        : acceptedKpis.length
+          ? acceptedKpis
+          : visibleKpis;
+      const existingBindings = bindingsForSource(selectedSource, visibleKpis);
+      const nextBindings = targetKpis.map((kpi, index) => {
+        const existing = existingBindings.find(
+          (binding) => binding.kpi_id === kpi.kpi_id,
+        );
+        const binding = createFieldBinding(kpi);
+        return {
+          ...(existing || {}),
+          ...(binding || {}),
+          binding_id:
+            existing?.binding_id ||
+            sourceBindingId(selectedSource.source_config_id, kpi.kpi_id, index + 1),
+          kpi_id: kpi.kpi_id,
+          enabled: true,
+          match_rule: {
+            field: "kpi_code",
+            operator: "equals",
+            value: kpi.kpi_id.split(":").pop() || kpi.kpi_id,
+          },
+        } satisfies KPISourceBinding;
+      });
+      if (!nextBindings.length) return;
+      const mappedSource = await onUpdateSource(selectedSource, {
+        kpi_bindings: nextBindings,
+        kpi_ids: targetKpis.map((kpi) => kpi.kpi_id),
+        status: "mapped",
+      });
+      const ingestionSource = mappedSource || selectedSource;
+      const ingestionResult = await onRunSourceAction(ingestionSource, "fetch");
+      if (!ingestionResult) return;
+      setSmartMatched(true);
+      setStep("ingest");
+    };
+    const availableProfiles = Array.from(
+      new Map(
+        recentProfiles
+          .filter((profile) =>
+            [
+              "csv",
+              "json",
+              "rest_api",
+              "oracle_fusion",
+              "sap_s4hana",
+              "sap_ariba",
+            ].includes(profile.source_type),
+          )
+          .map((profile) => [profile.source_type, profile]),
+      ).values(),
+    ).filter(
+      (profile) =>
+        !sourceConfigs.some(
+          (config) =>
+            config.source_type === profile.source_type &&
+            config.display_name === profile.display_name,
+        ),
+    );
+    const useRecentProfile = async (profile: KPIIntegrationProfile) => {
+      const catalog = sourceCatalog.find(
+        (item) => item.source_type === profile.source_type,
+      );
+      if (!catalog) return;
+      const created = await onCreateSource({
+        ...catalog,
+        label: profile.display_name,
+      });
+      if (!created) return;
+      const configured = await onUpdateSource(created, {
+        display_name: profile.display_name,
+        endpoint: profile.endpoint,
+        method: profile.method,
+        auth_type: profile.auth_type || "none",
+        record_path: profile.record_path,
+        data_path: profile.data_path,
+        field_mappings: profile.field_mappings,
+        sample_payload: profile.sample_payload,
+        dedupe_key: profile.dedupe_key,
+        watermark_field: profile.watermark_field,
+        schedule: profile.schedule,
+        status: "ready",
+        enabled: false,
+      });
+      const selected = configured || created;
+      onSelectSource(selected.source_config_id);
+      setStep("connect");
+    };
+    const useAllRecentProfiles = async () => {
+      const catalogByType = new Map(
+        sourceCatalog.map((item) => [item.source_type, item]),
+      );
+      let lastCreated: KPISourceConfig | null = null;
+      for (const profile of availableProfiles) {
+        const catalog = catalogByType.get(profile.source_type);
+        if (!catalog) continue;
+        const created = await onCreateSource({
+          ...catalog,
+          label: profile.display_name,
+        });
+        if (!created) continue;
+        const configured = await onUpdateSource(created, {
+          display_name: profile.display_name,
+          endpoint: profile.endpoint,
+          method: profile.method,
+          auth_type: profile.auth_type || "none",
+          record_path: profile.record_path,
+          data_path: profile.data_path,
+          field_mappings: profile.field_mappings,
+          sample_payload: profile.sample_payload,
+          dedupe_key: profile.dedupe_key,
+          watermark_field: profile.watermark_field,
+          schedule: profile.schedule,
+          status: "ready",
+          enabled: false,
+        });
+        lastCreated = configured || created;
+      }
+      if (lastCreated) {
+        onSelectSource(lastCreated.source_config_id);
+        setStep("connect");
+      }
+    };
+    const uploadFile = async (file: File) => {
+      const extension = file.name.split(".").pop()?.toLowerCase() || "csv";
+      const type =
+        extension === "xls" || extension === "xlsx"
+          ? "xlsx"
+          : extension === "json"
+            ? "json"
+            : extension === "xml"
+              ? "xml"
+              : "csv";
+      const catalog = sourceCatalog.find((item) => item.source_type === type);
+      if (!catalog || !onUploadSampleFile) return;
+      const created = await onCreateSource(catalog);
+      if (created) {
+        await onUploadSampleFile(created, file);
+        setStep("connect");
+      }
+    };
+    const sourceStatus = selectedSource?.last_error
+      ? "Needs attention"
+      : selectedSource?.last_success_at
+        ? "Ready"
+        : selectedSource
+          ? "Preview required"
+          : "Choose a source";
+
+    const connectStep = selectedSource ? (
+      <div className="space-y-4 p-4">
+        <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-4">
+          <h4 className="text-sm font-semibold text-blue-950">
+            Preview before mapping
+          </h4>
+          <p className="mt-1 text-xs leading-5 text-blue-900/80">
+            Test the source first. Available columns are shown here; raw
+            operational rows remain in the parking layer.
+          </p>
+        </div>
+        {previewRows.length ? (
+          <CompactRows rows={previewRows} fields={previewFields} />
+        ) : (
+          <div className="rounded-lg border border-dashed border-gray-200 p-8 text-center text-sm text-gray-500">
+            Click Preview data or upload a file to see rows here.
+          </div>
+        )}
+        <Button
+          type="button"
+          size="sm"
+          className="float-right bg-cs-primary text-white"
+          disabled={!previewRows.length}
+          onClick={() => setStep("match")}
+        >
+          Continue to matching
+        </Button>
+        <div className="clear-both" />
+      </div>
+    ) : (
+      <EmptySourceState onUpload={() => fileInputRef.current?.click()} />
+    );
+    const matchStep = (
+      <div className="space-y-4 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-semibold text-gray-950">
+              Match rows to accepted KPIs
+            </h4>
+            <p className="mt-1 text-xs text-gray-500">
+              Smart Match maps the fields, links the accepted KPIs, and ingests the actuals in one click.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="gap-1.5 bg-cs-primary text-white"
+            onClick={() => void smartMatch()}
+            disabled={!previewRows.length || isSavingSource}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {smartMatched ? "Run Smart Match again" : "Smart Match"}
+          </Button>
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-950">Field mapping</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Map columns once; every returned record will use the mapping for
+                the selected KPI.
+              </p>
+            </div>
+            <select
+              className="h-8 min-w-[240px] rounded-md border border-gray-200 bg-white px-2 text-xs"
+              onChange={(event) => {
+                const kpi = visibleKpis.find(
+                  (item) => item.kpi_id === event.target.value,
+                );
+                const binding = kpi ? createFieldBinding(kpi) : null;
+                if (selectedSource && binding)
+                  void onUpdateSourceBinding(selectedSource, binding);
+              }}
+            >
+              <option value="">Choose target KPI</option>
+              {visibleKpis.map((kpi) => (
+                <option key={kpi.kpi_id} value={kpi.kpi_id}>
+                  {kpi.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-white">
+            <table className="min-w-full text-left text-xs">
+              <thead className="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-400">
+                <tr>
+                  <th className="px-3 py-2">KPI field</th>
+                  <th className="px-3 py-2">Source field</th>
+                  <th className="px-3 py-2">Why</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {(
+                  [
+                    [
+                      "actual_value",
+                      "Actual value",
+                      [
+                        "actualvalue",
+                        "value",
+                        "actual",
+                        "score",
+                        "amount",
+                        "result",
+                      ],
+                    ],
+                    [
+                      "timestamp",
+                      "Timestamp",
+                      [
+                        "timestamp",
+                        "date",
+                        "eventtime",
+                        "recordedat",
+                        "datetime",
+                        "createdat",
+                      ],
+                    ],
+                    [
+                      "source_record_id",
+                      "Record ID",
+                      [
+                        "sourcerecordid",
+                        "recordid",
+                        "id",
+                        "eventid",
+                        "uuid",
+                        "rowid",
+                      ],
+                    ],
+                    ["unit", "Unit (optional)", ["unit", "uom", "dimension"]],
+                    [
+                      "period",
+                      "Period (optional)",
+                      ["period", "interval", "window", "month"],
+                    ],
+                  ] as const
+                ).map(([field, label, names]) => {
+                  const sourceField = findField(previewFields, names);
+                  return (
+                    <tr key={field}>
+                      <td className="px-3 py-2 font-semibold text-gray-900">
+                        {label}
+                      </td>
+                      <td className="px-3 py-2">
+                        <select
+                          value={sourceField}
+                          onChange={(event) =>
+                            setFieldOverrides((current) => ({
+                              ...current,
+                              [field]: event.target.value,
+                            }))
+                          }
+                          className="h-8 min-w-[220px] rounded-md border border-gray-200 bg-white px-2 text-xs"
+                        >
+                          <option value="">Not mapped</option>
+                          {previewFields.map((item) => (
+                            <option key={item} value={item}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td
+                        className={`px-3 py-2 ${sourceField ? "text-emerald-700" : field === "unit" || field === "period" ? "text-gray-500" : "text-amber-700"}`}
+                      >
+                        {sourceField
+                          ? "Smart suggestion"
+                          : field === "unit" || field === "period"
+                            ? "Optional"
+                            : "Required"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            size="sm"
+            className="bg-cs-primary text-white"
+            disabled={!enabledBindings.length || !hasMeasurementFields}
+            onClick={() => setStep("ingest")}
+          >
+            Continue to ingest
+          </Button>
+        </div>
+      </div>
+    );
+    const ingestStep = (
+      <div className="space-y-4 p-4">
+        <div>
+          <h4 className="text-sm font-semibold text-gray-950">
+            Validate and ingest actuals
+          </h4>
+          <p className="mt-1 text-xs text-gray-500">
+            Rows are parked raw first, normalized into actuals, then evaluated for
+            KPIs that are already tracked.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <DetailTile label="Preview rows" value={String(previewRows.length)} />
+          <DetailTile
+            label="Matched KPIs"
+            value={String(enabledBindings.length)}
+            tone="blue"
+          />
+          <DetailTile label="Tracked KPIs" value={String(trackedKpis.length)} />
+        </div>
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+          Untracked KPIs remain deferred until explicitly activated.
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setStep("match")}
+          >
+            Back to matching
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="gap-1.5 bg-cs-primary text-white"
+            onClick={() =>
+              selectedSource && onRunSourceAction(selectedSource, "fetch")
+            }
+            disabled={
+              !selectedSource ||
+              !previewRows.length ||
+              !enabledBindings.length ||
+              isRunningSource
+            }
+          >
+            {isRunningSource ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            Ingest actuals
+          </Button>
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="space-y-4">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,.xlsx,.xls,.json,.xml"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void uploadFile(file);
+          }}
+        />
+        <input
+          ref={perSourceInputRef}
+          type="file"
+          accept=".csv,.xlsx,.xls,.json,.xml"
+          className="hidden"
+          onChange={async (event) => {
+            const file = event.target.files?.[0];
+            const targetId = uploadTargetId;
+            if (!file || !targetId || !onUploadSampleFile) return;
+            const targetSource = sourceConfigs.find(
+              (s) => s.source_config_id === targetId,
+            );
+            if (!targetSource) return;
+            await onUploadSampleFile(targetSource, file);
+            onSelectSource(targetId);
+            setStep("connect");
+          }}
+        />
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">
+                Actual sources
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-gray-950">
+                Connect operational data
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Preview, match, and ingest without exposing raw connector
+                payloads.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className="gap-1.5 bg-cs-primary text-white"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isSavingSource}
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Upload data
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setStep("connect");
+                  setShowSourceChoices((current) => !current);
+                }}
+              >
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                {showSourceChoices ? "Hide source choices" : "Connect source"}
+              </Button>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
+            {(
+              [
+                ["connect", "Connect"],
+                ["match", "Match"],
+                ["ingest", "Ingest"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setStep(key)}
+                className={`rounded-lg border px-3 py-2 text-left ${step === key ? "border-cs-primary bg-cs-primary/5" : "border-gray-200 bg-gray-50"}`}
+              >
+                <span className="text-sm font-semibold text-gray-900">
+                  {label}
+                </span>
               </button>
             ))}
           </div>
-        </section>
-      </aside>
-
-      <section className="min-w-0 rounded-lg border border-gray-200 bg-white">
-        {selectedSource ? (
-          <div key={selectedSource.source_config_id} className="divide-y divide-gray-100">
-            <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <h2 className="truncate text-base font-semibold text-gray-950">{selectedSource.display_name}</h2>
-                <p className="mt-1 text-sm text-gray-500">{titleCase(selectedSource.source_type)} · {ingestionModeLabel(selectedSource)} · last success {selectedSource.last_success_at || 'not yet'}</p>
+          {showSourceChoices && (
+            <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="mb-3">
+                <p className="text-sm font-semibold text-gray-950">
+                  Choose a source type
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Files create a workspace source. REST and ERP sources open the
+                  connection configuration modal.
+                </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <span className={`w-fit rounded-full border px-2.5 py-1 text-xs font-semibold ${statusTone(selectedSource.last_error ? 'failed' : selectedSource.status || 'draft')}`}>
-                  {titleCase(selectedSource.last_error ? 'failed' : selectedSource.status || 'draft')}
-                </span>
-                <Pill tone={selectedKpiCount ? 'blue' : 'amber'}>{selectedKpiCount} assigned</Pill>
-              </div>
-            </div>
-
-            <div className="space-y-4 p-4">
-              <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)]">
-                <section className="rounded-lg border border-gray-200 bg-white p-3">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">1 · Assign KPIs</p>
-                      <p className="mt-1 text-xs text-gray-500">Select exactly which KPIs each source can feed. A KPI can use multiple sources.</p>
-                    </div>
-                    <Pill tone={selectedKpiCount ? 'blue' : 'amber'}>{selectedKpiCount}/{visibleKpis.length} on this source</Pill>
-                  </div>
-                  <SourceKpiBindingEditor
-                    config={selectedSource}
-                    kpis={visibleKpis}
-                    selectedBindingKpiId={selectedBinding?.kpi_id || null}
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {sourceCatalog.map((source) => (
+                  <button
+                    key={source.source_type}
+                    type="button"
                     disabled={isSavingSource}
-                    onSelectBinding={setSelectedBindingKpiId}
-                    onToggleSourceKpi={onToggleSourceKpi}
-                    onUpdateBinding={onUpdateSourceBinding}
-                    onUpdateSource={onUpdateSource}
-                  />
-                </section>
-
-                <section className="rounded-lg border border-gray-200 bg-white p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">2 · Choose Ingestion Mode</p>
-                  <p className="mt-1 text-xs text-gray-500">Manual, scheduled, webhook/realtime, or attestation.</p>
-                  <div className="mt-3 grid gap-2">
-                    {([
-                      ['manual', 'Manual fetch'],
-                      ['scheduled', 'Scheduled polling'],
-                      ['realtime', 'Webhook / realtime'],
-                      ['attestation', 'Manual attestation'],
-                    ] as Array<[IngestionMode, string]>).map(([mode, label]) => {
-                      const active = ingestionModeFor(selectedSource) === mode
-                      return (
-                        <button
-                          key={mode}
-                          type="button"
-                          onClick={() => onApplyIngestionMode(selectedSource, mode)}
-                          disabled={isSavingSource}
-                          className={`rounded-md border px-3 py-2 text-left text-xs font-semibold transition-colors ${active ? 'border-cs-primary bg-cs-primary text-white' : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-white'}`}
-                        >
-                          {label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  {ingestionModeFor(selectedSource) === 'scheduled' && (
-                    <label className="mt-3 block text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                      Polling cadence
-                      <select
-                        value={selectedSource.schedule?.cadence || 'daily'}
-                        onChange={(event) => onUpdateSource(selectedSource, { enabled: true, status: 'enabled', schedule: { ...(selectedSource.schedule || {}), cadence: event.target.value } })}
-                        className="mt-1 h-8 w-full rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-700"
-                      >
-                        <option value="hourly">Hourly</option>
-                        <option value="daily">Daily</option>
-                        <option value="weekly">Weekly</option>
-                        <option value="monthly">Monthly</option>
-                        <option value="quarterly">Quarterly</option>
-                        <option value="annual">Annual</option>
-                      </select>
-                    </label>
-                  )}
-                  {ingestionModeFor(selectedSource) === 'realtime' && (
-                    <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-2 py-2 text-xs leading-5 text-gray-600">
-                      Webhook mode uses the authenticated source webhook endpoint and skips duplicate record IDs.
-                    </div>
-                  )}
-                  {selectedSource.next_run_at && (
-                    <p className="mt-3 text-xs text-gray-500">Next run: {formatDateTime(selectedSource.next_run_at)}</p>
-                  )}
-                </section>
-              </div>
-
-              {/* Section 3: Field Mapping (Collapsible) */}
-              <details className="rounded-lg border border-gray-200 bg-white p-3">
-                <summary className="flex cursor-pointer items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">3 · Field Mappings & Schema</span>
-                    <p className="mt-0.5 text-xs text-gray-600 font-medium">
-                      Auto-detected {selectedSource.field_mappings?.length || 0} column mappings ({selectedSource.schema_fields?.length || 0} fields in source)
-                    </p>
-                  </div>
-                  <span className="text-xs font-semibold text-cs-primary hover:underline">Configure Mappings ↓</span>
-                </summary>
-                <div className="mt-4 border-t border-gray-100 pt-3">
-                  {selectedBinding ? (
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-semibold text-gray-950">{selectedBindingKpi?.name || selectedBinding.kpi_id}</p>
-                          <p className="mt-0.5 text-[11px] text-gray-500">
-                            {selectedBinding.enabled === false ? 'Disabled binding' : selectedBindingHasOverrides ? 'This KPI uses custom field mapping.' : 'This KPI uses source default mapping.'}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={useSelectedBindingDefaults} disabled={isSavingSource || !selectedBindingHasOverrides}>
-                            Use Defaults
-                          </Button>
-                          <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={overrideSelectedBinding} disabled={isSavingSource || selectedBinding.enabled === false}>
-                            Override
-                          </Button>
-                        </div>
-                      </div>
-                      <KpiSourceFieldMapper
-                        sourceConfigId={`${selectedSource.source_config_id}-${selectedBinding.binding_id || selectedBinding.kpi_id}`}
-                        fieldMappings={selectedMapperMappings}
-                        schemaFields={selectedSource.schema_fields}
-                        samplePayload={selectedSource.sample_payload}
-                        samplePayloadDraft={samplePayload}
-                        recordPath={selectedSource.record_path}
-                        trackedCount={trackedKpis.length}
-                        isSaving={isSavingSource || selectedBinding.enabled === false}
-                        onUpdateMapping={updateMapping}
-                      />
-                    </div>
-                  ) : (
-                    <KpiSourceFieldMapper
-                      sourceConfigId={`${selectedSource.source_config_id}-defaults`}
-                      fieldMappings={selectedSource.field_mappings}
-                      schemaFields={selectedSource.schema_fields}
-                      samplePayload={selectedSource.sample_payload}
-                      samplePayloadDraft={samplePayload}
-                      recordPath={selectedSource.record_path}
-                      trackedCount={trackedKpis.length}
-                      isSaving={isSavingSource}
-                      onUpdateMapping={updateSourceDefaultMapping}
-                    />
-                  )}
-                </div>
-              </details>
-
-              {/* Section 4: Clean Validate & Ingest CTA Card */}
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="rounded-lg border border-gray-200 bg-white p-4">
-                  <input
-                    ref={section4FileInputRef}
-                    type="file"
-                    accept=".csv,.xlsx,.xls,.json,.xml"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file && selectedSource && onUploadSampleFile) {
-                        void (async () => {
-                          await onUploadSampleFile(selectedSource, file)
-                          await onRunSourceAction(selectedSource, 'fetch')
-                        })()
+                    onClick={async () => {
+                      const created = await onCreateSource(source);
+                      setShowSourceChoices(false);
+                      if (
+                        created &&
+                        [
+                          "rest_api",
+                          "oracle_fusion",
+                          "sap_s4hana",
+                          "oracle_db",
+                          "sap_ariba",
+                        ].includes(source.source_type)
+                      ) {
+                        setConfigModalSource(created);
                       }
                     }}
-                  />
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-950">4 · Ingest Actuals & Activate Tracking</h4>
-                      <p className="mt-0.5 text-xs text-gray-500">Run ingestion to record telemetry actuals and automatically activate KPI tracking.</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1.5 px-3 text-xs"
-                        onClick={() => section4FileInputRef.current?.click()}
-                        disabled={isSavingSource || isRunningSource}
-                      >
-                        <UploadCloud className="h-3.5 w-3.5 text-cs-primary" />
-                        {selectedSource.sample_payload ? 'Change Data File' : 'Attach Data File'}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1.5 px-3 text-xs"
-                        onClick={() => onRunSourceAction(selectedSource, 'test')}
-                        disabled={isRunningSource}
-                      >
-                        {isRunningSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 text-gray-500" />}
-                        Validate
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-8 gap-1.5 bg-cs-primary px-4 text-xs font-semibold text-white hover:bg-cs-primary/90 shadow-sm"
-                        onClick={() => onRunSourceAction(selectedSource, 'fetch')}
-                        disabled={isRunningSource}
-                      >
-                        {isRunningSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                        Ingest Actuals
-                      </Button>
-                    </div>
-                  </div>
-
-                  {(validationRows.length || skippedRows.length) ? (
-                    <div className="mt-3 grid gap-2 md:grid-cols-2">
-                      <RunPreviewBlock title="Accepted Preview" rows={validationRows} empty="No accepted rows in latest validation." />
-                      <RunPreviewBlock title="Skipped / Needs Fix" rows={skippedRows} empty="No skipped rows." />
-                    </div>
-                  ) : null}
-
-                  <details className="mt-3 rounded-md border border-gray-200 bg-gray-50/50 p-2.5">
-                    <summary className="cursor-pointer text-xs font-semibold text-gray-700">View / Edit Raw Sample Payload</summary>
-                    <div className="mt-2 space-y-2">
-                      <Textarea
-                        value={samplePayload}
-                        onChange={(event) => onSamplePayloadChange(event.target.value)}
-                        placeholder="kpi_id,value,timestamp,period,record_id"
-                        className="min-h-[140px] bg-white font-mono text-xs"
-                      />
-                      <div className="flex justify-end">
-                        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onSaveSample(selectedSource)}>Save Payload</Button>
-                      </div>
-                    </div>
-                  </details>
-                </div>
-
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-400">Latest Runs</p>
-                  <div className="grid gap-2">
-                    {selectedRuns.length ? selectedRuns.slice(0, 5).map((run) => (
-                      <div key={run.run_id} className="rounded-md border border-gray-200 bg-white px-3 py-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone(run.status)}`}>{titleCase(run.status || 'run')}</span>
-                          <span className="text-xs font-semibold text-gray-500">{run.records_accepted || 0}/{run.records_fetched || 0}</span>
-                        </div>
-                        <p className="mt-1 truncate text-xs text-gray-400">{runDisplayTime(run)} · {runDuration(run)}</p>
-                      </div>
-                    )) : (
-                      <div className="rounded-md border border-dashed border-gray-200 bg-white px-3 py-3 text-sm text-gray-400">No fetch runs yet.</div>
-                    )}
-                  </div>
-                </div>
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-3 text-left hover:border-cs-primary hover:bg-cs-primary/5 disabled:opacity-60"
+                  >
+                    <span className="block text-sm font-semibold text-gray-900">
+                      {source.label}
+                    </span>
+                    <span className="mt-1 block text-xs text-gray-500">
+                      {sourceTypeLabel(source.family || source.source_type)}
+                    </span>
+                  </button>
+                ))}
               </div>
-
-              <details className="rounded-lg border border-gray-200 bg-white p-3">
-                <summary className="cursor-pointer text-sm font-semibold text-gray-900">Advanced source, dedupe, and watermark fields</summary>
-                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                      Display name
-                      <input
-                        defaultValue={selectedSource.display_name}
-                        onBlur={(event) => onUpdateSource(selectedSource, { display_name: event.target.value })}
-                        className="mt-1 h-9 w-full rounded-md border border-gray-200 px-2 text-sm text-gray-800"
-                      />
-                    </label>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                      Record path
-                      <input
-                        defaultValue={selectedSource.record_path || ''}
-                        onBlur={(event) => onUpdateSource(selectedSource, { record_path: event.target.value })}
-                        placeholder="records"
-                        className="mt-1 h-9 w-full rounded-md border border-gray-200 px-2 text-sm text-gray-800"
-                      />
-                    </label>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                      Dedupe key
-                      <input
-                        defaultValue={selectedSource.dedupe_key || 'record_id'}
-                        onBlur={(event) => onUpdateSource(selectedSource, { dedupe_key: event.target.value })}
-                        className="mt-1 h-9 w-full rounded-md border border-gray-200 px-2 text-sm text-gray-800"
-                      />
-                    </label>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                      Watermark
-                      <input
-                        defaultValue={selectedSource.watermark_field || 'timestamp'}
-                        onBlur={(event) => onUpdateSource(selectedSource, { watermark_field: event.target.value })}
-                        className="mt-1 h-9 w-full rounded-md border border-gray-200 px-2 text-sm text-gray-800"
-                      />
-                    </label>
-                </div>
-              </details>
             </div>
-          </div>
-        ) : (
-          <div className="p-8">
-            <input
-              ref={dropzoneFileInputRef}
-              type="file"
-              multiple
-              accept=".csv,.xlsx,.xls,.json,.xml"
-              className="hidden"
-              onChange={(e) => {
-                const files = e.target.files
-                if (files && files.length) void handleDropzoneFile(files)
-              }}
-            />
-            <div
-              onDragOver={(e) => {
-                e.preventDefault()
-                setIsDragging(true)
-              }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={(e) => {
-                e.preventDefault()
-                setIsDragging(false)
-                const files = e.dataTransfer.files
-                if (files && files.length) void handleDropzoneFile(files)
-              }}
-              className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 text-center transition-colors ${
-                isDragging ? 'border-cs-primary bg-cs-primary/5' : 'border-gray-300 bg-gray-50/50 hover:border-gray-400 hover:bg-gray-50'
-              }`}
-            >
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-sm border border-gray-200">
-                <UploadCloud className="h-7 w-7 text-cs-primary" />
-              </div>
-              <h3 className="text-base font-semibold text-gray-950">Connect Operational Data Source</h3>
-              <p className="mt-1.5 max-w-md text-xs text-gray-500 leading-relaxed">
-                Drop your performance telemetry or actuals file (CSV, Excel, JSON, XML) here to auto-detect schema, map attributes, and start tracking compliance.
+          )}
+        </div>
+        <section className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">
+                Recent connections
               </p>
-              <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+              <p className="mt-1 text-sm text-gray-500">
+                Reuse a tested REST or ERP connection and preview its data without
+                re-entering configuration.
+              </p>
+            </div>
+            {availableProfiles.length > 0 && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="shrink-0 gap-1.5 border-cs-primary/30 text-cs-primary hover:bg-cs-primary/5 hover:text-cs-primary"
+                onClick={() => void useAllRecentProfiles()}
+                disabled={isSavingSource}
+              >
+                <Layers className="h-3.5 w-3.5" />
+                Use All ({availableProfiles.length})
+              </Button>
+            )}
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
+            {availableProfiles.map((profile) => (
+              <button
+                key={profile.profile_id}
+                type="button"
+                onClick={() => void useRecentProfile(profile)}
+                disabled={isSavingSource}
+                className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-left hover:border-cs-primary hover:bg-cs-primary/5 disabled:opacity-60"
+              >
+                <span className="block truncate text-sm font-semibold text-gray-900">
+                  {profile.display_name}
+                </span>
+                <span className="mt-1 block text-xs text-gray-500">
+                  {sourceTypeLabel(profile.source_type)} ·{" "}
+                  {titleCase(profile.status || "ready")}
+                </span>
+                <span className="mt-2 block text-[11px] font-semibold text-cs-primary">
+                  Use and preview
+                </span>
+              </button>
+            ))}
+          </div>
+          {availableProfiles.length === 0 && (
+            <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3 text-xs text-gray-500">
+              No unadded reusable connections are available. Add and test a REST or SAP connection to make it appear here for other contracts.
+            </p>
+          )}
+        </section>
+        <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
+          <aside className="space-y-3">
+            <section className="rounded-xl border border-gray-200 bg-white p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Your sources</h3>
+                <Pill tone="blue">{sourceConfigs.length}</Pill>
+              </div>
+              {sourceConfigs.map((source) => (
+                <div
+                  key={source.source_config_id}
+                  className={`mb-2 flex items-center gap-2 rounded-lg border p-2 ${selectedSource?.source_config_id === source.source_config_id ? "border-cs-primary bg-cs-primary/5" : "border-gray-200"}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectSource(source.source_config_id);
+                      setStep(source.last_success_at ? "match" : "connect");
+                    }}
+                    className="min-w-0 flex-1 p-1 text-left"
+                  >
+                    <span className="block truncate text-sm font-semibold">
+                      {source.display_name}
+                    </span>
+                    <span className="mt-1 block text-xs text-gray-500">
+                      {sourceTypeLabel(source.source_type)} ·{" "}
+                      {enabledKpiIdsForSource(source, visibleKpis).length} matched
+                    </span>
+                  </button>
+                  {enabledKpiIdsForSource(source, visibleKpis).length > 0 && (
+                    <Pill tone="emerald">Linked</Pill>
+                  )}
+                  <button
+                    type="button"
+                    title="Delete source"
+                    aria-label={`Delete ${source.display_name}`}
+                    disabled={isSavingSource}
+                    onClick={() => void onDeleteSource(source)}
+                    className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-red-600 disabled:opacity-50"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              {!sourceConfigs.length && (
+                <p className="rounded border border-dashed p-3 text-xs text-gray-500">
+                  Upload or connect a source to begin.
+                </p>
+              )}
+            </section>
+            <section className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                Status
+              </p>
+              <p className="mt-1 text-sm font-semibold">{sourceStatus}</p>
+              <p className="mt-1 text-xs text-gray-500">
+                {enabledBindings.length} matched · {trackedKpis.length} tracked.
+                Raw rows are parked separately.
+              </p>
+              {selectedSource && (
                 <Button
                   type="button"
+                  variant="ghost"
                   size="sm"
-                  className="bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
-                  onClick={() => dropzoneFileInputRef.current?.click()}
-                  disabled={isSavingSource}
+                  className="mt-2 h-7 px-0 text-xs text-cs-primary"
+                  onClick={() => setConfigModalSource(selectedSource)}
                 >
-                  <Upload className="mr-1.5 h-3.5 w-3.5" />
-                  Drop or Select File
+                  <Settings2 className="mr-1 h-3 w-3" />
+                  Configure connection
                 </Button>
-              </div>
-              <div className="mt-6 border-t border-gray-200 pt-5 text-center">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Or choose a manual source type</p>
-                <div className="mt-3 flex flex-wrap justify-center gap-2">
-                  {sourceCatalog.slice(0, 5).map((source) => (
-                    <button
-                      key={source.source_type}
-                      type="button"
-                      onClick={() => onCreateSource(source)}
-                      disabled={isSavingSource}
-                      className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      + {source.label}
-                    </button>
-                  ))}
+              )}
+            </section>
+          </aside>
+          <section className="min-w-0 rounded-xl border border-gray-200 bg-white">
+            {selectedSource && (
+              <div className="flex items-center justify-between border-b border-gray-100 p-4">
+                <div>
+                  <h3 className="text-base font-semibold">
+                    {selectedSource.display_name}
+                  </h3>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {sourceTypeLabel(selectedSource.runtime_source_type || selectedSource.source_type)} ·{" "}
+                    {previewRows.length
+                      ? `${previewRows.length} preview rows`
+                      : "No preview yet"}
+                  </p>
                 </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setUploadTargetId(selectedSource.source_config_id);
+                      setTimeout(() => perSourceInputRef.current?.click(), 0);
+                    }}
+                    disabled={isSavingSource}
+                  >
+                    <Upload className="mr-1 h-3.5 w-3.5" />
+                    Upload files
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onRunSourceAction(selectedSource, "test")}
+                    disabled={isRunningSource}
+                  >
+                    {isRunningSource ? "Checking source..." : "Preview & test"}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {selectedSource && (
+              <p className="border-b border-gray-100 px-4 pb-3 text-xs text-gray-500">
+                Preview & test only checks the connection and shows sample
+                rows/columns. It does not create actuals or track KPIs.
+              </p>
+            )}
+            {step === "connect" && connectStep}
+            {step === "match" && matchStep}
+            {step === "ingest" && ingestStep}
+          </section>
+        </div>
+        <div className="text-xs text-gray-500">
+          {selectedRuns.length
+            ? `${selectedRuns.length} recent run${selectedRuns.length === 1 ? "" : "s"}`
+            : "No runs yet."}{" "}
+          · {sourceResult?.raw_records_parked || 0} raw rows parked
+        </div>
+        {configModalSource && (
+          <SourceConfigModal
+            source={configModalSource}
+            isSaving={isSavingSource}
+            onClose={() => setConfigModalSource(null)}
+            onSave={async (updates) => {
+              await onUpdateSource(configModalSource, updates);
+            }}
+            onTest={async (updates) =>
+              onTestSourceConfiguration(configModalSource, updates)
+            }
+          />
+        )}
+      </div>
+    );
+  }
+
+  function EmptySourceState({ onUpload }: { onUpload: () => void }) {
+    return (
+      <div className="flex min-h-[360px] flex-col items-center justify-center p-8 text-center">
+        <UploadCloud className="h-10 w-10 text-gray-300" />
+        <h3 className="mt-4 text-base font-semibold text-gray-950">
+          Start with a data source
+        </h3>
+        <p className="mt-1 max-w-md text-sm text-gray-500">
+          Upload CSV, Excel, JSON, or XML, or connect a REST/ERP source.
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          className="mt-4 bg-cs-primary text-white"
+          onClick={onUpload}
+        >
+          <Upload className="mr-1.5 h-3.5 w-3.5" />
+          Upload data
+        </Button>
+      </div>
+    );
+  }
+
+  function CompactRows({
+    rows,
+    fields,
+  }: {
+    rows: Array<Record<string, any>>;
+    fields: string[];
+  }) {
+    return (
+      <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <table className="min-w-full text-left text-xs">
+          <thead className="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-400">
+            <tr>
+              {fields.map((field) => (
+                <th key={field} className="px-3 py-2">
+                  {field}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {rows.slice(0, 5).map((row, index) => (
+              <tr key={index}>
+                {fields.map((field) => (
+                  <td
+                    key={field}
+                    className="max-w-[180px] truncate px-3 py-2 text-gray-700"
+                  >
+                    {displayCell(row[field])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  function FlagsPanel({
+    breaches,
+    kpiById,
+    onFlagRemediationEmail,
+    flagsReady = true,
+    completedSourceCount = 0,
+  }: {
+    breaches: ContractKPIBreach[];
+    kpiById: Map<string, ContractKPI>;
+    onFlagRemediationEmail: (
+      breach: ContractKPIBreach,
+    ) => Promise<ContractKPIBreach | null>;
+    flagsReady?: boolean;
+    completedSourceCount?: number;
+  }) {
+    const { authenticatedFetch } = useAuth();
+    const [expandedFlagId, setExpandedFlagId] = useState<string | null>(
+      breaches.find((breach) => breach.is_breach)?.breach_id || null,
+    );
+    const [isDispatching, setIsDispatching] = useState(false);
+    const [alertDraft, setAlertDraft] = useState<{
+      contractId: string;
+      kpiId: string;
+      breachId?: string;
+      to: string;
+      subject: string;
+      body: string;
+      recipientSource?: ContractKPIBreach["breach_email_recipient_source"];
+    } | null>(null);
+    const ordered = [...breaches].sort((left, right) => {
+      const severityRank: Record<string, number> = {
+        Critical: 5,
+        High: 4,
+        Medium: 3,
+        Low: 2,
+        OK: 1,
+      };
+      return (
+        Number(right.is_breach) - Number(left.is_breach) ||
+        (severityRank[severityFor(right, kpiById.get(right.kpi_id))] || 0) -
+        (severityRank[severityFor(left, kpiById.get(left.kpi_id))] || 0)
+      );
+    });
+    const openEscalation = async (
+      breach: ContractKPIBreach,
+      kpi?: ContractKPI,
+    ) => {
+      const updated = await onFlagRemediationEmail(breach);
+      const source = updated || breach;
+      setAlertDraft({
+        contractId: kpi?.contract_id || source.contract_id || "",
+        kpiId: source.kpi_id || kpi?.kpi_id || "",
+        breachId: source.breach_id,
+        to: source.breach_email_to || kpi?.contact_email || "",
+        subject: `[BREACH ALERT] ${kpi?.name || source.source_kpi?.name || source.kpi_id} (${severityFor(source, kpi)})`,
+        body: source.breach_email_draft || buildEscalationDraft(source, kpi),
+        recipientSource: source.breach_email_recipient_source,
+      });
+    };
+
+    return (
+      <>
+        <section className="rounded-lg border border-gray-200 bg-white">
+          <div className="border-b border-gray-100 p-4">
+            <h2 className="text-base font-semibold text-gray-950">
+              Compliance Flags
+            </h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Detailed breach records with threshold, source, remediation, and
+              escalation actions.
+            </p>
+          </div>
+          {!flagsReady ? (
+            <div className="flex min-h-[260px] flex-col items-center justify-center px-6 py-16 text-center">
+              <Loader2 className="h-6 w-6 animate-spin text-cs-primary" />
+              <p className="mt-3 text-sm font-semibold text-gray-800">
+                Preparing compliance flags
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                {completedSourceCount} of 4 sources completed. Flags will appear
+                together after the final source is reconciled.
+              </p>
+            </div>
+          ) : !ordered.length ? (
+            <div className="px-6 py-16 text-center text-sm text-gray-500">
+              No compliance flags for tracked KPIs.
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {ordered.map((breach) => {
+                const kpi = kpiById.get(breach.kpi_id);
+                const severity = severityFor(breach, kpi);
+                const expected = expectedFor(breach, kpi);
+                const actual =
+                  `${breach.actual_value ?? "N/A"} ${breach.actual_unit || kpi?.unit || ""}`.trim();
+                const expanded = expandedFlagId === breach.breach_id;
+                const exposure = Math.abs(
+                  toNumber(kpi?.consequence_value) ||
+                  toNumber(breach.penalty_amount) ||
+                  0,
+                );
+                return (
+                  <div
+                    key={
+                      breach.breach_id || `${breach.kpi_id}-${breach.created_at}`
+                    }
+                    className="bg-white"
+                  >
+                    <div className="grid gap-3 p-4 lg:grid-cols-[minmax(280px,1fr)_150px_130px_130px_170px] lg:items-center">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedFlagId(expanded ? null : breach.breach_id)
+                        }
+                        className="min-w-0 text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`h-2.5 w-2.5 rounded-full ${breach.is_breach ? "bg-cs-primary" : "bg-gray-300"}`}
+                          />
+                          <p className="truncate text-sm font-semibold text-gray-950">
+                            {kpi?.name ||
+                              breach.source_kpi?.name ||
+                              breach.kpi_id}
+                          </p>
+                        </div>
+                        <p className="mt-1 truncate pl-4 text-xs text-gray-400">
+                          {breach.kpi_id} ·{" "}
+                          {formatDateTime(breach.created_at || breach.timestamp)}
+                        </p>
+                      </button>
+                      <div
+                        className={
+                          breach.is_breach
+                            ? "text-sm font-semibold text-gray-950"
+                            : "text-sm font-semibold text-gray-600"
+                        }
+                      >
+                        {exposure ? `-${money(exposure)}` : "No penalty"}
+                      </div>
+                      <span
+                        className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(breach.status || (breach.is_breach ? "open" : "clear"))}`}
+                      >
+                        {titleCase(
+                          breach.status || (breach.is_breach ? "open" : "clear"),
+                        )}
+                      </span>
+                      <span
+                        className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(severity)}`}
+                      >
+                        {severity}
+                      </span>
+                      <div className="flex flex-wrap justify-start gap-1.5 lg:justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5 text-xs"
+                          onClick={() =>
+                            setExpandedFlagId(expanded ? null : breach.breach_id)
+                          }
+                        >
+                          Details
+                          <ChevronDown
+                            className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
+                          />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
+                          onClick={() => void openEscalation(breach, kpi)}
+                          disabled={!breach.is_breach}
+                        >
+                          <Mail className="h-3.5 w-3.5" />
+                          Escalate
+                        </Button>
+                      </div>
+                    </div>
+
+                    {expanded && (
+                      <div className="space-y-4 border-t border-gray-100 bg-gray-50/70 p-4">
+                        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                          <div className="rounded-lg border border-gray-300 bg-white p-3">
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                              Metric
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-gray-950">
+                              {kpi?.name ||
+                                breach.source_kpi?.name ||
+                                breach.kpi_id}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-gray-300 bg-white p-3">
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                              Category / Type
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-gray-950">
+                              {titleCase(
+                                kpi?.category ||
+                                breach.source_kpi?.category ||
+                                "SLA",
+                              )}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-gray-300 bg-white p-3">
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                              Expected (Contract)
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-gray-950">
+                              {expected}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-gray-300 bg-white p-3">
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                              Actual (Ingested)
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-gray-950">
+                              {actual}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <DetailTile
+                            label="Contract Clause"
+                            value={
+                              kpi?.structural_path ||
+                              kpi?.section_path ||
+                              kpi?.section ||
+                              breach.source_kpi?.quote ||
+                              "Not captured"
+                            }
+                            tone="blue"
+                          />
+                          <DetailTile
+                            label="Data Source"
+                            value={breach.source || "Actual ingestion"}
+                          />
+                        </div>
+                        <div className="rounded-lg border border-gray-200 bg-white p-3">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                            Recommended Action
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-gray-800">
+                            {breach.remediation ||
+                              kpi?.remediation ||
+                              "Escalate to accountable party and request corrective action plan."}
+                          </p>
+                          <p className="mt-2 text-xs text-gray-500">
+                            SLA:{" "}
+                            {breach.remediation_sla ||
+                              kpi?.remediation_sla ||
+                              "Not specified"}{" "}
+                            · Trigger:{" "}
+                            {breach.penalty_triggered ||
+                              kpi?.trigger_condition ||
+                              "Not specified"}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 text-xs"
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                            Ask AI to Analyze
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
+                            onClick={() => void openEscalation(breach, kpi)}
+                            disabled={!breach.is_breach}
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                            Send Escalation Alert Email
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {alertDraft && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
+              <div className="border-b border-gray-100 px-5 py-4">
+                <h3 className="text-base font-semibold text-gray-950">
+                  Escalation Alert Email
+                </h3>
+                <p className="mt-1 text-xs text-gray-500">
+                  Review the generated breach notice before dispatch.
+                </p>
+              </div>
+              <div className="space-y-3 p-5">
+                <DetailTile
+                  label="To"
+                  value={alertDraft.to || "No contract email found"}
+                  tone={alertDraft.to ? "gray" : "amber"}
+                />
+                {alertDraft.recipientSource?.source && (
+                  <DetailTile
+                    label="Recipient Source"
+                    value={[
+                      alertDraft.recipientSource.source,
+                      alertDraft.recipientSource.matched_party
+                        ? `party: ${alertDraft.recipientSource.matched_party}`
+                        : "",
+                      alertDraft.recipientSource.confidence
+                        ? `confidence: ${alertDraft.recipientSource.confidence}`
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  />
+                )}
+                <DetailTile label="Subject" value={alertDraft.subject} />
+                <Textarea
+                  value={alertDraft.body}
+                  onChange={(event) =>
+                    setAlertDraft({ ...alertDraft, body: event.target.value })
+                  }
+                  className="min-h-[320px] font-mono text-xs"
+                />
+              </div>
+              <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setAlertDraft(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  className="bg-cs-primary text-white hover:bg-cs-primary/90"
+                  disabled={!alertDraft.to || isDispatching}
+                  onClick={async () => {
+                    if (
+                      !alertDraft?.to ||
+                      !alertDraft?.kpiId ||
+                      !alertDraft?.contractId
+                    ) {
+                      toast({
+                        title: "Alert dispatch failed",
+                        description:
+                          "Missing recipient email, KPI ID, or Contract ID.",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    setIsDispatching(true);
+                    try {
+                      const result = await authenticatedFetch(
+                        `${process.env.NEXT_PUBLIC_EXTRACTOR_API_URL}/contracts/${alertDraft.contractId}/kpis/alerts/dispatch`,
+                        {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            kpi_id: alertDraft.kpiId,
+                            recipient: alertDraft.to,
+                            subject: alertDraft.subject,
+                            body: alertDraft.body,
+                            breach_id: alertDraft.breachId,
+                            delivery_mode: "mock",
+                          }),
+                        },
+                      );
+                      if (result.error) throw new Error(result.error);
+                      toast({
+                        title: "Escalation logged",
+                        description: `Recorded in demo mode as ${result.data?.status || "mock_dispatched"}; no external email was sent.`,
+                      });
+                    } catch (err: any) {
+                      toast({
+                        title: "Alert dispatch failed",
+                        description: err?.message || "Failed to send alert.",
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setIsDispatching(false);
+                      setAlertDraft(null);
+                    }
+                  }}
+                >
+                  {isDispatching ? "Dispatching..." : "Dispatch Alert"}
+                </Button>
               </div>
             </div>
           </div>
         )}
-      </section>
-    </div>
-  )
-}
-
-function FlagsPanel({
-  breaches,
-  kpiById,
-  onFlagRemediationEmail,
-}: {
-  breaches: ContractKPIBreach[]
-  kpiById: Map<string, ContractKPI>
-  onFlagRemediationEmail: (breach: ContractKPIBreach) => Promise<ContractKPIBreach | null>
-}) {
-  const [expandedFlagId, setExpandedFlagId] = useState<string | null>(breaches.find((breach) => breach.is_breach)?.breach_id || null)
-  const [alertDraft, setAlertDraft] = useState<{ to: string; subject: string; body: string; recipientSource?: ContractKPIBreach['breach_email_recipient_source'] } | null>(null)
-  const ordered = [...breaches].sort((left, right) => {
-    const severityRank: Record<string, number> = { Critical: 5, High: 4, Medium: 3, Low: 2, OK: 1 }
-    return Number(right.is_breach) - Number(left.is_breach)
-      || (severityRank[severityFor(right, kpiById.get(right.kpi_id))] || 0) - (severityRank[severityFor(left, kpiById.get(left.kpi_id))] || 0)
-  })
-  const openEscalation = async (breach: ContractKPIBreach, kpi?: ContractKPI) => {
-    const updated = await onFlagRemediationEmail(breach)
-    const source = updated || breach
-    setAlertDraft({
-      to: source.breach_email_to || kpi?.contact_email || '',
-      subject: `[BREACH ALERT] ${kpi?.name || source.source_kpi?.name || source.kpi_id}`,
-      body: source.breach_email_draft || buildEscalationDraft(source, kpi),
-      recipientSource: source.breach_email_recipient_source,
-    })
+      </>
+    );
   }
 
-  return (
-    <>
-      <section className="rounded-lg border border-gray-200 bg-white">
-        <div className="border-b border-gray-100 p-4">
-          <h2 className="text-base font-semibold text-gray-950">Compliance Flags</h2>
-          <p className="mt-1 text-xs text-gray-500">Detailed breach records with threshold, source, remediation, and escalation actions.</p>
-        </div>
-        {!ordered.length ? (
-          <div className="px-6 py-16 text-center text-sm text-gray-500">No compliance flags for tracked KPIs.</div>
+  type RecoveryReminderAction = {
+    dispatch_id: string;
+    audience: "user" | "client";
+    recipient: string;
+    sent_at: string;
+    status: string;
+    subject: string;
+  };
+
+  const MOCK_ACCOUNT_EMAIL = "ops@scandinavian-airlines.aero";
+
+  function RecoveriesPanel({
+    breaches,
+    kpiById,
+  }: {
+    breaches: ContractKPIBreach[];
+    kpiById: Map<string, ContractKPI>;
+  }) {
+    const [expandedId, setExpandedId] = useState<string | null>(null);
+    const [actionLogs, setActionLogs] = useState<
+      Record<string, RecoveryReminderAction[]>
+    >({});
+    const [isSending, setIsSending] = useState(false);
+
+    const recoveries = useMemo(() => {
+      const severityRank: Record<string, number> = {
+        Critical: 5,
+        High: 4,
+        Medium: 3,
+        Low: 2,
+        OK: 1,
+      };
+      return breaches
+        .filter((breach) => breach.is_breach && breach.status !== "resolved")
+        .sort(
+          (left, right) =>
+            (severityRank[severityFor(right, kpiById.get(right.kpi_id))] || 0) -
+            (severityRank[severityFor(left, kpiById.get(left.kpi_id))] || 0),
+        );
+    }, [breaches, kpiById]);
+
+    const remindersSent = recoveries.reduce(
+      (sum, breach) => sum + (actionLogs[breach.breach_id]?.length || 0),
+      0,
+    );
+    const flaggedEmails = recoveries.filter((breach) => breach.breach_email_to)
+      .length;
+    const exposure = recoveries.reduce(
+      (sum, breach) =>
+        sum +
+        Math.abs(
+          toNumber(breach.penalty_amount) ||
+          toNumber(kpiById.get(breach.kpi_id)?.consequence_value) ||
+          0,
+        ),
+      0,
+    );
+
+    const sendReminder = async (
+      breach: ContractKPIBreach,
+      audience: "user" | "client",
+    ) => {
+      if (isSending) return;
+      const kpi = kpiById.get(breach.kpi_id);
+      const recipient =
+        audience === "user"
+          ? MOCK_ACCOUNT_EMAIL
+          : breach.breach_email_to || kpi?.contact_email || "";
+      if (!recipient) {
+        toast({
+          title: "No recipient available",
+          description: "Add a contact email to the KPI or contract, then retry.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setIsSending(true);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const action: RecoveryReminderAction = {
+        dispatch_id: `rem-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        audience,
+        recipient,
+        sent_at: new Date().toISOString(),
+        status: "mock_dispatched",
+        subject: `Reminder: ${breach.source_kpi?.name || kpi?.name || breach.kpi_id
+          } breach requires remediation`,
+      };
+      setActionLogs((current) => ({
+        ...current,
+        [breach.breach_id]: [...(current[breach.breach_id] || []), action],
+      }));
+      setIsSending(false);
+      toast({
+        title:
+          audience === "user"
+            ? "Reminder logged for you"
+            : "Client reminder logged",
+        description: `Mock dispatched to ${recipient} in demo mode; no external email was sent.`,
+      });
+    };
+
+    return (
+      <div className="space-y-4">
+        <section className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-gray-950">
+                Recoveries Management
+              </h2>
+              <p className="mt-1 text-xs text-gray-500">
+                Open breach flags with remedies, SLA, penalty exposure, and the
+                follow-up email trail. Reminders are mock-dispatched in demo mode.
+              </p>
+            </div>
+            <Pill tone={recoveries.length ? "red" : "emerald"}>
+              {recoveries.length} open
+            </Pill>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Metric
+              label="Open recoveries"
+              value={String(recoveries.length)}
+              detail="flags requiring action"
+            />
+            <Metric
+              label="Reminders sent"
+              value={String(remindersSent)}
+              detail="mock-dispatched follow-ups"
+            />
+            <Metric
+              label="Flagged emails"
+              value={String(flaggedEmails)}
+              detail="counterparty contacts on file"
+            />
+            <Metric
+              label="Penalty exposure"
+              value={money(exposure)}
+              detail="current open risk"
+            />
+          </div>
+        </section>
+
+        {!recoveries.length ? (
+          <section className="rounded-lg border border-gray-200 bg-white px-6 py-16 text-center text-sm text-gray-500">
+            No open recoveries. Every tracked KPI is compliant.
+          </section>
         ) : (
-          <div className="divide-y divide-gray-100">
-            {ordered.map((breach) => {
-              const kpi = kpiById.get(breach.kpi_id)
-              const severity = severityFor(breach, kpi)
-              const expected = expectedFor(breach, kpi)
-              const actual = `${breach.actual_value ?? 'N/A'} ${breach.actual_unit || kpi?.unit || ''}`.trim()
-              const expanded = expandedFlagId === breach.breach_id
-              const exposure = Math.abs(toNumber(kpi?.consequence_value) || toNumber(breach.penalty_amount) || 0)
+          <section className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+            {recoveries.map((breach) => {
+              const kpi = kpiById.get(breach.kpi_id);
+              const severity = severityFor(breach, kpi);
+              const expanded = expandedId === breach.breach_id;
+              const expected = expectedFor(breach, kpi);
+              const actual = `${breach.actual_value ?? "N/A"} ${breach.actual_unit || kpi?.unit || ""
+                }`.trim();
+              const variance = breach.variance_percent
+                ? `${Math.abs(toNumber(breach.variance_percent) || 0)}%`
+                : breach.variance
+                  ? money(Math.abs(toNumber(breach.variance) || 0))
+                  : null;
+              const penalty = Math.abs(
+                toNumber(breach.penalty_amount) ||
+                toNumber(kpi?.consequence_value) ||
+                0,
+              );
+              const reminders = actionLogs[breach.breach_id] || [];
               return (
-                <div key={breach.breach_id || `${breach.kpi_id}-${breach.created_at}`} className="bg-white">
-                  <div className="grid gap-3 p-4 lg:grid-cols-[minmax(280px,1fr)_150px_130px_130px_170px] lg:items-center">
-                    <button type="button" onClick={() => setExpandedFlagId(expanded ? null : breach.breach_id)} className="min-w-0 text-left">
+                <div key={breach.breach_id} className="bg-white">
+                  <div className="grid gap-3 p-4 lg:grid-cols-[minmax(260px,1fr)_120px_120px_120px_190px] lg:items-center">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedId(expanded ? null : breach.breach_id)
+                      }
+                      className="min-w-0 text-left"
+                    >
                       <div className="flex items-center gap-2">
-                        <span className={`h-2.5 w-2.5 rounded-full ${breach.is_breach ? 'bg-cs-primary' : 'bg-gray-300'}`} />
-                        <p className="truncate text-sm font-semibold text-gray-950">{kpi?.name || breach.source_kpi?.name || breach.kpi_id}</p>
+                        <span
+                          className={`h-2.5 w-2.5 rounded-full ${severity === "Critical" || severity === "High"
+                            ? "bg-red-500"
+                            : "bg-amber-400"
+                            }`}
+                        />
+                        <p className="truncate text-sm font-semibold text-gray-950">
+                          {kpi?.name || breach.source_kpi?.name || breach.kpi_id}
+                        </p>
                       </div>
-                      <p className="mt-1 truncate pl-4 text-xs text-gray-400">{breach.kpi_id} · {formatDateTime(breach.created_at || breach.timestamp)}</p>
+                      <p className="mt-1 truncate pl-4 text-xs text-gray-400">
+                        {breach.kpi_id} ·{" "}
+                        {formatDateTime(breach.period_end || breach.timestamp)}
+                      </p>
                     </button>
-                    <div className={breach.is_breach ? 'text-sm font-semibold text-gray-950' : 'text-sm font-semibold text-gray-600'}>
-                      {exposure ? `-${money(exposure)}` : 'No penalty'}
+                    <div className="text-sm font-semibold text-gray-950">
+                      {penalty ? `-${money(penalty)}` : "No penalty"}
                     </div>
-                    <span className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(breach.status || (breach.is_breach ? 'open' : 'clear'))}`}>{titleCase(breach.status || (breach.is_breach ? 'open' : 'clear'))}</span>
-                    <span className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(severity)}`}>{severity}</span>
+                    <span
+                      className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(severity)}`}
+                    >
+                      {severity}
+                    </span>
+                    <span
+                      className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(breach.status || "open")}`}
+                    >
+                      {titleCase(breach.status || "open")}
+                    </span>
                     <div className="flex flex-wrap justify-start gap-1.5 lg:justify-end">
-                      <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setExpandedFlagId(expanded ? null : breach.breach_id)}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs"
+                        onClick={() =>
+                          setExpandedId(expanded ? null : breach.breach_id)
+                        }
+                      >
                         Details
-                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                      </Button>
-                      <Button type="button" size="sm" className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90" onClick={() => void openEscalation(breach, kpi)} disabled={!breach.is_breach}>
-                        <Mail className="h-3.5 w-3.5" />
-                        Escalate
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""
+                            }`}
+                        />
                       </Button>
                     </div>
                   </div>
 
                   {expanded && (
-                    <div className="space-y-4 border-t border-gray-100 bg-gray-50 p-4">
-                      <p className="text-sm leading-6 text-gray-700">
-                        {breachNarrative(breach, kpi)}
-                      </p>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <div className="rounded-lg border border-gray-200 bg-white p-3">
-                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Expected (Contract)</p>
-                          <p className="mt-1 text-sm font-semibold text-gray-950">{expected}</p>
-                        </div>
-                        <div className="rounded-lg border border-gray-300 bg-white p-3">
-                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Actual (Ingested)</p>
-                          <p className="mt-1 text-sm font-semibold text-gray-950">{actual}</p>
-                        </div>
+                    <div className="space-y-4 border-t border-gray-100 bg-gray-50/70 p-4">
+                      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                        <DetailTile
+                          label="Remedy"
+                          value={
+                            breach.remediation ||
+                            kpi?.remediation ||
+                            "Escalate to accountable party and request a corrective action plan."
+                          }
+                        />
+                        <DetailTile
+                          label="SLA"
+                          value={
+                            breach.remediation_sla ||
+                            kpi?.remediation_sla ||
+                            "Not specified"
+                          }
+                          tone="blue"
+                        />
+                        <DetailTile label="Expected (contract)" value={expected} />
+                        <DetailTile label="Actual (ingested)" value={actual} />
                       </div>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <DetailTile label="Contract Clause" value={kpi?.structural_path || kpi?.section_path || kpi?.section || breach.source_kpi?.quote || 'Not captured'} tone="blue" />
-                        <DetailTile label="Data Source" value={breach.source || 'Actual ingestion'} />
+                      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                        <DetailTile
+                          label="Variance"
+                          value={variance || "No variance captured"}
+                        />
+                        <DetailTile
+                          label="Data source"
+                          value={breach.source || "Actual ingestion"}
+                        />
+                        <DetailTile
+                          label="Flagged escalation email"
+                          value={
+                            breach.breach_email_to ||
+                            kpi?.contact_email ||
+                            "No contact on file"
+                          }
+                          tone={breach.breach_email_to ? "blue" : "amber"}
+                        />
+                        <DetailTile
+                          label="Trigger"
+                          value={
+                            breach.penalty_triggered ||
+                            kpi?.trigger_condition ||
+                            "Not specified"
+                          }
+                        />
                       </div>
+
                       <div className="rounded-lg border border-gray-200 bg-white p-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Recommended Action</p>
-                        <p className="mt-1 text-sm leading-6 text-gray-800">{breach.remediation || kpi?.remediation || 'Escalate to accountable party and request corrective action plan.'}</p>
-                        <p className="mt-2 text-xs text-gray-500">SLA: {breach.remediation_sla || kpi?.remediation_sla || 'Not specified'} · Trigger: {breach.penalty_triggered || kpi?.trigger_condition || 'Not specified'}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                          Follow-up actions
+                        </p>
+                        {!reminders.length ? (
+                          <p className="mt-2 text-xs text-gray-500">
+                            No reminders sent yet. Send one to the counterparty
+                            (client) or to your own inbox (user) below.
+                          </p>
+                        ) : (
+                          <div className="mt-2 divide-y divide-gray-100">
+                            {reminders.map((reminder) => (
+                              <div
+                                key={reminder.dispatch_id}
+                                className="flex flex-wrap items-center gap-2 py-2 text-xs"
+                              >
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                <span className="font-semibold capitalize text-gray-900">
+                                  {reminder.audience}
+                                </span>
+                                <span className="text-gray-500">
+                                  → {reminder.recipient}
+                                </span>
+                                <span className="text-gray-400">
+                                  {formatDateTime(reminder.sent_at)}
+                                </span>
+                                <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-semibold text-gray-600">
+                                  {reminder.status}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
+
                       <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                          <Info className="h-3.5 w-3.5" />
-                          Ask AI to Analyze
-                        </Button>
-                        <Button type="button" size="sm" className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90" onClick={() => void openEscalation(breach, kpi)} disabled={!breach.is_breach}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
+                          onClick={() => void sendReminder(breach, "client")}
+                          disabled={isSending}
+                        >
                           <Send className="h-3.5 w-3.5" />
-                          Send Escalation Alert Email
+                          Remind client
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5 text-xs"
+                          onClick={() => void sendReminder(breach, "user")}
+                          disabled={isSending}
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          Remind me (user)
                         </Button>
                       </div>
                     </div>
                   )}
                 </div>
-              )
+              );
+            })}
+          </section>
+        )}
+      </div>
+    );
+  }
+
+  function LogsPanel({
+    actuals,
+    kpiById,
+    sourceConfigs,
+    sourceRuns,
+    runDetails,
+    onLoadRunDetail,
+  }: {
+    actuals: ContractKPIActual[];
+    kpiById: Map<string, ContractKPI>;
+    sourceConfigs: KPISourceConfig[];
+    sourceRuns: Record<string, KPISourceFetchRun[]>;
+    runDetails: Record<string, KPISourceRunDetail | { error: string }>;
+    onLoadRunDetail: (
+      sourceConfigId: string,
+      runId: string,
+    ) => void | Promise<void>;
+  }) {
+    const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+    const sourceById = useMemo(
+      () =>
+        new Map(sourceConfigs.map((source) => [source.source_config_id, source])),
+      [sourceConfigs],
+    );
+    const runs = useMemo(
+      () =>
+        sourceConfigs
+          .flatMap((source) =>
+            (sourceRuns[source.source_config_id] || []).map((run) => ({
+              ...run,
+              source_config_id: run.source_config_id || source.source_config_id,
+            })),
+          )
+          .sort(
+            (left, right) =>
+              new Date(right.started_at || right.finished_at || 0).getTime() -
+              new Date(left.started_at || left.finished_at || 0).getTime(),
+          ),
+      [sourceConfigs, sourceRuns],
+    );
+    const totalRecords = runs.reduce(
+      (total, run) => total + Number(run.records_fetched || 0),
+      0,
+    );
+    const totalCreated = runs.reduce(
+      (total, run) =>
+        total + Number(run.created_actual_count || run.records_accepted || 0),
+      0,
+    );
+
+    const toggleRun = (run: KPISourceFetchRun) => {
+      const next = expandedRunId === run.run_id ? null : run.run_id;
+      setExpandedRunId(next);
+      if (next) void onLoadRunDetail(run.source_config_id, run.run_id);
+    };
+
+    return (
+      <section className="rounded-lg border border-gray-200 bg-white">
+        <div className="flex flex-col gap-3 border-b border-gray-100 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-gray-950">
+              Performance Logs
+            </h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Source fetch runs, records accepted, duplicate skips, and generated
+              compliance flags.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Pill tone="blue">{runs.length} fetch runs</Pill>
+            <Pill tone="emerald">{totalRecords} records fetched</Pill>
+            <Pill tone="gray">{totalCreated} actuals created</Pill>
+          </div>
+        </div>
+        {!runs.length ? (
+          <div className="px-6 py-16 text-center text-sm text-gray-500">
+            No source fetch runs yet.
+            {actuals.length
+              ? ` ${actuals.length} uploaded actual${actuals.length === 1 ? "" : "s"} exist outside the source ledger.`
+              : ""}
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {runs.map((run) => {
+              const source = sourceById.get(run.source_config_id);
+              const expanded = expandedRunId === run.run_id;
+              const detail = runDetails[run.run_id];
+              const detailError =
+                detail && "error" in detail ? detail.error : null;
+              const runDetail = detail && !("error" in detail) ? detail : null;
+              const normalizedRows =
+                runDetail?.normalized_rows ||
+                runDetail?.fetch_run?.normalized_preview ||
+                run.normalized_preview ||
+                [];
+              const skippedRows =
+                runDetail?.skipped_rows ||
+                runDetail?.fetch_run?.skipped_rows ||
+                run.skipped_rows ||
+                [];
+              const rawRows = (runDetail?.raw_records || []).map((raw) => ({
+                row: raw.row_index,
+                status: raw.processing_status,
+                kpi_ids: (raw.mapped_kpi_ids || []).join(", "),
+                payload: raw.raw_payload,
+              }));
+              const createdActuals = runDetail?.created_actuals || [];
+              const createdBreaches = runDetail?.created_breaches || [];
+              const actualRows = createdActuals.map((actual) => {
+                const kpi = kpiById.get(actual.kpi_id);
+                return {
+                  actual_id: actual.actual_id,
+                  kpi: kpi?.name || actual.kpi_id,
+                  value: actualLabel(actual, kpi),
+                  timestamp: formatDateTime(actualTimestamp(actual)),
+                  period: actual.metadata?.period,
+                  record_id:
+                    actual.metadata?.source_record_id ||
+                    actual.metadata?.source_dedupe_key ||
+                    actual.metadata?.record_id,
+                };
+              });
+              const breachRows = createdBreaches.map((breach) => {
+                const kpi = kpiById.get(breach.kpi_id);
+                return {
+                  breach_id: breach.breach_id,
+                  kpi: kpi?.name || breach.kpi_id,
+                  status: breach.is_breach ? "flagged" : "clear",
+                  severity: severityFor(breach, kpi),
+                  expected: expectedFor(breach, kpi),
+                  actual:
+                    `${breach.actual_value ?? "N/A"} ${breach.actual_unit || kpi?.unit || ""}`.trim(),
+                };
+              });
+
+              return (
+                <div key={run.run_id} className="bg-white">
+                  <div className="grid gap-3 p-4 lg:grid-cols-[150px_minmax(220px,1fr)_minmax(240px,1.2fr)_120px_120px_90px] lg:items-center">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-950">
+                        {runDisplayTime(run)}
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-400">
+                        {runDuration(run)} fetch time
+                      </p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-gray-950">
+                        {source?.display_name || run.source_config_id}
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-400">
+                        {titleCase(
+                          source?.source_type || run.source_type || "source",
+                        )}{" "}
+                        ·{" "}
+                        {source
+                          ? ingestionModeLabel(source)
+                          : titleCase(run.trigger_type || "manual")}
+                      </p>
+                    </div>
+                    <p className="min-w-0 truncate font-mono text-xs text-gray-500">
+                      {sourceEndpointLabel(source)}
+                    </p>
+                    <span
+                      className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(run.status || "completed")}`}
+                    >
+                      {titleCase(run.status || "completed")}
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-950">
+                        {run.records_fetched || 0} records
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-400">
+                        {run.records_skipped || 0} skipped
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 justify-self-start text-xs text-gray-500 lg:justify-self-end"
+                      onClick={() => toggleRun(run)}
+                    >
+                      Details
+                      <ChevronDown
+                        className={`ml-1 h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
+                      />
+                    </Button>
+                  </div>
+
+                  {expanded && (
+                    <div className="space-y-3 border-t border-gray-100 bg-gray-50 p-4">
+                      <div className="grid gap-2 md:grid-cols-4">
+                        <DetailTile
+                          label="Accepted Rows"
+                          value={`${run.records_accepted || createdActuals.length || 0}`}
+                          tone="blue"
+                        />
+                        <DetailTile
+                          label="Created Actuals"
+                          value={`${run.created_actual_count ?? createdActuals.length}`}
+                        />
+                        <DetailTile
+                          label="Generated Flags"
+                          value={`${run.created_breach_count ?? createdBreaches.length}`}
+                          tone={
+                            run.created_breach_count || createdBreaches.length
+                              ? "amber"
+                              : "gray"
+                          }
+                        />
+                        <DetailTile
+                          label="Skipped Rows"
+                          value={`${run.records_skipped || skippedRows.length || 0}`}
+                          tone={
+                            run.records_skipped || skippedRows.length
+                              ? "amber"
+                              : "gray"
+                          }
+                        />
+                      </div>
+
+                      {detailError ? (
+                        <div className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800">
+                          {detailError}
+                        </div>
+                      ) : !detail ? (
+                        <div className="flex items-center rounded-md border border-gray-200 bg-white px-3 py-3 text-sm text-gray-500">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading fetched records...
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 xl:grid-cols-2">
+                          <RunPreviewBlock
+                            title="Created Actuals"
+                            rows={actualRows}
+                            empty="No actuals were created in this run."
+                          />
+                          <RunPreviewBlock
+                            title="Skipped / Duplicate Rows"
+                            rows={skippedRows}
+                            empty="No skipped rows for this run."
+                          />
+                          <RunPreviewBlock
+                            title="Raw Parking Layer"
+                            rows={rawRows}
+                            empty="No raw rows were parked for this run."
+                          />
+                          <RunPreviewBlock
+                            title="Accepted Normalized Rows"
+                            rows={normalizedRows}
+                            empty="No normalized rows were stored for this run."
+                          />
+                          <RunPreviewBlock
+                            title="Generated Flags"
+                            rows={breachRows}
+                            empty="No compliance flags were generated in this run."
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
             })}
           </div>
         )}
       </section>
+    );
+  }
 
-      {alertDraft && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
+  // ---------------------------------------------------------------------------
+  // KPI Tracking Heatmap Panel
+  // ---------------------------------------------------------------------------
+
+  const IATA_METRIC_CATEGORIES = [
+    { key: "ground_handling", label: "Ground Handling" },
+    { key: "refuelling", label: "Refuelling" },
+    { key: "turnover_time", label: "Turnover Time" },
+    { key: "de_icing", label: "De-Icing" },
+    { key: "security", label: "Security" },
+    { key: "baggage", label: "Baggage" },
+    { key: "catering", label: "Catering" },
+    { key: "passenger", label: "Passenger Svcs" },
+  ];
+
+  function classifyKpiToCategory(kpi: ContractKPI): string {
+    const text =
+      `${kpi.name} ${kpi.description || ""} ${quoteFor(kpi)} ${kpi.kpi_type || ""} ${kpi.structural_path || ""} ${kpi.scope || ""}`.toLowerCase();
+    if (/refuel|fuel|tanker|uplift/.test(text)) return "refuelling";
+    if (/turnaround|turnover|gate|stand|taxi/.test(text)) return "turnover_time";
+    if (/de.?ic|anti.?ic|deicing/.test(text)) return "de_icing";
+    if (/secur|screening|access/.test(text)) return "security";
+    if (/baggage|luggage|bag/.test(text)) return "baggage";
+    if (/catering|meal|food|beverage/.test(text)) return "catering";
+    if (/passenger|pax|boarding|check.?in/.test(text)) return "passenger";
+    return "ground_handling";
+  }
+
+  function KpiHeatmapPanel({
+    kpis,
+    actuals,
+    breaches,
+  }: {
+    kpis: ContractKPI[];
+    actuals: ContractKPIActual[];
+    breaches: ContractKPIBreach[];
+  }) {
+    const trackedKpis = kpis.filter(isKpiTracked);
+    const acceptedKpis = kpis.filter((k) => k.status === "approved");
+    const breachKpiIds = new Set(
+      breaches
+        .filter((b) => b.is_breach && b.status !== "resolved")
+        .map((b) => b.kpi_id),
+    );
+    const actualKpiIds = new Set(actuals.map((a) => a.kpi_id));
+
+    const cellStatus = (
+      kpi: ContractKPI,
+    ):
+      | "tracked_clear"
+      | "tracked_breach"
+      | "accepted"
+      | "deferred"
+      | "ignored" => {
+      if (kpi.status === "ignored") return "ignored";
+      if (!isKpiTracked(kpi))
+        return kpi.status === "approved" ? "accepted" : "deferred";
+      if (breachKpiIds.has(kpi.kpi_id)) return "tracked_breach";
+      return "tracked_clear";
+    };
+
+    const statusMeta = {
+      tracked_clear: {
+        dot: "bg-emerald-500",
+        label: "Tracked · Clear",
+        text: "text-emerald-700",
+        bg: "bg-emerald-50 border-emerald-200",
+      },
+      tracked_breach: {
+        dot: "bg-[#EE3224]",
+        label: "Tracked · Breach",
+        text: "text-[#EE3224]",
+        bg: "bg-red-50 border-red-200",
+      },
+      accepted: {
+        dot: "bg-[#015CA9]",
+        label: "Accepted · Not tracked",
+        text: "text-[#015CA9]",
+        bg: "bg-blue-50 border-blue-200",
+      },
+      deferred: {
+        dot: "bg-gray-300",
+        label: "Deferred",
+        text: "text-gray-500",
+        bg: "bg-gray-50 border-gray-200",
+      },
+      ignored: {
+        dot: "bg-gray-200",
+        label: "Ignored",
+        text: "text-gray-300",
+        bg: "bg-gray-50 border-gray-100",
+      },
+    };
+
+    const byCategory: Record<string, ContractKPI[]> = {};
+    IATA_METRIC_CATEGORIES.forEach((cat) => {
+      byCategory[cat.key] = [];
+    });
+    kpis.forEach((kpi) => {
+      const cat = classifyKpiToCategory(kpi);
+      if (!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(kpi);
+    });
+
+    const visibleCategories = IATA_METRIC_CATEGORIES.filter(
+      (cat) => byCategory[cat.key]?.length > 0,
+    );
+
+    const summary = {
+      tracked_clear: trackedKpis.filter((k) => !breachKpiIds.has(k.kpi_id))
+        .length,
+      tracked_breach: [...breachKpiIds].filter((id) =>
+        kpis.find((k) => k.kpi_id === id && isKpiTracked(k)),
+      ).length,
+      accepted: acceptedKpis.filter((k) => !isKpiTracked(k)).length,
+      deferred: kpis.filter(
+        (k) =>
+          k.status !== "approved" && k.status !== "ignored" && !isKpiTracked(k),
+      ).length,
+    };
+
+    return (
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-4">
+          {[
+            {
+              displayLabel: "Tracked Clear",
+              value: summary.tracked_clear,
+              meta: statusMeta.tracked_clear,
+            },
+            {
+              displayLabel: "Active Breaches",
+              value: summary.tracked_breach,
+              meta: statusMeta.tracked_breach,
+            },
+            {
+              displayLabel: "Accepted",
+              value: summary.accepted,
+              meta: statusMeta.accepted,
+            },
+            {
+              displayLabel: "Deferred",
+              value: summary.deferred,
+              meta: statusMeta.deferred,
+            },
+          ].map((item) => (
+            <div
+              key={item.displayLabel}
+              className={`rounded-lg border p-4 ${item.meta.bg}`}
+            >
+              <p
+                className={`text-[10px] font-bold uppercase tracking-wider ${item.meta.text}`}
+              >
+                {item.displayLabel}
+              </p>
+              <p className="mt-2 text-3xl font-semibold text-gray-950">
+                {item.value}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {visibleCategories.length > 0 && (
+          <section className="rounded-lg border border-gray-200 bg-white">
             <div className="border-b border-gray-100 px-5 py-4">
-              <h3 className="text-base font-semibold text-gray-950">Escalation Alert Email</h3>
-              <p className="mt-1 text-xs text-gray-500">Review the generated breach notice before dispatch.</p>
+              <h2 className="text-base font-semibold text-gray-950">
+                Coverage by Service Category
+              </h2>
+              <p className="mt-1 text-xs text-gray-500">
+                KPI obligation density per IATA operational service area.
+              </p>
             </div>
-            <div className="space-y-3 p-5">
-              <DetailTile label="To" value={alertDraft.to || 'No contract email found'} tone={alertDraft.to ? 'gray' : 'amber'} />
-              {alertDraft.recipientSource?.source && (
-                <DetailTile label="Recipient Source" value={[
-                  alertDraft.recipientSource.source,
-                  alertDraft.recipientSource.matched_party ? `party: ${alertDraft.recipientSource.matched_party}` : '',
-                  alertDraft.recipientSource.confidence ? `confidence: ${alertDraft.recipientSource.confidence}` : '',
-                ].filter(Boolean).join(' · ')} />
-              )}
-              <DetailTile label="Subject" value={alertDraft.subject} />
-              <Textarea value={alertDraft.body} onChange={(event) => setAlertDraft({ ...alertDraft, body: event.target.value })} className="min-h-[240px] font-mono text-xs" />
+            <div className="grid gap-0 divide-y divide-gray-100">
+              {visibleCategories.map((cat) => {
+                const catKpis = byCategory[cat.key] || [];
+                const catTracked = catKpis.filter(isKpiTracked).length;
+                const catBreaches = catKpis.filter((k) =>
+                  breachKpiIds.has(k.kpi_id),
+                ).length;
+                const coverage = catKpis.length
+                  ? Math.round((catTracked / catKpis.length) * 100)
+                  : 0;
+                return (
+                  <div
+                    key={cat.key}
+                    className="grid items-center gap-4 px-5 py-3 sm:grid-cols-[160px_1fr_80px_80px_80px]"
+                  >
+                    <p className="text-sm font-semibold text-gray-900">
+                      {cat.label}
+                    </p>
+                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${coverage}%` }}
+                        transition={{ duration: 0.8, ease: "easeOut" }}
+                        className={`h-2 rounded-full ${catBreaches > 0 ? "bg-[#EE3224]" : coverage > 0 ? "bg-emerald-500" : "bg-gray-200"}`}
+                      />
+                    </div>
+                    <p className="text-center text-xs font-semibold text-gray-700">
+                      {catKpis.length} KPIs
+                    </p>
+                    <p className="text-center text-xs font-semibold text-emerald-700">
+                      {catTracked} tracked
+                    </p>
+                    <p
+                      className={`text-center text-xs font-semibold ${catBreaches > 0 ? "text-[#EE3224]" : "text-gray-400"}`}
+                    >
+                      {catBreaches} breach{catBreaches !== 1 ? "es" : ""}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
-            <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-4">
-              <Button type="button" variant="ghost" onClick={() => setAlertDraft(null)}>Cancel</Button>
-              <Button type="button" className="bg-cs-primary text-white hover:bg-cs-primary/90" disabled={!alertDraft.to} onClick={() => {
-                toast({ title: 'Escalation alert dispatched', description: 'The breach alert has been marked for supplier follow-up.' })
-                setAlertDraft(null)
-              }}>
-                Dispatch Alert
+          </section>
+        )}
+
+        <section className="rounded-lg border border-gray-200 bg-white">
+          <div className="border-b border-gray-100 px-5 py-4">
+            <h2 className="text-base font-semibold text-gray-950">
+              KPI Tracking Matrix
+            </h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Operational clause coverage across IATA service categories. Each
+              cell represents a tracked obligation and its current compliance
+              state.
+            </p>
+          </div>
+
+          {!kpis.length ? (
+            <div className="px-5 py-12 text-center text-sm text-gray-500">
+              No KPIs extracted yet. Run extraction from the header to populate
+              the matrix.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse text-left text-xs">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-gray-400 min-w-[200px]">
+                      Obligation / KPI
+                    </th>
+                    {IATA_METRIC_CATEGORIES.map((cat) => (
+                      <th
+                        key={cat.key}
+                        className="px-3 py-3 text-[10px] font-bold uppercase tracking-wide text-gray-400 min-w-[120px] text-center"
+                      >
+                        {cat.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {kpis
+                    .filter((k) => k.status !== "ignored")
+                    .slice(0, 40)
+                    .map((kpi) => {
+                      const kpiCategory = classifyKpiToCategory(kpi);
+                      const status = cellStatus(kpi);
+                      const meta = statusMeta[status];
+                      return (
+                        <tr key={kpi.kpi_id} className="hover:bg-gray-50/60">
+                          <td className="sticky left-0 z-10 bg-white px-4 py-2.5 hover:bg-gray-50/60">
+                            <div className="flex items-start gap-2">
+                              <span
+                                className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${meta.dot}`}
+                              />
+                              <div className="min-w-0">
+                                <p className="truncate max-w-[180px] text-xs font-semibold text-gray-900">
+                                  {kpi.name}
+                                </p>
+                                <p
+                                  className={`text-[10px] font-medium ${meta.text}`}
+                                >
+                                  {meta.label}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          {IATA_METRIC_CATEGORIES.map((cat) => {
+                            const isMatch = cat.key === kpiCategory;
+                            return (
+                              <td
+                                key={cat.key}
+                                className="px-3 py-2.5 text-center"
+                              >
+                                {isMatch ? (
+                                  <motion.span
+                                    initial={{ scale: 0.5, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    transition={{ duration: 0.3 }}
+                                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full border ${meta.bg}`}
+                                  >
+                                    <span
+                                      className={`h-2.5 w-2.5 rounded-full ${meta.dot}`}
+                                    />
+                                  </motion.span>
+                                ) : (
+                                  <span className="inline-block h-1 w-4 rounded-full bg-gray-100" />
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-4 border-t border-gray-100 px-5 py-3">
+            {Object.entries(statusMeta)
+              .filter(([k]) => k !== "ignored")
+              .map(([key, meta]) => (
+                <div key={key} className="flex items-center gap-1.5">
+                  <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                  <span className="text-xs text-gray-500">{meta.label}</span>
+                </div>
+              ))}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Source Configuration Modal (REST API, SAP, Oracle, File connectors)
+  // ---------------------------------------------------------------------------
+
+  interface SourceConfigModalProps {
+    source: KPISourceConfig;
+    onClose: () => void;
+    onSave: (updates: Partial<KPISourceConfig>) => Promise<void>;
+    onTest: (updates: Partial<KPISourceConfig>) => Promise<any>;
+    isSaving: boolean;
+  }
+
+  function SourceConfigModal({
+    source,
+    onClose,
+    onSave,
+    onTest,
+    isSaving,
+  }: SourceConfigModalProps) {
+    const isApiType = [
+      "rest_api",
+      "oracle_fusion",
+      "sap_s4hana",
+      "sap_ariba",
+      "oracle_db",
+    ].includes(source.source_type);
+    const isErp = [
+      "oracle_fusion",
+      "sap_s4hana",
+      "sap_ariba",
+      "oracle_db",
+    ].includes(source.source_type);
+
+    const defaults = SOURCE_CONFIG_DEFAULTS[source.source_type] || {};
+
+    const [endpoint, setEndpoint] = useState(
+      source.endpoint || defaults.endpoint || "",
+    );
+    const [method, setMethod] = useState(
+      source.method || defaults.method || "GET",
+    );
+    const [authType, setAuthType] = useState(
+      source.auth_type || defaults.auth_type || "none",
+    );
+    const [credentialRef, setCredentialRef] = useState("");
+    const [recordPath, setRecordPath] = useState(
+      source.record_path || source.data_path || "",
+    );
+    const [displayName, setDisplayName] = useState(source.display_name || "");
+    const [cadence, setCadence] = useState(source.schedule?.cadence || "manual");
+    const [isTesting, setIsTesting] = useState(false);
+    const [testResult, setTestResult] = useState<{
+      ok: boolean;
+      message: string;
+    } | null>(null);
+    const [testData, setTestData] = useState<Array<Record<string, any>>>([]);
+    const [sapRecords, setSapRecords] = useState(() => {
+      if (source.source_type !== "sap_s4hana") return "";
+      const payload = source.sample_payload;
+      return payload == null
+        ? JSON.stringify({ value: [] }, null, 2)
+        : typeof payload === "string"
+          ? payload
+          : JSON.stringify(payload, null, 2);
+    });
+
+    const handleSave = async () => {
+      let sapPayload: unknown;
+      if (source.source_type === "sap_s4hana" && sapRecords.trim()) {
+        try {
+          sapPayload = JSON.parse(sapRecords);
+        } catch {
+          setTestResult({ ok: false, message: "SAP records must be valid JSON." });
+          return;
+        }
+        if (!sapPayload || typeof sapPayload !== "object" || !Array.isArray((sapPayload as { value?: unknown }).value)) {
+          setTestResult({ ok: false, message: 'SAP records must use an OData-style { "value": [...] } payload.' });
+          return;
+        }
+      }
+      const updates: Partial<KPISourceConfig> = {
+        display_name: displayName || source.display_name,
+        endpoint: endpoint || undefined,
+        method: method || "GET",
+        auth_type: authType,
+        credential_ref: credentialRef || undefined,
+        record_path: recordPath || undefined,
+        schedule: { ...(source.schedule || {}), cadence },
+        status: endpoint ? "mapped" : source.status || "draft",
+        enabled: cadence !== "manual",
+        ...(source.source_type === "sap_s4hana" && sapRecords.trim()
+          ? { sample_payload: sapPayload }
+          : {}),
+      };
+      await onSave(updates);
+      onClose();
+    };
+
+    const handleTest = async () => {
+      setIsTesting(true);
+      setTestResult(null);
+      setTestData([]);
+      try {
+        const result = await onTest({
+          display_name: displayName || source.display_name,
+          endpoint: endpoint || undefined,
+          method: method || "GET",
+          auth_type: authType,
+          credential_ref: credentialRef || undefined,
+          record_path: recordPath || undefined,
+          schedule: { ...(source.schedule || {}), cadence },
+          enabled: cadence !== "manual",
+          status: endpoint ? "mapped" : source.status || "draft",
+        });
+        const connection = result?.connection;
+        const availableData = result?.available_data || [];
+        setTestData(
+          Array.isArray(availableData) ? availableData.slice(0, 5) : [],
+        );
+        setTestResult({
+          ok: Boolean(connection?.ok),
+          message: connection?.ok
+            ? `Connection succeeded. ${availableData.length || result?.fetch_run?.records_fetched || 0} sample row(s) detected; ${result?.schema_fields?.length || 0} fields available to map.`
+            : (connection?.errors || ["Connection test failed."]).join(" "),
+        });
+      } catch (error) {
+        setTestResult({
+          ok: false,
+          message:
+            error instanceof Error ? error.message : "Connection test failed.",
+        });
+      } finally {
+        setIsTesting(false);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+        <div className="w-full max-w-2xl rounded-lg border border-gray-200 bg-white shadow-lg">
+          <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+            <div>
+              <h3 className="text-base font-semibold text-gray-950">
+                Configure Source
+              </h3>
+              <p className="mt-0.5 text-xs text-gray-500">
+                {source.display_name} · {sourceTypeLabel(source.source_type)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="space-y-4 px-6 py-5 max-h-[60vh] overflow-y-auto">
+            {defaults.note && (
+              <div className="rounded-md border border-[#015CA9]/20 bg-[#015CA9]/5 px-3 py-2.5 text-xs text-[#015CA9] leading-relaxed">
+                {defaults.note}
+              </div>
+            )}
+
+            <label className="block">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                Display Name
+              </span>
+              <input
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm text-gray-800 focus:border-[#015CA9] focus:outline-none focus:ring-1 focus:ring-[#015CA9]"
+                placeholder={source.display_name}
+              />
+            </label>
+
+            {isApiType && (
+              <>
+                <label className="block">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                    {isErp ? "Base API Endpoint / Host" : "Endpoint URL"}
+                  </span>
+                  <input
+                    value={endpoint}
+                    onChange={(e) => setEndpoint(e.target.value)}
+                    className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 font-mono text-xs text-gray-800 focus:border-[#015CA9] focus:outline-none focus:ring-1 focus:ring-[#015CA9]"
+                    placeholder={
+                      defaults.endpoint || "https://api.example.com/v1/kpi-data"
+                    }
+                  />
+                </label>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                      HTTP Method
+                    </span>
+                    <select
+                      value={method}
+                      onChange={(e) => setMethod(e.target.value)}
+                      className="mt-1 h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-800 focus:border-[#015CA9] focus:outline-none"
+                    >
+                      {["GET", "POST", "PUT"].map((m) => (
+                        <option key={m}>{m}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                      Authentication
+                    </span>
+                    <select
+                      value={authType}
+                      onChange={(e) => setAuthType(e.target.value)}
+                      className="mt-1 h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-800 focus:border-[#015CA9] focus:outline-none"
+                    >
+                      {[
+                        "none",
+                        "bearer",
+                        "basic",
+                        "api_key",
+                        "oauth2",
+                        "sap_destination",
+                        "password",
+                        "wallet",
+                      ].map((a) => (
+                        <option key={a} value={a}>
+                          {titleCase(a)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {(authType === "bearer" || authType === "api_key") && (
+                  <label className="block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                      Credential Reference
+                    </span>
+                    <input
+                      value={credentialRef}
+                      onChange={(e) => setCredentialRef(e.target.value)}
+                      className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 font-mono text-xs text-gray-800 focus:border-[#015CA9] focus:outline-none focus:ring-1 focus:ring-[#015CA9]"
+                      placeholder="env:IATA_SOURCE_TOKEN"
+                    />
+                  </label>
+                )}
+                {(authType === "basic" || authType === "password") && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                        Credential Reference
+                      </span>
+                      <input
+                        value={credentialRef}
+                        onChange={(e) => setCredentialRef(e.target.value)}
+                        className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 font-mono text-xs text-gray-800 focus:border-[#015CA9] focus:outline-none focus:ring-1 focus:ring-[#015CA9]"
+                        placeholder="env:IATA_BASIC_CREDENTIAL"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                        Secret handling
+                      </span>
+                      <p className="mt-2 text-xs leading-5 text-gray-500">
+                        Username/password values are resolved from the credential
+                        reference at fetch time.
+                      </p>
+                    </label>
+                  </div>
+                )}
+                {authType === "oauth2" && (
+                  <label className="block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                      OAuth2 Token Endpoint
+                    </span>
+                    <input
+                      className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 font-mono text-xs text-gray-800 focus:border-[#015CA9] focus:outline-none focus:ring-1 focus:ring-[#015CA9]"
+                      placeholder="https://auth.example.com/oauth/token"
+                    />
+                  </label>
+                )}
+                {isErp && (
+                  <label className="block">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                      ERP resource / data path
+                    </span>
+                    <input
+                      value={recordPath}
+                      onChange={(e) => setRecordPath(e.target.value)}
+                      className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 font-mono text-xs text-gray-800 focus:border-[#015CA9] focus:outline-none focus:ring-1 focus:ring-[#015CA9]"
+                      placeholder="value / records / items"
+                    />
+                    <span className="mt-1 block text-[11px] text-gray-500">
+                      Test Connection will expose response fields for mapping into
+                      tracked KPIs.
+                    </span>
+                  </label>
+                )}
+                {source.source_type === "sap_s4hana" && (
+                  <label className="block">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                        Add SAP records for preview
+                      </span>
+                      <button
+                        type="button"
+                        className="text-[11px] font-semibold text-[#015CA9]"
+                        onClick={() => setSapRecords(JSON.stringify({ value: [{ kpi_code: "SGHA-2.7-ELECTRICITY", amount: 119, posting_date: new Date().toISOString(), document_id: "SAP-DOC-001", unit: "SEK" }] }, null, 2))}
+                      >
+                        Load template
+                      </button>
+                    </div>
+                    <textarea
+                      value={sapRecords}
+                      onChange={(event) => setSapRecords(event.target.value)}
+                      className="mt-1 min-h-40 w-full rounded-md border border-gray-200 px-3 py-2 font-mono text-xs text-gray-800 focus:border-[#015CA9] focus:outline-none focus:ring-1 focus:ring-[#015CA9]"
+                      spellCheck={false}
+                    />
+                    <span className="mt-1 block text-[11px] text-gray-500">
+                      Use SAP OData format: <code>{'{ "value": [...] }'}</code>. Save, then click Test Connection to preview these records.
+                    </span>
+                  </label>
+                )}
+              </>
+            )}
+
+            <label className="block">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                Fetch Cadence
+              </span>
+              <select
+                value={cadence}
+                onChange={(e) => setCadence(e.target.value)}
+                className="mt-1 h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-800 focus:border-[#015CA9] focus:outline-none"
+              >
+                <option value="manual">Manual (on demand)</option>
+                <option value="hourly">Hourly</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </label>
+
+            {testResult && (
+              <div
+                className={`rounded-md border px-3 py-2.5 text-xs ${testResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}
+              >
+                {testResult.message}
+              </div>
+            )}
+            {testResult?.ok && testData.length > 0 && (
+              <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                  Available data preview
+                </p>
+                <div className="mt-2 overflow-x-auto rounded border border-gray-200 bg-white">
+                  <table className="min-w-full text-left text-[11px]">
+                    <thead className="bg-gray-50 text-gray-400">
+                      <tr>
+                        {Object.keys(testData[0])
+                          .slice(0, 6)
+                          .map((key) => (
+                            <th key={key} className="px-2 py-1.5 font-semibold">
+                              {key}
+                            </th>
+                          ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        {Object.keys(testData[0])
+                          .slice(0, 6)
+                          .map((key) => (
+                            <td
+                              key={key}
+                              className="max-w-[160px] truncate px-2 py-1.5 text-gray-700"
+                            >
+                              {displayCell(testData[0][key])}
+                            </td>
+                          ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 border-t border-gray-100 px-6 py-4">
+            {isApiType && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5 text-xs"
+                onClick={handleTest}
+                disabled={isTesting || isSaving}
+              >
+                {isTesting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Zap className="h-3.5 w-3.5" />
+                )}
+                Test Connection
+              </Button>
+            )}
+            <div className="ml-auto flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 text-xs"
+                onClick={onClose}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 bg-[#015CA9] text-xs text-white hover:bg-[#014c8c]"
+                onClick={handleSave}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                Save Configuration
               </Button>
             </div>
           </div>
         </div>
-      )}
-    </>
-  )
-}
-
-function LogsPanel({
-  actuals,
-  kpiById,
-  sourceConfigs,
-  sourceRuns,
-  runDetails,
-  onLoadRunDetail,
-}: {
-  actuals: ContractKPIActual[]
-  kpiById: Map<string, ContractKPI>
-  sourceConfigs: KPISourceConfig[]
-  sourceRuns: Record<string, KPISourceFetchRun[]>
-  runDetails: Record<string, KPISourceRunDetail | { error: string }>
-  onLoadRunDetail: (sourceConfigId: string, runId: string) => void | Promise<void>
-}) {
-  const [expandedRunId, setExpandedRunId] = useState<string | null>(null)
-  const sourceById = useMemo(() => new Map(sourceConfigs.map((source) => [source.source_config_id, source])), [sourceConfigs])
-  const runs = useMemo(() => (
-    sourceConfigs
-      .flatMap((source) => (sourceRuns[source.source_config_id] || []).map((run) => ({
-        ...run,
-        source_config_id: run.source_config_id || source.source_config_id,
-      })))
-      .sort((left, right) => new Date(right.started_at || right.finished_at || 0).getTime() - new Date(left.started_at || left.finished_at || 0).getTime())
-  ), [sourceConfigs, sourceRuns])
-  const totalRecords = runs.reduce((total, run) => total + Number(run.records_fetched || 0), 0)
-  const totalCreated = runs.reduce((total, run) => total + Number(run.created_actual_count || run.records_accepted || 0), 0)
-
-  const toggleRun = (run: KPISourceFetchRun) => {
-    const next = expandedRunId === run.run_id ? null : run.run_id
-    setExpandedRunId(next)
-    if (next) void onLoadRunDetail(run.source_config_id, run.run_id)
-  }
-
-  return (
-    <section className="rounded-lg border border-gray-200 bg-white">
-      <div className="flex flex-col gap-3 border-b border-gray-100 p-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-gray-950">Performance Logs</h2>
-          <p className="mt-1 text-xs text-gray-500">Source fetch runs, records accepted, duplicate skips, and generated compliance flags.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Pill tone="blue">{runs.length} fetch runs</Pill>
-          <Pill tone="emerald">{totalRecords} records fetched</Pill>
-          <Pill tone="gray">{totalCreated} actuals created</Pill>
-        </div>
       </div>
-      {!runs.length ? (
-        <div className="px-6 py-16 text-center text-sm text-gray-500">
-          No source fetch runs yet.
-          {actuals.length ? ` ${actuals.length} uploaded actual${actuals.length === 1 ? '' : 's'} exist outside the source ledger.` : ''}
-        </div>
-      ) : (
-        <div className="divide-y divide-gray-100">
-          {runs.map((run) => {
-            const source = sourceById.get(run.source_config_id)
-            const expanded = expandedRunId === run.run_id
-            const detail = runDetails[run.run_id]
-            const detailError = detail && 'error' in detail ? detail.error : null
-            const runDetail = detail && !('error' in detail) ? detail : null
-            const normalizedRows = runDetail?.normalized_rows || runDetail?.fetch_run?.normalized_preview || run.normalized_preview || []
-            const skippedRows = runDetail?.skipped_rows || runDetail?.fetch_run?.skipped_rows || run.skipped_rows || []
-            const createdActuals = runDetail?.created_actuals || []
-            const createdBreaches = runDetail?.created_breaches || []
-            const actualRows = createdActuals.map((actual) => {
-              const kpi = kpiById.get(actual.kpi_id)
-              return {
-                actual_id: actual.actual_id,
-                kpi: kpi?.name || actual.kpi_id,
-                value: actualLabel(actual, kpi),
-                timestamp: formatDateTime(actualTimestamp(actual)),
-                period: actual.metadata?.period,
-                record_id: actual.metadata?.source_record_id || actual.metadata?.source_dedupe_key || actual.metadata?.record_id,
-              }
-            })
-            const breachRows = createdBreaches.map((breach) => {
-              const kpi = kpiById.get(breach.kpi_id)
-              return {
-                breach_id: breach.breach_id,
-                kpi: kpi?.name || breach.kpi_id,
-                status: breach.is_breach ? 'flagged' : 'clear',
-                severity: severityFor(breach, kpi),
-                expected: expectedFor(breach, kpi),
-                actual: `${breach.actual_value ?? 'N/A'} ${breach.actual_unit || kpi?.unit || ''}`.trim(),
-              }
-            })
-
-            return (
-              <div key={run.run_id} className="bg-white">
-                <div className="grid gap-3 p-4 lg:grid-cols-[150px_minmax(220px,1fr)_minmax(240px,1.2fr)_120px_120px_90px] lg:items-center">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-950">{runDisplayTime(run)}</p>
-                    <p className="mt-0.5 text-xs text-gray-400">{runDuration(run)} fetch time</p>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-gray-950">{source?.display_name || run.source_config_id}</p>
-                    <p className="mt-0.5 text-xs text-gray-400">{titleCase(source?.source_type || run.source_type || 'source')} · {source ? ingestionModeLabel(source) : titleCase(run.trigger_type || 'manual')}</p>
-                  </div>
-                  <p className="min-w-0 truncate font-mono text-xs text-gray-500">{sourceEndpointLabel(source)}</p>
-                  <span className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(run.status || 'completed')}`}>{titleCase(run.status || 'completed')}</span>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-950">{run.records_fetched || 0} records</p>
-                    <p className="mt-0.5 text-xs text-gray-400">{run.records_skipped || 0} skipped</p>
-                  </div>
-                  <Button type="button" variant="ghost" size="sm" className="h-8 justify-self-start text-xs text-gray-500 lg:justify-self-end" onClick={() => toggleRun(run)}>
-                    Details
-                    <ChevronDown className={`ml-1 h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                  </Button>
-                </div>
-
-                {expanded && (
-                  <div className="space-y-3 border-t border-gray-100 bg-gray-50 p-4">
-                    <div className="grid gap-2 md:grid-cols-4">
-                      <DetailTile label="Accepted Rows" value={`${run.records_accepted || createdActuals.length || 0}`} tone="blue" />
-                      <DetailTile label="Created Actuals" value={`${run.created_actual_count ?? createdActuals.length}`} />
-                      <DetailTile label="Generated Flags" value={`${run.created_breach_count ?? createdBreaches.length}`} tone={(run.created_breach_count || createdBreaches.length) ? 'amber' : 'gray'} />
-                      <DetailTile label="Skipped Rows" value={`${run.records_skipped || skippedRows.length || 0}`} tone={(run.records_skipped || skippedRows.length) ? 'amber' : 'gray'} />
-                    </div>
-
-                    {detailError ? (
-                      <div className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800">{detailError}</div>
-                    ) : !detail ? (
-                      <div className="flex items-center rounded-md border border-gray-200 bg-white px-3 py-3 text-sm text-gray-500">
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Loading fetched records...
-                      </div>
-                    ) : (
-                      <div className="grid gap-3 xl:grid-cols-2">
-                        <RunPreviewBlock title="Created Actuals" rows={actualRows} empty="No actuals were created in this run." />
-                        <RunPreviewBlock title="Skipped / Duplicate Rows" rows={skippedRows} empty="No skipped rows for this run." />
-                        <RunPreviewBlock title="Accepted Normalized Rows" rows={normalizedRows} empty="No normalized rows were stored for this run." />
-                        <RunPreviewBlock title="Generated Flags" rows={breachRows} empty="No compliance flags were generated in this run." />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </section>
-  )
-}
+    );
+  }

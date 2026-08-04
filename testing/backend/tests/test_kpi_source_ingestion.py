@@ -49,8 +49,15 @@ def _matches(doc, query):
 
 
 class FakeCollection:
-    def __init__(self, docs=None):
+    def __init__(self, name="fake", docs=None):
+        self.name = name
         self.docs = list(docs or [])
+
+    def create_index(self, keys, **kwargs):
+        return "index_ok"
+
+    def drop_index(self, name):
+        return None
 
     def find(self, query=None, *_args, **_kwargs):
         return FakeCursor([doc for doc in self.docs if _matches(doc, query or {})])
@@ -91,9 +98,10 @@ class FakeCollection:
 class FakeDB:
     def __init__(self):
         self.collections = {}
+        self.client = MagicMock()
 
     def __getitem__(self, name):
-        self.collections.setdefault(name, FakeCollection())
+        self.collections.setdefault(name, FakeCollection(name=name))
         return self.collections[name]
 
 
@@ -132,6 +140,44 @@ def test_rest_adapter_fetches_record_path_from_mocked_payload():
     }, session=session)
 
     assert adapter.fetch() == [{"metric": "On-time delivery", "score": "92"}]
+
+
+def test_rest_adapter_test_connection_accepts_preview_payload():
+    adapter = RestSourceAdapter({
+        "source_type": "rest_api",
+        "auth_type": "none",
+        "record_path": "records",
+    })
+
+    result = adapter.test_connection(payload={"records": [{"metric": "On-time delivery", "score": 92}]})
+
+    assert result["ok"] is True
+    assert result["mode"] == "sample_payload"
+    assert result["sample_records"] == 1
+
+
+def test_rest_adapter_reports_invalid_json_response():
+    session = MagicMock()
+    response = MagicMock()
+    response.headers = {"content-type": "application/json"}
+    response.status_code = 200
+    response.text = "<html>login required</html>"
+    response.json.side_effect = ValueError("invalid json")
+    response.raise_for_status.return_value = None
+    session.request.return_value = response
+
+    adapter = RestSourceAdapter({
+        "source_type": "rest_api",
+        "endpoint": "https://example.test/kpis",
+        "method": "GET",
+        "auth_type": "none",
+    }, session=session)
+
+    result = adapter.test_connection()
+
+    assert result["ok"] is False
+    assert "invalid JSON" in result["errors"][0]
+    assert "login required" in result["errors"][0]
 
 
 def test_file_parsers_normalize_csv_json_xlsx_and_xml_rows():
@@ -750,3 +796,26 @@ def test_error_budget_rule_is_deterministic_and_reports_burn_rate():
     assert result["expected_value"] == 100
     assert result["evaluated_value"] == 125
     assert result["burn_rate"] == 1.25
+
+
+def test_raw_records_parking_layer():
+    db = FakeDB()
+    service = KpiSourceIngestionService(db)
+    config = {
+        "contract_id": "contract-1",
+        "source_config_id": "src-config-1",
+    }
+    records = [
+        {"id": 1, "kpi_id": "kpi-1", "actual_value": 98.5},
+        {"id": 2, "kpi_id": "kpi-2", "actual_value": 105.0},
+    ]
+
+    count = service._park_raw_records(config, "run-101", records)
+    assert count == 2
+
+    parked = list(db["contract_kpi_raw_records"].find({"run_id": "run-101"}))
+    assert len(parked) == 2
+    assert parked[0]["contract_id"] == "contract-1"
+    assert parked[0]["status"] == "parked"
+    assert parked[0]["source_payload"] == {"id": 1, "kpi_id": "kpi-1", "actual_value": 98.5}
+
