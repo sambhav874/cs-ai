@@ -227,11 +227,32 @@ const tooltipStyle = {
 /* --------------------------------- component --------------------------------- */
 interface ProjectDashboardProps {
   projectId: string; // needed to fetch real counts for this project
+  isEmpty?: boolean;
 }
 
-export default function ProjectDashboard({ projectId }: ProjectDashboardProps) {
+export default function ProjectDashboard({ projectId, isEmpty = false }: ProjectDashboardProps) {
   const [range, setRange] = useState<RangeKey>("month");
-  const baseDataset = useMemo(() => buildDataset(range), [range]);
+  
+  const baseDataset = useMemo(() => {
+    if (isEmpty) {
+      return {
+        totalObligations: 0, clientSide: 0, supplierSide: 0, ruleTypeBreakdown: [],
+        complianceTrend: RANGE_META[range].buckets.map(period => ({ period, compliant: 0, breached: 0 })),
+        breachBySource: [],
+        financialExposure: RANGE_META[range].buckets.map(period => ({ period, atRisk: 0, recovered: 0 })),
+        activeBreaches: 0, dollarAtRisk: 0, complianceRate: 0,
+        lifecycle: [
+          { stage: "Breach Detected", value: 0, fill: C.red },
+          { stage: "Notification Sent", value: 0, fill: C.amber },
+          { stage: "In Remediation", value: 0, fill: C.violet },
+          { stage: "Resolved", value: 0, fill: C.primary },
+          { stage: "Claim Recovered", value: 0, fill: C.green },
+        ],
+      };
+    }
+    return buildDataset(range);
+  }, [range, isEmpty]);
+
   const { delta, refresh, loading, connected } = useLiveDelta(projectId);
   const data = useMemo(() => applyLiveDelta(baseDataset, delta), [baseDataset, delta]);
 
@@ -270,7 +291,7 @@ export default function ProjectDashboard({ projectId }: ProjectDashboardProps) {
               className="inline-block w-1.5 h-1.5 rounded-full"
               style={{ background: connected ? C.green : C.inkFaint }}
             />
-            {loading ? "Refreshing…" : "Refresh Live Data"}
+            {loading ? "Refreshing…" : "Refresh"}
           </button>
 
           <div className="flex gap-1 p-1 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
@@ -299,11 +320,21 @@ export default function ProjectDashboard({ projectId }: ProjectDashboardProps) {
         <StatCard icon={ShieldCheck} label="Compliance Rate" value={`${data.complianceRate}%`} sub={RANGE_META[range].label} tone={C.green} />
         <StatCard icon={AlertTriangle} label="Active Breaches" value={data.activeBreaches} sub={RANGE_META[range].label} tone={C.red} />
         <StatCard icon={DollarSign} label="$ At Risk" value={money(data.dollarAtRisk)} sub="Open penalty exposure" tone={C.amber} />
-        <StatCard icon={Users2} label="Client / Supplier" value={`${Math.round((data.clientSide / data.totalObligations) * 100)}% / ${Math.round((data.supplierSide / data.totalObligations) * 100)}%`} sub="Obligation split" />
+        <StatCard icon={Users2} label="Client / Supplier" value={data.totalObligations > 0 ? `${Math.round((data.clientSide / data.totalObligations) * 100)}% / ${Math.round((data.supplierSide / data.totalObligations) * 100)}%` : "0% / 0%"} sub="Obligation split" />
       </div>
 
-      {/* compliance trend - hero */}
-      <CardShell className="mb-6">
+      {isEmpty ? (
+        <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed rounded-lg" style={{ borderColor: C.border, background: C.surface }}>
+          <FileCheck2 size={32} style={{ color: C.inkFaint }} className="mb-4" />
+          <h3 className="text-lg font-medium" style={{ color: C.ink }}>No Data Yet</h3>
+          <p className="text-sm mt-1 max-w-md" style={{ color: C.inkMuted }}>
+            Upload contracts and configure KPIs to start seeing compliance trends and financial exposure charts.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* compliance trend - hero */}
+          <CardShell className="mb-6">
         <SectionTitle eyebrow="Continuous Monitoring" title="Compliance Health Trend" />
         <ResponsiveContainer width="100%" height={260}>
           <AreaChart data={data.complianceTrend} margin={{ left: -12, right: 12 }}>
@@ -392,6 +423,8 @@ export default function ProjectDashboard({ projectId }: ProjectDashboardProps) {
           </BarChart>
         </ResponsiveContainer>
       </CardShell>
+        </>
+      )}
     </div>
   );
 }

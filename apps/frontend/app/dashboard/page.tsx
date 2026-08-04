@@ -1368,7 +1368,10 @@ function DashboardContent() {
               </div>
             ) : (
               <div className="p-6 md:p-8 flex flex-col gap-8">
-                <ProjectDashboard projectId={selectedProject?._id || ""} />
+                <ProjectDashboard 
+                  projectId={selectedProject?._id || ""} 
+                  isEmpty={(selectedProject?.stats?.total_documents ?? 0) === 0} 
+                />
                 <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden animate-slide-up">
                   <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between bg-muted/50">
                     <div className="flex flex-wrap items-center gap-2">
