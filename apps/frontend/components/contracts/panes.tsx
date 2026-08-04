@@ -2511,6 +2511,10 @@ function PerformanceLogsDashboardView({
   onNavigate: (panel: KpiDashboardPanel) => void;
 }) {
   const kpiById = useMemo(() => new Map(kpis.map((kpi) => [kpi.kpi_id, kpi])), [kpis]);
+  const contractCurrency = useMemo(() => {
+    const firstConsequenceUnit = kpis.find((kpi) => kpi.consequence_unit)?.consequence_unit;
+    return extractCurrency(firstConsequenceUnit);
+  }, [kpis]);
   const nextActionBreach = activeBreaches[0];
   const nextActionKpi = nextActionBreach ? kpiById.get(nextActionBreach.kpi_id) : trackedKpis.find((kpi) => !isKpiTracked(kpi));
   const typeCounts = kpis.reduce<Record<string, number>>((acc, kpi) => {
