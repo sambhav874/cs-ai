@@ -262,3 +262,96 @@ def delete_project(project_id: str, current_user: UserInDB = Depends(get_current
 def get_project_stats(project_id: str, current_user: UserInDB = Depends(get_current_active_user)):
     project = verify_project_access(project_id, current_user)
     return _project_stats(project, current_user)
+
+@router.get("/{project_id}/dashboard/live-counts")
+def get_project_dashboard_live_counts(project_id: str, current_user: UserInDB = Depends(get_current_active_user)):
+    project = verify_project_access(project_id, current_user)
+    contract_query = build_accessible_contract_query(project, current_user)
+    
+    from core.database import collection as contracts_collection, kpi_db
+    contracts = list(contracts_collection.find(contract_query, {"_id": 1}))
+    contract_ids = [str(c["_id"]) for c in contracts]
+    
+    if not contract_ids:
+        return {
+            "totalObligations": 0,
+            "clientSide": 0,
+            "supplierSide": 0,
+            "byRuleType": {},
+            "totalBreaches": 0,
+            "breachesBySource": {},
+            "dollarAtRiskOpen": 0,
+        }
+        
+    contract_kpis_col = kpi_db["contract_kpis"]
+    contract_kpi_breaches_col = kpi_db["contract_kpi_breaches"]
+    
+    kpis = list(contract_kpis_col.find({"contract_id": {"$in": contract_ids}}))
+    total_obligations = len(kpis)
+    client_side = 0
+    supplier_side = 0
+    by_rule_type = {}
+    
+    for kpi in kpis:
+        party_role = str(kpi.get("party_role") or kpi.get("party_type") or "").lower()
+        if party_role == "client":
+            client_side += 1
+        elif party_role == "supplier":
+            supplier_side += 1
+            
+        rule_type = str(kpi.get("kpi_type") or kpi.get("rule_type") or "Unknown")
+        for standard_rule in ["Threshold", "Deadline", "Qualitative", "Tiered", "Composite", "Range"]:
+            if standard_rule.lower() == rule_type.lower():
+                rule_type = standard_rule
+                break
+        
+        by_rule_type[rule_type] = by_rule_type.get(rule_type, 0) + 1
+        
+    breaches = list(contract_kpi_breaches_col.find({
+        "contract_id": {"$in": contract_ids},
+        "is_breach": True,
+        "status": {"$ne": "resolved"}
+    }))
+    total_breaches = len(breaches)
+    breaches_by_source = {}
+    dollar_at_risk_open = 0
+    
+    import re
+    def _parse_numeric(val: Any) -> float:
+        if isinstance(val, (int, float)):
+            return float(val)
+        if not isinstance(val, str):
+            return 0.0
+        s = re.sub(r'[^\d\.-]', '', val)
+        try:
+            return float(s)
+        except ValueError:
+            return 0.0
+            
+    for breach in breaches:
+        source = str(breach.get("source") or breach.get("detected_via") or "Unknown")
+        for standard_source in ["SAP Dispatch", "Salesforce", "ServiceNow", "CSV Upload", "Snowflake", "Rest endpoints"]:
+            if standard_source.lower() == source.lower():
+                source = standard_source
+                break
+        breaches_by_source[source] = breaches_by_source.get(source, 0) + 1
+        
+        penalty = breach.get("penalty_amount")
+        if not penalty:
+            kpi_id = breach.get("kpi_id")
+            if kpi_id:
+                matching_kpi = next((k for k in kpis if str(k.get("kpi_id")) == str(kpi_id)), None)
+                if matching_kpi:
+                    penalty = matching_kpi.get("consequence_value") or matching_kpi.get("penalty_amount")
+        
+        dollar_at_risk_open += abs(_parse_numeric(penalty))
+        
+    return {
+        "totalObligations": total_obligations,
+        "clientSide": client_side,
+        "supplierSide": supplier_side,
+        "byRuleType": by_rule_type,
+        "totalBreaches": total_breaches,
+        "breachesBySource": breaches_by_source,
+        "dollarAtRiskOpen": dollar_at_risk_open,
+    }

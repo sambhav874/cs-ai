@@ -8,6 +8,7 @@ import {
   RangeKey, RULE_TYPES, SOURCES, RANGE_META, RANGE_SCALE,
   BASE_VOLUMES, RULE_TYPE_SPLIT, LIFECYCLE_RATIOS,
 } from "./dashboardMockConfig";
+import { useLiveDelta, LiveCounts } from "./useLiveDelta";
 
 /* ---------------------------------- tokens --------------------------------- */
 const C = {
@@ -116,6 +117,61 @@ function buildDataset(range: RangeKey): DashboardDataset {
   };
 }
 
+/* -------------------------- merge real delta onto mock data -------------------------- */
+// Adds real counts (from useLiveDelta) on top of the mock baseline. Time-bucketed
+// charts get the delta added to their most recent bucket only — we don't try to
+// figure out which exact bucket a live event belongs in, we just show "right now"
+// ticking up, which is the effect you want on stage.
+function applyLiveDelta(dataset: DashboardDataset, delta: LiveCounts | null): DashboardDataset {
+  if (!delta) return dataset;
+
+  const totalObligations = dataset.totalObligations + delta.totalObligations;
+  const clientSide = dataset.clientSide + delta.clientSide;
+  const supplierSide = dataset.supplierSide + delta.supplierSide;
+
+  const ruleTypeBreakdown = dataset.ruleTypeBreakdown.map((slice) => ({
+    ...slice,
+    value: slice.value + (delta.byRuleType[slice.name] || 0),
+  }));
+
+  const complianceTrend = dataset.complianceTrend.map((pt, i, arr) =>
+    i === arr.length - 1 ? { ...pt, breached: pt.breached + delta.totalBreaches } : pt
+  );
+
+  const breachBySource = dataset.breachBySource.map((s) => ({
+    ...s,
+    count: s.count + (delta.breachesBySource[s.source] || 0),
+  }));
+
+  const financialExposure = dataset.financialExposure.map((pt, i, arr) =>
+    i === arr.length - 1 ? { ...pt, atRisk: pt.atRisk + delta.dollarAtRiskOpen } : pt
+  );
+
+  // Stages 0-1 (Detected, Notification Sent) move for real reasons — a live
+  // breach was actually detected and actually triggers a notification.
+  // Stages 2-4 (Remediation, Resolved, Recovered) have no real driver in the
+  // live demo, so this is a COSMETIC-ONLY nudge purely so the funnel doesn't
+  // look half-frozen on stage — these numbers are not derived from anything
+  // real and should not be described as live in the demo script.
+  const cosmeticNudge = [0, 0, 0.6, 0.4, 0.3]; // fraction of delta.totalBreaches, index-aligned to lifecycle stages
+  const lifecycle = dataset.lifecycle.map((stage, i) => {
+    if (i === 0) return { ...stage, value: stage.value + delta.totalBreaches };
+    if (i === 1) return { ...stage, value: stage.value + Math.round(delta.totalBreaches * 0.9) };
+    if (delta.totalBreaches > 0) {
+      return { ...stage, value: stage.value + Math.round(delta.totalBreaches * cosmeticNudge[i]) };
+    }
+    return stage;
+  });
+
+  return {
+    ...dataset,
+    totalObligations, clientSide, supplierSide, ruleTypeBreakdown,
+    complianceTrend, breachBySource, financialExposure, lifecycle,
+    activeBreaches: dataset.activeBreaches + delta.totalBreaches,
+    dollarAtRisk: dataset.dollarAtRisk + delta.dollarAtRiskOpen,
+  };
+}
+
 /* --------------------------------- helpers ---------------------------------- */
 const money = (n: number): string => (n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n}`);
 
@@ -169,9 +225,15 @@ const tooltipStyle = {
 };
 
 /* --------------------------------- component --------------------------------- */
-export default function ProjectDashboard() {
+interface ProjectDashboardProps {
+  projectId: string; // needed to fetch real counts for this project
+}
+
+export default function ProjectDashboard({ projectId }: ProjectDashboardProps) {
   const [range, setRange] = useState<RangeKey>("month");
-  const data = useMemo(() => buildDataset(range), [range]);
+  const baseDataset = useMemo(() => buildDataset(range), [range]);
+  const { delta, refresh, loading, connected } = useLiveDelta(projectId);
+  const data = useMemo(() => applyLiveDelta(baseDataset, delta), [baseDataset, delta]);
 
   // Notice we removed the hardcoded background and padding from the outer div 
   // to better blend with the hosting page. The padding can be adjusted there.
@@ -189,7 +251,29 @@ export default function ProjectDashboard() {
           </h2>
         </div>
 
-        <div className="flex gap-1 p-1 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={refresh}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-opacity"
+            style={{
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: 500,
+              background: C.surface,
+              border: `1px solid ${C.border}`,
+              color: C.ink,
+              opacity: loading ? 0.6 : 1,
+            }}
+            title={connected ? "Pull latest extracted/breach counts from the database" : "Live endpoint not connected — showing mock data only"}
+          >
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-full"
+              style={{ background: connected ? C.green : C.inkFaint }}
+            />
+            {loading ? "Refreshing…" : "Refresh Live Data"}
+          </button>
+
+          <div className="flex gap-1 p-1 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
           {(Object.entries(RANGE_META) as [RangeKey, { label: string; buckets: string[] }][]).map(([key, meta]) => (
             <button
               key={key}
@@ -205,6 +289,7 @@ export default function ProjectDashboard() {
               {meta.label}
             </button>
           ))}
+          </div>
         </div>
       </div>
 
