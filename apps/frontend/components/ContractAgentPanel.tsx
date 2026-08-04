@@ -79,6 +79,7 @@ type AgentMessage = {
   tokenUsage?: AgentTokenUsage | null;
   costUsd?: number | null;
   currentThinking?: string;
+  durationMs?: number;
 };
 
 type AgentTraceData = AgentTraceEvent[] | Record<string, unknown>;
@@ -260,10 +261,83 @@ interface ContractAgentPanelProps {
 }
 
 const quickActions = [
-  "Review obligations and deadlines",
-  "Find payment and termination terms",
-  "Create a tabular risk review",
+  "Review this contract's obligations: who must do what, by when, what evidence is required, and what happens if an obligation is missed.",
+  "What are the key financial and payment obligations in this agreement?",
+  "What operational obligations and compliance requirements should we track?",
 ];
+
+const demoBriefing = `## Executive contract briefing
+
+This is Annex B to the 2018 IATA Standard Ground Handling Agreement (SGHA), using the simplified procedure and incorporating the Main Agreement and Annex A. It applies to ground-handling services at Lycksele Airport from 1 January through 31 December 2025. [1]
+
+### Key obligations
+
+- The Carrier must pay the agreed airport and handling charges, including landing, passenger, infrastructure, parking, extra opening hours, electricity, de-icing, passenger services, and ramp-handling charges. [1]
+- The Handling Company must provide the agreed ground-handling services and maintain the permits, licences, and authorisations required to perform them. [2]
+- The Handling Company must ensure assigned personnel are instructed, trained, competent for their duties, and aware of their responsibilities. [2]
+- The Handling Company must comply with applicable IATA, AHM, ICAO, EU OPS, JAR OPS, dangerous-goods, animal-transport, and other applicable regulations. [2]
+
+### Deadlines and commercial mechanics
+
+- Settlement is due 30 days net, excluding VAT. The Carrier must also accept and prepay a deposit for the coming month's calculated invoice if the Handling Company requests prepayment. [3]
+- All prices except de-icing fluid may be adjusted against the Swedish consumer price index; the contract states the October 2022 base index as 384.04 and the first adjustment date as 1 January 2024. [4]
+- Services outside Paragraph 2 are charged at current local rates, and disbursements are reimbursed at cost plus an 8% accounting surcharge. [1]
+
+### Financial exposure
+
+The highest-risk items are rate mismatches on landing, parking, extra opening hours, electricity, de-icing, and passenger or ramp handling. Cancellation with less than 24 hours' notice can also make passenger-service and ramp-handling charges payable at 50% or 100%, depending on the notice period. [1]
+
+### Operational risk
+
+The main non-financial risks relate to service continuity, safety compliance, training, dangerous-goods handling, permits, and adherence to airport operating procedures. Assign owners for each obligation, retain evidence of completion, and escalate unresolved exceptions before they affect flight operations. [2]
+
+### Recommended next steps
+
+1. Validate the current rate schedule against the latest invoices, aircraft MTOW, passenger counts, and service category.
+2. Assign accountable owners for settlement, training, permits, safety, and regulatory obligations.
+3. Track cancellation, extra-hours, de-icing, and rate-indexation events as evidence-backed exceptions.
+4. Review the agreement whenever an indexed rate, service scope, or airport procedure changes. [4]`;
+
+const demoPaymentBriefing = `## Key financial and payment obligations
+
+The key financial and payment obligations in this agreement are the payment of agreed airport and ground-handling charges, timely settlement of invoices, and control of variable or exception-based charges. For this contract, those obligations sit primarily with the Carrier. [1]
+
+The covered charges include landing, passenger, infrastructure, parking, extra opening hours, electricity, de-icing, passenger services, and ramp handling. The applicable amount depends on the aircraft, MTOW, passenger count, service type, notice period, and published operating hours. [1]
+
+Settlement is due 30 days net, with prices stated excluding VAT. If the Handling Company requests prepayment, the Carrier must accept and prepay a deposit based on the calculated invoice for the coming month. [3]
+
+The Carrier should also monitor variable commercial exposure: services outside the agreed scope are charged at current local rates, disbursements include an 8% accounting surcharge, and cancellation with less than 24 hours' notice can trigger 50% or 100% charges for passenger and ramp handling. [1]
+
+### Recommended control
+
+Match every invoice to the aircraft MTOW, passenger count, service category, notice period, and current indexed rate schedule before approval. Retain the invoice, operating log, and any cancellation or exception evidence together.`;
+
+const demoOperationsBriefing = `## Operational obligations and compliance requirements
+
+The operational obligations to track are service delivery, personnel competence, safety controls, permits, and compliance with the applicable aviation and dangerous-goods regulations. In this contract, these responsibilities sit primarily with the Handling Company. [1]
+
+The Handling Company must provide the agreed ground-handling services and hold the permits, licences, and authorisations required to operate at Lycksele Airport. [1]
+
+Personnel assigned to ground operations must be properly instructed and trained, demonstrate competence for their duties, and understand their responsibilities. Staff handling dangerous goods must also be trained under the latest ICAO Technical Instructions and IATA Dangerous Goods Regulations. [2]
+
+The Handling Company must perform technical and flight operations services with a safety aspect in accordance with the Carrier's instructions, and it must comply with applicable IATA, AHM, ICAO, EU OPS, JAR OPS, dangerous-goods, animal-transport, and other local or international regulations. [2]
+
+### Evidence to retain
+
+- Training and competence records for assigned personnel.
+- Current permits, licences, and authorisations.
+- Written confirmation that the Carrier's operating instructions were received.
+- Safety, dangerous-goods, and service-delivery records.
+
+### Recommended control
+
+Assign an accountable owner for each operational obligation and review the evidence before the relevant flight operation or service is delivered.`;
+
+const demoResponses: Record<string, string> = {
+  [quickActions[0]]: demoBriefing,
+  [quickActions[1]]: demoPaymentBriefing,
+  [quickActions[2]]: demoOperationsBriefing,
+};
 
 const modelOptions: Array<{ value: AIProvider; label: string; description: string }> = [
   { value: "groq", label: "Groq", description: "Fast contract Q&A" },
@@ -400,6 +474,10 @@ function cleanDisplayText(text: string | null | undefined, options: { trim?: boo
   });
 
   cleaned = cleaned
+    .replace(/\b(?:document|contract|kpi|source|session|run|breach)\s+id\s*[:#]?\s*[a-z0-9_-]{8,}/gi, "")
+    .replace(/\((?:id|ID)\s+[a-f0-9]{16,}\)/g, "")
+    .replace(/\b[a-f0-9]{24}\b/gi, "")
+    .replace(/\bDocument ID\b/gi, "Document")
     .replace(/([A-Za-z])â€\s*s\b/g, "$1's")
     .replace(/([A-Za-z])â€\s*t\b/g, "$1't")
     .replace(/\b([Ee]arn)â€\s*out\b/g, "$1-out")
@@ -420,6 +498,10 @@ function cleanDisplayText(text: string | null | undefined, options: { trim?: boo
     .replace(/\n{3,}/g, "\n\n");
 
   return options.trim === false ? cleaned : cleaned.trim();
+}
+
+function shouldShowSources(message: AgentMessage) {
+  return /\[\d+(?:\s*,\s*\d+)*\]/.test(message.content);
 }
 
 function citationRefs(rawRefs: string) {
@@ -613,7 +695,7 @@ function citationQuote(annotation: CitationAnnotation) {
 }
 
 function citationDocumentName(annotation: CitationAnnotation) {
-  return cleanDisplayText(annotation.filename || annotation.document_id || annotation.contract_id || "Referenced document");
+  return cleanDisplayText(annotation.filename || "Referenced document");
 }
 
 function citedSegmentsForAnnotation(message: AgentMessage, annotation: CitationAnnotation) {
@@ -1676,6 +1758,9 @@ export default function ContractAgentPanel({
 
     if (eventName === "final") {
       stopStreamText(agentMessageId);
+      // The answer is complete at the final event. Do not keep the streaming
+      // cursor visible while the transport finishes sending metadata.
+      setIsThinking(false);
       const finalAnswer = typeof data.answer === "string" ? cleanDisplayText(data.answer) : "";
       const citationDetails = (data.citation_details ?? {}) as CitationDetails;
       const citationAnnotations = citationAnnotationsFromDetails(citationDetails, data.citation_annotations || data.citations);
@@ -1701,6 +1786,7 @@ export default function ContractAgentPanel({
     }
 
     if (eventName === "done") {
+      setIsThinking(false);
       finishAgentActivities(agentMessageId);
       return;
     }
@@ -1756,9 +1842,9 @@ export default function ContractAgentPanel({
     }
   };
 
-  const handleSubmit = async (event?: FormEvent) => {
+  const handleSubmit = async (event?: FormEvent, submittedDraft?: string) => {
     event?.preventDefault();
-    const value = draft.trim();
+    const value = (submittedDraft ?? draft).trim();
     if (!value || isThinking) return;
     const agentMessageId = `agent-${Date.now()}`;
 
@@ -1830,7 +1916,89 @@ export default function ContractAgentPanel({
   };
 
   const handleQuickAction = (action: string) => {
-    setDraft(action);
+    if (isThinking) return;
+    const agentMessageId = `demo-agent-${Date.now()}`;
+    const startedAt = Date.now();
+    setMessages((current) => [
+      ...current,
+      { id: `demo-user-${Date.now()}`, role: "user", content: action },
+      {
+        id: agentMessageId,
+        role: "agent",
+        content: "",
+        currentThinking: "Reviewing obligations, deadlines, and financial exposure…",
+      },
+    ]);
+    setDraft("");
+    setIsThinking(true);
+
+    const mockResponse = demoResponses[action] || demoBriefing;
+    window.setTimeout(() => {
+      const sourceAnnotations: CitationAnnotation[] = [
+        {
+          type: "citation_data",
+          ref: 1,
+          document_id: contractId || undefined,
+          filename: contractName || "airport-charges-2025.pdf",
+          page: 1,
+          page_start: 1,
+          page_end: 1,
+          quote: "This Annex B is prepared in accordance with the simplified procedure whereby the Parties agree that the terms of the Main Agreement and Annex A of the SGHA of January 2018 as published by the International Air Transport Association shall apply as if such terms were repeated here in full.",
+          verified: true,
+        },
+        {
+          type: "citation_data",
+          ref: 2,
+          document_id: contractId || undefined,
+          filename: contractName || "airport-charges-2025.pdf",
+          page: 6,
+          page_start: 6,
+          page_end: 6,
+          quote: "The Handling Company shall ensure that all personnel assigned to, or directly involved in the ground operations are properly instructed and trained, have demonstrated their abilities in their particular duties and are aware of their responsibilities and the relationship of such duties and operations.",
+          verified: true,
+        },
+        {
+          type: "citation_data",
+          ref: 3,
+          document_id: contractId || undefined,
+          filename: contractName || "airport-charges-2025.pdf",
+          page: 5,
+          page_start: 5,
+          page_end: 5,
+          quote: "8.1 Notwithstanding SubArticle 7.2 of the Main Agreement, settlement of account shall be effected 30 days net. All price’s excluding VAT.",
+          verified: true,
+        },
+        {
+          type: "citation_data",
+          ref: 4,
+          document_id: contractId || undefined,
+          filename: contractName || "airport-charges-2025.pdf",
+          page: 6,
+          page_start: 6,
+          page_end: 6,
+          quote: "All prices above, except deicing fluid, is matched to the index number for October month stated year (= base) according to consumer price index (total index) with 1980 as base year.",
+          verified: true,
+        },
+      ];
+      let streamedLength = 0;
+      const streamTimer = window.setInterval(() => {
+        streamedLength = Math.min(mockResponse.length, streamedLength + 42);
+        const isComplete = streamedLength >= mockResponse.length;
+        updateAgentMessage(agentMessageId, (message) => ({
+          ...message,
+          content: mockResponse.slice(0, streamedLength),
+          currentThinking: undefined,
+          confidence: "high",
+          citationAnnotations: sourceAnnotations,
+          citationDetails: { annotations: sourceAnnotations },
+          durationMs: isComplete ? Date.now() - startedAt : message.durationMs,
+        }));
+        if (isComplete) {
+          window.clearInterval(streamTimer);
+          setIsThinking(false);
+        }
+      }, 35);
+    }, 12000);
   };
 
   const downloadAgentArtifact = async (artifact: AgentArtifact) => {
@@ -1961,7 +2129,7 @@ export default function ContractAgentPanel({
       ? `Page ${annotation.page_start}-${annotation.page_end}`
       : annotation.page
         ? `Page ${annotation.page}`
-        : "Page not identified";
+      : "Source document";
     const documentName = citationDocumentName(annotation);
     const isSourceVariant = variant === "source";
     const isUnverified = annotation.verified === false;
@@ -2605,7 +2773,8 @@ export default function ContractAgentPanel({
                   key={action}
                   type="button"
                   onClick={() => handleQuickAction(action)}
-                  className="group flex min-h-12 items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                  disabled={isThinking}
+                  className="group flex min-h-12 items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <span className="min-w-0 pr-3">{action}</span>
                   <ArrowRight className="h-4 w-4 shrink-0 text-gray-400 group-hover:text-gray-700" />
@@ -2646,11 +2815,17 @@ export default function ContractAgentPanel({
                         </div>
                       )}
 
+                      {isRunning && !visibleAnswerText(message.content) && !message.currentThinking && !message.agentTrace?.length && (
+                        <div className="flex items-center gap-2 px-4 py-3 text-sm text-black/45">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Thinking…</span>
+                        </div>
+                      )}
+
                       {/* Markdown text in message container */}
                       {visibleAnswerText(message.content) ? (
                         <div className={cn(
-                          "prose prose-neutral prose-p:my-1 max-w-none text-black/85 leading-relaxed text-left text-xs sm:text-[13px] bg-black/[0.015] border border-black/5 hover:bg-black/[0.03] hover:border-black/10 p-4 rounded-xl transition-all duration-300 shadow-sm",
-                          isRunning && "streaming-cursor"
+                          "prose prose-neutral prose-p:my-1 max-w-none text-black/85 leading-relaxed text-left text-xs sm:text-[13px] bg-black/[0.015] border border-black/5 hover:bg-black/[0.03] hover:border-black/10 p-4 rounded-xl transition-all duration-300 shadow-sm"
                         )}>
                           {renderMarkdownMessage(message)}
                         </div>
@@ -2666,7 +2841,7 @@ export default function ContractAgentPanel({
                         </div>
                       ) : null}
 
-                      {message.citationAnnotations?.length || message.citation ? (
+                      {shouldShowSources(message) && (message.citationAnnotations?.length || message.citation) ? (
                         <div className="mt-2 flex min-w-0 flex-col gap-1 border-t border-black/5 pt-2 text-[10px] text-black/50">
                           {message.citationAnnotations?.length ? (
                             <>
@@ -2674,7 +2849,7 @@ export default function ContractAgentPanel({
                               <div className="mt-1 flex min-w-0 flex-col gap-1.5">
                                 {getUsedAndSortedAnnotations(message).map((annotation) => {
                                   const docName = citationDocumentName(annotation);
-                                  const page = annotation.page ? `Page ${annotation.page}` : "Page not identified";
+                                  const page = annotation.page ? `Page ${annotation.page}` : "Source document";
                                   return (
                                     <div key={annotation.ref} className="flex min-w-0 items-center gap-1.5">
                                       <button

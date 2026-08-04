@@ -835,10 +835,16 @@ function toNumber(value?: string | number | null) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function dashboardMoney(value: number) {
+function extractCurrency(unit?: string | null): string {
+  if (!unit) return "USD";
+  const match = unit.match(/^([A-Z]{3})\b/);
+  return match ? match[1] : "USD";
+}
+
+function dashboardMoney(value: number, currency?: string) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
+    currency: currency || "USD",
     maximumFractionDigits: 0,
   }).format(Math.max(0, value));
 }
@@ -1081,6 +1087,10 @@ export function ContractPerformanceDashboardPane({
   const activeBreaches = visibleBreaches.filter((breach) => breach.is_breach && breach.status !== "resolved");
   const highCriticalCount = activeBreaches.filter((breach) => ["Critical", "High"].includes(breachSeverity(breach, kpiById.get(breach.kpi_id)))).length;
   const exposure = activeBreaches.reduce((total, breach) => total + Math.abs(toNumber(kpiById.get(breach.kpi_id)?.consequence_value) || 0), 0);
+  const contractCurrency = useMemo(() => {
+    const firstConsequenceUnit = sortedKpis.find((kpi) => kpi.consequence_unit)?.consequence_unit;
+    return extractCurrency(firstConsequenceUnit);
+  }, [sortedKpis]);
   const approvedCount = sortedKpis.filter((kpi) => kpi.status === "approved").length;
   const pendingCount = sortedKpis.filter((kpi) => !["approved", "ignored"].includes(kpi.status || "")).length;
   const removedCount = sortedKpis.filter((kpi) => kpi.status === "ignored").length;
@@ -2345,7 +2355,7 @@ function ComplianceFlagsDashboardView({
                     </p>
                   </button>
                   <div className={breach.is_breach ? "font-semibold text-red-600" : "font-semibold text-emerald-700"}>
-                    {exposure ? `-${dashboardMoney(exposure)}` : "No penalty"}
+                    {exposure ? `-${dashboardMoney(exposure, extractCurrency(kpi?.consequence_unit))}` : "No penalty"}
                   </div>
                   <div>
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusTone(breach.status || (breach.is_breach ? "open" : "clear"))}`}>
@@ -2521,7 +2531,7 @@ function PerformanceLogsDashboardView({
         <MetricTile label="KPIs Tracked" value={`${trackedKpis.length} / ${kpis.length}`} hint={`${kpis.length - trackedKpis.length} deferred`} icon={<Play className="h-4 w-4" />} />
         <MetricTile label="Critical / High" value={`${highCriticalCount} / ${activeBreaches.length || 1}`} hint="Open severity queue" icon={<AlertCircle className="h-4 w-4" />} />
         <MetricTile label="Active Breaches" value={`${activeBreaches.length}`} hint={`${breaches.length} total evaluations`} icon={<Clock className="h-4 w-4" />} />
-        <MetricTile label="Current Exposure" value={dashboardMoney(exposure)} hint="Penalty exposure" icon={<BarChart3 className="h-4 w-4" />} />
+        <MetricTile label="Current Exposure" value={dashboardMoney(exposure, contractCurrency)} hint="Penalty exposure" icon={<BarChart3 className="h-4 w-4" />} />
       </div>
 
       <section className="rounded-lg border border-border bg-white p-4 shadow-sm">
@@ -2559,7 +2569,7 @@ function PerformanceLogsDashboardView({
             { label: "Supplier", value: exposure || 1, color: "#2563eb" },
             { label: "Buyer", value: Math.max(0, Math.round(exposure * 0.25)), color: "#14b8a6" },
             { label: "Shared", value: Math.max(0, Math.round(exposure * 0.15)), color: "#a855f7" },
-          ]} center={dashboardMoney(exposure)} />
+          ]} center={dashboardMoney(exposure, contractCurrency)} />
         </ChartCard>
         <ChartCard title="One-Year KPI Target Attainment">
           <SparkLine actuals={actuals} />

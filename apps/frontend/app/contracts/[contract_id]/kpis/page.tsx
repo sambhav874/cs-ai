@@ -543,10 +543,16 @@ const toNumber = (value?: string | number | null) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const money = (value: number) =>
+function extractCurrency(unit?: string | null): string {
+  if (!unit) return "USD";
+  const match = unit.match(/^([A-Z]{3})\b/);
+  return match ? match[1] : "USD";
+}
+
+const money = (value: number, currency?: string) =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
+    currency: currency || "USD",
     maximumFractionDigits: 0,
   }).format(Math.max(0, value));
 
@@ -1181,6 +1187,10 @@ export default function ContractKpiManagementPage() {
       Math.abs(toNumber(kpiById.get(breach.kpi_id)?.consequence_value) || 0),
     0,
   );
+  const contractCurrency = useMemo(() => {
+    const firstConsequenceUnit = sortedKpis.find((kpi) => kpi.consequence_unit)?.consequence_unit;
+    return extractCurrency(firstConsequenceUnit);
+  }, [sortedKpis]);
   const openAlertCount = kpiAlerts.filter(
     (alert) => String(alert.status || "open").toLowerCase() === "open",
   ).length;
@@ -2344,7 +2354,7 @@ export default function ContractKpiManagementPage() {
             />
             <Metric
               label="Exposure"
-              value={money(exposure)}
+              value={money(exposure, contractCurrency)}
               detail="current open risk"
             />
             <Metric
@@ -2522,6 +2532,13 @@ export default function ContractKpiManagementPage() {
               flagsReady={airportDemoFlagsReady}
               completedSourceCount={airportDemoCompletedSourceCount}
               onFlagRemediationEmail={flagRemediationEmail}
+              onBreachStatusChange={(breachId, status) =>
+                setBreaches((current) =>
+                  current.map((breach) =>
+                    breach.breach_id === breachId ? { ...breach, status } : breach,
+                  ),
+                )
+              }
             />
           ) : (
             <LogsPanel
@@ -4824,6 +4841,16 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
     onCommit: (value: string) => unknown | Promise<unknown>;
     wide?: boolean;
   }) {
+    const [draft, setDraft] = useState(String(value ?? ""));
+
+    useEffect(() => {
+      setDraft(String(value ?? ""));
+    }, [value]);
+
+    const commit = () => {
+      if (draft !== String(value ?? "")) void onCommit(draft);
+    };
+
     return (
       <label
         className={`block rounded-md border border-gray-200 bg-white px-3 py-2 ${wide ? "lg:col-span-2" : ""}`}
@@ -4832,11 +4859,17 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           {label}
         </span>
         <input
-          defaultValue={value ?? ""}
-          onBlur={(event) => {
-            const next = event.target.value;
-            if (next !== String(value ?? "")) void onCommit(next);
+          value={draft}
+          inputMode={label.toLowerCase().includes("threshold") ? "decimal" : undefined}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
           }}
+          aria-label={label}
           className="mt-1 h-8 w-full border-0 bg-transparent p-0 text-sm font-semibold text-gray-900 outline-none focus:ring-0"
         />
       </label>
@@ -6699,6 +6732,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
     breaches,
     kpiById,
     onFlagRemediationEmail,
+    onBreachStatusChange,
     flagsReady = true,
     completedSourceCount = 0,
   }: {
@@ -6707,6 +6741,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
     onFlagRemediationEmail: (
       breach: ContractKPIBreach,
     ) => Promise<ContractKPIBreach | null>;
+    onBreachStatusChange: (breachId: string, status: string) => void;
     flagsReady?: boolean;
     completedSourceCount?: number;
   }) {
@@ -6833,7 +6868,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                             : "text-sm font-semibold text-gray-600"
                         }
                       >
-                        {exposure ? `-${money(exposure)}` : "No penalty"}
+                        {exposure ? `-${money(exposure, extractCurrency(kpi?.consequence_unit))}` : "No penalty"}
                       </div>
                       <span
                         className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(breach.status || (breach.is_breach ? "open" : "clear"))}`}
@@ -7070,9 +7105,12 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                         },
                       );
                       if (result.error) throw new Error(result.error);
+                      if (alertDraft.breachId) {
+                        onBreachStatusChange(alertDraft.breachId, "in_action");
+                      }
                       toast({
                         title: "Escalation logged",
-                        description: `Recorded in demo mode as ${result.data?.status || "mock_dispatched"}; no external email was sent.`,
+                        description: `Recorded in demo mode as ${result.data?.status || "mock_dispatched"}. The flag is now In Action.`,
                       });
                     } catch (err: any) {
                       toast({
@@ -7098,7 +7136,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
 
   type RecoveryReminderAction = {
     dispatch_id: string;
-    audience: "user" | "client";
+    audience: "team_owner" | "client";
     recipient: string;
     sent_at: string;
     status: string;
@@ -7129,7 +7167,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
         OK: 1,
       };
       return breaches
-        .filter((breach) => breach.is_breach && breach.status !== "resolved")
+        .filter((breach) => breach.is_breach)
         .sort(
           (left, right) =>
             (severityRank[severityFor(right, kpiById.get(right.kpi_id))] || 0) -
@@ -7137,13 +7175,66 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
         );
     }, [breaches, kpiById]);
 
-    const remindersSent = recoveries.reduce(
+    const receivedStatuses = new Set(["resolved", "recovered", "received", "recovery_received"]);
+    const hasPenalty = (breach: ContractKPIBreach) =>
+      Math.abs(
+        toNumber(breach.penalty_amount) ||
+        toNumber(kpiById.get(breach.kpi_id)?.consequence_value) ||
+        0,
+      ) > 0;
+    const penaltyRecoveries = recoveries.filter(hasPenalty);
+    const nonPenaltyRecoveries = recoveries.filter((breach) => !hasPenalty(breach));
+    const receivedRecoveries = recoveries.filter((breach) =>
+      receivedStatuses.has(String(breach.status || "").toLowerCase()),
+    );
+    const financialRecoveryItems = penaltyRecoveries.filter(
+      (breach) => !receivedStatuses.has(String(breach.status || "").toLowerCase()),
+    );
+    const operationalFollowUpItems = nonPenaltyRecoveries.filter(
+      (breach) => !receivedStatuses.has(String(breach.status || "").toLowerCase()),
+    );
+    const allActiveRecoveries = recoveries.filter(
+      (breach) => !receivedStatuses.has(String(breach.status || "").toLowerCase()),
+    );
+    const inActionCount = allActiveRecoveries.filter(
+      (breach) => String(breach.status || "open").toLowerCase() === "in_action",
+    ).length;
+    const openCount = allActiveRecoveries.length - inActionCount;
+    const recoveryGroups = [
+      {
+        id: "financial-recovery",
+        label: "Financial Recovery",
+        description: "Breach KPIs with contractual penalty exposure. Status shows whether escalation is open or in action.",
+        items: financialRecoveryItems,
+      },
+      {
+        id: "operational-follow-up",
+        label: "Operational Follow-up",
+        description: "Breach KPIs requiring operational attention but carrying no financial penalty.",
+        items: operationalFollowUpItems,
+      },
+      {
+        id: "received",
+        label: "Recovery Received",
+        description: "Recoveries marked resolved or received; no further reminders are required.",
+        items: receivedRecoveries,
+      },
+    ].filter((group) => group.items.length > 0);
+    const groupedRecoveries = recoveryGroups.flatMap((group) =>
+      group.items.map((breach, index) => ({
+        breach,
+        group,
+        showGroupHeading: index === 0,
+      })),
+    );
+
+    const remindersSent = allActiveRecoveries.reduce(
       (sum, breach) => sum + (actionLogs[breach.breach_id]?.length || 0),
       0,
     );
-    const flaggedEmails = recoveries.filter((breach) => breach.breach_email_to)
+    const flaggedEmails = allActiveRecoveries.filter((breach) => breach.breach_email_to)
       .length;
-    const exposure = recoveries.reduce(
+    const exposure = allActiveRecoveries.reduce(
       (sum, breach) =>
         sum +
         Math.abs(
@@ -7156,12 +7247,12 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
 
     const sendReminder = async (
       breach: ContractKPIBreach,
-      audience: "user" | "client",
+      audience: "team_owner" | "client",
     ) => {
       if (isSending) return;
       const kpi = kpiById.get(breach.kpi_id);
       const recipient =
-        audience === "user"
+        audience === "team_owner"
           ? MOCK_ACCOUNT_EMAIL
           : breach.breach_email_to || kpi?.contact_email || "";
       if (!recipient) {
@@ -7190,8 +7281,8 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
       setIsSending(false);
       toast({
         title:
-          audience === "user"
-            ? "Reminder logged for you"
+          audience === "team_owner"
+            ? "Team owner reminder logged"
             : "Client reminder logged",
         description: `Mock dispatched to ${recipient} in demo mode; no external email was sent.`,
       });
@@ -7206,19 +7297,24 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                 Recoveries Management
               </h2>
               <p className="mt-1 text-xs text-gray-500">
-                Open breach flags with remedies, SLA, penalty exposure, and the
-                follow-up email trail. Reminders are mock-dispatched in demo mode.
+                All breach flags with remedies, SLA, applicable penalty exposure,
+                and the follow-up email trail. Reminders are mock-dispatched in demo mode.
               </p>
             </div>
-            <Pill tone={recoveries.length ? "red" : "emerald"}>
-              {recoveries.length} open
+            <Pill tone={allActiveRecoveries.length ? "red" : "emerald"}>
+              {allActiveRecoveries.length} active
             </Pill>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <Metric
               label="Open recoveries"
-              value={String(recoveries.length)}
-              detail="flags requiring action"
+              value={String(openCount)}
+              detail="awaiting escalation"
+            />
+            <Metric
+              label="In Action"
+              value={String(inActionCount)}
+              detail="escalation sent"
             />
             <Metric
               label="Reminders sent"
@@ -7238,13 +7334,13 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           </div>
         </section>
 
-        {!recoveries.length ? (
+        {!groupedRecoveries.length ? (
           <section className="rounded-lg border border-gray-200 bg-white px-6 py-16 text-center text-sm text-gray-500">
-            No open recoveries. Every tracked KPI is compliant.
+            No active recoveries. Every tracked KPI is compliant.
           </section>
         ) : (
           <section className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
-            {recoveries.map((breach) => {
+            {groupedRecoveries.map(({ breach, group, showGroupHeading }) => {
               const kpi = kpiById.get(breach.kpi_id);
               const severity = severityFor(breach, kpi);
               const expanded = expandedId === breach.breach_id;
@@ -7262,8 +7358,17 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                 0,
               );
               const reminders = actionLogs[breach.breach_id] || [];
+              const breachStatus = String(breach.status || "open").toLowerCase();
+              const isInAction = breachStatus === "in_action";
+              const isReceived = receivedStatuses.has(breachStatus);
               return (
                 <div key={breach.breach_id} className="bg-white">
+                  {showGroupHeading && (
+                    <div className="border-y border-gray-100 bg-gray-50 px-4 py-3 first:border-t-0">
+                      <p className="text-xs font-bold uppercase tracking-wide text-gray-700">{group.label}</p>
+                      <p className="mt-1 text-xs text-gray-500">{group.description}</p>
+                    </div>
+                  )}
                   <div className="grid gap-3 p-4 lg:grid-cols-[minmax(260px,1fr)_120px_120px_120px_190px] lg:items-center">
                     <button
                       type="button"
@@ -7289,7 +7394,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                       </p>
                     </button>
                     <div className="text-sm font-semibold text-gray-950">
-                      {penalty ? `-${money(penalty)}` : "No penalty"}
+                      {penalty ? `-${money(penalty)}` : "Operational only"}
                     </div>
                     <span
                       className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(severity)}`}
@@ -7342,6 +7447,10 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                         />
                         <DetailTile label="Expected (contract)" value={expected} />
                         <DetailTile label="Actual (ingested)" value={actual} />
+                        <DetailTile
+                          label="Penalty eligibility"
+                          value={penalty ? money(penalty) : "Not eligible for penalty"}
+                        />
                       </div>
                       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
                         <DetailTile
@@ -7389,7 +7498,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                               >
                                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                                 <span className="font-semibold capitalize text-gray-900">
-                                  {reminder.audience}
+                                  {reminder.audience === "team_owner" ? "team owner" : reminder.audience}
                                 </span>
                                 <span className="text-gray-500">
                                   → {reminder.recipient}
@@ -7407,27 +7516,39 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                       </div>
 
                       <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
-                          onClick={() => void sendReminder(breach, "client")}
-                          disabled={isSending}
-                        >
-                          <Send className="h-3.5 w-3.5" />
-                          Remind client
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1.5 text-xs"
-                          onClick={() => void sendReminder(breach, "user")}
-                          disabled={isSending}
-                        >
-                          <RefreshCw className="h-3.5 w-3.5" />
-                          Remind me (user)
-                        </Button>
+                        {isInAction ? (
+                          <>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
+                              onClick={() => void sendReminder(breach, "client")}
+                              disabled={isSending}
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                              Remind client
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 text-xs"
+                              onClick={() => void sendReminder(breach, "team_owner")}
+                              disabled={isSending}
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" />
+                              Remind team owner
+                            </Button>
+                          </>
+                        ) : isReceived ? (
+                          <p className="basis-full text-xs font-medium text-emerald-700">
+                            Recovery received. No further reminder is required.
+                          </p>
+                        ) : (
+                          <p className="basis-full text-xs text-gray-500">
+                            Reminders become available after the escalation email is dispatched.
+                          </p>
+                        )}
                       </div>
                     </div>
                   )}

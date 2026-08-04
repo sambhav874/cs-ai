@@ -8,6 +8,7 @@ import {
   RangeKey, RULE_TYPES, SOURCES, RANGE_META, RANGE_SCALE,
   BASE_VOLUMES, RULE_TYPE_SPLIT, LIFECYCLE_RATIOS,
 } from "./dashboardMockConfig";
+import type { ContractKPI, ProjectKpiPortfolio } from "./types";
 
 /* ---------------------------------- tokens --------------------------------- */
 const C = {
@@ -48,6 +49,121 @@ interface DashboardDataset {
   dollarAtRisk: number;
   complianceRate: number;
   lifecycle: LifecycleStage[];
+}
+
+function displayRuleType(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  const known = RULE_TYPES.find((ruleType) => ruleType.toLowerCase() === normalized);
+  if (known) return known;
+  return value.trim().replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function displaySourceName(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (normalized.includes("csv")) return "CSV Upload";
+  if (normalized.includes("rest") || normalized.includes("api")) return "REST API";
+  if (normalized.includes("sap")) return "SAP S/4HANA";
+  if (normalized.includes("json")) return "JSON Feed";
+  if (normalized.includes("snowflake")) return "Snowflake";
+  if (normalized.includes("salesforce")) return "Salesforce";
+  if (normalized.includes("servicenow")) return "ServiceNow";
+  if (normalized.startsWith("src_cfg") || normalized.length > 28) return "Connected source";
+  return value.trim().replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function buildLiveDataset(portfolio: ProjectKpiPortfolio | null, kpis: ContractKPI[]): DashboardDataset {
+  const summary = portfolio?.summary;
+  const totalObligations = summary?.kpi_count ?? kpis.length;
+  const tracked = summary?.tracked_kpi_count ?? kpis.filter((kpi) => kpi.is_tracked || kpi.tracking_status === "tracked").length;
+  const activeBreaches = summary?.open_breach_count ?? 0;
+  const compliant = Math.max(tracked - activeBreaches, 0);
+  const clientSide = kpis.filter((kpi) => kpi.party_role === "client").length;
+  const supplierSide = kpis.filter((kpi) => kpi.party_role === "supplier").length;
+  const classifiedTotal = clientSide + supplierSide;
+  const ruleCounts = new Map<string, number>();
+  kpis.forEach((kpi) => {
+    const ruleType = displayRuleType(kpi.rule_type || kpi.kpi_type || "Other");
+    ruleCounts.set(ruleType, (ruleCounts.get(ruleType) || 0) + 1);
+  });
+  const ruleTypeBreakdown = Array.from(ruleCounts.entries()).map(([name, value]) => ({ name, value }));
+  const breachCounts = new Map<string, number>();
+  (portfolio?.top_breaches || []).forEach((breach) => {
+    const source = displaySourceName(String(breach.source_config_id || breach.source || breach.data_source || "Tracked sources"));
+    breachCounts.set(source, (breachCounts.get(source) || 0) + 1);
+  });
+  const breachBySource = Array.from(breachCounts.entries())
+    .map(([source, count]) => ({ source, count }))
+    .sort((a, b) => b.count - a.count);
+  if (!breachBySource.length && activeBreaches) breachBySource.push({ source: "Tracked sources", count: activeBreaches });
+  const complianceRate = tracked ? Math.round((compliant / tracked) * 1000) / 10 : 0;
+  const lifecycle = [
+    { stage: "Breach Detected", value: activeBreaches, fill: C.red },
+    { stage: "Notification Sent", value: 0, fill: C.amber },
+    { stage: "In Remediation", value: 0, fill: C.violet },
+    { stage: "Resolved", value: 0, fill: C.primary },
+    { stage: "Claim Recovered", value: 0, fill: C.green },
+  ];
+  return {
+    totalObligations,
+    clientSide,
+    supplierSide,
+    ruleTypeBreakdown: ruleTypeBreakdown.length ? ruleTypeBreakdown : [{ name: "No obligations yet", value: 0 }],
+    complianceTrend: [{ period: "Current", compliant, breached: activeBreaches }],
+    breachBySource: breachBySource.length ? breachBySource : [{ source: "No open breaches", count: 0 }],
+    financialExposure: [{ period: "Current", atRisk: summary?.open_exposure ?? 0, recovered: 0 }],
+    activeBreaches,
+    dollarAtRisk: summary?.open_exposure ?? 0,
+    complianceRate,
+    lifecycle,
+  };
+}
+
+function mergeDashboardDatasets(base: DashboardDataset, live: DashboardDataset): DashboardDataset {
+  const mergeNamedCounts = (left: Array<{ name: string; value: number }>, right: Array<{ name: string; value: number }>) => {
+    const counts = new Map(left.map((item) => [displayRuleType(item.name), item.value]));
+    right.forEach((item) => {
+      const name = displayRuleType(item.name);
+      counts.set(name, (counts.get(name) || 0) + item.value);
+    });
+    return Array.from(counts.entries()).map(([name, value]) => ({ name, value }));
+  };
+  const mergeSourceCounts = (left: SourceBreach[], right: SourceBreach[]) => {
+    const counts = new Map(left.map((item) => [displaySourceName(item.source), item.count]));
+    right.forEach((item) => {
+      const source = displaySourceName(item.source);
+      counts.set(source, (counts.get(source) || 0) + item.count);
+    });
+    return Array.from(counts.entries())
+      .map(([source, count]) => ({ source, count }))
+      .sort((a, b) => b.count - a.count);
+  };
+  const baseEvaluated = base.complianceTrend.reduce((total, point) => total + point.compliant + point.breached, 0);
+  const baseCompliant = base.complianceTrend.reduce((total, point) => total + point.compliant, 0);
+  const livePoint = live.complianceTrend[live.complianceTrend.length - 1];
+  const liveEvaluated = livePoint.compliant + livePoint.breached;
+  const totalEvaluated = baseEvaluated + liveEvaluated;
+  const totalCompliant = baseCompliant + livePoint.compliant;
+  return {
+    totalObligations: base.totalObligations + live.totalObligations,
+    clientSide: base.clientSide + live.clientSide,
+    supplierSide: base.supplierSide + live.supplierSide,
+    ruleTypeBreakdown: mergeNamedCounts(base.ruleTypeBreakdown, live.ruleTypeBreakdown),
+    complianceTrend: [
+      ...base.complianceTrend,
+      { period: "Live project", compliant: livePoint.compliant, breached: livePoint.breached },
+    ],
+    breachBySource: mergeSourceCounts(base.breachBySource, live.breachBySource),
+    // Keep the existing dollar-denominated portfolio chart separate from the
+    // live SEK project exposure shown in the summary card.
+    financialExposure: base.financialExposure,
+    activeBreaches: base.activeBreaches + live.activeBreaches,
+    dollarAtRisk: base.dollarAtRisk + live.dollarAtRisk,
+    complianceRate: totalEvaluated ? Math.round((totalCompliant / totalEvaluated) * 1000) / 10 : base.complianceRate,
+    lifecycle: base.lifecycle.map((stage) => {
+      const liveStage = live.lifecycle.find((item) => item.stage === stage.stage);
+      return { ...stage, value: stage.value + (liveStage?.value || 0) };
+    }),
+  };
 }
 
 /* -------------------------------- mock data builder --------------------------------- */
@@ -117,7 +233,10 @@ function buildDataset(range: RangeKey): DashboardDataset {
 }
 
 /* --------------------------------- helpers ---------------------------------- */
-const money = (n: number): string => (n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n}`);
+const money = (n: number, currency: "USD" | "SEK" = "USD"): string => {
+  const prefix = currency === "SEK" ? "SEK " : "$";
+  return n >= 1000 ? `${prefix}${(n / 1000).toFixed(1)}k` : `${prefix}${n}`;
+};
 
 function CardShell({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -169,9 +288,29 @@ const tooltipStyle = {
 };
 
 /* --------------------------------- component --------------------------------- */
-export default function ProjectDashboard() {
+export default function ProjectDashboard({
+  portfolio,
+  kpis,
+}: {
+  portfolio: ProjectKpiPortfolio | null;
+  kpis: ContractKPI[];
+}) {
   const [range, setRange] = useState<RangeKey>("month");
-  const data = useMemo(() => buildDataset(range), [range]);
+  const data = useMemo(
+    () => portfolio
+      ? mergeDashboardDatasets(buildDataset(range), buildLiveDataset(portfolio, kpis))
+      : buildDataset(range),
+    [portfolio, kpis, range],
+  );
+  // Keep the existing dashboard portfolio exposure and add the live contract
+  // exposure. Use the month baseline for this summary card so a year-range
+  // chart total is not mistaken for current open risk.
+  const existingPortfolioExposure = buildDataset("month").dollarAtRisk;
+  const projectCurrency: "USD" | "SEK" = kpis.some((kpi) => (
+    `${kpi.unit || ""} ${kpi.consequence_unit || ""} ${kpi.contract_name || ""}`.toUpperCase().includes("SEK")
+    || (kpi.contract_name || "").toLowerCase().includes("airport-charges")
+  )) ? "SEK" : "USD";
+  const projectExposure = portfolio?.summary.open_exposure ?? 0;
 
   // Notice we removed the hardcoded background and padding from the outer div 
   // to better blend with the hosting page. The padding can be adjusted there.
@@ -209,11 +348,12 @@ export default function ProjectDashboard() {
       </div>
 
       {/* stat row */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
         <StatCard icon={FileCheck2} label="Total Obligations" value={data.totalObligations} sub={`${data.clientSide} client · ${data.supplierSide} supplier`} />
         <StatCard icon={ShieldCheck} label="Compliance Rate" value={`${data.complianceRate}%`} sub={RANGE_META[range].label} tone={C.green} />
         <StatCard icon={AlertTriangle} label="Active Breaches" value={data.activeBreaches} sub={RANGE_META[range].label} tone={C.red} />
-        <StatCard icon={DollarSign} label="$ At Risk" value={money(data.dollarAtRisk)} sub="Open penalty exposure" tone={C.amber} />
+        <StatCard icon={DollarSign} label="$ At Risk" value={money(existingPortfolioExposure, "USD")} sub="Existing portfolio exposure" tone={C.amber} />
+        <StatCard icon={DollarSign} label={`${projectCurrency} At Risk`} value={money(projectExposure, projectCurrency)} sub="Current project exposure" tone={C.amber} />
         <StatCard icon={Users2} label="Client / Supplier" value={`${Math.round((data.clientSide / data.totalObligations) * 100)}% / ${Math.round((data.supplierSide / data.totalObligations) * 100)}%`} sub="Obligation split" />
       </div>
 
@@ -281,8 +421,8 @@ export default function ProjectDashboard() {
           <ComposedChart data={data.financialExposure} margin={{ left: -8, right: 12 }}>
             <CartesianGrid stroke={C.border} vertical={false} />
             <XAxis dataKey="period" tick={{ fontSize: 12, fill: C.inkMuted, fontFamily: "Inter" }} axisLine={{ stroke: C.border }} tickLine={false} />
-            <YAxis tick={{ fontSize: 12, fill: C.inkMuted, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickFormatter={money} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => money(v)} />
+            <YAxis tick={{ fontSize: 12, fill: C.inkMuted, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickFormatter={(value: number) => money(value, "USD")} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => money(v, "USD")} />
             <Legend wrapperStyle={{ fontSize: 12, fontFamily: "Inter" }} />
             <Bar dataKey="atRisk" name="$ At Risk" fill={C.amber} radius={[4, 4, 0, 0]} barSize={28} />
             <Line type="monotone" dataKey="recovered" name="$ Recovered" stroke={C.green} strokeWidth={2.5} dot={{ r: 3 }} />

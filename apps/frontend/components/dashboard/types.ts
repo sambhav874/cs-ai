@@ -209,6 +209,28 @@ export interface ContractKPI {
   clause_text?: string;
 }
 
+export interface ProjectKpiPortfolio {
+  project_id: string;
+  summary: {
+    contract_count: number;
+    contracts_with_kpis: number;
+    contracts_with_tracked_kpis: number;
+    kpi_count: number;
+    tracked_kpi_count: number;
+    open_breach_count: number;
+    source_count: number;
+    stale_source_count: number;
+    failed_source_count: number;
+    actual_count: number;
+    open_exposure: number;
+    coverage_percent: number;
+  };
+  connector_health?: Record<string, number>;
+  risky_contracts?: Array<Record<string, unknown>>;
+  upcoming_reporting_windows?: Array<Record<string, unknown>>;
+  top_breaches?: Array<Record<string, unknown>>;
+}
+
 export type AIProvider = "groq" | "openai" | "claude" | "gemini";
-export type ProjectTab = "overview" | "contracts" | "kpis" | "assistant" | "reviews" | "playbooks";
+export type ProjectTab = "overview" | "dashboard" | "contracts" | "kpis" | "assistant" | "reviews" | "playbooks";
 export type ContractView = "all" | "mine" | "needs-action";

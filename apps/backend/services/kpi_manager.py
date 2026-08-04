@@ -1406,7 +1406,7 @@ class ContractKPIManager:
     ) -> Dict[str, Any]:
         """Send a remediation follow-up reminder for an open breach.
 
-        ``audience`` is a human label ("user" or "client") recorded on the
+        ``audience`` is a human label ("team_owner" or "client") recorded on the
         dispatch and on the breach action trail. Delivery stays mock in demo
         environments, consistent with ``dispatch_escalation_alert``.
         """

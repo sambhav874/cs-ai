@@ -196,6 +196,7 @@ class ContractReActRuntime:
                 on_event("thinking", {"message": reasoning, "iteration": iteration})
 
             tool_calls = list(getattr(response, "tool_calls", None) or [])
+            tool_calls = self._repair_follow_up_tool_choice(state, tool_calls)
 
             state.add_trace(
                 "response_received",
@@ -231,11 +232,11 @@ class ContractReActRuntime:
                     )
                     synthesis_prompt = (
                         f"Original query: {state.message}\n\n"
-                        f"Using only the evidence returned by the tools above, "
-                        f"produce a properly cited answer to the query. "
-                        f"Use inline citation markers like [1], [2] for each fact you reference, "
-                        f"and include a structured <CITATIONS> JSON block at the end "
-                        f"with the exact ref, doc_id, page or the page range, and quote for each citation."
+                        f"Using only the evidence returned by the tools above, answer the query naturally and directly. "
+                        f"Do not expose internal IDs, UUIDs, database IDs, or tool output. "
+                        f"Use citations only when the user asks for sources, when quoting contract language, "
+                        f"or when a material/legal conclusion needs support. If citations are needed, use brief inline "
+                        f"markers like [1], [2] and include the structured <CITATIONS> JSON block at the end; otherwise omit it."
                     )
                     messages.append(HumanMessage(content=synthesis_prompt))
 
@@ -313,8 +314,52 @@ class ContractReActRuntime:
             f"- project_id: {context.project_id or 'N/A'}\n"
             f"- contract_id: {context.contract_id or 'N/A'}\n"
             f"- selected_document_ids: {selected_ids}\n\n"
-            "Use the available tools to gather evidence, then provide a cited final answer."
+            "Choose the tool that matches the user's intent. For whole-contract summaries, use outline_document followed by read_document with include_full=true; do not use narrow search alone. "
+            "Answer conversationally and directly. "
+            "Keep internal identifiers private. Add sources only when they are needed or requested."
         )
+
+    def _repair_follow_up_tool_choice(self, state: AgentRunState, tool_calls: list) -> list:
+        """Keep short follow-ups attached to the topic established in the conversation."""
+        if not tool_calls:
+            return tool_calls
+
+        question = str(state.message or "").strip().lower()
+        memory = str(state.memory_context or "").lower()
+        is_list_follow_up = bool(re.search(r"\b(list|show|give|tell)\b.*\b(them|these|those|all)\b", question))
+        prior_kpi_topic = bool(re.search(r"\b(kpi|kpis|sla|service level|breach|threshold)\b", memory))
+        first_tool = str(tool_calls[0].get("name") or "").strip()
+        needs_full_context = bool(
+            re.search(r"\b(summary|summarize|overview|whole contract|full contract|entire contract|what is (?:in|covered by) this contract)\b", question)
+        )
+        if needs_full_context and first_tool in {"list_documents", "fetch_documents", "search_evidence", "find_in_document"}:
+            repaired = dict(tool_calls[0])
+            repaired["name"] = "outline_document"
+            repaired["args"] = {"document_id": ""}
+            state.add_trace(
+                "tool_choice_repaired",
+                from_tool=first_tool,
+                to_tool="outline_document",
+                reason="Whole-contract request requires document-wide context before targeted retrieval.",
+            )
+            return [repaired, *tool_calls[1:]]
+        if not (is_list_follow_up and prior_kpi_topic and first_tool in {"list_documents", "fetch_documents", "search_evidence"}):
+            return tool_calls
+
+        repaired = dict(tool_calls[0])
+        repaired["name"] = "get_kpi_context"
+        repaired["args"] = {
+            "contract_id": "",
+            "metric_name": "",
+            "query": "list all KPI and SLA records for the current contract",
+        }
+        state.add_trace(
+            "tool_choice_repaired",
+            from_tool=first_tool,
+            to_tool="get_kpi_context",
+            reason="Short follow-up continues the prior KPI request.",
+        )
+        return [repaired, *tool_calls[1:]]
 
     def _invoke_tool_call(self, tool_model: Any, messages: list, state: "AgentRunState") -> Any:
         response = tool_model.invoke(messages)

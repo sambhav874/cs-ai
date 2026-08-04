@@ -1102,8 +1102,9 @@ def remind_breach_recovery(
 ) -> Dict[str, Any]:
     """Send (mock-dispatched) recovery reminders for an open breach.
 
-    audience "user" targets the signed-in contract owner, "client" targets the
-    counterparty resolved from the breach/KPI/contract records, and "both"
+    audience "team_owner" targets the owner of the team that owns the contract,
+    "client" targets the counterparty resolved from the breach/KPI/contract records,
+    and "both" dispatches to each.
     dispatches to each. Emails are logged as mock dispatches in demo mode.
     """
     try:
@@ -1115,12 +1116,25 @@ def remind_breach_recovery(
     check_contract_access(contract, current_user)
     manager = _kpi_manager()
     audience = str(request.audience or "client").lower().strip()
-    if audience not in {"user", "client", "both"}:
-        raise HTTPException(status_code=400, detail="audience must be one of: user, client, both.")
+    if audience == "user":
+        # Backward-compatible alias for older clients.
+        audience = "team_owner"
+    if audience not in {"team_owner", "client", "both"}:
+        raise HTTPException(status_code=400, detail="audience must be one of: team_owner, client, both.")
 
     targets: List[Tuple[str, str]] = []
-    if audience in {"user", "both"}:
-        targets.append(("user", str(getattr(current_user, "email", "") or "")))
+    if audience in {"team_owner", "both"}:
+        team_owner_email = ""
+        if contract.get("ownerType") == "team" and contract.get("ownerId"):
+            team = teams_collection.find_one({"_id": contract.get("ownerId")}, {"creatorId": 1})
+            creator_id = (team or {}).get("creatorId")
+            if creator_id:
+                creator_oid = ObjectId(str(creator_id)) if ObjectId.is_valid(str(creator_id)) else creator_id
+                team_owner = users_collection.find_one({"_id": creator_oid}, {"email": 1})
+                team_owner_email = str((team_owner or {}).get("email") or "")
+        if not team_owner_email:
+            team_owner_email = str(getattr(current_user, "email", "") or "")
+        targets.append(("team_owner", team_owner_email))
     if audience in {"client", "both"}:
         try:
             recipient_email, _ = manager.resolve_breach_email_recipient(
@@ -1374,5 +1388,4 @@ def extract_project_kpis(
         "kpis": project_kpis,
         "summary": manager.summarize_kpis(project_kpis),
     }
-
 

@@ -12,6 +12,23 @@ Each step is written in the format:
 
 ---
 
+## PHASE 0 -- Project Dashboard Before & After
+
+### Step 0.1: Show the dashboard baseline before contract ingestion
+:: ACTION : "Before adding this contract, I'll show the project's existing portfolio baseline." : Open the project Dashboard tab before uploading or extracting the airport contract.
+:: SPEAK : "This is the project's existing obligation portfolio. The dashboard already contains historical and portfolio-level data; the airport contract has not been added yet." : Show the dashboard cards and charts before the airport contract is processed.
+:: VERIFICATION : "The baseline dashboard shows the existing obligation count, compliance rate, breach count, current exposure, and client/supplier split. The charts contain the existing portfolio data only." : Point to the summary cards and the current charts.
+
+### Step 0.2: Return to the dashboard after tracking is complete
+:: ACTION : "Now that the airport contract is ingested, its obligations are tracked, and the four sources have been linked, I'll return to the project Dashboard." : Click the Dashboard tab after Step 2.7.
+:: SPEAK : "The dashboard keeps the existing portfolio and adds the airport contract as a live project contribution. It does not replace the prior data." : Show the updated dashboard.
+:: VERIFICATION : "The total obligations increase by the airport contract's 19 extracted KPIs. The current exposure includes the existing portfolio exposure plus the airport contract's open penalty exposure. The compliance and breach totals also include the newly tracked airport obligations." : Compare the pre-ingestion and post-tracking cards.
+:: SPEAK : "The charts retain the existing portfolio series and append a 'Live project' point for the newly ingested contract. Source labels remain human-readable, such as CSV Upload, REST API, SAP S/4HANA, and JSON Feed." : Point to the Compliance Health Trend, source chart, and financial exposure chart.
+:: VERIFICATION : "The post-tracking dashboard visibly shows the airport contract contribution without losing the pre-existing project data." : Capture the post-tracking dashboard state for the pitch.
+:: NOTE : "The airport contract is denominated in SEK. The dashboard keeps the existing portfolio exposure in dollars and shows the airport contract's current exposure separately in SEK, so the currencies are never incorrectly added together." : Point to the `$ At Risk` and `SEK At Risk` cards.
+
+---
+
 ## PHASE 1 -- Contract Upload & KPI Extraction
 
 ### Step 1.1: Open any account & project
@@ -77,6 +94,11 @@ Each step is written in the format:
 :: ACTION : "Running Smart Match on the REST and SAP sources." : Click the REST source → "Smart Match" → then SAP source → "Smart Match".
 :: SPEAK : "Now linking the Ground Handling REST Feed (Electricity + De-icing breaches) and SAP S/4HANA (Extra Hours breach). After all 4 sources are linked, the flags panel shows 6 breaches." : Wait for both.
 :: VERIFICATION : "All 4 sources show 'Linked' pill. Flags count in the header badge updates to 6." : Navigate to Flags panel briefly.
+
+### Step 2.8: Show the post-tracking project dashboard
+:: ACTION : "The contract is now fully tracked, so I'll show how it has been added to the project-level dashboard." : Click the Dashboard tab.
+:: SPEAK : "The dashboard now combines the existing portfolio with the airport contract: 19 airport obligations, linked-source actuals, open breaches, and penalty exposure are included in the project view." : Show the updated dashboard cards.
+:: VERIFICATION : "The dashboard shows the additive totals, the airport contract's current exposure, a 'Live project' trend point, and readable source labels. Existing dashboard data remains visible alongside the new contract data." : Point to the Total Obligations, Active Breaches, $ At Risk, Compliance Health Trend, and Breaches detected via Sources cards.
 
 ---
 
