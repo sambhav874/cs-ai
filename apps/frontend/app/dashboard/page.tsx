@@ -74,6 +74,7 @@ import { ContractExplorer } from "@/components/dashboard/ContractExplorer";
 import { ProjectOverview } from "@/components/dashboard/ProjectOverview";
 import { ProjectAssistantWorkspace } from "@/components/dashboard/ProjectAssistantWorkspace";
 import { ProjectKPIWorkspace } from "@/components/dashboard/ProjectKPIWorkspace";
+import ProjectDashboard from "@/components/dashboard/ProjectDashboard";
 
 const PROJECT_SELECTION_KEY = "dashboardSelectedProject";
 
@@ -1366,7 +1367,8 @@ function DashboardContent() {
                 </div>
               </div>
             ) : (
-              <div className="p-6 md:p-8">
+              <div className="p-6 md:p-8 flex flex-col gap-8">
+                <ProjectDashboard />
                 <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden animate-slide-up">
                   <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between bg-muted/50">
                     <div className="flex flex-wrap items-center gap-2">
