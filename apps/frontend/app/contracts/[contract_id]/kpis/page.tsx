@@ -364,6 +364,7 @@ interface ContractKPIBreach {
     section?: string;
   };
   created_at?: string;
+  updated_at?: string;
 }
 
 interface KPIPortfolio {
@@ -1120,6 +1121,15 @@ function ScrollableTabs({ tabs, activeTab, onTabChange }: { tabs: { id: string; 
   );
 }
 
+export type RecoveryReminderAction = {
+  dispatch_id: string;
+  audience: "team_owner" | "client" | string;
+  recipient: string;
+  sent_at: string;
+  status: string;
+  subject: string;
+};
+
 export default function ContractKpiManagementPage() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const router = useRouter();
@@ -1131,6 +1141,7 @@ export default function ContractKpiManagementPage() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [activePanel, setActivePanel] = useState<PanelKey>("review");
+  const [actionLogs, setActionLogs] = useState<Record<string, RecoveryReminderAction[]>>({});
   const [contract, setContract] = useState<FullContractData | null>(null);
   const [kpis, setKpis] = useState<ContractKPI[]>([]);
   const [summary, setSummary] = useState<ContractKPISummary | null>(null);
@@ -2523,7 +2534,7 @@ export default function ContractKpiManagementPage() {
               sourceConfigs={sourceConfigs}
               sourcesByKpiId={sourcesByKpiId}
               actualsByKpiId={actualsByKpiId}
-              breaches={breaches}
+              breaches={airportDemoFlagsReady ? breaches : []}
               onAcceptAll={acceptAll}
               onTrackRecommended={trackRecommended}
               onUpdateKpi={updateKpi}
@@ -2563,7 +2574,7 @@ export default function ContractKpiManagementPage() {
             <KpiHeatmapPanel
               kpis={sortedKpis}
               actuals={actuals}
-              breaches={breaches}
+              breaches={airportDemoFlagsReady ? breaches : []}
             />
           ) : activePanel === "sources" ? (
             <GuidedSourcesPanel
@@ -2591,7 +2602,7 @@ export default function ContractKpiManagementPage() {
               onUploadSampleFile={uploadSourceSampleFile}
             />
           ) : activePanel === "recoveries" ? (
-            <RecoveriesPanel breaches={visibleBreaches} kpiById={kpiById} />
+            <RecoveriesPanel breaches={visibleBreaches} kpiById={kpiById} actionLogs={actionLogs} setActionLogs={setActionLogs} />
           ) : activePanel === "flags" ? (
             <FlagsPanel
               breaches={visibleBreaches}
@@ -4263,12 +4274,12 @@ function RecoveryPipelineChart({
   });
   const resolved = breaches.filter((breach) => breach.status === "resolved").length;
   const rows = [
-    { label: "Open", value: counts.open, color: "#ef4444" },
-    { label: "In Action", value: counts.in_action, color: "#3b82f6" },
-    { label: "Ack", value: counts.acknowledged || 0, color: "#f59e0b" },
-    { label: "Reminded", value: counts.reminded || 0, color: "#8b5cf6" },
-    { label: "Escalated", value: counts.escalated || 0, color: "#a855f7" },
-    { label: "Resolved", value: resolved, color: "#22c55e" },
+    { label: "Open", value: counts.open, color: "#c2410c" },
+    { label: "In Action", value: counts.in_action, color: "#0070f3" },
+    { label: "Ack", value: counts.acknowledged || 0, color: "#f97316" },
+    { label: "Reminded", value: counts.reminded || 0, color: "#9333ea" },
+    { label: "Escalated", value: counts.escalated || 0, color: "#7e22ce" },
+    { label: "Resolved", value: resolved, color: "#15803D" },
   ];
   const max = Math.max(...rows.map((row) => row.value), 1);
   const withRemedy = openFlags.filter((breach) => breach.remediation).length;
@@ -4292,12 +4303,12 @@ function RecoveryPipelineChart({
         {rows.map((row) => (
           <div key={row.label} className="flex flex-1 flex-col items-center gap-1.5 group/bar cursor-default">
             <span className="text-sm font-semibold text-gray-900 tabular-nums">{row.value}</span>
-            <div className="flex h-24 w-full items-end rounded-lg bg-gray-50">
+            <div className="flex h-24 w-full items-end rounded bg-white/80 backdrop-blur-md border border-black/5 shadow-sm hover:brightness-105 transition-all animate-in fade-in slide-in-from-bottom-4">
               <motion.div
                 initial={{ height: 0 }}
                 animate={{ height: `${Math.max(6, (row.value / max) * 100)}%` }}
                 transition={{ duration: 0.7, ease: "easeOut" }}
-                className="w-full rounded-lg transition-all duration-200 group-hover/bar:opacity-80"
+                className="w-full rounded transition-all duration-200 group-hover/bar:opacity-80"
                 style={{ backgroundColor: row.color }}
               />
             </div>
@@ -4306,21 +4317,21 @@ function RecoveryPipelineChart({
         ))}
       </div>
       <div className="mt-auto pt-3 grid grid-cols-3 gap-2 text-xs">
-        <div className="rounded-lg bg-gray-50 p-2.5">
-          <span className="block text-[10px] font-medium text-gray-400 uppercase tracking-wide">Remedies</span>
-          <span className="text-sm font-semibold text-gray-700 tabular-nums">
+        <div className="rounded bg-white/80 backdrop-blur-md border border-black/5 shadow-sm hover:brightness-105 transition-all animate-in fade-in slide-in-from-bottom-4 p-2.5">
+          <span className="block text-[10px] font-medium text-gray-400 uppercase tracking-wider font-semibold">Remedies</span>
+          <span className="text-sm font-semibold text-gray-900 tracking-wide tabular-nums">
             {withRemedy}/{openFlags.length}
           </span>
         </div>
-        <div className="rounded-lg bg-gray-50 p-2.5">
-          <span className="block text-[10px] font-medium text-gray-400 uppercase tracking-wide">SLA set</span>
-          <span className="text-sm font-semibold text-gray-700 tabular-nums">
+        <div className="rounded bg-white/80 backdrop-blur-md border border-black/5 shadow-sm hover:brightness-105 transition-all animate-in fade-in slide-in-from-bottom-4 p-2.5">
+          <span className="block text-[10px] font-medium text-gray-400 uppercase tracking-wider font-semibold">SLA set</span>
+          <span className="text-sm font-semibold text-gray-900 tracking-wide tabular-nums">
             {withSla}/{openFlags.length}
           </span>
         </div>
-        <div className="rounded-lg bg-gray-50 p-2.5">
-          <span className="block text-[10px] font-medium text-gray-400 uppercase tracking-wide">Flag age</span>
-          <span className="text-sm font-semibold text-gray-700 tabular-nums">
+        <div className="rounded bg-white/80 backdrop-blur-md border border-black/5 shadow-sm hover:brightness-105 transition-all animate-in fade-in slide-in-from-bottom-4 p-2.5">
+          <span className="block text-[10px] font-medium text-gray-400 uppercase tracking-wider font-semibold">Flag age</span>
+          <span className="text-sm font-semibold text-gray-900 tracking-wide tabular-nums">
             avg {avgDays}d · oldest {oldestDays}d
           </span>
         </div>
@@ -4366,7 +4377,7 @@ function BreachesByCategoryChart({
   return (
     <div className="flex flex-1 flex-col">
       <div className="mb-3 flex items-baseline justify-between">
-        <span className="text-2xl font-bold text-gray-950 tabular-nums">
+        <span className="text-2xl font-bold text-gray-900 tracking-wide tabular-nums">
           {total}
         </span>
         <span className="text-[11px] text-gray-400">
@@ -4383,33 +4394,33 @@ function BreachesByCategoryChart({
                     className="h-2 w-2 rounded-full"
                     style={{
                       backgroundColor: data.hasCritical
-                        ? "#dc2626"
+                        ? "#c2410c"
                         : data.hasHigh
-                          ? "#f59e0b"
-                          : "#3b82f6",
+                          ? "#f97316"
+                          : "#0070f3",
                     }}
                   />
                   {formatCategory(cat)}
                 </span>
-                <span className="font-semibold text-gray-700 tabular-nums">
+                <span className="font-semibold text-gray-900 tracking-wide tabular-nums">
                   {data.count}
                 </span>
               </div>
-              <div className="h-3 overflow-hidden rounded-full bg-gray-50">
+              <div className="h-5 overflow-hidden rounded-full bg-white/80 backdrop-blur-md border border-black/5">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{
                     width: `${Math.max(8, (data.count / maxCount) * 100)}%`,
                   }}
                   transition={{ duration: 0.5, ease: "easeOut" }}
-                  className="h-3 rounded-full bg-blue-500 transition-all duration-200 group-hover/row:bg-blue-600"
+                  className="h-5 rounded-full bg-[#0070f3] transition-all duration-200 group-hover/row:bg-[#0051a8]"
                 />
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-gray-200 p-6 text-xs text-gray-400">
+        <div className="flex flex-1 items-center justify-center rounded border border-dashed border-gray-200 p-6 text-xs text-gray-400">
           No open breaches.
         </div>
       )}
@@ -4446,68 +4457,68 @@ function TurnaroundSeatBandChart({ kpis }: { kpis: ContractKPI[] }) {
   const barHeight = 200;
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-8 flex items-center justify-between gap-2">
         <span className="text-[11px] text-gray-400">
           SEK per turnaround, by aircraft seat band
         </span>
         <span className="flex items-center gap-3 text-[10px] font-medium text-gray-500">
           <span className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-sm bg-blue-500" /> Passenger
+            <span className="h-2 w-2 rounded-sm bg-[#0070f3]" /> Passenger
           </span>
           <span className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-sm bg-green-500" /> Ramp
+            <span className="h-2 w-2 rounded-sm bg-[#9333ea]" /> Ramp
           </span>
         </span>
       </div>
 
-      <div className="flex items-end justify-between gap-2" style={{ height: barHeight + 24 }}>
+      <div className="flex flex-1 items-end justify-between gap-2 pb-6" style={{ minHeight: barHeight + 40 }}>
         {bands.map((band) => (
           <div
             key={band.seats}
-            className="flex flex-1 flex-col items-center gap-1.5 group/band cursor-default"
+            className="flex flex-1 flex-col items-center justify-end gap-2 group/band cursor-default h-full"
           >
-            <div className="flex items-end justify-center gap-1">
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-[10px] font-semibold text-blue-600 tabular-nums">
+            <div className="flex items-end justify-center gap-1.5 h-full">
+              <div className="flex flex-col items-center gap-1.5 h-full justify-end">
+                <span className="text-[10px] font-semibold text-[#0070f3] tabular-nums">
                   {band.passenger.toLocaleString()}
                 </span>
-                <div className="flex w-8 items-end rounded-t-md bg-gray-50" style={{ height: barHeight }}>
+                <div className="flex w-9 items-end rounded-t bg-white/80 backdrop-blur-md border border-black/5" style={{ height: barHeight }}>
                   <motion.div
                     initial={{ height: 0 }}
                     animate={{
                       height: `${Math.max(4, (band.passenger / max) * barHeight)}px`,
                     }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
-                    className="w-full rounded-t-md bg-blue-500 transition-all duration-200 group-hover/band:bg-blue-600"
+                    className="w-full rounded-t bg-[#0070f3] transition-all duration-200 group-hover/band:bg-[#0051a8]"
                   />
                 </div>
               </div>
 
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-[10px] font-semibold text-green-600 tabular-nums">
+              <div className="flex flex-col items-center gap-1.5 h-full justify-end">
+                <span className="text-[10px] font-semibold text-[#9333ea] tabular-nums">
                   {band.ramp.toLocaleString()}
                 </span>
-                <div className="flex w-8 items-end rounded-t-md bg-gray-50" style={{ height: barHeight }}>
+                <div className="flex w-9 items-end rounded-t bg-white/80 backdrop-blur-md border border-black/5" style={{ height: barHeight }}>
                   <motion.div
                     initial={{ height: 0 }}
                     animate={{
                       height: `${Math.max(4, (band.ramp / max) * barHeight)}px`,
                     }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
-                    className="w-full rounded-t-md bg-green-500 transition-all duration-200 group-hover/band:bg-green-600"
+                    className="w-full rounded-t bg-[#9333ea] transition-all duration-200 group-hover/band:bg-[#7e22ce]"
                   />
                 </div>
               </div>
             </div>
 
-            <span className="text-[10px] font-medium text-gray-400">
+            <span className="text-[10px] font-medium text-gray-400 mt-2">
               {band.seats} seats
             </span>
           </div>
         ))}
       </div>
 
-      <p className="mt-auto pt-3 text-[11px] text-gray-400">
+      <p className="mt-auto pt-4 text-[11px] text-gray-400">
         Ramp handling prices above passenger services at every seat band; the gap
         widens as aircraft size grows (3051→4679 vs 3543→5172 SEK per turnaround).
       </p>
@@ -4527,11 +4538,11 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
     const max = Math.max(...rows.map((row) => row.amount), 1);
     return (
       <div>
-        <div className="mb-4 rounded-lg bg-red-50 p-3 text-center">
-          <span className="block text-[10px] font-semibold uppercase tracking-wide text-red-400">
+        <div className="mb-4 rounded bg-white/80 backdrop-blur-md border border-black/5 shadow-sm p-3 text-center">
+          <span className="block text-[10px] font-semibold uppercase tracking-wider font-semibold text-[#f97316]">
             Total Exposure
           </span>
-          <span className="mt-1 block text-2xl font-bold text-red-600 tabular-nums">
+          <span className="mt-1 block text-2xl font-bold text-[#c2410c] tabular-nums">
             {totalExposure.toLocaleString()} <span className="text-sm font-medium">SEK</span>
           </span>
         </div>
@@ -4543,23 +4554,23 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                   <span className="truncate text-gray-500 group-hover/row:text-gray-700 transition-colors">
                     {row.label}
                   </span>
-                  <span className="font-semibold text-gray-700 tabular-nums">
+                  <span className="font-semibold text-gray-900 tracking-wide tabular-nums">
                     {row.amount.toLocaleString()} SEK
                   </span>
                 </div>
-                <div className="h-3 overflow-hidden rounded-full bg-gray-100">
+                <div className="h-3 overflow-hidden rounded-full bg-slate-100/50">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${Math.max(6, (row.amount / max) * 100)}%` }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
-                    className="h-3 rounded-full bg-red-500 transition-all duration-200 group-hover/row:bg-red-600"
+                    className="h-3 rounded-full bg-[#f97316] transition-all duration-200 group-hover/row:bg-[#c2410c]"
                   />
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-xs text-gray-400">
+          <div className="rounded border border-dashed border-gray-200 p-6 text-center text-xs text-gray-400">
             No penalty-bearing breaches in this contract.
           </div>
         )}
@@ -4644,14 +4655,14 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           <span className="text-[11px] text-gray-500">
             Landing charge (SEK) vs MTOW tonnes
           </span>
-          <span className="text-[10px] font-medium text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">
+          <span className="text-[10px] font-medium text-gray-400 bg-white/80 backdrop-blur-md border border-black/5 px-2 py-0.5 rounded-full">
             kink at 25 t
           </span>
         </div>
         <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
           <defs>
             <linearGradient id="landing-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#3b82f6" />
+              <stop offset="0%" stopColor="#0070f3" />
               <stop offset="100%" stopColor="#2563eb" />
             </linearGradient>
           </defs>
@@ -4682,13 +4693,13 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
             y1={y(flatMin)}
             x2={x(breakTonnes)}
             y2={y(flatMin)}
-            stroke="#3b82f6"
+            stroke="#0070f3"
             strokeDasharray="4 3"
             strokeWidth="0.8"
             strokeOpacity="0.4"
           />
-          <circle cx={x(breakTonnes)} cy={y(chargeAt(breakTonnes - 0.01))} r="3.5" fill="white" stroke="#3b82f6" strokeWidth="2" />
-          <circle cx={x(breakTonnes)} cy={y(chargeAt(breakTonnes))} r="4" fill="white" stroke="#3b82f6" strokeWidth="2" />
+          <circle cx={x(breakTonnes)} cy={y(chargeAt(breakTonnes - 0.01))} r="3.5" fill="white" stroke="#0070f3" strokeWidth="2" />
+          <circle cx={x(breakTonnes)} cy={y(chargeAt(breakTonnes))} r="4" fill="white" stroke="#0070f3" strokeWidth="2" />
           <rect x={x(breakTonnes) + 6} y={padT + 2} width="84" height="20" rx="4" fill="#eff6ff" fillOpacity="0.95" />
           <text x={x(breakTonnes) + 10} y={padT + 15} fontSize="8" fill="#1d4ed8" fontWeight="500" fontFamily="system-ui">
             ≥25t: {base.toLocaleString()}+{overRate}/t → {chargeAt25.toLocaleString()} SEK
@@ -4755,7 +4766,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           <span className="text-[11px] text-gray-400">
             SEK per occasion, sorted by value
           </span>
-          <span className="text-[11px] font-semibold text-gray-700">
+          <span className="text-[11px] font-semibold text-gray-900 tracking-wide">
             {rows.length} charges
           </span>
         </div>
@@ -4767,23 +4778,23 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                   <span className="truncate text-gray-500 group-hover/row:text-gray-700 transition-colors">
                     {row.label}
                   </span>
-                  <span className="font-semibold text-gray-700 tabular-nums">
+                  <span className="font-semibold text-gray-900 tracking-wide tabular-nums">
                     {row.value.toLocaleString()} SEK
                   </span>
                 </div>
-                <div className="h-3 overflow-hidden rounded-full bg-gray-100">
+                <div className="h-5 overflow-hidden rounded-full bg-slate-100/50">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${(row.value / max) * 100}%` }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
-                    className="h-3 rounded-full bg-blue-500 transition-all duration-200 group-hover/row:bg-blue-600"
+                    className="h-5 rounded-full bg-[#0070f3] transition-all duration-200 group-hover/row:bg-[#0051a8]"
                   />
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-xs text-gray-400">
+          <div className="rounded border border-dashed border-gray-200 p-6 text-center text-xs text-gray-400">
             No flat per-occasion charges found in the register.
           </div>
         )}
@@ -4828,7 +4839,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
               </span>
               <span className="font-semibold text-gray-700 tabular-nums">{row.value}</span>
             </div>
-            <div className="h-3 rounded-full bg-gray-100 overflow-hidden">
+            <div className="h-5 rounded-full bg-gray-100 overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${Math.max(8, (row.value / max) * 100)}%` }}
@@ -4836,7 +4847,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                   duration: 0.5,
                   ease: "easeOut",
                 }}
-                className="h-3 rounded-full bg-blue-500 transition-all duration-200 group-hover/bar:bg-blue-600"
+                className="h-5 rounded-full bg-blue-500 transition-all duration-200 group-hover/bar:bg-blue-600"
               />
             </div>
           </div>
@@ -4943,10 +4954,10 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
     const points = chartPointsFor(actuals);
     const latestBreach = breaches.find((breach) => breach.is_breach);
     return (
-      <section className="rounded-lg border border-gray-200 bg-white p-4">
+      <section className="rounded bg-white/80 backdrop-blur-md border border-black/5 shadow-sm hover:brightness-105 transition-all animate-in fade-in slide-in-from-bottom-4 p-4">
         <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h4 className="text-sm font-semibold text-gray-950">
+            <h4 className="text-sm font-semibold text-gray-900 tracking-wide">
               Tracked Performance
             </h4>
             <p className="mt-1 text-xs text-gray-500">
@@ -6926,6 +6937,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
       subject: string;
       body: string;
       recipientSource?: ContractKPIBreach["breach_email_recipient_source"];
+      status?: "sent";
     } | null>(null);
     const ordered = [...breaches].sort((left, right) => {
       const severityRank: Record<string, number> = {
@@ -7064,10 +7076,6 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                               breach.kpi_id}
                           </p>
                         </div>
-                        <p className="mt-1 truncate pl-4 text-xs text-gray-400">
-                          {breach.kpi_id} ·{" "}
-                          {formatDateTime(breach.created_at || breach.timestamp)}
-                        </p>
                       </button>
                       <div
                         className={
@@ -7105,16 +7113,18 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                             className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
                           />
                         </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
-                          onClick={() => void openEscalation(breach, kpi)}
-                          disabled={!breach.is_breach}
-                        >
-                          <Mail className="h-3.5 w-3.5" />
-                          Escalate
-                        </Button>
+                        {String(breach.status || "open").toLowerCase() !== "in_action" && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
+                            onClick={() => void openEscalation(breach, kpi)}
+                            disabled={!breach.is_breach}
+                          >
+                            <Mail className="h-3.5 w-3.5" />
+                            Escalate
+                          </Button>
+                        )}
                       </div>
                     </div>
 
@@ -7174,7 +7184,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                           />
                           <DetailTile
                             label="Data Source"
-                            value={breach.source || "Actual ingestion"}
+                            value={breach.source?.split(':').pop() || "Actual ingestion"}
                           />
                         </div>
                         <div className="rounded-lg border border-gray-200 bg-white p-3">
@@ -7207,16 +7217,18 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                             <Info className="h-3.5 w-3.5" />
                             Ask AI to Analyze
                           </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
-                            onClick={() => void openEscalation(breach, kpi)}
-                            disabled={!breach.is_breach}
-                          >
-                            <Send className="h-3.5 w-3.5" />
-                            Send Escalation Alert Email
-                          </Button>
+                          {breach.status !== "in_action" && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
+                              onClick={() => void openEscalation(breach, kpi)}
+                              disabled={!breach.is_breach}
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                              Send Escalation Alert Email
+                            </Button>
+                          )}
                         </div>
                       </div>
                     )}
@@ -7230,111 +7242,129 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
         {alertDraft && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
             <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
-              <div className="border-b border-gray-100 px-5 py-4">
-                <h3 className="text-base font-semibold text-gray-950">
-                  Escalation Alert Email
-                </h3>
-                <p className="mt-1 text-xs text-gray-500">
-                  Review the generated breach notice before dispatch.
-                </p>
-              </div>
-              <div className="space-y-3 p-5">
-                <DetailTile
-                  label="To"
-                  value={alertDraft.to || "No contract email found"}
-                  tone={alertDraft.to ? "gray" : "amber"}
-                />
-                {alertDraft.recipientSource?.source && (
-                  <DetailTile
-                    label="Recipient Source"
-                    value={[
-                      alertDraft.recipientSource.source,
-                      alertDraft.recipientSource.matched_party
-                        ? `party: ${alertDraft.recipientSource.matched_party}`
-                        : "",
-                      alertDraft.recipientSource.confidence
-                        ? `confidence: ${alertDraft.recipientSource.confidence}`
-                        : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  />
-                )}
-                <DetailTile label="Subject" value={alertDraft.subject} />
-                <Textarea
-                  value={alertDraft.body}
-                  onChange={(event) =>
-                    setAlertDraft({ ...alertDraft, body: event.target.value })
-                  }
-                  className="min-h-[320px] font-mono text-xs"
-                />
-              </div>
-              <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-4">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setAlertDraft(null)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  className="bg-cs-primary text-white hover:bg-cs-primary/90"
-                  disabled={!alertDraft.to || isDispatching}
-                  onClick={async () => {
-                    if (
-                      !alertDraft?.to ||
-                      !alertDraft?.kpiId ||
-                      !alertDraft?.contractId
-                    ) {
-                      toast({
-                        title: "Alert dispatch failed",
-                        description:
-                          "Missing recipient email, KPI ID, or Contract ID.",
-                        variant: "destructive",
-                      });
-                      return;
-                    }
-                    setIsDispatching(true);
-                    try {
-                      const result = await authenticatedFetch(
-                        `${process.env.NEXT_PUBLIC_EXTRACTOR_API_URL}/contracts/${alertDraft.contractId}/kpis/alerts/dispatch`,
-                        {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            kpi_id: alertDraft.kpiId,
-                            recipient: alertDraft.to,
-                            subject: alertDraft.subject,
-                            body: alertDraft.body,
-                            breach_id: alertDraft.breachId,
-                            delivery_mode: "mock",
-                          }),
-                        },
-                      );
-                      if (result.error) throw new Error(result.error);
-                      if (alertDraft.breachId) {
-                        onBreachStatusChange(alertDraft.breachId, "in_action");
+              {alertDraft.status === "sent" ? (
+                <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+                    <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-950 mb-2">Alert Email Sent</h3>
+                  <p className="mb-8 max-w-sm text-sm text-gray-500">
+                    The escalation alert has been successfully dispatched. The issue is now marked as "In Action".
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full max-w-[200px]"
+                    onClick={() => setAlertDraft(null)}
+                  >
+                    Close
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="border-b border-gray-100 px-5 py-4">
+                    <h3 className="text-base font-semibold text-gray-950">
+                      Escalation Alert Email
+                    </h3>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Review the generated breach notice before dispatch.
+                    </p>
+                  </div>
+                  <div className="space-y-3 p-5">
+                    <DetailTile
+                      label="To"
+                      value={alertDraft.to || "No contract email found"}
+                      tone={alertDraft.to ? "gray" : "amber"}
+                    />
+                    {alertDraft.recipientSource?.source && (
+                      <DetailTile
+                        label="Recipient Source"
+                        value={[
+                          alertDraft.recipientSource.source,
+                          alertDraft.recipientSource.matched_party
+                            ? `party: ${alertDraft.recipientSource.matched_party}`
+                            : "",
+                          alertDraft.recipientSource.confidence
+                            ? `confidence: ${alertDraft.recipientSource.confidence}`
+                            : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      />
+                    )}
+                    <DetailTile label="Subject" value={alertDraft.subject} />
+                    <Textarea
+                      value={alertDraft.body}
+                      onChange={(event) =>
+                        setAlertDraft({ ...alertDraft, body: event.target.value })
                       }
-                      toast({
-                        title: "Escalation logged",
-                        description: `Recorded in demo mode as ${result.data?.status || "mock_dispatched"}. The flag is now In Action.`,
-                      });
-                    } catch (err: any) {
-                      toast({
-                        title: "Alert dispatch failed",
-                        description: err?.message || "Failed to send alert.",
-                        variant: "destructive",
-                      });
-                    } finally {
-                      setIsDispatching(false);
-                      setAlertDraft(null);
-                    }
-                  }}
-                >
-                  {isDispatching ? "Dispatching..." : "Dispatch Alert"}
-                </Button>
-              </div>
+                      className="min-h-[320px] font-mono text-xs"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-4">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setAlertDraft(null)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      className="bg-cs-primary text-white hover:bg-cs-primary/90"
+                      disabled={!alertDraft.to || isDispatching}
+                      onClick={async () => {
+                        if (
+                          !alertDraft?.to ||
+                          !alertDraft?.kpiId ||
+                          !alertDraft?.contractId
+                        ) {
+                          toast({
+                            title: "Alert dispatch failed",
+                            description:
+                              "Missing recipient email, KPI ID, or Contract ID.",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+                        setIsDispatching(true);
+                        try {
+                          const result = await authenticatedFetch(
+                            `${process.env.NEXT_PUBLIC_EXTRACTOR_API_URL}/contracts/${alertDraft.contractId}/kpis/alerts/dispatch`,
+                            {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                kpi_id: alertDraft.kpiId,
+                                recipient: alertDraft.to,
+                                subject: alertDraft.subject,
+                                body: alertDraft.body,
+                                breach_id: alertDraft.breachId,
+                                delivery_mode: "mock",
+                              }),
+                            },
+                          );
+                          if (result.error) throw new Error(result.error);
+                          if (alertDraft.breachId) {
+                            onBreachStatusChange(alertDraft.breachId, "in_action");
+                          }
+                          setAlertDraft({ ...alertDraft, status: "sent" });
+                        } catch (err: any) {
+                          toast({
+                            title: "Alert dispatch failed",
+                            description: err?.message || "Failed to send alert.",
+                            variant: "destructive",
+                          });
+                        } finally {
+                          setIsDispatching(false);
+                        }
+                      }}
+                    >
+                      {isDispatching ? "Dispatching..." : "Dispatch Alert"}
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -7342,28 +7372,21 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
     );
   }
 
-  type RecoveryReminderAction = {
-    dispatch_id: string;
-    audience: "team_owner" | "client";
-    recipient: string;
-    sent_at: string;
-    status: string;
-    subject: string;
-  };
-
   const MOCK_ACCOUNT_EMAIL = "ops@scandinavian-airlines.aero";
 
   function RecoveriesPanel({
     breaches,
     kpiById,
+    actionLogs,
+    setActionLogs,
   }: {
     breaches: ContractKPIBreach[];
     kpiById: Map<string, ContractKPI>;
+    actionLogs: Record<string, RecoveryReminderAction[]>;
+    setActionLogs: React.Dispatch<React.SetStateAction<Record<string, RecoveryReminderAction[]>>>;
   }) {
     const [expandedId, setExpandedId] = useState<string | null>(null);
-    const [actionLogs, setActionLogs] = useState<
-      Record<string, RecoveryReminderAction[]>
-    >({});
+    const [alertDraft, setAlertDraft] = useState<{ status?: "sent" } | null>(null);
     const [isSending, setIsSending] = useState(false);
 
     const recoveries = useMemo(() => {
@@ -7487,13 +7510,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
         [breach.breach_id]: [...(current[breach.breach_id] || []), action],
       }));
       setIsSending(false);
-      toast({
-        title:
-          audience === "team_owner"
-            ? "Team owner reminder logged"
-            : "Client reminder logged",
-        description: `Mock dispatched to ${recipient} in demo mode; no external email was sent.`,
-      });
+      setAlertDraft({ status: "sent" });
     };
 
     return (
@@ -7569,6 +7586,16 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
               const breachStatus = String(breach.status || "open").toLowerCase();
               const isInAction = breachStatus === "in_action";
               const isReceived = receivedStatuses.has(breachStatus);
+              const allFollowUps = (isInAction || isReceived) ? [
+                {
+                  dispatch_id: `initial-esc-${breach.breach_id}`,
+                  audience: "Client (Escalation Alert)",
+                  recipient: breach.breach_email_to || kpi?.contact_email || MOCK_ACCOUNT_EMAIL,
+                  sent_at: breach.updated_at || breach.timestamp || new Date().toISOString(),
+                  status: "mock_dispatched"
+                },
+                ...reminders
+              ] : reminders;
               return (
                 <div key={breach.breach_id} className="bg-white">
                   {showGroupHeading && (
@@ -7593,13 +7620,9 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                             }`}
                         />
                         <p className="truncate text-sm font-semibold text-gray-950">
-                          {kpi?.name || breach.source_kpi?.name || breach.kpi_id}
+                          {kpi?.name || breach.source_kpi?.name}
                         </p>
                       </div>
-                      <p className="mt-1 truncate pl-4 text-xs text-gray-400">
-                        {breach.kpi_id} ·{" "}
-                        {formatDateTime(breach.period_end || breach.timestamp)}
-                      </p>
                     </button>
                     <div className="text-sm font-semibold text-gray-950">
                       {penalty ? `-${money(penalty, "SEK")}` : "Operational only"}
@@ -7667,7 +7690,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                         />
                         <DetailTile
                           label="Data source"
-                          value={breach.source || "Actual ingestion"}
+                          value={breach.source?.split(':').pop() || "Actual ingestion"}
                         />
                         <DetailTile
                           label="Flagged escalation email"
@@ -7692,14 +7715,14 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                         <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
                           Follow-up actions
                         </p>
-                        {!reminders.length ? (
+                        {!allFollowUps.length ? (
                           <p className="mt-2 text-xs text-gray-500">
                             No reminders sent yet. Send one to the counterparty
                             (client) or to your own inbox (user) below.
                           </p>
                         ) : (
                           <div className="mt-2 divide-y divide-gray-100">
-                            {reminders.map((reminder) => (
+                            {allFollowUps.map((reminder) => (
                               <div
                                 key={reminder.dispatch_id}
                                 className="flex flex-wrap items-center gap-2 py-2 text-xs"
@@ -7764,6 +7787,30 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
               );
             })}
           </section>
+        )}
+
+        {alertDraft && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
+              <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+                  <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-950 mb-2">Follow up message sent</h3>
+                <p className="mb-8 max-w-sm text-sm text-gray-500">
+                  The follow up message has been successfully dispatched.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full max-w-[200px]"
+                  onClick={() => setAlertDraft(null)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );
