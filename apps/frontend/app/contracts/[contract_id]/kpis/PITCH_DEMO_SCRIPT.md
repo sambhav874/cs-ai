@@ -15,7 +15,7 @@
 >
 > *Before we add our new agreement, take a look at our live Project Dashboard. This represents our existing enterprise portfolio baseline — tracking historical obligations, exposure, and supplier compliance metrics.*
 >
-> *Now, let's ingest a complex ground-handling contract — `airport-charges-2025.pdf` — and watch our platform turn legal terms into live operational telemetry."*
+> *Now, let's ingest a complex ground-handling contract — `StandardGroundHandlingAgreement.pdf` — and watch our platform turn legal terms into live operational telemetry."*
 
 ---
 
@@ -23,7 +23,7 @@
 > **UI Location**: Project Upload → Contract View → KPI Compliance Tab
 
 **🖥️ WHAT TO DO ON SCREEN**:
-1. Drag and drop `airport-charges-2025.pdf` into the upload zone.
+1. Drag and drop `StandardGroundHandlingAgreement.pdf` into the upload zone.
 2. Click into the newly ingested contract → select **KPI Compliance** tab.
 3. Click the **Extract Obligations** button and wait for completion.
 4. Click **Accept All Recommended** to move all 19 KPIs to active status.
@@ -44,16 +44,16 @@
 **🖥️ WHAT TO DO ON SCREEN**:
 1. Click **Sources** in the left navigation sidebar.
 2. Point out **Recent Connections** (4 seeded integration profiles) and click **Use All (4)**.
-3. Select **Airport Operations CSV** → Click **Upload files** → Click **Smart Match**.
-4. Select **Airport Charges JSON** → Click **Upload files** → Click **Smart Match**.
+3. Select **Scanned Images** → Click **Upload files** → Click **Smart Match**.
+4. Select **File Upload** → Click **Upload files** → Click **Smart Match**.
 5. Click **Smart Match** on the **REST API Feed** and **SAP S/4HANA** sources.
 
 **🗣️ WHAT TO SPEAK (VERBAL SCRIPT)**:
 > *"A contractual obligation is useless without live operational data. In our Sources panel, we connect our enterprise systems.*
 >
-> *By clicking 'Use All', we populate our ready integration profiles for CSV, JSON, REST APIs, and SAP S/4HANA ERP.*
+> *By clicking 'Use All', we populate our ready integration profiles for Scanned Images, File Upload, REST APIs, and SAP S/4HANA ERP.*
 >
-> *Watch how effortless telemetry linking is: we upload an operational CSV log, click 'Smart Match', and the system automatically maps column schemas directly to contractual KPI definitions. We repeat this for our JSON stream, REST API, and SAP feed. Live telemetry is now continuously feeding our contract engine."*
+> *Watch how effortless telemetry linking is: we upload scanned document images, click 'Smart Match', and the system automatically maps column schemas directly to contractual KPI definitions. We repeat this for our File Upload stream, REST API, and SAP feed. Live telemetry is now continuously feeding our contract engine."*
 
 ---
 
@@ -140,5 +140,7 @@
 > *In less than 5 minutes, we went from a static contract PDF to a live, automated obligation tracking, compliance monitoring, and revenue recovery engine. Thank you."*
 
 ---
+
+
 
 

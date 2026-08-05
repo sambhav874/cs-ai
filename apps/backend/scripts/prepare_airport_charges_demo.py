@@ -38,15 +38,17 @@ RECORDS_PER_KPI = 15
 # deterministic 6 open flags across the 10 source-covered KPIs (3 of them penalty-bearing)
 # while guaranteeing at least one flagged KPI is sourced from SAP S/4HANA.
 BREACHED_KPI_CODES_BY_SOURCE = {
-    "csv": {"SGHA-1.1-LANDING", "SGHA-1.3-PASSENGER", "SGHA-1.5-PARKING"},
-    "json": set(),
-    "rest_api": {"SGHA-2.7-ELECTRICITY", "SGHA-2.8-DEICING"},
+    "scanned_images": {"SGHA-1.1-LANDING", "SGHA-1.3-PASSENGER"},
+    "file_upload": set(),
+    "rest_api": {"SGHA-2.8-DEICING"},
     "sap_s4hana": {"SGHA-1.6-EXTRA-HOURS"},
 }
 
 
+from services.airport_charges_demo import HARDCODED_DEMO_TELEMETRY
+
 def _kpi_rows(kpis: List[Dict[str, Any]], source_type: str) -> List[Dict[str, Any]]:
-    return AirportChargesDemoBuilder._kpi_rows(kpis, source_type)
+    return HARDCODED_DEMO_TELEMETRY.get(source_type, [])
 
 
 def _field_mappings(source_type: str) -> List[Dict[str, str]]:

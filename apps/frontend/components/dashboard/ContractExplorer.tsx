@@ -82,7 +82,7 @@ export const ContractExplorer = memo(function ContractExplorer({
               <div className="flex items-start gap-3 min-w-0">
                 <FileText className="h-4 w-4 shrink-0 text-destructive/80 mt-0.5 transition-transform duration-300 group-hover:scale-110" />
                 <div className="min-w-0">
-                  <Link href={`/contracts/${doc._id}`} className="block truncate font-medium text-foreground group-hover:text-primary transition-colors duration-300">
+                  <Link href={`/contracts/${doc._id}/kpis`} className="block truncate font-medium text-foreground group-hover:text-primary transition-colors duration-300">
                     {truncateMiddle(doc.contract_name)}
                   </Link>
                   <div className="truncate text-xs text-muted-foreground mt-0.5">
@@ -142,7 +142,7 @@ export const ContractExplorer = memo(function ContractExplorer({
                   </Button>
                 ) : (
                   <Button asChild variant="outline" size="sm" className="px-3 py-1.5 h-auto rounded border border-border text-xs font-medium text-foreground hover:bg-muted transition-all duration-300 bg-background shadow-sm hover:shadow-md hover:-translate-y-0.5">
-                    <Link href={`/contracts/${doc._id}`}>View</Link>
+                    <Link href={`/contracts/${doc._id}/kpis`}>View</Link>
                   </Button>
                 )}
               </div>

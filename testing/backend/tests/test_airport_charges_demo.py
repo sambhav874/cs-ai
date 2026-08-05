@@ -109,7 +109,7 @@ def test_demo_sources_use_distinct_kpi_sets_and_sap_preview_shape():
 
 def test_airport_demo_detection_is_filename_only_and_marker_free():
     assert is_airport_charges_demo("different-id", AIRPORT_CHARGES_FILENAME)
-    assert is_airport_charges_demo("another-id", "/uploads/AIRPORT-CHARGES-2025.PDF")
+    assert is_airport_charges_demo("another-id", "/uploads/STANDARDGROUNDHANDLINGAGREEMENT.PDF")
     assert not is_airport_charges_demo(AIRPORT_CHARGES_CONTRACT_ID, "other.pdf")
 
 

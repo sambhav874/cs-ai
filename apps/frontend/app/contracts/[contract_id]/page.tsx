@@ -57,7 +57,7 @@ import { ContractPerformanceDashboardPane, KpiRegisterPane, KpiFlagsPane, KpiPer
 
 type QuestionAnswerConfidence = 'high' | 'medium' | 'low';
 const PROJECT_SELECTION_KEY = "dashboardSelectedProject";
-const USER_KPI_SOURCE_TYPES = new Set(["csv", "xlsx", "json", "xml", "manual_attestation", "oracle_fusion", "sap_s4hana", "oracle_db", "sap_ariba"]);
+const USER_KPI_SOURCE_TYPES = new Set(["csv", "xlsx", "json", "xml", "scanned_images", "file_upload", "manual_attestation", "oracle_fusion", "sap_s4hana", "oracle_db", "sap_ariba"]);
 
 interface QuestionAnswerFromAPI {
   question: string;
@@ -1223,6 +1223,14 @@ export default function ContractView() {
         body: JSON.stringify({
           display_name: source.label,
           source_type: source.source_type,
+          file_format:
+            source.source_type === "scanned_images"
+              ? "csv"
+              : source.source_type === "file_upload"
+                ? "json"
+                : source.source_type === "manual_attestation"
+                  ? "json"
+                  : source.source_type,
           auth_type: source.auth_types?.[0] || "none",
           status: "draft",
           schedule: {

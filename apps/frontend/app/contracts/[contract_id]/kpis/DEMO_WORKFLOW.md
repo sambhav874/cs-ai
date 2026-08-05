@@ -3,7 +3,7 @@
 ## Overview
 
 This script guides a presenter through the full KPI compliance dashboard demo
-for an airport ground-handling contract (`airport-charges-2025.pdf`).
+for an airport ground-handling contract (`StandardGroundHandlingAgreement.pdf`).
 Each step is written in the format:
 
 ```
@@ -29,7 +29,7 @@ Each step is written in the format:
 :: VERIFICATION : "The project workspace loads with an 'Upload Contract' button." : Show the project home page with upload CTA.
 
 ### Step 1.2: Upload the contract PDF
-:: ACTION : "Now I'll upload the airport-charges-2025.pdf file. The filename is what triggers the demo -- any contract named exactly 'airport-charges-2025.pdf' will get deterministic ground-truth data." : Drag & drop `airport-charges-2025.pdf` into the upload area.
+:: ACTION : "Now I'll upload the StandardGroundHandlingAgreement.pdf file. The filename is what triggers the demo -- any contract named exactly 'StandardGroundHandlingAgreement.pdf' will get deterministic ground-truth data." : Drag & drop `StandardGroundHandlingAgreement.pdf` into the upload area.
 :: SPEAK : "The backend sanitizes the filename and stores the contract. Ingestion runs automatically." : Show upload progress → contract appears in the project list.
 :: VERIFICATION : "The contract appears with status 'Ingested' after a few seconds." : Show contract card in the project view.
 
@@ -40,7 +40,7 @@ Each step is written in the format:
 
 ### Step 1.4: Extract KPIs
 :: ACTION : "Clicking 'Extract Obligations' to run the deterministic demo extraction." : Click the Extract button.
-:: SPEAK : "Behind the scenes, the backend detects the filename `airport-charges-2025.pdf` and routes to the `AirportChargesDemoBuilder` instead of the normal AI extraction path. It returns 19 KPIs -- 10 tracked, 9 recommended." : Wait for the extraction to complete.
+:: SPEAK : "Behind the scenes, the backend detects the filename `StandardGroundHandlingAgreement.pdf` and routes to the `AirportChargesDemoBuilder` instead of the normal AI extraction path. It returns 19 KPIs -- 10 tracked, 9 recommended." : Wait for the extraction to complete.
 :: VERIFICATION : "The panel shows 19 KPIs: 10 in the 'Tracked' bucket, 9 in 'Recommended'. The headline strip shows KPI Coverage 10/19." : Show the KPI dashboard with populated cards.
 :: SIDEBAR : "Extraction also seeds 4 reusable integration profiles (CSV, JSON, REST, SAP) for this account. They appear in the Sources panel under Recent Connections -- the user links them manually." : Navigate to the Sources panel briefly → return to Review.
 
@@ -65,28 +65,28 @@ Each step is written in the format:
 
 ### Step 2.2: Add all sources using 'Use All'
 :: ACTION : "Clicking 'Use All (4)' to create source configs from the seeded profiles." : Click the "Use All" button in Recent Connections.
-:: SPEAK : "Each profile carries a sample payload and field mappings. 'Use All' creates the 4 source configs -- Airport Operations CSV, Airport Charges JSON, Ground Handling REST Feed, and SAP S/4HANA Ground Operations." : Watch the cards create the configs.
+:: SPEAK : "Each profile carries a sample payload and field mappings. 'Use All' creates the 4 source configs -- Scanned Images, File Upload, Ground Handling REST Feed, and SAP S/4HANA Ground Operations." : Watch the cards create the configs.
 :: VERIFICATION : "'Your sources' now lists all 4 sources, each showing '0 matched' and status 'ready'." : Point to the 4 sources in the sidebar.
 
-### Step 2.3: Upload CSV in CSV source
-:: ACTION : "Selecting the CSV source and uploading a CSV file." : Select "Airport Operations CSV" → click "Upload files" button.
-:: SPEAK : "The upload parses the file and auto-maps the schema. For demo contracts the preview is populated with the deterministic sample payload." : Pick a CSV file → watch the preview table fill in.
+### Step 2.3: Upload file in Scanned Images source
+:: ACTION : "Selecting the Scanned Images source and uploading a document image file." : Select "Scanned Images" → click "Upload files" button.
+:: SPEAK : "The upload parses the file and auto-maps the schema. For demo contracts the preview is populated with the deterministic sample payload." : Pick a file → watch the preview table fill in.
 :: VERIFICATION : "Preview table shows columns: kpi_code, kpi_name, actual_value, timestamp, event_id, unit, period, etc. 8 preview rows visible." : Point to the preview grid.
 
-### Step 2.4: Smart Match the CSV source
-:: ACTION : "Clicking 'Smart Match' on the CSV source." : Click the "Smart Match" button for the CSV source.
+### Step 2.4: Smart Match the Scanned Images source
+:: ACTION : "Clicking 'Smart Match' on the Scanned Images source." : Click the "Smart Match" button for the Scanned Images source.
 :: SPEAK : "Smart Match reads the payload fields, links matching KPIs, and ingests actual values. For demo contracts this creates actuals and initial breaches." : Wait for matching + ingestion to complete.
-:: VERIFICATION : "CSV source shows '3 matched' and the 'Linked' status pill." : Point to the CSV source pill.
+:: VERIFICATION : "Scanned Images source shows '3 matched' and the 'Linked' status pill." : Point to the Scanned Images source pill.
 
-### Step 2.5: Upload JSON in JSON source
-:: ACTION : "Selecting the JSON source and uploading a JSON file." : Select "Airport Charges JSON" → click "Upload files".
-:: SPEAK : "Same process for JSON -- the system parses the structure and shows the seeded preview rows." : Pick a JSON file → watch the preview.
-:: VERIFICATION : "Preview shows measurement, recorded_at, record_id fields. Source type remains 'JSON'." : Point to the JSON preview.
+### Step 2.5: Upload file in File Upload source
+:: ACTION : "Selecting the File Upload source and uploading a file." : Select "File Upload" → click "Upload files".
+:: SPEAK : "Same process for File Upload -- the system parses the structure and shows the seeded preview rows." : Pick a file → watch the preview.
+:: VERIFICATION : "Preview shows measurement, recorded_at, record_id fields. Source type remains 'File Upload'." : Point to the File Upload preview.
 
-### Step 2.6: Smart Match the JSON source
-:: ACTION : "Selecting the JSON source and clicking 'Smart Match'." : Click "Smart Match" on the JSON source.
-:: SPEAK : "Same behavior -- actuals and one breach (Passenger Services) get created for this JSON source." : Wait.
-:: VERIFICATION : "JSON source shows '1 matched' and the 'Linked' status pill." : Show the result.
+### Step 2.6: Smart Match the File Upload source
+:: ACTION : "Selecting the File Upload source and clicking 'Smart Match'." : Click "Smart Match" on the File Upload source.
+:: SPEAK : "Same behavior -- actuals and one breach (Passenger Services) get created for this File Upload source." : Wait.
+:: VERIFICATION : "File Upload source shows '1 matched' and the 'Linked' status pill." : Show the result.
 
 ### Step 2.7: Smart Match remaining sources (REST & SAP)
 :: ACTION : "Running Smart Match on the REST and SAP sources." : Click the REST source → "Smart Match" → then SAP source → "Smart Match".
@@ -180,7 +180,7 @@ Each step is written in the format:
 
 ## Key Architecture Points to Highlight
 
-- **Filename detection**: Any contract named `airport-charges-2025.pdf` triggers the demo with ground-truth data.
+- **Filename detection**: Any contract named `StandardGroundHandlingAgreement.pdf` triggers the demo with ground-truth data.
 - **No AI latency for demo**: Deterministic demo builder provides fast, reliable, reproducible presentation results.
 - **Staged data flow**: Contract Ingestion → KPI Extraction → Source Linking & Smart Match → Breach Detection → Escalation & Recoveries → Contract Guardian → Project Portfolio Dashboard.
 - **No real emails sent**: Escalations and follow-ups log as `mock_dispatched` for clean demo isolation.

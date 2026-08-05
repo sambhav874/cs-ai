@@ -322,6 +322,8 @@ def list_recent_kpi_integration_profiles(
     current_user: UserInDB = Depends(get_current_active_user),
 ) -> Dict[str, Any]:
     owner_account_id = str(current_user.ownedAccountId) if current_user.ownedAccountId else None
+    builder = AirportChargesDemoBuilder(kpi_db)
+    builder.seed_integration_profiles(owner_account_id=owner_account_id)
     profiles = _kpi_manager().list_recent_integration_profiles(owner_account_id=owner_account_id, limit=limit)
     return {"count": len(profiles), "profiles": profiles}
 

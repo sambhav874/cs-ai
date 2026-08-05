@@ -110,6 +110,8 @@ const USER_KPI_SOURCE_TYPES = new Set([
   "xlsx",
   "json",
   "xml",
+  "scanned_images",
+  "file_upload",
   "rest_api",
   "manual_attestation",
   "oracle_fusion",
@@ -160,6 +162,8 @@ const SOURCE_TYPE_DISPLAY: Record<
   xlsx: { label: "Excel Upload" },
   json: { label: "JSON Feed" },
   xml: { label: "XML Feed" },
+  scanned_images: { label: "Scanned Images" },
+  file_upload: { label: "File Upload" },
   rest_api: { label: "REST API" },
   manual_attestation: { label: "Manual Attestation" },
   oracle_fusion: { label: "Oracle Fusion", businessObject: "AP_INVOICES" },
@@ -733,14 +737,28 @@ const sourceBindingId = (
 const AIRPORT_DEMO_SOURCE_KPI_CODES: Record<string, Set<string>> = {
   csv: new Set(["SGHA-1.1-LANDING", "SGHA-1.3-PASSENGER", "SGHA-1.5-PARKING"]),
   json: new Set(["SGHA-2.3-PASSENGER-SERVICES", "SGHA-2.3-RAMP-HANDLING"]),
+  scanned_images: new Set(["SGHA-1.1-LANDING", "SGHA-1.3-PASSENGER", "SGHA-1.5-PARKING"]),
+  file_upload: new Set(["SGHA-2.3-PASSENGER-SERVICES", "SGHA-2.3-RAMP-HANDLING"]),
   rest_api: new Set(["SGHA-2.7-ELECTRICITY", "SGHA-2.8-DEICING", "SGHA-2.12-CANCELLATION"]),
   sap_s4hana: new Set(["SGHA-1.6-EXTRA-HOURS", "SGHA-2.16-RETURN-TO-RAMP"]),
 };
 
-const airportDemoSourceCodes = (config: KPISourceConfig) =>
-  /airport|ground handling|ground operations/i.test(String(config.display_name || ""))
-    ? AIRPORT_DEMO_SOURCE_KPI_CODES[config.source_type] || null
-    : null;
+const airportDemoSourceCodes = (
+  config: Pick<KPISourceConfig, "source_type" | "display_name">,
+) => {
+  const name = String(config.display_name || "").toLowerCase();
+  const legacyNamesByType: Record<string, Set<string>> = {
+    scanned_images: new Set(["scanned images", "csv upload", "csv feed"]),
+    file_upload: new Set(["file upload", "json upload", "json feed"]),
+  };
+  if (
+    /airport|ground handling|ground operations/i.test(name) ||
+    legacyNamesByType[config.source_type]?.has(name)
+  ) {
+    return AIRPORT_DEMO_SOURCE_KPI_CODES[config.source_type] || null;
+  }
+  return null;
+};
 
 const isAirportDemoSource = (config: KPISourceConfig) =>
   Boolean(airportDemoSourceCodes(config));
@@ -816,6 +834,11 @@ const bindingsForSource = (config: KPISourceConfig, kpis: ContractKPI[]) => {
     : kpis;
   const explicitBindings =
     Array.isArray(config.kpi_bindings) && config.kpi_bindings.length > 0;
+  // Seeded demo profiles are created before Smart Match is run and therefore
+  // contain placeholder bindings with enabled=false. Treat those bindings as
+  // pending setup so the seeded source is usable immediately.
+  const inferDemoBindings = Boolean(allowedCodes) &&
+    !(config.kpi_bindings || []).some((binding) => binding?.enabled !== false);
   const bindingByKpiId = new Map<string, KPISourceBinding>();
   (config.kpi_bindings || []).forEach((binding) => {
     if (binding?.kpi_id) bindingByKpiId.set(String(binding.kpi_id), binding);
@@ -829,9 +852,17 @@ const bindingsForSource = (config: KPISourceConfig, kpis: ContractKPI[]) => {
         sourceBindingId(config.source_config_id, kpi.kpi_id, index + 1),
       kpi_id: kpi.kpi_id,
       enabled: existing
-        ? existing.enabled !== false
-        : !explicitBindings && legacyKpiIds.has(kpi.kpi_id),
-      match_rule: existing?.match_rule || {},
+        ? inferDemoBindings || existing.enabled !== false
+        : inferDemoBindings || (!explicitBindings && legacyKpiIds.has(kpi.kpi_id)),
+      match_rule:
+        existing?.match_rule ||
+        (inferDemoBindings
+          ? {
+            field: "kpi_code",
+            operator: "equals",
+            value: kpi.kpi_id.split(":").pop() || kpi.kpi_id,
+          }
+          : {}),
       field_mappings: normalizeFieldMappings(existing?.field_mappings),
       aggregation: existing?.aggregation || kpi.aggregation_type || "latest",
       unit_override: existing?.unit_override || null,
@@ -970,8 +1001,41 @@ const breachNarrative = (
   return `Actual value ${actual} violated the contractual threshold (${expected}).`;
 };
 
+const humanizeSourceLabel = (source?: string | null) => {
+  const labels: Record<string, string> = {
+    scanned_images: "Scanned Images",
+    file_upload: "File Upload",
+    csv: "CSV file",
+    json: "JSON file",
+    xlsx: "Excel file",
+    xml: "XML file",
+    rest_api: "REST feed",
+    sap_s4hana: "SAP S/4HANA",
+    manual_attestation: "Manual attestation",
+  };
+  const raw = String(source || "").trim();
+  if (!raw) return "Operations data";
+  if (raw.startsWith("source_config:")) {
+    const sourceType = raw.split(":").pop()?.toLowerCase() || "";
+    return labels[sourceType] || titleCase(sourceType);
+  }
+  if (raw.toLowerCase().startsWith("upload:")) return "Uploaded file";
+  return labels[raw.toLowerCase()] || raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
+
+const humanizeExpectation = (operator: string, value: string, unit: string) => {
+  const operatorLabel: Record<string, string> = {
+    ">=": "at least",
+    ">": "more than",
+    "<=": "no more than",
+    "<": "less than",
+    "=": "exactly",
+    "==": "exactly",
+  };
+  return `${operatorLabel[operator.toLowerCase()] || operator || "the contract threshold"} ${value} ${unit}`.trim();
+};
+
 const buildEscalationDraft = (breach: ContractKPIBreach, kpi?: ContractKPI) => {
-  const expected = expectedFor(breach, kpi);
   const unit = kpi?.unit || breach.actual_unit || "";
   const actual =
     `${breach.actual_value ?? "not reported"} ${breach.actual_unit || unit}`.trim();
@@ -987,26 +1051,41 @@ const buildEscalationDraft = (breach: ContractKPIBreach, kpi?: ContractKPI) => {
   const periodText = period ? new Date(period).toISOString().slice(0, 10) : "N/A";
   const remediation = breach.remediation || kpi?.remediation || "Please review the discrepancy, confirm the root cause, and provide a corrective action plan.";
   const sla = breach.remediation_sla || kpi?.remediation_sla || "7 days";
-  const clauseBlock = section || clause ? `\nClause reference: ${section}\n"${clause}"\n` : "";
+  const clauseBlock = section || clause ? `\nContract reference: ${section}\n"${clause}"\n` : "";
+  const sourceLabel = humanizeSourceLabel(breach.source || kpi?.source_requirements?.source_type);
+  const expectation = humanizeExpectation(
+    String(breach.operator || kpi?.operator || ""),
+    String(breach.expected_value ?? kpi?.value_min ?? kpi?.value ?? "N/A"),
+    unit,
+  );
   const kpiName = kpi?.name || breach.source_kpi?.name || breach.kpi_id;
   return [
-    `Subject: Breach alert for ${kpiName} (${severity} severity)`,
+    `Subject: Action needed: ${kpiName} did not meet the contract requirement`,
     "",
-    "Hi,",
+    "Hello,",
     "",
-    `This is an automated compliance alert regarding ${contract}.`,
+    `We found a compliance issue under ${contract}. Please review the details below.`,
     "",
-    `KPI: ${kpiName}`,
-    `Severity: ${severity}`,
-    `Result: Actual ${actual} vs expected ${expected} — variance ${varianceText}.`,
-    `Period: ${periodText}`,
-    `Source: ${breach.source || kpi?.source_requirements?.source_type || "operations feed"}`,
-    `Penalty exposure: ${penaltyText}`,
-    `Required action: ${remediation} Please complete within ${sla}.`,
+    "What happened",
+    `- Requirement: ${kpiName}`,
+    `- Contract expectation: ${expectation}`,
+    `- Reported result: ${actual}`,
+    `- Difference from expectation: ${varianceText}`,
+    `- Reporting period: ${periodText}`,
+    `- Data source: ${sourceLabel}`,
+    `- Severity: ${severity}`,
+    "",
+    "Why this matters",
+    `- Estimated financial impact: ${penaltyText}`,
+    "",
+    "What needs to happen",
+    remediation,
+    `Please investigate the cause and send a corrective action plan within ${sla}.`,
     clauseBlock,
-    "Please investigate and confirm the corrective action by return.",
+    "Please confirm once the issue has been reviewed.",
     "",
-    "Best regards,",
+    "Regards,",
+    "Contract Compliance Team",
   ].join("\n");
 };
 
@@ -1068,7 +1147,7 @@ const sourceEndpointLabel = (source?: KPISourceConfig | null) => {
   if (source.signed_url) return "Signed file URL";
   if (source.source_type === "manual_attestation")
     return "Workspace attestation";
-  if (["csv", "xlsx", "json", "xml"].includes(source.source_type))
+  if (["csv", "xlsx", "json", "xml", "scanned_images", "file_upload"].includes(source.source_type))
     return `${titleCase(source.source_type)} upload sample`;
   return titleCase(source.source_type);
 };
@@ -1196,25 +1275,29 @@ export default function ContractKpiManagementPage({ contractIdProp }: { contract
   const airportDemoFlagsReady = useMemo(() => {
     const demoSources = sourceConfigs.filter((config) => isAirportDemoSource(config));
     if (!demoSources.length) return true;
-    const expectedCounts: Record<string, number> = {
-      csv: 3,
-      json: 2,
-      rest_api: 3,
-      sap_s4hana: 2,
-    };
+    const expectedSourceGroups: string[][] = [
+      ["scanned_images", "csv"],
+      ["file_upload", "json"],
+      ["rest_api"],
+      ["sap_s4hana"],
+    ];
     const completedRun = (config: KPISourceConfig) => {
       const status = String(config.last_fetch_status?.status || "").toLowerCase();
       return Boolean(config.last_run_at) && !["failed", "validation_failed", "last_fetch_failed"].includes(status);
     };
-    return Object.entries(expectedCounts).every(([sourceType, expected]) =>
+    return expectedSourceGroups.every((sourceTypes) =>
       demoSources.some(
         (config) =>
-          config.source_type === sourceType &&
-          enabledKpiIdsForSource(config, kpis).length === expected &&
-          completedRun(config),
+          sourceTypes.includes(config.source_type) &&
+          completedRun(config) &&
+          Boolean(
+            config.last_success_at ||
+            Number(config.last_fetch_status?.accepted_count || 0) > 0 ||
+            Number(config.last_fetch_status?.actual_count || 0) > 0,
+          ),
       ),
     );
-  }, [kpis, sourceConfigs]);
+  }, [sourceConfigs]);
   const airportDemoCompletedSourceCount = useMemo(
     () =>
       sourceConfigs.filter(
@@ -1433,9 +1516,9 @@ export default function ContractKpiManagementPage({ contractIdProp }: { contract
     [apiUrl, authenticatedFetch, contractId, runDetails],
   );
 
-  const loadWorkspace = useCallback(async () => {
+  const loadWorkspace = useCallback(async ({ showLoading = true }: { showLoading?: boolean } = {}) => {
     if (!apiUrl || !contractId || !authChecked || !isAuthenticated) return;
-    setIsLoading(true);
+    if (showLoading) setIsLoading(true);
     setError(null);
     try {
       const [
@@ -1485,7 +1568,7 @@ export default function ContractKpiManagementPage({ contractIdProp }: { contract
         loadedContract?.projectId ||
         loadedContract?.project_id ||
         loadedContract?.project?._id;
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
       void Promise.all([
         authenticatedFetch(`${apiUrl}/kpis/source-catalog?scope=user`),
         authenticatedFetch(`${apiUrl}/kpis/integrations/profiles/recent`),
@@ -1535,7 +1618,7 @@ export default function ContractKpiManagementPage({ contractIdProp }: { contract
           : "Unable to load KPI management.";
       setError(message);
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   }, [apiUrl, authChecked, authenticatedFetch, contractId, isAuthenticated]);
 
@@ -1730,11 +1813,26 @@ export default function ContractKpiManagementPage({ contractIdProp }: { contract
     if (!apiUrl) return null;
     setIsSavingSource(true);
     const visibleKpis = sortedKpis.filter((kpi) => kpi.status !== "ignored");
-    const initialKpiIds: string[] = [];
+    const demoCodes = airportDemoSourceCodes({
+      source_type: source.source_type,
+      display_name: source.label,
+    });
+    const initialKpiIds = demoCodes
+      ? visibleKpis
+        .filter((kpi) => demoCodes.has(kpi.kpi_id.split(":").pop() || kpi.kpi_id))
+        .map((kpi) => kpi.kpi_id)
+      : [];
     const initialBindings = visibleKpis.map((kpi, index) => ({
       binding_id: sourceBindingId("new_source", kpi.kpi_id, index + 1),
       kpi_id: kpi.kpi_id,
-      enabled: false,
+      enabled: Boolean(demoCodes?.has(kpi.kpi_id.split(":").pop() || kpi.kpi_id)),
+      match_rule: demoCodes
+        ? {
+          field: "kpi_code",
+          operator: "equals",
+          value: kpi.kpi_id.split(":").pop() || kpi.kpi_id,
+        }
+        : {},
       field_mappings: [],
       aggregation: "latest",
     }));
@@ -1750,7 +1848,11 @@ export default function ContractKpiManagementPage({ contractIdProp }: { contract
           file_format:
             source.source_type === "manual_attestation"
               ? "json"
-              : source.source_type,
+              : source.source_type === "scanned_images"
+                ? "csv"
+                : source.source_type === "file_upload"
+                  ? "json"
+                  : source.source_type,
           auth_type: source.auth_types?.[0] || "none",
           status: initialKpiIds.length ? "mapped" : "draft",
           enabled: true,
@@ -2071,13 +2173,15 @@ export default function ContractKpiManagementPage({ contractIdProp }: { contract
       "xlsx",
       "json",
       "xml",
+      "scanned_images",
+      "file_upload",
       "manual_attestation",
     ].includes(config.source_type);
     if (isFileSource && !payloadStr && !config.sample_payload) {
       toast({
         title: "Please attach a data file",
         description:
-          "Select a CSV, Excel, JSON, or XML file before validating this source.",
+          "Select a file before validating this source.",
       });
       if (fileInputRef.current) {
         fileInputRef.current.click();
@@ -2085,61 +2189,70 @@ export default function ContractKpiManagementPage({ contractIdProp }: { contract
       return null;
     }
     setRunningSourceIds((prev) => new Set(prev).add(config.source_config_id));
-    const payload = payloadStr
-      ? (() => {
-        try {
-          return JSON.parse(samplePayload);
-        } catch {
-          return samplePayload;
-        }
-      })()
-      : undefined;
-    const result = await authenticatedFetch(
-      `${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(config.source_config_id)}/${action}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          action === "fetch"
-            ? { trigger_type: "manual", evaluate: true, payload }
-            : { payload },
-        ),
-      },
-    );
-    setRunningSourceIds((prev) => {
-      const next = new Set(prev);
-      next.delete(config.source_config_id);
-      return next;
-    });
-    if (result.error) {
-      toast({
-        title: action === "fetch" ? "Fetch failed" : "Validation failed",
-        description: result.error,
-        variant: "destructive",
-      });
-      return null;
-    }
-    setSourceResults((current) => ({
-      ...current,
-      [config.source_config_id]: result.data,
-    }));
-    if (result.data?.source_config) {
-      setSourceConfigs((current) =>
-        current.map((item) =>
-          item.source_config_id === result.data.source_config.source_config_id
-            ? result.data.source_config
-            : item,
-        ),
+    try {
+      const payload = payloadStr
+        ? (() => {
+          try {
+            return JSON.parse(samplePayload);
+          } catch {
+            return samplePayload;
+          }
+        })()
+        : undefined;
+      const result = await authenticatedFetch(
+        `${apiUrl}/contracts/${contractId}/kpis/source-configs/${encodeURIComponent(config.source_config_id)}/${action}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            action === "fetch"
+              ? { trigger_type: "manual", evaluate: true, payload }
+              : { payload },
+          ),
+        },
       );
+      if (result.error) {
+        toast({
+          title: action === "fetch" ? "Fetch failed" : "Validation failed",
+          description: result.error,
+          variant: "destructive",
+        });
+        return null;
+      }
+      setSourceResults((current) => ({
+        ...current,
+        [config.source_config_id]: result.data,
+      }));
+      if (result.data?.source_config) {
+        setSourceConfigs((current) =>
+          current.map((item) =>
+            item.source_config_id === result.data.source_config.source_config_id
+              ? result.data.source_config
+              : item,
+          ),
+        );
+      }
+      // Refresh the data without replacing the workspace with its full-page
+      // loading state. Upload/demo fetches finish quickly and should leave the
+      // completed run and actuals visible instead of looking like a reset.
+      await Promise.all([
+        loadWorkspace({ showLoading: false }),
+        loadFetchRuns(config),
+      ]);
+      toast({
+        title:
+          action === "fetch"
+            ? "Source fetch complete"
+            : "Source validation complete",
+      });
+      return result.data;
+    } finally {
+      setRunningSourceIds((prev) => {
+        const next = new Set(prev);
+        next.delete(config.source_config_id);
+        return next;
+      });
     }
-    await Promise.all([loadWorkspace(), loadFetchRuns(config)]);
-    toast({
-      title:
-        action === "fetch"
-          ? "Source fetch complete"
-          : "Source validation complete",
-    });
-    return result.data;
   };
 
   const testSourceConfiguration = async (
@@ -2327,8 +2440,7 @@ export default function ContractKpiManagementPage({ contractIdProp }: { contract
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".csv,.xlsx,.xls,.json,.xml"
-        className="hidden"
+                className="hidden"
         onChange={(event) => {
           const files = event.target.files;
           if (files && files.length) void uploadActuals(files);
@@ -2391,20 +2503,6 @@ export default function ContractKpiManagementPage({ contractIdProp }: { contract
                   className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`}
                 />
                 Refresh
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="h-9 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
-                onClick={extractKpis}
-                disabled={isExtracting}
-              >
-                {isExtracting ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <BarChart3 className="h-3.5 w-3.5" />
-                )}
-                Extract Operational Obligations
               </Button>
             </div>
           </div>
@@ -3244,16 +3342,20 @@ function ReviewPanel({
             </p>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 text-xs"
-              onClick={onAcceptAll}
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Accept All
-            </Button>
+            {kpis.some(
+              (kpi) => kpi.status !== "approved" && kpi.status !== "ignored"
+            ) && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 text-xs"
+                onClick={onAcceptAll}
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Accept All
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -5216,7 +5318,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                       {actualLabel(actual, kpi)}
                     </td>
                     <td className="max-w-[160px] truncate px-3 py-2 text-gray-600">
-                      {actual.source || "manual"}
+                      {humanizeSourceLabel(actual.source)}
                     </td>
                     <td className="px-3 py-2 text-gray-500">
                       {formatDateTime(actualTimestamp(actual))}
@@ -5731,24 +5833,24 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
 
   const SEEDED_DEMO_ROWS: Record<string, Array<Record<string, any>>> = {
     csv: [
-      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 2850.00, timestamp: "2025-11-15T09:00:00", event_id: "csv-ARN-SGHA-1.1-LANDING-01", unit: "SEK per tonne", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "SGA", source_type: "csv" },
-      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 3120.50, timestamp: "2025-11-20T10:30:00", event_id: "csv-ARN-SGHA-1.1-LANDING-02", unit: "SEK per tonne", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "SGA", source_type: "csv" },
-      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 4350.00, timestamp: "2025-12-01T08:15:00", event_id: "csv-ARN-SGHA-1.1-LANDING-03", unit: "SEK per tonne", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "SGA", source_type: "csv" },
-      { kpi_code: "SGHA-1.3-PASSENGER", kpi_name: "Passenger Fee", actual_value: 185.00, timestamp: "2025-11-15T09:00:00", event_id: "csv-ARN-SGHA-1.3-PASSENGER-01", unit: "SEK per pax", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "SGA", source_type: "csv" },
-      { kpi_code: "SGHA-1.3-PASSENGER", kpi_name: "Passenger Fee", actual_value: 192.00, timestamp: "2025-11-20T10:30:00", event_id: "csv-ARN-SGHA-1.3-PASSENGER-02", unit: "SEK per pax", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "SGA", source_type: "csv" },
-      { kpi_code: "SGHA-1.5-PARKING", kpi_name: "Parking Charge", actual_value: 4200.00, timestamp: "2025-11-15T09:00:00", event_id: "csv-ARN-SGHA-1.5-PARKING-01", unit: "SEK per hour", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "SGA", source_type: "csv" },
-      { kpi_code: "SGHA-1.5-PARKING", kpi_name: "Parking Charge", actual_value: 3800.00, timestamp: "2025-12-01T08:15:00", event_id: "csv-ARN-SGHA-1.5-PARKING-02", unit: "SEK per hour", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "SGA", source_type: "csv" },
-      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 2990.00, timestamp: "2025-12-05T11:00:00", event_id: "csv-OSL-SGHA-1.1-LANDING-04", unit: "SEK per tonne", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK433", terminal: "T1", stand: "08", supplier: "SGA", source_type: "csv" },
+      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 2850.00, timestamp: "2025-11-15T09:00:00", event_id: "scanned_images-ARN-SGHA-1.1-LANDING-01", unit: "SEK per tonne", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 3120.50, timestamp: "2025-11-20T10:30:00", event_id: "scanned_images-ARN-SGHA-1.1-LANDING-02", unit: "SEK per tonne", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 4350.00, timestamp: "2025-12-01T08:15:00", event_id: "scanned_images-ARN-SGHA-1.1-LANDING-03", unit: "SEK per tonne", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.3-PASSENGER", kpi_name: "Passenger Fee", actual_value: 185.00, timestamp: "2025-11-15T09:00:00", event_id: "scanned_images-ARN-SGHA-1.3-PASSENGER-01", unit: "SEK per pax", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.3-PASSENGER", kpi_name: "Passenger Fee", actual_value: 192.00, timestamp: "2025-11-20T10:30:00", event_id: "scanned_images-ARN-SGHA-1.3-PASSENGER-02", unit: "SEK per pax", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.5-PARKING", kpi_name: "Parking Charge", actual_value: 4200.00, timestamp: "2025-11-15T09:00:00", event_id: "scanned_images-ARN-SGHA-1.5-PARKING-01", unit: "SEK per hour", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.5-PARKING", kpi_name: "Parking Charge", actual_value: 3800.00, timestamp: "2025-12-01T08:15:00", event_id: "scanned_images-ARN-SGHA-1.5-PARKING-02", unit: "SEK per hour", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 2990.00, timestamp: "2025-12-05T11:00:00", event_id: "scanned_images-OSL-SGHA-1.1-LANDING-04", unit: "SEK per tonne", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK433", terminal: "T1", stand: "08", supplier: "SGA", source_type: "scanned_images" },
     ],
     json: [
-      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 3051.00, recorded_at: "2025-11-15T09:00:00", record_id: "json-ARN-SGHA-2.3-PASSENGER-01", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "Swedavia", source_type: "json" },
-      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 3538.00, recorded_at: "2025-11-20T10:30:00", record_id: "json-ARN-SGHA-2.3-PASSENGER-02", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "Swedavia", source_type: "json" },
-      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 3868.00, recorded_at: "2025-12-01T08:15:00", record_id: "json-CPH-SGHA-2.3-PASSENGER-03", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "Swedavia", source_type: "json" },
-      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 3543.00, recorded_at: "2025-11-15T09:00:00", record_id: "json-ARN-SGHA-2.3-RAMP-01", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "Swedavia", source_type: "json" },
-      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 4030.00, recorded_at: "2025-11-20T10:30:00", record_id: "json-ARN-SGHA-2.3-RAMP-02", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "Swedavia", source_type: "json" },
-      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 4523.00, recorded_at: "2025-12-01T08:15:00", record_id: "json-CPH-SGHA-2.3-RAMP-03", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "Swedavia", source_type: "json" },
-      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 4679.00, recorded_at: "2025-12-05T11:00:00", record_id: "json-OSL-SGHA-2.3-PASSENGER-04", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK433", terminal: "T1", stand: "08", supplier: "Swedavia", source_type: "json" },
-      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 5172.00, recorded_at: "2025-12-05T11:00:00", record_id: "json-OSL-SGHA-2.3-RAMP-04", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK433", terminal: "T1", stand: "08", supplier: "Swedavia", source_type: "json" },
+      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 3051.00, recorded_at: "2025-11-15T09:00:00", record_id: "file_upload-ARN-SGHA-2.3-PASSENGER-01", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 3538.00, recorded_at: "2025-11-20T10:30:00", record_id: "file_upload-ARN-SGHA-2.3-PASSENGER-02", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 3868.00, recorded_at: "2025-12-01T08:15:00", record_id: "file_upload-CPH-SGHA-2.3-PASSENGER-03", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 3543.00, recorded_at: "2025-11-15T09:00:00", record_id: "file_upload-ARN-SGHA-2.3-RAMP-01", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 4030.00, recorded_at: "2025-11-20T10:30:00", record_id: "file_upload-ARN-SGHA-2.3-RAMP-02", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 4523.00, recorded_at: "2025-12-01T08:15:00", record_id: "file_upload-CPH-SGHA-2.3-RAMP-03", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 4679.00, recorded_at: "2025-12-05T11:00:00", record_id: "file_upload-OSL-SGHA-2.3-PASSENGER-04", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK433", terminal: "T1", stand: "08", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 5172.00, recorded_at: "2025-12-05T11:00:00", record_id: "file_upload-OSL-SGHA-2.3-RAMP-04", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK433", terminal: "T1", stand: "08", supplier: "Swedavia", source_type: "file_upload" },
     ],
     rest_api: [
       { kpi_code: "SGHA-2.7-ELECTRICITY", kpi_name: "Ground Power Electricity Charge", metric_value: 119.00, observed_at: "2025-11-15T09:00:00", event_id: "rest-ARN-SGHA-2.7-ELECTRICITY-01", unit: "SEK/day", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "Swedavia", source_type: "rest_api" },
@@ -5769,6 +5871,26 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
       { kpi_code: "SGHA-1.6-EXTRA-HOURS", kpi_name: "Extra Opening Hours", amount: 1244.00, posting_date: "2025-12-08T14:00:00", document_id: "sap-ARN-SGHA-1.6-EXTRA-04", unit: "SEK per manhour", period: "2025-12", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", company_code: "SAS-ARN", source_type: "sap_s4hana" },
       { kpi_code: "SGHA-2.16-RETURN-TO-RAMP", kpi_name: "Return to Ramp Handling", amount: 3500.00, posting_date: "2025-12-10T07:30:00", document_id: "sap-ARN-SGHA-2.16-RTR-03", unit: "SEK per event", period: "2025-12", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", company_code: "SAS-ARN", source_type: "sap_s4hana" },
       { kpi_code: "SGHA-1.6-EXTRA-HOURS", kpi_name: "Extra Opening Hours", amount: 1244.00, posting_date: "2025-12-12T16:45:00", document_id: "sap-CPH-SGHA-1.6-EXTRA-05", unit: "SEK per manhour", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", company_code: "SAS-ARN", source_type: "sap_s4hana" },
+    ],
+    scanned_images: [
+      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 2850.00, timestamp: "2025-11-15T09:00:00", event_id: "scanned_images-ARN-SGHA-1.1-LANDING-01", unit: "SEK per tonne", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 3120.50, timestamp: "2025-11-20T10:30:00", event_id: "scanned_images-ARN-SGHA-1.1-LANDING-02", unit: "SEK per tonne", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 4350.00, timestamp: "2025-12-01T08:15:00", event_id: "scanned_images-ARN-SGHA-1.1-LANDING-03", unit: "SEK per tonne", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.3-PASSENGER", kpi_name: "Passenger Fee", actual_value: 185.00, timestamp: "2025-11-15T09:00:00", event_id: "scanned_images-ARN-SGHA-1.3-PASSENGER-01", unit: "SEK per pax", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.3-PASSENGER", kpi_name: "Passenger Fee", actual_value: 192.00, timestamp: "2025-11-20T10:30:00", event_id: "scanned_images-ARN-SGHA-1.3-PASSENGER-02", unit: "SEK per pax", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.5-PARKING", kpi_name: "Parking Charge", actual_value: 4200.00, timestamp: "2025-11-15T09:00:00", event_id: "scanned_images-ARN-SGHA-1.5-PARKING-01", unit: "SEK per hour", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.5-PARKING", kpi_name: "Parking Charge", actual_value: 3800.00, timestamp: "2025-12-01T08:15:00", event_id: "scanned_images-ARN-SGHA-1.5-PARKING-02", unit: "SEK per hour", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "SGA", source_type: "scanned_images" },
+      { kpi_code: "SGHA-1.1-LANDING", kpi_name: "Landing Charge", actual_value: 2990.00, timestamp: "2025-12-05T11:00:00", event_id: "scanned_images-OSL-SGHA-1.1-LANDING-04", unit: "SEK per tonne", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK433", terminal: "T1", stand: "08", supplier: "SGA", source_type: "scanned_images" },
+    ],
+    file_upload: [
+      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 3051.00, recorded_at: "2025-11-15T09:00:00", record_id: "file_upload-ARN-SGHA-2.3-PASSENGER-01", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 3538.00, recorded_at: "2025-11-20T10:30:00", record_id: "file_upload-ARN-SGHA-2.3-PASSENGER-02", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 3868.00, recorded_at: "2025-12-01T08:15:00", record_id: "file_upload-CPH-SGHA-2.3-PASSENGER-03", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 3543.00, recorded_at: "2025-11-15T09:00:00", record_id: "file_upload-ARN-SGHA-2.3-RAMP-01", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK410", terminal: "T5", stand: "12", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 4030.00, recorded_at: "2025-11-20T10:30:00", record_id: "file_upload-ARN-SGHA-2.3-RAMP-02", unit: "SEK per turnaround", period: "2025-11", airport_iata_code: "ARN", airport_name: "Stockholm Arlanda Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK418", terminal: "T5", stand: "14", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 4523.00, recorded_at: "2025-12-01T08:15:00", record_id: "file_upload-CPH-SGHA-2.3-RAMP-03", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "CPH", airport_name: "Copenhagen Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK429", terminal: "T3", stand: "22", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-PASSENGER-SERVICES", kpi_name: "Passenger Services Turnaround Rate", measurement: 4679.00, recorded_at: "2025-12-05T11:00:00", record_id: "file_upload-OSL-SGHA-2.3-PASSENGER-04", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK433", terminal: "T1", stand: "08", supplier: "Swedavia", source_type: "file_upload" },
+      { kpi_code: "SGHA-2.3-RAMP-HANDLING", kpi_name: "Ramp Handling Turnaround Rate", measurement: 5172.00, recorded_at: "2025-12-05T11:00:00", record_id: "file_upload-OSL-SGHA-2.3-RAMP-04", unit: "SEK per turnaround", period: "2025-12", airport_iata_code: "OSL", airport_name: "Oslo Airport", airline_iata_code: "SK", airline_name: "SAS Scandinavian Airlines", flight_number: "SK433", terminal: "T1", stand: "08", supplier: "Swedavia", source_type: "file_upload" },
     ],
   };
 
@@ -5909,13 +6031,16 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
       const alreadyTested = selectedSource && hasPreviewedTest.has(selectedSource.source_config_id);
 
       if (sourceType && SEEDED_DEMO_ROWS[sourceType]) {
+        const hasSeededPayload = Array.isArray(selectedSource?.sample_payload) &&
+          selectedSource.sample_payload.length > 0;
         if (
-          (sourceType === "csv" || sourceType === "json" || sourceType === "xlsx" || sourceType === "xml") &&
-          !hasFile
+          (sourceType === "csv" || sourceType === "json" || sourceType === "xlsx" || sourceType === "xml" || sourceType === "scanned_images" || sourceType === "file_upload") &&
+          !hasFile &&
+          !hasSeededPayload
         ) {
           return [];
         }
-        if (!alreadyTested) {
+        if (!alreadyTested && !hasSeededPayload) {
           return [];
         }
         return SEEDED_DEMO_ROWS[sourceType].slice(0, 8);
@@ -5978,6 +6103,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           "score",
           "amount",
           "result",
+          "measurement",
         ]),
       timestamp:
         fieldOverrides.timestamp ||
@@ -6112,6 +6238,8 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
             [
               "csv",
               "json",
+              "scanned_images",
+              "file_upload",
               "rest_api",
               "oracle_fusion",
               "sap_s4hana",
@@ -6236,7 +6364,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
         ) : (
           <div className="rounded-lg border border-dashed border-gray-200 p-8 text-center text-sm text-gray-500">
             {(() => {
-              const isFileSource = ["csv", "json", "xlsx", "xml"].includes(
+              const isFileSource = ["csv", "json", "xlsx", "xml", "scanned_images", "file_upload"].includes(
                 selectedSource.source_type,
               );
               const hasFile = uploadedFileIds.has(selectedSource.source_config_id);
@@ -6531,8 +6659,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,.xlsx,.xls,.json,.xml"
-            className="hidden"
+                        className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) void uploadFile(file);
@@ -6541,8 +6668,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           <input
             ref={perSourceInputRef}
             type="file"
-            accept=".csv,.xlsx,.xls,.json,.xml"
-            className="hidden"
+                        className="hidden"
             onChange={async (event) => {
               const file = event.target.files?.[0];
               const targetId = uploadTargetId;
@@ -6694,7 +6820,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                           File Upload
                         </span>
                         <span className="mt-1 block text-xs text-gray-500">
-                          CSV, Excel, JSON, XML
+                          Seeded sample or CSV, JSON, XLSX, XML
                         </span>
                       </button>
                       {sourceCatalog
@@ -6767,7 +6893,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                           <Settings2 className="mr-1.5 h-3.5 w-3.5" />
                           Configure
                         </Button>
-                        {["csv", "json", "xlsx", "xml"].includes(selectedSource.source_type) && (
+                        {["csv", "json", "xlsx", "xml", "scanned_images", "file_upload"].includes(selectedSource.source_type) && (
                           <Button
                             type="button"
                             variant="outline"
@@ -6852,7 +6978,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           Start with a data source
         </h3>
         <p className="mt-1 max-w-md text-sm text-gray-500">
-          Upload CSV, Excel, JSON, or XML, or connect a REST/ERP source.
+          Upload a seeded sample or structured CSV, JSON, XLSX, or XML file, or connect a REST/ERP source.
         </p>
         <Button
           type="button"
@@ -6962,7 +7088,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
         kpiId: source.kpi_id || kpi?.kpi_id || "",
         breachId: source.breach_id,
         to: source.breach_email_to || kpi?.contact_email || "",
-        subject: `[BREACH ALERT] ${kpi?.name || source.source_kpi?.name || source.kpi_id} (${severityFor(source, kpi)})`,
+        subject: `Action needed: ${kpi?.name || source.source_kpi?.name || source.kpi_id} did not meet the contract requirement`,
         body: source.breach_email_draft || buildEscalationDraft(source, kpi),
         recipientSource: source.breach_email_recipient_source,
       });
@@ -7182,7 +7308,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                           />
                           <DetailTile
                             label="Data Source"
-                            value={breach.source?.split(':').pop() || "Actual ingestion"}
+                            value={humanizeSourceLabel(breach.source)}
                           />
                         </div>
                         <div className="rounded-lg border border-gray-200 bg-white p-3">
@@ -7688,7 +7814,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                         />
                         <DetailTile
                           label="Data source"
-                          value={breach.source?.split(':').pop() || "Actual ingestion"}
+                          value={humanizeSourceLabel(breach.source)}
                         />
                         <DetailTile
                           label="Flagged escalation email"
