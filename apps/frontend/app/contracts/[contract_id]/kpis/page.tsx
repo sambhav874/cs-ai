@@ -29,13 +29,17 @@ import {
   Bell,
   BarChart3,
   BookOpen,
+  Building2,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Download,
   ExternalLink,
   FileText,
   Globe,
+  Handshake,
   Info,
   Loader2,
   Mail,
@@ -47,6 +51,7 @@ import {
   Send,
   Settings2,
   ShieldCheck,
+  Truck,
   Upload,
   UploadCloud,
   Maximize2,
@@ -56,8 +61,16 @@ import {
   Sparkles,
   Zap,
   X,
+  ShieldAlert,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -1059,6 +1072,54 @@ const sourceEndpointLabel = (source?: KPISourceConfig | null) => {
   return titleCase(source.source_type);
 };
 
+function ScrollableTabs({ tabs, activeTab, onTabChange }: { tabs: { id: string; label: string }[]; activeTab: string; onTabChange: (id: string) => void }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  
+  const scroll = (direction: "left" | "right") => {
+    if (scrollRef.current) {
+      const scrollAmount = 250;
+      scrollRef.current.scrollBy({ left: direction === "left" ? -scrollAmount : scrollAmount, behavior: "smooth" });
+    }
+  };
+
+  return (
+    <div className="relative flex items-center flex-1 min-w-0 w-full mr-2">
+      <button onClick={() => scroll("left")} className="absolute left-0 z-10 flex h-full items-center justify-center bg-gradient-to-r from-background via-background/90 to-transparent pr-5 pl-1" type="button">
+        <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+      </button>
+      
+      <div 
+        ref={scrollRef} 
+        className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide px-8 py-1 w-full"
+        style={{ 
+          scrollbarWidth: "none", 
+          msOverflowStyle: "none",
+          maskImage: "linear-gradient(to right, transparent, black 28px, black calc(100% - 28px), transparent)",
+          WebkitMaskImage: "linear-gradient(to right, transparent, black 28px, black calc(100% - 28px), transparent)"
+        }}
+      >
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onTabChange(tab.id)}
+            className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-semibold transition-colors flex-shrink-0 ${activeTab === tab.id
+              ? "bg-[#015CA9] text-white shadow-sm"
+              : "bg-muted/50 text-gray-700 hover:bg-muted"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <button onClick={() => scroll("right")} className="absolute right-0 z-10 flex h-full items-center justify-center bg-gradient-to-l from-background via-background/90 to-transparent pl-5 pr-1" type="button">
+        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+      </button>
+    </div>
+  );
+}
+
 export default function ContractKpiManagementPage() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const router = useRouter();
@@ -1098,7 +1159,7 @@ export default function ContractKpiManagementPage() {
   const [isExtracting, setIsExtracting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingSource, setIsSavingSource] = useState(false);
-  const [isRunningSource, setIsRunningSource] = useState(false);
+  const [runningSourceIds, setRunningSourceIds] = useState<Set<string>>(new Set());
   const [isCreatingAlertRules, setIsCreatingAlertRules] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1299,9 +1360,11 @@ export default function ContractKpiManagementPage() {
     );
   }, [selectedSource?.source_config_id]);
 
+  const hasAutoSelectedRef = useRef(false);
   useEffect(() => {
-    if (!selectedSourceId && sourceConfigs[0]?.source_config_id) {
+    if (!hasAutoSelectedRef.current && !selectedSourceId && sourceConfigs[0]?.source_config_id) {
       setSelectedSourceId(sourceConfigs[0].source_config_id);
+      hasAutoSelectedRef.current = true;
     }
   }, [sourceConfigs, selectedSourceId]);
 
@@ -2010,7 +2073,7 @@ export default function ContractKpiManagementPage() {
       }
       return null;
     }
-    setIsRunningSource(true);
+    setRunningSourceIds((prev) => new Set(prev).add(config.source_config_id));
     const payload = payloadStr
       ? (() => {
         try {
@@ -2032,7 +2095,11 @@ export default function ContractKpiManagementPage() {
         ),
       },
     );
-    setIsRunningSource(false);
+    setRunningSourceIds((prev) => {
+      const next = new Set(prev);
+      next.delete(config.source_config_id);
+      return next;
+    });
     if (result.error) {
       toast({
         title: action === "fetch" ? "Fetch failed" : "Validation failed",
@@ -2513,7 +2580,7 @@ export default function ContractKpiManagementPage() {
               kpis={sortedKpis}
               trackedKpis={trackedKpis}
               isSavingSource={isSavingSource}
-              isRunningSource={isRunningSource}
+              runningSourceIds={runningSourceIds}
               onSelectSource={setSelectedSourceId}
               onCreateSource={createSource}
               onUpdateSource={updateSource}
@@ -2922,9 +2989,7 @@ function ReviewPanel({
   const params = useParams();
   const contractId =
     typeof params?.contract_id === "string" ? params.contract_id : "";
-  const [expandedKpiId, setExpandedKpiId] = useState<string | null>(
-    kpis.find(isKpiTracked)?.kpi_id || kpis[0]?.kpi_id || null,
-  );
+  const [expandedKpiId, setExpandedKpiId] = useState<string | null>(null);
   const [isContractPaneOpen, setIsContractPaneOpen] = useState(false);
   const [editingKpiId, setEditingKpiId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
@@ -3194,13 +3259,10 @@ function ReviewPanel({
 
         {/* Category Tabs & Real-Time Search */}
         <div className="flex flex-col gap-3 p-4 border-b border-border sm:flex-row sm:items-center sm:justify-between bg-background">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {[
+          <ScrollableTabs 
+            tabs={[
               { id: "all", label: `All (${kpis.length})` },
-              {
-                id: "supplier",
-                label: `Supplier Obligations (${supplierCount})`,
-              },
+              { id: "supplier", label: `Supplier Obligations (${supplierCount})` },
               { id: "client", label: `Client Obligations (${clientCount})` },
               { id: "mutual", label: `Mutual Obligations (${mutualCount})` },
               { id: "sla", label: `Core SLAs (${slaCount})` },
@@ -3209,23 +3271,13 @@ function ReviewPanel({
               { id: "tracked", label: `Tracked (${trackedCount})` },
               { id: "review", label: `To Review (${reviewCount})` },
               { id: "approved", label: `Approved (${approvedCount})` },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  setActiveTab(tab.id as any);
-                  setPagination((p) => ({ ...p, currentPage: 1 }));
-                }}
-                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${activeTab === tab.id
-                  ? "bg-[#015CA9] text-white shadow-sm"
-                  : "bg-muted/50 text-gray-700 hover:bg-muted"
-                  }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+            ]}
+            activeTab={activeTab}
+            onTabChange={(id) => {
+              setActiveTab(id as any);
+              setPagination((p) => ({ ...p, currentPage: 1 }));
+            }}
+          />
 
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <div className="relative flex-1 sm:min-w-[220px]">
@@ -3310,15 +3362,18 @@ function ReviewPanel({
                     <TableCell className="align-middle py-4">
                       <div className="flex flex-wrap items-center gap-1.5">
                         {obType === "supplier" ? (
-                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-800">
+                            <Truck className="h-3 w-3" />
                             Supplier
                           </span>
                         ) : obType === "client" ? (
-                          <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-800">
+                            <Building2 className="h-3 w-3" />
                             Client
                           </span>
                         ) : obType === "mutual" ? (
-                          <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-800">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-800">
+                            <Handshake className="h-3 w-3" />
                             Mutual
                           </span>
                         ) : (
@@ -5716,7 +5771,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
     kpis,
     trackedKpis,
     isSavingSource,
-    isRunningSource,
+    runningSourceIds,
     onSelectSource,
     onCreateSource,
     onUpdateSource,
@@ -5735,7 +5790,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
     kpis: ContractKPI[];
     trackedKpis: ContractKPI[];
     isSavingSource: boolean;
-    isRunningSource: boolean;
+    runningSourceIds: Set<string>;
     onSelectSource: (sourceId: string) => void;
     onCreateSource: (
       source: KPISourceCatalogItem,
@@ -5760,19 +5815,78 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
     onUploadSampleFile?: (
       config: KPISourceConfig,
       file: File,
-    ) => void | Promise<void>;
+) => void | Promise<void>;
   }) {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const perSourceInputRef = useRef<HTMLInputElement | null>(null);
     const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
+    const [uploadedFileIds, setUploadedFileIds] = useState<Set<string>>(() => {
+      if (typeof window !== "undefined") {
+        try {
+          const stored = sessionStorage.getItem("uploadedFileIds");
+          if (stored) return new Set(JSON.parse(stored));
+        } catch {}
+      }
+      return new Set();
+    });
+    const [hasPreviewedTest, setHasPreviewedTest] = useState<Set<string>>(() => {
+      if (typeof window !== "undefined") {
+        try {
+          const stored = sessionStorage.getItem("hasPreviewedTest");
+          if (stored) return new Set(JSON.parse(stored));
+        } catch {}
+      }
+      return new Set();
+    });
+    const [mockLoading, setMockLoading] = useState<Set<string>>(new Set());
+    const [isAddingSource, setIsAddingSource] = useState(false);
     const [configModalSource, setConfigModalSource] =
       useState<KPISourceConfig | null>(null);
     const [step, setStep] = useState<"connect" | "match" | "ingest">("connect");
     const [showSourceChoices, setShowSourceChoices] = useState(false);
-    const [smartMatched, setSmartMatched] = useState(false);
+    const [smartMatched, setSmartMatched] = useState<Set<string>>(() => {
+      if (typeof window !== "undefined") {
+        try {
+          const stored = sessionStorage.getItem("smartMatched");
+          if (stored) return new Set(JSON.parse(stored));
+        } catch {}
+      }
+      return new Set();
+    });
     const [fieldOverrides, setFieldOverrides] = useState<Record<string, string>>(
       {},
     );
+    useEffect(() => {
+      if (selectedSource && isAddingSource) {
+        setIsAddingSource(false);
+      }
+    }, [selectedSource?.source_config_id]);
+    useEffect(() => {
+      if (selectedSource) {
+        if (smartMatched.has(selectedSource.source_config_id)) {
+          setStep("ingest");
+        } else if (hasPreviewedTest.has(selectedSource.source_config_id) || uploadedFileIds.has(selectedSource.source_config_id)) {
+          setStep("match");
+        } else {
+          setStep("connect");
+        }
+      }
+    }, [selectedSource?.source_config_id]);
+    useEffect(() => {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("uploadedFileIds", JSON.stringify(Array.from(uploadedFileIds)));
+      }
+    }, [uploadedFileIds]);
+    useEffect(() => {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("hasPreviewedTest", JSON.stringify(Array.from(hasPreviewedTest)));
+      }
+    }, [hasPreviewedTest]);
+    useEffect(() => {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("smartMatched", JSON.stringify(Array.from(smartMatched)));
+      }
+    }, [smartMatched]);
     const visibleKpis = kpis.filter((kpi) => kpi.status !== "ignored");
     const bindings = selectedSource
       ? bindingsForSource(selectedSource, visibleKpis)
@@ -5782,8 +5896,23 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
     );
     const previewRows = useMemo(() => {
       const sourceType = selectedSource?.source_type;
+      const hasFile = selectedSource && uploadedFileIds.has(selectedSource.source_config_id);
+      const alreadyTested = selectedSource && hasPreviewedTest.has(selectedSource.source_config_id);
+
       if (sourceType && SEEDED_DEMO_ROWS[sourceType]) {
+        if (
+          (sourceType === "csv" || sourceType === "json" || sourceType === "xlsx" || sourceType === "xml") &&
+          !hasFile
+        ) {
+          return [];
+        }
+        if (!alreadyTested) {
+          return [];
+        }
         return SEEDED_DEMO_ROWS[sourceType].slice(0, 8);
+      }
+      if (!alreadyTested) {
+        return [];
       }
       const rows =
         sourceResult?.available_data ||
@@ -5793,7 +5922,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
       return Array.isArray(rows)
         ? rows.filter((row) => row && typeof row === "object").slice(0, 8)
         : [];
-    }, [selectedSource?.sample_payload, selectedSource?.source_type, sourceResult]);
+    }, [selectedSource?.sample_payload, selectedSource?.source_type, selectedSource?.source_config_id, sourceResult, uploadedFileIds, hasPreviewedTest]);
     const previewFields = useMemo(
       () =>
         Array.from(new Set(previewRows.flatMap((row) => Object.keys(row)))).slice(
@@ -5964,11 +6093,8 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
         kpi_ids: targetKpis.map((kpi) => kpi.kpi_id),
         status: "mapped",
       });
-      const ingestionSource = mappedSource || selectedSource;
-      const ingestionResult = await onRunSourceAction(ingestionSource, "fetch");
-      if (!ingestionResult) return;
-      setSmartMatched(true);
-      setStep("ingest");
+      if (!mappedSource) return;
+      setSmartMatched((prev) => new Set(prev).add(selectedSource.source_config_id));
     };
     const availableProfiles = Array.from(
       new Map(
@@ -6072,6 +6198,8 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
       const created = await onCreateSource(catalog);
       if (created) {
         await onUploadSampleFile(created, file);
+        toast({ title: "File uploaded successfully!", variant: "default" });
+        setUploadedFileIds((prev) => new Set(prev).add(created.source_config_id));
         setStep("connect");
       }
     };
@@ -6098,7 +6226,55 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           <CompactRows rows={previewRows} fields={previewFields} />
         ) : (
           <div className="rounded-lg border border-dashed border-gray-200 p-8 text-center text-sm text-gray-500">
-            Click Preview data or upload a file to see rows here.
+            {(() => {
+              const isFileSource = ["csv", "json", "xlsx", "xml"].includes(
+                selectedSource.source_type,
+              );
+              const hasFile = uploadedFileIds.has(selectedSource.source_config_id);
+
+              if (isFileSource && !hasFile) {
+                return (
+                  <div className="flex flex-col items-center gap-3">
+                    <Upload className="h-8 w-8 text-gray-400" />
+                    <p>Please upload a file to preview data.</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="flex flex-col items-center gap-3">
+                  <Play className="h-8 w-8 text-gray-400" />
+                  <p>Ready to test the connection and preview data.</p>
+                  <Button
+                    type="button"
+                    className="bg-cs-primary text-white mt-2"
+                    disabled={mockLoading.has(selectedSource.source_config_id)}
+                    onClick={() => {
+                      setMockLoading((prev) =>
+                        new Set(prev).add(selectedSource.source_config_id)
+                      );
+                      setTimeout(() => {
+                        setMockLoading((prev) => {
+                          const next = new Set(prev);
+                          next.delete(selectedSource.source_config_id);
+                          return next;
+                        });
+                        setHasPreviewedTest((prev) =>
+                          new Set(prev).add(selectedSource.source_config_id)
+                        );
+                      }, 2000);
+                    }}
+                  >
+                    {mockLoading.has(selectedSource.source_config_id) ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Play className="mr-2 h-4 w-4" />
+                    )}
+                    {mockLoading.has(selectedSource.source_config_id) ? "Checking..." : "Preview & test"}
+                  </Button>
+                </div>
+              );
+            })()}
           </div>
         )}
         <Button
@@ -6108,7 +6284,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           disabled={!previewRows.length}
           onClick={() => setStep("match")}
         >
-          Continue to matching
+          Next
         </Button>
         <div className="clear-both" />
       </div>
@@ -6129,12 +6305,16 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           <Button
             type="button"
             size="sm"
-            className="gap-1.5 bg-cs-primary text-white"
+            className={`gap-1.5 text-white ${selectedSource && smartMatched.has(selectedSource.source_config_id) ? "bg-emerald-500 hover:bg-emerald-600" : "bg-cs-primary"}`}
             onClick={() => void smartMatch()}
             disabled={!previewRows.length || isSavingSource}
           >
-            <Sparkles className="h-3.5 w-3.5" />
-            {smartMatched ? "Run Smart Match again" : "Smart Match"}
+            {selectedSource && smartMatched.has(selectedSource.source_config_id) ? (
+              <CheckCircle2 className="h-3.5 w-3.5" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            {selectedSource && smartMatched.has(selectedSource.source_config_id) ? "Matched" : "Smart Match"}
           </Button>
         </div>
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
@@ -6263,15 +6443,17 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           </div>
         </div>
         <div className="flex justify-end">
-          <Button
-            type="button"
-            size="sm"
-            className="bg-cs-primary text-white"
-            disabled={!enabledBindings.length || !hasMeasurementFields}
-            onClick={() => setStep("ingest")}
-          >
-            Continue to ingest
-          </Button>
+          {selectedSource && smartMatched.has(selectedSource.source_config_id) && (
+            <Button
+              type="button"
+              size="sm"
+              className="bg-cs-primary text-white"
+              disabled={!enabledBindings.length || !hasMeasurementFields}
+              onClick={() => setStep("ingest")}
+            >
+              Continue to ingest
+            </Button>
+          )}
         </div>
       </div>
     );
@@ -6318,10 +6500,10 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
               !selectedSource ||
               !previewRows.length ||
               !enabledBindings.length ||
-              isRunningSource
+              runningSourceIds.has(selectedSource.source_config_id)
             }
           >
-            {isRunningSource ? (
+            {selectedSource && runningSourceIds.has(selectedSource.source_config_id) ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <RefreshCw className="h-3.5 w-3.5" />
@@ -6333,337 +6515,323 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
     );
 
     return (
-      <div className="space-y-4">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".csv,.xlsx,.xls,.json,.xml"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void uploadFile(file);
-          }}
-        />
-        <input
-          ref={perSourceInputRef}
-          type="file"
-          accept=".csv,.xlsx,.xls,.json,.xml"
-          className="hidden"
-          onChange={async (event) => {
-            const file = event.target.files?.[0];
-            const targetId = uploadTargetId;
-            if (!file || !targetId || !onUploadSampleFile) return;
-            const targetSource = sourceConfigs.find(
-              (s) => s.source_config_id === targetId,
-            );
-            if (!targetSource) return;
-            await onUploadSampleFile(targetSource, file);
-            onSelectSource(targetId);
-            setStep("connect");
-          }}
-        />
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">
-                Actual sources
-              </p>
-              <h2 className="mt-1 text-lg font-semibold text-gray-950">
-                Connect operational data
-              </h2>
-              <p className="mt-1 text-sm text-gray-500">
-                Preview, match, and ingest without exposing raw connector
-                payloads.
-              </p>
-            </div>
-            <div className="flex gap-2">
+      <TooltipProvider delayDuration={200}>
+        <div className="space-y-4">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.xlsx,.xls,.json,.xml"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void uploadFile(file);
+            }}
+          />
+          <input
+            ref={perSourceInputRef}
+            type="file"
+            accept=".csv,.xlsx,.xls,.json,.xml"
+            className="hidden"
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              const targetId = uploadTargetId;
+              if (!file || !targetId || !onUploadSampleFile) return;
+              const targetSource = sourceConfigs.find(
+                (s) => s.source_config_id === targetId,
+              );
+              if (!targetSource) return;
+              await onUploadSampleFile(targetSource, file);
+              toast({ title: "File uploaded successfully!", variant: "default" });
+              setUploadedFileIds((prev) => new Set(prev).add(targetId));
+              onSelectSource(targetId);
+              setStep("connect");
+            }}
+          />
+
+          <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+            <aside className="space-y-3">
               <Button
                 type="button"
-                size="sm"
-                className="gap-1.5 bg-cs-primary text-white"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isSavingSource}
-              >
-                <Upload className="h-3.5 w-3.5" />
-                Upload data
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
+                className="w-full gap-2 bg-cs-primary text-white"
                 onClick={() => {
-                  setStep("connect");
-                  setShowSourceChoices((current) => !current);
+                  setIsAddingSource(true);
                 }}
               >
-                <Plus className="mr-1 h-3.5 w-3.5" />
-                {showSourceChoices ? "Hide source choices" : "Connect source"}
+                <Plus className="h-4 w-4" />
+                Add Data Source
               </Button>
-            </div>
-          </div>
-          <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
-            {(
-              [
-                ["connect", "Connect"],
-                ["match", "Match"],
-                ["ingest", "Ingest"],
-              ] as const
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setStep(key)}
-                className={`rounded-lg border px-3 py-2 text-left ${step === key ? "border-cs-primary bg-cs-primary/5" : "border-gray-200 bg-gray-50"}`}
-              >
-                <span className="text-sm font-semibold text-gray-900">
-                  {label}
-                </span>
-              </button>
-            ))}
-          </div>
-          {showSourceChoices && (
-            <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <div className="mb-3">
-                <p className="text-sm font-semibold text-gray-950">
-                  Choose a source type
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
-                  Files create a workspace source. REST and ERP sources open the
-                  connection configuration modal.
-                </p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                {sourceCatalog.map((source) => (
-                  <button
-                    key={source.source_type}
-                    type="button"
-                    disabled={isSavingSource}
-                    onClick={async () => {
-                      const created = await onCreateSource(source);
-                      setShowSourceChoices(false);
-                      if (
-                        created &&
-                        [
-                          "rest_api",
-                          "oracle_fusion",
-                          "sap_s4hana",
-                          "oracle_db",
-                          "sap_ariba",
-                        ].includes(source.source_type)
-                      ) {
-                        setConfigModalSource(created);
-                      }
-                    }}
-                    className="rounded-lg border border-gray-200 bg-white px-3 py-3 text-left hover:border-cs-primary hover:bg-cs-primary/5 disabled:opacity-60"
+
+              <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">Your sources</h3>
+                  <Pill tone="blue">{sourceConfigs.length}</Pill>
+                </div>
+                {sourceConfigs.map((source) => (
+                  <div
+                    key={source.source_config_id}
+                    className={`mb-2 flex items-center gap-2 rounded-lg border p-2 ${selectedSource?.source_config_id === source.source_config_id ? "border-cs-primary bg-cs-primary/5 shadow-sm" : "border-gray-100 hover:border-gray-200"}`}
                   >
-                    <span className="block text-sm font-semibold text-gray-900">
-                      {source.label}
-                    </span>
-                    <span className="mt-1 block text-xs text-gray-500">
-                      {sourceTypeLabel(source.family || source.source_type)}
-                    </span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSelectSource(source.source_config_id);
+                        setIsAddingSource(false);
+                        setStep(source.last_success_at ? "match" : "connect");
+                      }}
+                      className="min-w-0 flex-1 p-1 text-left"
+                    >
+                      <span className="block truncate text-sm font-semibold text-gray-900">
+                        {source.display_name}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-gray-500">
+                        {sourceTypeLabel(source.source_type)} ·{" "}
+                        {enabledKpiIdsForSource(source, visibleKpis).length} matched
+                      </span>
+                    </button>
+                    {enabledKpiIdsForSource(source, visibleKpis).length > 0 && (
+                      <Pill tone="emerald">Linked</Pill>
+                    )}
+                    <button
+                      type="button"
+                      title="Delete source"
+                      aria-label={`Delete ${source.display_name}`}
+                      disabled={isSavingSource}
+                      onClick={() => void onDeleteSource(source)}
+                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-red-600 disabled:opacity-50"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 ))}
-              </div>
-            </div>
-          )}
-        </div>
-        <section className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">
-                Recent connections
-              </p>
-              <p className="mt-1 text-sm text-gray-500">
-                Reuse a tested REST or ERP connection and preview its data without
-                re-entering configuration.
-              </p>
-            </div>
-            {availableProfiles.length > 0 && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="shrink-0 gap-1.5 border-cs-primary/30 text-cs-primary hover:bg-cs-primary/5 hover:text-cs-primary"
-                onClick={() => void useAllRecentProfiles()}
-                disabled={isSavingSource}
-              >
-                <Layers className="h-3.5 w-3.5" />
-                Use All ({availableProfiles.length})
-              </Button>
-            )}
-          </div>
-          <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
-            {availableProfiles.map((profile) => (
-              <button
-                key={profile.profile_id}
-                type="button"
-                onClick={() => void useRecentProfile(profile)}
-                disabled={isSavingSource}
-                className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-left hover:border-cs-primary hover:bg-cs-primary/5 disabled:opacity-60"
-              >
-                <span className="block truncate text-sm font-semibold text-gray-900">
-                  {profile.display_name}
-                </span>
-                <span className="mt-1 block text-xs text-gray-500">
-                  {sourceTypeLabel(profile.source_type)} ·{" "}
-                  {titleCase(profile.status || "ready")}
-                </span>
-                <span className="mt-2 block text-[11px] font-semibold text-cs-primary">
-                  Use and preview
-                </span>
-              </button>
-            ))}
-          </div>
-          {availableProfiles.length === 0 && (
-            <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3 text-xs text-gray-500">
-              No unadded reusable connections are available. Add and test a REST or SAP connection to make it appear here for other contracts.
-            </p>
-          )}
-        </section>
-        <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
-          <aside className="space-y-3">
-            <section className="rounded-xl border border-gray-200 bg-white p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Your sources</h3>
-                <Pill tone="blue">{sourceConfigs.length}</Pill>
-              </div>
-              {sourceConfigs.map((source) => (
-                <div
-                  key={source.source_config_id}
-                  className={`mb-2 flex items-center gap-2 rounded-lg border p-2 ${selectedSource?.source_config_id === source.source_config_id ? "border-cs-primary bg-cs-primary/5" : "border-gray-200"}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSelectSource(source.source_config_id);
-                      setStep(source.last_success_at ? "match" : "connect");
-                    }}
-                    className="min-w-0 flex-1 p-1 text-left"
-                  >
-                    <span className="block truncate text-sm font-semibold">
-                      {source.display_name}
-                    </span>
-                    <span className="mt-1 block text-xs text-gray-500">
-                      {sourceTypeLabel(source.source_type)} ·{" "}
-                      {enabledKpiIdsForSource(source, visibleKpis).length} matched
-                    </span>
-                  </button>
-                  {enabledKpiIdsForSource(source, visibleKpis).length > 0 && (
-                    <Pill tone="emerald">Linked</Pill>
-                  )}
-                  <button
-                    type="button"
-                    title="Delete source"
-                    aria-label={`Delete ${source.display_name}`}
-                    disabled={isSavingSource}
-                    onClick={() => void onDeleteSource(source)}
-                    className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-red-600 disabled:opacity-50"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-              {!sourceConfigs.length && (
-                <p className="rounded border border-dashed p-3 text-xs text-gray-500">
-                  Upload or connect a source to begin.
-                </p>
-              )}
-            </section>
-            <section className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                Status
-              </p>
-              <p className="mt-1 text-sm font-semibold">{sourceStatus}</p>
-              <p className="mt-1 text-xs text-gray-500">
-                {enabledBindings.length} matched · {trackedKpis.length} tracked.
-                Raw rows are parked separately.
-              </p>
-              {selectedSource && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="mt-2 h-7 px-0 text-xs text-cs-primary"
-                  onClick={() => setConfigModalSource(selectedSource)}
-                >
-                  <Settings2 className="mr-1 h-3 w-3" />
-                  Configure connection
-                </Button>
-              )}
-            </section>
-          </aside>
-          <section className="min-w-0 rounded-xl border border-gray-200 bg-white">
-            {selectedSource && (
-              <div className="flex items-center justify-between border-b border-gray-100 p-4">
-                <div>
-                  <h3 className="text-base font-semibold">
-                    {selectedSource.display_name}
-                  </h3>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {sourceTypeLabel(selectedSource.runtime_source_type || selectedSource.source_type)} ·{" "}
-                    {previewRows.length
-                      ? `${previewRows.length} preview rows`
-                      : "No preview yet"}
+                {!sourceConfigs.length && (
+                  <p className="rounded border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500">
+                    No sources added yet.
                   </p>
+                )}
+              </section>
+
+              {availableProfiles.length > 0 && (
+                <div className="pt-2">
+                  <div className="mb-2 px-1 flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                      Recent connections
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => void useAllRecentProfiles()}
+                      disabled={isSavingSource}
+                      className="text-[11px] font-semibold text-cs-primary hover:text-cs-primary/80 disabled:opacity-50"
+                    >
+                      Use all
+                    </button>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {availableProfiles.map((profile) => (
+                      <button
+                        key={profile.profile_id}
+                        type="button"
+                        onClick={() => void useRecentProfile(profile)}
+                        disabled={isSavingSource}
+                        className="group flex items-center justify-between rounded-md px-2 py-1.5 text-left text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
+                      >
+                        <div className="flex flex-col min-w-0">
+                          <span className="truncate font-medium text-gray-700 group-hover:text-gray-900">
+                            {profile.display_name}
+                          </span>
+                          <span className="truncate text-[10px] text-gray-400">
+                            {sourceTypeLabel(profile.source_type)}
+                          </span>
+                        </div>
+                        <Plus className="ml-2 h-3.5 w-3.5 shrink-0 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100" />
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setUploadTargetId(selectedSource.source_config_id);
-                      setTimeout(() => perSourceInputRef.current?.click(), 0);
-                    }}
-                    disabled={isSavingSource}
-                  >
-                    <Upload className="mr-1 h-3.5 w-3.5" />
-                    Upload files
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onRunSourceAction(selectedSource, "test")}
-                    disabled={isRunningSource}
-                  >
-                    {isRunningSource ? "Checking source..." : "Preview & test"}
-                  </Button>
+              )}
+            </aside>
+
+            <main className="min-w-0">
+              {!selectedSource || isAddingSource ? (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-base font-semibold text-gray-950">
+                          New Connection
+                        </h2>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-gray-400 hover:text-gray-600">
+                              <Info className="h-4 w-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-[250px]">
+                            <p>Files create a workspace source. REST and ERP sources open the connection configuration modal.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <button
+                        type="button"
+                        disabled={isSavingSource}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex flex-col items-start justify-center rounded-lg border border-gray-200 bg-white px-4 py-4 hover:border-cs-primary hover:bg-cs-primary/5 disabled:opacity-60"
+                      >
+                        <Upload className="mb-2 h-5 w-5 text-gray-600" />
+                        <span className="block text-sm font-semibold text-gray-900">
+                          File Upload
+                        </span>
+                        <span className="mt-1 block text-xs text-gray-500">
+                          CSV, Excel, JSON, XML
+                        </span>
+                      </button>
+                      {sourceCatalog
+                        .filter(
+                          (source) =>
+                            ![
+                              "oracle_db",
+                              "sap_ariba",
+                              "manual_attestation",
+                            ].includes(source.source_type)
+                        )
+                        .map((source) => (
+                        <button
+                          key={source.source_type}
+                          type="button"
+                          disabled={isSavingSource}
+                          onClick={async () => {
+                            const created = await onCreateSource(source);
+                            if (
+                              created &&
+                              [
+                                "rest_api",
+                                "oracle_fusion",
+                                "sap_s4hana",
+                                "oracle_db",
+                                "sap_ariba",
+                              ].includes(source.source_type)
+                            ) {
+                              setConfigModalSource(created);
+                            }
+                          }}
+                          className="flex flex-col items-start justify-center rounded-lg border border-gray-200 bg-white px-4 py-4 hover:border-cs-primary hover:bg-cs-primary/5 disabled:opacity-60"
+                        >
+                          <Network className="mb-2 h-5 w-5 text-gray-600" />
+                          <span className="block text-sm font-semibold text-gray-900">
+                            {source.label}
+                          </span>
+                          <span className="mt-1 block text-xs text-gray-500">
+                            {sourceTypeLabel(source.family || source.source_type)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                 </div>
-              </div>
-            )}
-            {selectedSource && (
-              <p className="border-b border-gray-100 px-4 pb-3 text-xs text-gray-500">
-                Preview & test only checks the connection and shows sample
-                rows/columns. It does not create actuals or track KPIs.
-              </p>
-            )}
-            {step === "connect" && connectStep}
-            {step === "match" && matchStep}
-            {step === "ingest" && ingestStep}
-          </section>
+              ) : (
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                  <div className="border-b border-gray-100 bg-gray-50/50 p-5">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-950">
+                          {selectedSource.display_name}
+                        </h3>
+                        <p className="mt-1 text-sm text-gray-500">
+                          {sourceTypeLabel(selectedSource.runtime_source_type || selectedSource.source_type)} ·{" "}
+                          {previewRows.length
+                            ? `${previewRows.length} preview rows`
+                            : "No preview yet"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setConfigModalSource(selectedSource)}
+                          disabled={isSavingSource}
+                        >
+                          <Settings2 className="mr-1.5 h-3.5 w-3.5" />
+                          Configure
+                        </Button>
+                        {["csv", "json", "xlsx", "xml"].includes(selectedSource.source_type) && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setUploadTargetId(selectedSource.source_config_id);
+                              setTimeout(() => perSourceInputRef.current?.click(), 0);
+                            }}
+                            disabled={isSavingSource}
+                          >
+                            <Upload className="mr-1.5 h-3.5 w-3.5" />
+                            Upload file
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="mt-6 flex items-center gap-6 border-b border-gray-200 pb-[1px]">
+                      {(
+                        [
+                          ["connect", "Connect"],
+                          ["match", "Match"],
+                          ["ingest", "Ingest"],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setStep(key)}
+                          className={`relative pb-3 text-sm font-semibold transition-colors ${
+                            step === key
+                              ? "text-cs-primary"
+                              : "text-gray-500 hover:text-gray-700"
+                          }`}
+                        >
+                          {label}
+                          {step === key && (
+                            <span className="absolute bottom-0 left-0 h-[2px] w-full bg-cs-primary" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-5">
+                    {step === "connect" && connectStep}
+                    {step === "match" && matchStep}
+                    {step === "ingest" && ingestStep}
+                  </div>
+                </div>
+              )}
+            </main>
+          </div>
+
+          <div className="text-xs text-gray-500">
+            {selectedRuns.length
+              ? `${selectedRuns.length} recent run${selectedRuns.length === 1 ? "" : "s"}`
+              : "No runs yet."}{" "}
+            · {sourceResult?.raw_records_parked || 0} raw rows parked
+          </div>
+          {configModalSource && (
+            <SourceConfigModal
+              source={configModalSource}
+              isSaving={isSavingSource}
+              onClose={() => setConfigModalSource(null)}
+              onSave={async (updates) => {
+                await onUpdateSource(configModalSource, updates);
+              }}
+              onTest={async (updates) =>
+                onTestSourceConfiguration(configModalSource, updates)
+              }
+            />
+          )}
         </div>
-        <div className="text-xs text-gray-500">
-          {selectedRuns.length
-            ? `${selectedRuns.length} recent run${selectedRuns.length === 1 ? "" : "s"}`
-            : "No runs yet."}{" "}
-          · {sourceResult?.raw_records_parked || 0} raw rows parked
-        </div>
-        {configModalSource && (
-          <SourceConfigModal
-            source={configModalSource}
-            isSaving={isSavingSource}
-            onClose={() => setConfigModalSource(null)}
-            onSave={async (updates) => {
-              await onUpdateSource(configModalSource, updates);
-            }}
-            onTest={async (updates) =>
-              onTestSourceConfiguration(configModalSource, updates)
-            }
-          />
-        )}
-      </div>
+      </TooltipProvider>
     );
   }
 
@@ -6803,15 +6971,55 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
             </p>
           </div>
           {!flagsReady ? (
-            <div className="flex min-h-[260px] flex-col items-center justify-center px-6 py-16 text-center">
-              <Loader2 className="h-6 w-6 animate-spin text-cs-primary" />
-              <p className="mt-3 text-sm font-semibold text-gray-800">
-                Preparing compliance flags
+            <div className="flex min-h-[360px] flex-col items-center justify-center px-6 py-16">
+              <div className="relative mb-8 flex items-center justify-center">
+                <div className="absolute inset-0 animate-ping rounded-full bg-cs-primary/30" style={{ animationDuration: '2s' }}></div>
+                <div className="absolute inset-0 animate-pulse rounded-full bg-cs-primary/20" style={{ transform: 'scale(1.5)' }}></div>
+                <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-cs-primary/10 border-2 border-cs-primary shadow-lg shadow-cs-primary/20">
+                  <ShieldAlert className="h-10 w-10 text-cs-primary" />
+                </div>
+              </div>
+              <h3 className="text-xl font-bold tracking-tight text-gray-900">Identifying Compliance Flags...</h3>
+              <p className="mt-2 max-w-sm text-center text-sm text-gray-500">
+                Analyzing ingested actuals against contract thresholds, service levels, and penalty clauses.
               </p>
-              <p className="mt-1 text-xs text-gray-500">
-                {completedSourceCount} of 4 sources completed. Flags will appear
-                together after the final source is reconciled.
-              </p>
+              
+              <div className="mt-10 w-full max-w-md space-y-5">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2.5 font-medium text-gray-700">
+                    {completedSourceCount === 4 ? <CheckCircle2 className="h-5 w-5 text-emerald-500" /> : <Loader2 className="h-5 w-5 animate-spin text-cs-primary" />}
+                    Ingesting data sources
+                  </span>
+                  <span className="font-bold text-gray-900 bg-gray-100 px-2.5 py-0.5 rounded-full">{completedSourceCount} / 4</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100 shadow-inner">
+                  <div 
+                    className="h-full bg-cs-primary transition-all duration-700 ease-in-out" 
+                    style={{ width: `${(completedSourceCount / 4) * 100}%` }}
+                  />
+                </div>
+                
+                <div className="mt-6 flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/50 p-5 text-sm text-gray-600 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    Parsing contract obligations
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    Mapping supplier & client KPIs
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {completedSourceCount > 0 ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-cs-primary" />
+                    ) : (
+                      <div className="h-4 w-4 rounded-full border-2 border-gray-300" />
+                    )}
+                    <span className={completedSourceCount > 0 ? "font-medium text-gray-900" : ""}>
+                      Cross-referencing actuals with thresholds
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           ) : !ordered.length ? (
             <div className="px-6 py-16 text-center text-sm text-gray-500">
@@ -7328,7 +7536,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
             />
             <Metric
               label="Penalty exposure"
-              value={money(exposure)}
+              value={money(exposure, "SEK")}
               detail="current open risk"
             />
           </div>
@@ -7350,7 +7558,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
               const variance = breach.variance_percent
                 ? `${Math.abs(toNumber(breach.variance_percent) || 0)}%`
                 : breach.variance
-                  ? money(Math.abs(toNumber(breach.variance) || 0))
+                  ? money(Math.abs(toNumber(breach.variance) || 0), "SEK")
                   : null;
               const penalty = Math.abs(
                 toNumber(breach.penalty_amount) ||
@@ -7394,7 +7602,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                       </p>
                     </button>
                     <div className="text-sm font-semibold text-gray-950">
-                      {penalty ? `-${money(penalty)}` : "Operational only"}
+                      {penalty ? `-${money(penalty, "SEK")}` : "Operational only"}
                     </div>
                     <span
                       className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(severity)}`}
@@ -7449,7 +7657,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                         <DetailTile label="Actual (ingested)" value={actual} />
                         <DetailTile
                           label="Penalty eligibility"
-                          value={penalty ? money(penalty) : "Not eligible for penalty"}
+                          value={penalty ? money(penalty, "SEK") : "Not eligible for penalty"}
                         />
                       </div>
                       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
@@ -8014,6 +8222,12 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                 const coverage = catKpis.length
                   ? Math.round((catTracked / catKpis.length) * 100)
                   : 0;
+                const breachPercent = catKpis.length 
+                  ? Math.round((catBreaches / catKpis.length) * 100) 
+                  : 0;
+                const greenPercent = catKpis.length 
+                  ? Math.round((Math.max(0, catTracked - catBreaches) / catKpis.length) * 100) 
+                  : 0;
                 return (
                   <div
                     key={cat.key}
@@ -8022,13 +8236,23 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                     <p className="text-sm font-semibold text-gray-900">
                       {cat.label}
                     </p>
-                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${coverage}%` }}
-                        transition={{ duration: 0.8, ease: "easeOut" }}
-                        className={`h-2 rounded-full ${catBreaches > 0 ? "bg-[#EE3224]" : coverage > 0 ? "bg-emerald-500" : "bg-gray-200"}`}
-                      />
+                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden flex w-full">
+                      {breachPercent > 0 && (
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${breachPercent}%` }}
+                          transition={{ duration: 0.8, ease: "easeOut" }}
+                          className="h-full bg-[#EE3224]"
+                        />
+                      )}
+                      {greenPercent > 0 && (
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${greenPercent}%` }}
+                          transition={{ duration: 0.8, ease: "easeOut" }}
+                          className="h-full bg-emerald-500"
+                        />
+                      )}
                     </div>
                     <p className="text-center text-xs font-semibold text-gray-700">
                       {catKpis.length} KPIs
@@ -8049,15 +8273,27 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
         )}
 
         <section className="rounded-lg border border-gray-200 bg-white">
-          <div className="border-b border-gray-100 px-5 py-4">
-            <h2 className="text-base font-semibold text-gray-950">
-              KPI Tracking Matrix
-            </h2>
-            <p className="mt-1 text-xs text-gray-500">
-              Operational clause coverage across IATA service categories. Each
-              cell represents a tracked obligation and its current compliance
-              state.
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 px-5 py-4 gap-4">
+            <div>
+              <h2 className="text-base font-semibold text-gray-950">
+                KPI Tracking Matrix
+              </h2>
+              <p className="mt-1 text-xs text-gray-500">
+                Operational clause coverage across IATA service categories. Each
+                cell represents a tracked obligation and its current compliance
+                state.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              {Object.entries(statusMeta)
+                .filter(([k]) => k !== "ignored")
+                .map(([key, meta]) => (
+                  <div key={key} className="flex items-center gap-1.5">
+                    <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                    <span className="text-xs text-gray-500">{meta.label}</span>
+                  </div>
+                ))}
+            </div>
           </div>
 
           {!kpis.length ? (
@@ -8142,16 +8378,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-4 border-t border-gray-100 px-5 py-3">
-            {Object.entries(statusMeta)
-              .filter(([k]) => k !== "ignored")
-              .map(([key, meta]) => (
-                <div key={key} className="flex items-center gap-1.5">
-                  <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
-                  <span className="text-xs text-gray-500">{meta.label}</span>
-                </div>
-              ))}
-          </div>
+
         </section>
       </div>
     );

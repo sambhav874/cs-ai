@@ -12,7 +12,7 @@ import React, {
   ReactElement,
 } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { apiFetch } from "@/lib/apiClient";
+import { apiFetch, apiJson } from "@/lib/apiClient";
 import ParticlesBackground from "@/components/ParticlesBackground";
 import { Button } from "@/components/ui/button";
 import {
@@ -473,15 +473,19 @@ export default function StandaloneAgentPage() {
         if (selectedAccountId) {
           queryParams.set("context_id", selectedAccountId);
         }
-        const response = await apiFetch(`${apiUrl}/projects/?${queryParams.toString()}`);
-        if (!response.ok) throw new Error("Failed to load projects");
-        const data = await response.json();
-        setProjects(data || []);
+        const qs = queryParams.toString();
+        const url = `${apiUrl}/projects/${qs ? `?${qs}` : ""}`;
+        const { data, error, response } = await apiJson(url);
+        if (error || !response?.ok) {
+          console.error("Failed to load projects details:", error);
+          throw new Error(error || "Failed to load projects");
+        }
+        setProjects((data as any) || []);
 
         // Reset selected project if it's no longer in the loaded list for this workspace context
         setSelectedProject((current) => {
           if (!current) return null;
-          const stillExists = (data || []).some((p: Project) => p._id === current._id);
+          const stillExists = ((data as any[]) || []).some((p: Project) => p._id === current._id);
           return stillExists ? current : null;
         });
       } catch (error) {

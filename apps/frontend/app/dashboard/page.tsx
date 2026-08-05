@@ -172,12 +172,20 @@ function DashboardContent() {
   const setSelectedProjectId = useCallback((projectId: string | null) => {
     setSelectedProjectIdState(projectId);
     if (typeof window !== "undefined") {
-      if (projectId) localStorage.setItem(`${PROJECT_SELECTION_KEY}_${selectedAccountId}`, projectId);
-      else localStorage.removeItem(`${PROJECT_SELECTION_KEY}_${selectedAccountId}`);
+      if (projectId) {
+        localStorage.setItem(`${PROJECT_SELECTION_KEY}_${selectedAccountId}`, projectId);
+        if (searchParams.get("view") === "all") {
+          const params = new URLSearchParams(searchParams.toString());
+          params.delete("view");
+          router.replace(`/dashboard${params.toString() ? `?${params.toString()}` : ""}`, { scroll: false });
+        }
+      } else {
+        localStorage.removeItem(`${PROJECT_SELECTION_KEY}_${selectedAccountId}`);
+      }
     }
     setProjectTab(projectId ? "contracts" : "overview");
     setPagination((prev) => ({ ...prev, currentPage: 1 }));
-  }, [selectedAccountId]);
+  }, [selectedAccountId, searchParams, router]);
 
   useEffect(() => {
     if ((requestedTab === "dashboard" || requestedTab === "contracts" || requestedTab === "assistant" || requestedTab === "reviews" || requestedTab === "playbooks" || requestedTab === "kpis") && requestedProjectId) {
@@ -274,7 +282,9 @@ function DashboardContent() {
     try {
       const params = new URLSearchParams();
       if (selectedAccountId) params.set("context_id", selectedAccountId);
-      const { data, error } = await authenticatedFetch(`${apiUrl}/projects/?${params.toString()}`);
+      const qs = params.toString();
+      const url = `${apiUrl}/projects/${qs ? `?${qs}` : ""}`;
+      const { data, error } = await authenticatedFetch(url);
       if (error) {
         if (handleApiError(error)) return;
         throw new Error(error);
@@ -368,7 +378,9 @@ function DashboardContent() {
       if (search.trim()) params.set("search", search.trim());
       if (currentStatusFilter !== "all") params.set("status", currentStatusFilter);
 
-      const { data, error } = await authenticatedFetch(`${apiUrl}/documents/?${params.toString()}`);
+      const qs = params.toString();
+      const url = `${apiUrl}/documents/${qs ? `?${qs}` : ""}`;
+      const { data, error } = await authenticatedFetch(url);
       if (error) {
         if (handleApiError(error)) return;
         throw new Error(error);

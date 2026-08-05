@@ -219,7 +219,7 @@ export async function listDocuments(
   if (params.contextId) query.set("context_id", params.contextId);
   if (params.projectId) query.set("project_id", params.projectId);
   const result = assertOk<{ documents: DocumentSummary[] }>(
-    await fetcher(`${apiUrl}/documents/?${query.toString()}`),
+    await fetcher(`${apiUrl}/documents/${query.toString() ? `?${query.toString()}` : ""}`),
   );
   return result.documents ?? [];
 }

@@ -1220,6 +1220,7 @@ export function ContractPerformanceDashboardPane({
                 label={item.label}
                 count={panelCounts[item.id as KpiDashboardPanel]}
                 icon={item.icon}
+                disabled={item.id !== "review" && trackedKpis.length === 0}
                 onClick={() => setActivePanel(item.id as KpiDashboardPanel)}
               />
             ))}
@@ -1313,18 +1314,29 @@ function MiniStatusTile({ label, value, tone = "gray" }: { label: string; value:
   );
 }
 
-function DashboardTabButton({ active, label, count, icon, onClick }: { active: boolean; label: string; count: number; icon: React.ReactNode; onClick: () => void }) {
+function DashboardTabButton({ active, label, count, icon, disabled, onClick }: { active: boolean; label: string; count: number; icon: React.ReactNode; disabled?: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
       className={`flex min-w-0 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs font-semibold transition-colors ${
-        active ? "bg-white text-gray-950 shadow-sm" : "text-muted-foreground hover:bg-white/60 hover:text-gray-950"
+        active 
+          ? "bg-white text-gray-950 shadow-sm" 
+          : disabled
+            ? "text-muted-foreground/40 cursor-not-allowed"
+            : "text-muted-foreground hover:bg-white/60 hover:text-gray-950"
       }`}
     >
-      {icon}
-      <span className="truncate">{label}</span>
-      <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-gray-100 text-gray-600" : "bg-white text-muted-foreground"}`}>
+      <div className={disabled ? "opacity-40" : ""}>{icon}</div>
+      <span className={`truncate ${disabled ? "opacity-60" : ""}`}>{label}</span>
+      <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${
+        active 
+          ? "bg-gray-100 text-gray-600" 
+          : disabled
+            ? "bg-gray-100/50 text-muted-foreground/40"
+            : "bg-white text-muted-foreground"
+      }`}>
         {count}
       </span>
     </button>
@@ -2276,6 +2288,8 @@ function ComplianceFlagsDashboardView({
 }) {
   const [expandedFlagId, setExpandedFlagId] = useState<string | null>(null);
   const [isDispatching, setIsDispatching] = useState(false);
+  const [dispatchSuccess, setDispatchSuccess] = useState(false);
+  const [escalatedBreachIds, setEscalatedBreachIds] = useState<Set<string>>(new Set());
   const [alertDraft, setAlertDraft] = useState<{ contractId?: string; kpiId?: string; breachId?: string; to: string; subject: string; body: string; recipientSource?: ContractKPIBreach["breach_email_recipient_source"] } | null>(null);
   const kpiById = useMemo(() => new Map(kpis.map((kpi) => [kpi.kpi_id, kpi])), [kpis]);
   const orderedBreaches = useMemo(() => (
@@ -2411,10 +2425,12 @@ function ComplianceFlagsDashboardView({
                         <Trash2 className="h-3.5 w-3.5" />
                         Remove Flag
                       </Button>
-                      <Button type="button" size="sm" className="h-8 gap-1.5 bg-red-600 text-xs text-white hover:bg-red-700" onClick={() => void openEscalation(breach, kpi)} disabled={!breach.is_breach}>
-                        <Send className="h-3.5 w-3.5" />
-                        Send Escalation Alert
-                      </Button>
+                      {!escalatedBreachIds.has(breach.breach_id || "") && (
+                        <Button type="button" size="sm" className="h-8 gap-1.5 bg-red-600 text-xs text-white hover:bg-red-700" onClick={() => void openEscalation(breach, kpi)} disabled={!breach.is_breach}>
+                          <Send className="h-3.5 w-3.5" />
+                          Send Escalation Alert
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2424,13 +2440,26 @@ function ComplianceFlagsDashboardView({
         </div>
       )}
 
-      <Dialog open={Boolean(alertDraft)} onOpenChange={(open) => !open && setAlertDraft(null)}>
+      <Dialog open={Boolean(alertDraft)} onOpenChange={(open) => {
+        if (!open) {
+          setAlertDraft(null);
+          setDispatchSuccess(false);
+        }
+      }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Automated Escalation Alert</DialogTitle>
             <DialogDescription>Review the alert content before dispatch.</DialogDescription>
           </DialogHeader>
-          {alertDraft && (
+          {dispatchSuccess ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="mb-4 rounded-full bg-emerald-100 p-3">
+                <Check className="h-8 w-8 text-emerald-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Escalation Alert Sent</h3>
+              <p className="mt-2 max-w-sm text-sm text-muted-foreground">The breach alert email has been dispatched and logged successfully.</p>
+            </div>
+          ) : alertDraft && (
             <div className="space-y-3">
               <KpiDetail label="To" value={alertDraft.to || "No contract email found"} />
               {!alertDraft.to && (
@@ -2450,36 +2479,48 @@ function ComplianceFlagsDashboardView({
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setAlertDraft(null)}>Cancel</Button>
-            <Button type="button" className="bg-red-600 text-white hover:bg-red-700" disabled={!alertDraft?.to || isDispatching} onClick={async () => {
-              if (!alertDraft?.to || !alertDraft?.kpiId || !alertDraft?.contractId) {
-                toast({ title: "Alert dispatch failed", description: "Missing recipient email, KPI ID, or Contract ID.", variant: "destructive" });
-                return;
-              }
-              setIsDispatching(true);
-              try {
-                const res = await fetch(`/api/v1/contracts/${alertDraft.contractId}/kpis/alerts/dispatch`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    kpi_id: alertDraft.kpiId,
-                    recipient: alertDraft.to,
-                    subject: alertDraft.subject,
-                    body: alertDraft.body,
-                    breach_id: alertDraft.breachId,
-                  }),
-                });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                toast({ title: "Escalation alert dispatched", description: "The breach alert email has been sent and logged." });
-              } catch (err: any) {
-                toast({ title: "Alert dispatch failed", description: err?.message || "Failed to send alert.", variant: "destructive" });
-              } finally {
-                setIsDispatching(false);
+            {dispatchSuccess ? (
+              <Button type="button" onClick={() => {
                 setAlertDraft(null);
-              }
-            }}>
-              {isDispatching ? "Dispatching..." : "Dispatch Alert"}
-            </Button>
+                setDispatchSuccess(false);
+              }}>Close</Button>
+            ) : (
+              <>
+                <Button type="button" variant="ghost" onClick={() => setAlertDraft(null)}>Cancel</Button>
+                <Button type="button" className="bg-red-600 text-white hover:bg-red-700" disabled={!alertDraft?.to || isDispatching} onClick={async () => {
+                  if (!alertDraft?.to || !alertDraft?.kpiId || !alertDraft?.contractId) {
+                    toast({ title: "Alert dispatch failed", description: "Missing recipient email, KPI ID, or Contract ID.", variant: "destructive" });
+                    return;
+                  }
+                  setIsDispatching(true);
+                  try {
+                    const res = await fetch(`/api/v1/contracts/${alertDraft.contractId}/kpis/alerts/dispatch`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        kpi_id: alertDraft.kpiId,
+                        recipient: alertDraft.to,
+                        subject: alertDraft.subject,
+                        body: alertDraft.body,
+                        breach_id: alertDraft.breachId,
+                      }),
+                    });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    
+                    if (alertDraft.breachId) {
+                      setEscalatedBreachIds((prev) => new Set(prev).add(alertDraft.breachId!));
+                    }
+                    setDispatchSuccess(true);
+                  } catch (err: any) {
+                    toast({ title: "Alert dispatch failed", description: err?.message || "Failed to send alert.", variant: "destructive" });
+                  } finally {
+                    setIsDispatching(false);
+                  }
+                }}>
+                  {isDispatching ? "Dispatching..." : "Dispatch Alert"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

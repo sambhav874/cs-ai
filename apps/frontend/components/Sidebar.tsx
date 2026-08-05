@@ -142,7 +142,7 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
         if (selectedAccountId) projectParams.set("context_id", selectedAccountId)
 
         const [projectsResult, userResult, sessionsResult] = await Promise.all([
-          authenticatedFetch(`${apiUrl}/projects/?${projectParams.toString()}`),
+          authenticatedFetch(`${apiUrl}/projects/${projectParams.toString() ? `?${projectParams.toString()}` : ""}`),
           authenticatedFetch(`${apiUrl}/users/me/`),
           authenticatedFetch(`${apiUrl}/agent/sessions/recent?limit=20`),
         ])
