@@ -620,7 +620,7 @@ export default function ProjectDashboard({
                   <XAxis type="number" tick={axisTick} axisLine={false} tickLine={false} />
                   <YAxis type="category" dataKey="source" tick={{ ...axisTick, fill: C.ink }} axisLine={false} tickLine={false} width={104} />
                   <Tooltip content={<RichTooltip />} cursor={{ fill: C.primarySoft }} />
-                  <Bar dataKey="count" fill="url(#sourceBarFill)" radius={[0, 24, 24, 0]} barSize={48} background={{ fill: C.surfaceSunken, radius: [0, 24, 24, 0] }} animationDuration={1200} animationEasing="ease-in-out" />
+                  <Bar dataKey="count" fill="url(#sourceBarFill)" radius={[0, 24, 24, 0]} barSize={48} background={{ fill: C.surfaceSunken, radius: [0, 24, 24, 0] as any }} animationDuration={1200} animationEasing="ease-in-out" />
                 </BarChart>
               </ResponsiveContainer>
             </CardShell>
@@ -642,7 +642,7 @@ export default function ProjectDashboard({
                 <YAxis tick={axisTick} axisLine={false} tickLine={false} tickFormatter={(value: number) => money(value, "USD")} width={54} />
                 <Tooltip content={<RichTooltip formatter={(v: number) => money(v, "USD")} />} cursor={{ fill: C.primarySoft }} />
                 <Legend wrapperStyle={{ fontSize: 12, fontFamily: FONT_BODY }} iconType="circle" iconSize={10} />
-                <Bar dataKey="atRisk" name="$ At Risk" fill="url(#atRiskFill)" radius={[16, 16, 0, 0]} barSize={56} background={{ fill: C.surfaceSunken, radius: [16, 16, 0, 0] }} animationDuration={1200} animationEasing="ease-in-out" />
+                <Bar dataKey="atRisk" name="$ At Risk" fill="url(#atRiskFill)" radius={[16, 16, 0, 0]} barSize={56} background={{ fill: C.surfaceSunken, radius: [16, 16, 0, 0] as any }} animationDuration={1200} animationEasing="ease-in-out" />
                 <Line type="monotone" dataKey="recovered" name="$ Recovered" stroke={C.amber} strokeWidth={6} dot={{ r: 7, strokeWidth: 3, stroke: "#fff", fill: C.amber }} activeDot={{ r: 9, strokeWidth: 4, stroke: "#fff" }} animationDuration={1500} animationEasing="ease-in-out" />
               </ComposedChart>
             </ResponsiveContainer>
@@ -657,7 +657,7 @@ export default function ProjectDashboard({
                 <XAxis type="number" tick={axisTick} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="stage" tick={{ ...axisTick, fill: C.ink }} axisLine={false} tickLine={false} width={136} />
                 <Tooltip content={<RichTooltip />} cursor={{ fill: C.surfaceSunken }} />
-                <Bar dataKey="value" radius={[0, 24, 24, 0]} barSize={48} background={{ fill: C.surfaceSunken, radius: [0, 24, 24, 0] }} animationDuration={1200} animationEasing="ease-in-out">
+                <Bar dataKey="value" radius={[0, 24, 24, 0]} barSize={48} background={{ fill: C.surfaceSunken, radius: [0, 24, 24, 0] as any }} animationDuration={1200} animationEasing="ease-in-out">
                   {data.lifecycle.map((d, i) => (
                     <Cell key={i} fill={d.fill} />
                   ))}
