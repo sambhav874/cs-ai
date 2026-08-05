@@ -3,7 +3,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar, ComposedChart, Line, Legend,
 } from "recharts";
-import { FileCheck2, AlertTriangle, DollarSign, ShieldCheck, Users2, LucideIcon, ChevronUp, ChevronDown } from "lucide-react";
+import { FileCheck2, AlertTriangle, DollarSign, ShieldCheck, Users2, LucideIcon } from "lucide-react";
 import {
   RangeKey, RULE_TYPES, SOURCES, RANGE_META, RANGE_SCALE,
   BASE_VOLUMES, RULE_TYPE_SPLIT, LIFECYCLE_RATIOS,
@@ -11,40 +11,42 @@ import {
 import type { ContractKPI, ProjectKpiPortfolio } from "./types";
 
 /* ---------------------------------- tokens --------------------------------- */
+// A deliberately "ledger" palette: deep indigo as the anchor (compliance /
+// governance reads as authoritative, not playful), warm jewel accents for
+// status, and a warm-white paper surface instead of clinical gray-white.
 const C = {
-  bg: "#F9FAFB",
+  bg: "#FFFFFF",
   surface: "#FFFFFF",
-  surfaceSunken: "#F3F4F6", 
-  border: "#E5E7EB", 
-  borderStrong: "#D1D5DB", 
-  ink: "#0f172a",
-  inkMuted: "#64748b",
-  inkFaint: "#cbd5e1",
+  surfaceSunken: "#F9FAFB", // Tailwind gray-50
+  border: "#E5E7EB", // Tailwind gray-200
+  borderStrong: "#D1D5DB", // Tailwind gray-300
+  ink: "#111827", // Tailwind gray-900
+  inkMuted: "#A7A9AC", // UI Guidelines Muted
+  inkFaint: "#D1D5DB",
 
-  primary: "#3b82f6", // Vibrant blue
-  primaryDeep: "#2563eb",
-  primarySoft: "rgba(59, 130, 246, 0.1)",
+  primary: "#015CA9", // Corporate Blue
+  primaryDeep: "#01447D",
+  primarySoft: "rgba(1, 92, 169, 0.1)",
 
-  violet: "#8B5CF6", 
+  violet: "#8B5CF6", // Vibrant violet restored
   violetSoft: "#F5F3FF",
 
-  teal: "#06b6d4", // Cyan
-  tealSoft: "#ecfeff",
+  teal: "#0D9488", // Deep teal restored
+  tealSoft: "#F0FDFA",
 
-  amber: "#f59e0b", 
-  amberSoft: "#fef3c7",
+  amber: "#D97706", // Rich amber restored
+  amberSoft: "#FFFBEB",
 
-  red: "#ef4444", 
-  redSoft: "#fee2e2",
+  red: "#EE3224", // UI Guidelines Red
+  redSoft: "rgba(238, 50, 36, 0.1)",
 
-  green: "#10b981", 
-  greenSoft: "#d1fae5",
+  green: "#059669", // Emerald green restored
+  greenSoft: "#ECFDF5",
 
   slate: "#475569",
 };
 
-const RULE_TYPE_COLORS = [C.primary, C.teal, C.amber, C.violet, C.red, C.slate];
-const FUNNEL_COLORS = ["#ef4444", "#f59e0b", "#8b5cf6", "#3b82f6", "#10b981"];
+const RULE_TYPE_COLORS = [C.primary, C.violet, C.teal, C.amber, C.red, C.slate];
 
 const FONT_DISPLAY = "'Space Grotesk', sans-serif";
 const FONT_BODY = "'Inter', sans-serif";
@@ -55,7 +57,7 @@ const EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 /* -------------------------------- types --------------------------------- */
 interface CompliancePoint { period: string; compliant: number; breached: number; }
 interface RuleTypeSlice { name: string; value: number; }
-interface SourceBreach { source: string; count: number; exposure: number; }
+interface SourceBreach { source: string; count: number; }
 interface FinancialPoint { period: string; atRisk: number; recovered: number; }
 interface LifecycleStage { stage: string; value: number; fill: string; }
 
@@ -108,24 +110,21 @@ function buildLiveDataset(portfolio: ProjectKpiPortfolio | null, kpis: ContractK
   });
   const ruleTypeBreakdown = Array.from(ruleCounts.entries()).map(([name, value]) => ({ name, value }));
   const breachCounts = new Map<string, number>();
-  const exposureCounts = new Map<string, number>();
   (portfolio?.top_breaches || []).forEach((breach) => {
     const source = displaySourceName(String(breach.source_config_id || breach.source || breach.data_source || "Tracked sources"));
     breachCounts.set(source, (breachCounts.get(source) || 0) + 1);
-    exposureCounts.set(source, (exposureCounts.get(source) || 0) + Number(breach.penalty_amount || 0));
   });
   const breachBySource = Array.from(breachCounts.entries())
-    .map(([source, count]) => ({ source, count, exposure: exposureCounts.get(source) || (count * 5000) }))
+    .map(([source, count]) => ({ source, count }))
     .sort((a, b) => b.count - a.count);
-  if (!breachBySource.length && activeBreaches) breachBySource.push({ source: "Tracked sources", count: activeBreaches, exposure: activeBreaches * 5000 });
+  if (!breachBySource.length && activeBreaches) breachBySource.push({ source: "Tracked sources", count: activeBreaches });
   const complianceRate = tracked ? Math.round((compliant / tracked) * 1000) / 10 : 0;
   const lifecycle = [
-    { stage: "Open", value: activeBreaches, fill: FUNNEL_COLORS[0] },
-    { stage: "In Action", value: 0, fill: FUNNEL_COLORS[1] },
-    { stage: "Ack", value: 0, fill: FUNNEL_COLORS[2] },
-    { stage: "Reminded", value: 0, fill: FUNNEL_COLORS[3] },
-    { stage: "Escalated", value: 0, fill: FUNNEL_COLORS[4] },
-    { stage: "Resolved", value: 0, fill: C.green },
+    { stage: "Breach Detected", value: activeBreaches, fill: "#B23A2E" },
+    { stage: "Notification Sent", value: 0, fill: "#B4650F" },
+    { stage: "In Remediation", value: 0, fill: "#7C3AED" },
+    { stage: "Resolved", value: 0, fill: "#2E2A85" },
+    { stage: "Claim Recovered", value: 0, fill: "#1E7A4C" },
   ];
   return {
     totalObligations,
@@ -133,7 +132,7 @@ function buildLiveDataset(portfolio: ProjectKpiPortfolio | null, kpis: ContractK
     supplierSide,
     ruleTypeBreakdown: ruleTypeBreakdown.length ? ruleTypeBreakdown : [{ name: "No obligations yet", value: 0 }],
     complianceTrend: [{ period: "Current", compliant, breached: activeBreaches }],
-    breachBySource: breachBySource.length ? breachBySource : [{ source: "No open breaches", count: 0, exposure: 0 }],
+    breachBySource: breachBySource.length ? breachBySource : [{ source: "No open breaches", count: 0 }],
     financialExposure: [{ period: "Current", atRisk: summary?.open_exposure ?? 0, recovered: 0 }],
     activeBreaches,
     dollarAtRisk: summary?.open_exposure ?? 0,
@@ -153,14 +152,12 @@ function mergeDashboardDatasets(base: DashboardDataset, live: DashboardDataset):
   };
   const mergeSourceCounts = (left: SourceBreach[], right: SourceBreach[]) => {
     const counts = new Map(left.map((item) => [displaySourceName(item.source), item.count]));
-    const exposures = new Map(left.map((item) => [displaySourceName(item.source), item.exposure]));
     right.forEach((item) => {
       const source = displaySourceName(item.source);
       counts.set(source, (counts.get(source) || 0) + item.count);
-      exposures.set(source, (exposures.get(source) || 0) + item.exposure);
     });
     return Array.from(counts.entries())
-      .map(([source, count]) => ({ source, count, exposure: exposures.get(source) || 0 }))
+      .map(([source, count]) => ({ source, count }))
       .sort((a, b) => b.count - a.count);
   };
   const baseEvaluated = base.complianceTrend.reduce((total, point) => total + point.compliant + point.breached, 0);
@@ -176,9 +173,11 @@ function mergeDashboardDatasets(base: DashboardDataset, live: DashboardDataset):
     ruleTypeBreakdown: mergeNamedCounts(base.ruleTypeBreakdown, live.ruleTypeBreakdown),
     complianceTrend: [
       ...base.complianceTrend,
-      { period: "Live", compliant: livePoint.compliant, breached: livePoint.breached },
+      { period: "Live project", compliant: livePoint.compliant, breached: livePoint.breached },
     ],
     breachBySource: mergeSourceCounts(base.breachBySource, live.breachBySource),
+    // Keep the existing dollar-denominated portfolio chart separate from the
+    // live SEK project exposure shown in the summary card.
     financialExposure: base.financialExposure,
     activeBreaches: base.activeBreaches + live.activeBreaches,
     dollarAtRisk: base.dollarAtRisk + live.dollarAtRisk,
@@ -191,6 +190,8 @@ function mergeDashboardDatasets(base: DashboardDataset, live: DashboardDataset):
 }
 
 /* -------------------------------- mock data builder --------------------------------- */
+// Deterministic pseudo-random so numbers are stable across re-renders, still vary by range/index.
+// Swap this whole function for a real API call later — just keep the DashboardDataset shape.
 function seeded(seed: number): number {
   const x = Math.sin(seed * 999.7) * 10000;
   return x - Math.floor(x);
@@ -216,11 +217,10 @@ function buildDataset(range: RangeKey): DashboardDataset {
     value: Math.round(totalObligations * RULE_TYPE_SPLIT[i]),
   }));
 
-  const breachBySource: SourceBreach[] = SOURCES.map((source, i) => {
-    const count = Math.max(1, Math.round(BASE_VOLUMES.breachesPerSource * scale * (0.5 + seeded(i + 7))));
-    const exposure = count * Math.round(3000 + seeded(i + 13) * 12000);
-    return { source, count, exposure };
-  }).sort((a, b) => b.count - a.count);
+  const breachBySource: SourceBreach[] = SOURCES.map((source, i) => ({
+    source,
+    count: Math.max(1, Math.round(BASE_VOLUMES.breachesPerSource * scale * (0.5 + seeded(i + 7)))),
+  })).sort((a, b) => b.count - a.count);
 
   const financialExposure: FinancialPoint[] = meta.buckets.map((period, i) => {
     const atRisk = Math.round(BASE_VOLUMES.atRiskPerBucket * scale * (0.7 + seeded(i + 20) * 0.6));
@@ -246,12 +246,11 @@ function buildDataset(range: RangeKey): DashboardDataset {
     complianceTrend, breachBySource, financialExposure,
     activeBreaches, dollarAtRisk, complianceRate,
     lifecycle: [
-      { stage: "Open", value: detected, fill: FUNNEL_COLORS[0] },
-      { stage: "In Action", value: notified, fill: FUNNEL_COLORS[1] },
-      { stage: "Ack", value: Math.round(notified * 0.8), fill: FUNNEL_COLORS[2] },
-      { stage: "Reminded", value: inRemediation, fill: FUNNEL_COLORS[3] },
-      { stage: "Escalated", value: Math.round(inRemediation * 0.3), fill: FUNNEL_COLORS[4] },
-      { stage: "Resolved", value: resolved, fill: C.green },
+      { stage: "Breach Detected", value: detected, fill: "#B23A2E" },
+      { stage: "Notification Sent", value: notified, fill: "#B4650F" },
+      { stage: "In Remediation", value: inRemediation, fill: "#7C3AED" },
+      { stage: "Resolved", value: resolved, fill: "#2E2A85" },
+      { stage: "Claim Recovered", value: recoveredCount, fill: "#1E7A4C" },
     ],
   };
 }
@@ -263,6 +262,8 @@ const money = (n: number, currency: "USD" | "SEK" = "USD"): string => {
   return n >= 1000 ? `${prefix}${(n / 1000).toFixed(1)}k` : `${prefix}${n}`;
 };
 
+/** Count-up animation for stat card headline numbers. Accepts either a raw
+ * number (animates the digits) or a pre-formatted string (fades/settles). */
 function useCountUp(target: number, durationMs = 900) {
   const [value, setValue] = useState(0);
   const raf = useRef<number | null>(null);
@@ -271,32 +272,37 @@ function useCountUp(target: number, durationMs = 900) {
     const from = 0;
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / durationMs);
-      const eased = 1 - Math.pow(1 - t, 3);
+      const eased = 1 - Math.pow(1 - t, 3); // ease-out-cubic
       setValue(Math.round(from + (target - from) * eased));
       if (t < 1) raf.current = requestAnimationFrame(tick);
     };
     raf.current = requestAnimationFrame(tick);
     return () => { if (raf.current) cancelAnimationFrame(raf.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target, durationMs]);
   return value;
 }
 
 function CardShell({
-  children, className = "", delay = 0,
-}: { children: React.ReactNode; className?: string; delay?: number }) {
+  children, className = "", accent, delay = 0,
+}: { children: React.ReactNode; className?: string; accent?: string; delay?: number }) {
   return (
     <div
-      className={`kx-card relative flex flex-col ${className}`}
+      className={`kx-card relative overflow-hidden rounded-xl ${className}`}
       style={{
         background: C.surface,
         border: `1px solid ${C.border}`,
-        borderRadius: "16px",
-        boxShadow: "0 4px 20px rgba(0, 0, 0, 0.03)",
+        boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
         animationDelay: `${delay}ms`,
-        overflow: "hidden",
       }}
     >
-      <div className="flex-1 p-5 md:p-6 flex flex-col">{children}</div>
+      {accent && (
+        <div
+          className="absolute top-0 left-0 right-0 h-[3px]"
+          style={{ background: `linear-gradient(90deg, ${accent}, transparent 130%)` }}
+        />
+      )}
+      <div className="p-5">{children}</div>
     </div>
   );
 }
@@ -308,7 +314,7 @@ function StatCard({
   const animated = useCountUp(numeric ?? 0, 900);
   const display = numeric !== null ? animated.toLocaleString() : value;
   return (
-    <CardShell delay={delay} className="kx-stat gap-4">
+    <CardShell delay={delay} className="kx-stat flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <span
           className="text-[11px] font-semibold tracking-[0.08em] uppercase"
@@ -334,29 +340,35 @@ function StatCard({
   );
 }
 
-function ChartHeader({ title, badge }: { title: string; badge?: React.ReactNode }) {
+function SectionTitle({ eyebrow, title, accent = C.primary }: { eyebrow: string; title: string; accent?: string }) {
   return (
-    <div className="flex items-center justify-between mb-6">
-      <div
-        className="text-[11px] font-bold tracking-[0.1em] uppercase"
-        style={{ color: C.inkMuted, fontFamily: FONT_BODY }}
-      >
-        {title}
+    <div className="mb-5 flex items-start gap-3">
+      <div className="mt-1.5 h-6 w-[3px] rounded-full flex-shrink-0" style={{ background: accent }} />
+      <div>
+        <div
+          className="text-[10.5px] font-semibold tracking-[0.14em] uppercase mb-1"
+          style={{ color: accent, fontFamily: FONT_BODY }}
+        >
+          {eyebrow}
+        </div>
+        <div className="text-[15px]" style={{ color: C.ink, fontFamily: FONT_DISPLAY, fontWeight: 600 }}>
+          {title}
+        </div>
       </div>
-      {badge && <div className="text-[10px] font-semibold tracking-wider text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">{badge}</div>}
     </div>
   );
 }
 
+/** Rich shared tooltip: dark card, colored dot per series, mono numerals. */
 function RichTooltip({ active, payload, label, formatter }: any) {
   if (!active || !payload || !payload.length) return null;
   return (
     <div
-      className="rounded-xl px-4 py-3 min-w-[160px]"
+      className="rounded-lg px-4 py-3.5 min-w-[160px]"
       style={{
-        background: C.surface,
-        boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
-        border: `1px solid ${C.border}`,
+        background: "#FFFFFF",
+        boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+        border: "1px solid #E5E7EB",
       }}
     >
       {label && (
@@ -367,11 +379,11 @@ function RichTooltip({ active, payload, label, formatter }: any) {
           {label}
         </div>
       )}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5">
         {payload.map((entry: any, i: number) => (
-          <div key={i} className="flex items-center justify-between gap-6 text-[13px]">
-            <span className="flex items-center gap-2" style={{ color: C.inkMuted, fontFamily: FONT_BODY }}>
-              <span className="inline-block rounded-full" style={{ width: 8, height: 8, background: entry.color || entry.fill }} />
+          <div key={i} className="flex items-center justify-between gap-4 text-[12.5px]">
+            <span className="flex items-center gap-1.5" style={{ color: C.inkMuted, fontFamily: FONT_BODY }}>
+              <span className="inline-block rounded-full" style={{ width: 7, height: 7, background: entry.color || entry.fill }} />
               {entry.name}
             </span>
             <span style={{ color: C.ink, fontFamily: FONT_MONO, fontWeight: 600 }}>
@@ -384,7 +396,7 @@ function RichTooltip({ active, payload, label, formatter }: any) {
   );
 }
 
-const axisTick = { fontSize: 11, fill: C.inkMuted, fontFamily: FONT_BODY, fontWeight: 500 };
+const axisTick = { fontSize: 11.5, fill: C.inkMuted, fontFamily: FONT_BODY };
 
 /* --------------------------------- component --------------------------------- */
 export default function ProjectDashboard({
@@ -407,12 +419,11 @@ export default function ProjectDashboard({
         financialExposure: RANGE_META[range].buckets.map(period => ({ period, atRisk: 0, recovered: 0 })),
         activeBreaches: 0, dollarAtRisk: 0, complianceRate: 0,
         lifecycle: [
-          { stage: "Open", value: 0, fill: FUNNEL_COLORS[0] },
-          { stage: "In Action", value: 0, fill: FUNNEL_COLORS[1] },
-          { stage: "Ack", value: 0, fill: FUNNEL_COLORS[2] },
-          { stage: "Reminded", value: 0, fill: FUNNEL_COLORS[3] },
-          { stage: "Escalated", value: 0, fill: FUNNEL_COLORS[4] },
-          { stage: "Resolved", value: 0, fill: C.green },
+          { stage: "Breach Detected", value: 0, fill: "#B23A2E" },
+          { stage: "Notification Sent", value: 0, fill: "#B4650F" },
+          { stage: "In Remediation", value: 0, fill: "#7C3AED" },
+          { stage: "Resolved", value: 0, fill: "#2E2A85" },
+          { stage: "Claim Recovered", value: 0, fill: "#1E7A4C" },
         ],
       };
     }
@@ -426,6 +437,9 @@ export default function ProjectDashboard({
     [portfolio, kpis, baseDataset, isEmpty],
   );
 
+  // Keep the existing dashboard portfolio exposure and add the live contract
+  // exposure. Use the month baseline for this summary card so a year-range
+  // chart total is not mistaken for current open risk.
   const existingPortfolioExposure = isEmpty ? 0 : buildDataset("month").dollarAtRisk;
   const projectCurrency: "USD" | "SEK" = kpis.some((kpi) => (
     `${kpi.unit || ""} ${kpi.consequence_unit || ""} ${kpi.contract_name || ""}`.toUpperCase().includes("SEK")
@@ -433,287 +447,226 @@ export default function ProjectDashboard({
   )) ? "SEK" : "USD";
   const projectExposure = portfolio?.summary.open_exposure ?? 0;
 
-  const totalEvaluated = data.complianceTrend.reduce((sum, d) => sum + d.compliant + d.breached, 0);
-
+  // Notice we removed the hardcoded background and padding from the outer div
+  // to better blend with the hosting page. The padding can be adjusted there.
   return (
-    <div className="w-full kx-root bg-[#F9FAFB] p-2 md:p-6 min-h-screen">
+    <div className="w-full kx-root">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
         .kx-root { font-family: ${FONT_BODY}; }
 
         @keyframes kxRise {
-          from { opacity: 0; transform: translateY(15px); }
+          from { opacity: 0; transform: translateY(10px); }
           to   { opacity: 1; transform: translateY(0); }
         }
         .kx-card {
-          animation: kxRise 700ms ${EASE} both;
-          transition: box-shadow 300ms ${EASE}, transform 300ms ${EASE};
+          animation: kxRise 560ms ${EASE} both;
+          transition: box-shadow 220ms ${EASE}, transform 220ms ${EASE}, border-color 220ms ${EASE};
         }
         .kx-card:hover {
-          box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.08);
           transform: translateY(-2px);
+          border-color: ${C.borderStrong};
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
+        .kx-stat:hover { transform: translateY(-3px) scale(1.005); }
 
-        .recharts-cartesian-grid line { stroke-dasharray: 4 4; stroke: #f1f5f9; }
-        
-        .progress-track {
-          background: #f1f5f9;
-          border-radius: 12px;
-          overflow: hidden;
-          height: 20px;
-          position: relative;
-        }
-        .progress-fill {
-          height: 100%;
-          border-radius: 12px;
-          transition: width 1s ${EASE};
-        }
+        .kx-tabs button { transition: background 200ms ${EASE}, color 200ms ${EASE}, box-shadow 200ms ${EASE}; }
+        .kx-tabs button:hover:not(.kx-tab-active) { background: ${C.surfaceSunken}; color: ${C.ink}; }
+
+        .recharts-cartesian-grid line { stroke-dasharray: 2 6; }
+        .recharts-default-legend { margin-top: 6px !important; }
       `}</style>
 
-      {/* SVG Filters for rich glowing charts */}
-      <svg width="0" height="0">
-        <defs>
-          <filter id="glow-primary" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="6" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
-          <linearGradient id="primaryGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={C.primary} stopOpacity={0.25} />
-            <stop offset="100%" stopColor={C.primary} stopOpacity={0.01} />
-          </linearGradient>
-          <linearGradient id="barGradient" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor={C.primaryDeep} />
-            <stop offset="100%" stopColor={C.primary} />
-          </linearGradient>
-          <linearGradient id="barGradientOrange" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#ea580c" />
-            <stop offset="100%" stopColor="#f97316" />
-          </linearGradient>
-        </defs>
-      </svg>
-
-      {/* Grid Layout matching the mockup */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        
-        {/* 1. PERFORMANCE TREND */}
-        <CardShell delay={100} className="col-span-1 md:col-span-1">
-          <ChartHeader title="Performance Trend" badge={`${totalEvaluated} actuals`} />
-          <div className="flex-1 min-h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data.complianceTrend} margin={{ left: -20, right: 10, top: 10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="period" tick={axisTick} axisLine={false} tickLine={false} dy={10} />
-                <YAxis tick={false} axisLine={false} tickLine={false} width={20} />
-                <Tooltip content={<RichTooltip />} cursor={{ stroke: C.borderStrong, strokeWidth: 1, strokeDasharray: "3 3" }} />
-                <Area 
-                  type="monotone" 
-                  dataKey="compliant" 
-                  stroke={C.primary} 
-                  strokeWidth={5} 
-                  fill="url(#primaryGradient)" 
-                  name="Compliant" 
-                  activeDot={{ r: 8, strokeWidth: 4, stroke: C.primary, fill: "#fff" }} 
-                  dot={{ r: 5, strokeWidth: 3, stroke: C.primary, fill: "#fff" }} 
-                  animationDuration={1500} 
-                  animationEasing="ease-in-out"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+      {/* header */}
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
+        <div>
+          <div
+            className="text-[10.5px] font-semibold tracking-[0.14em] uppercase mb-1.5"
+            style={{ color: C.primary, fontFamily: FONT_BODY }}
+          >
+            Governance &amp; Risk
           </div>
-          <div className="mt-4 text-[10px] text-slate-400 flex justify-between uppercase tracking-wider font-semibold">
-            <span>Y-axis: value per KPI</span>
-            <span>Gradient = oldest → newest</span>
-          </div>
-        </CardShell>
+          <h2
+            className="text-[30px] leading-tight"
+            style={{ color: C.ink, fontFamily: FONT_DISPLAY, fontWeight: 700, letterSpacing: "-0.015em" }}
+          >
+            Obligation &amp; Breach Overview
+          </h2>
+        </div>
 
-        {/* 2. KPI COVERAGE */}
-        <CardShell delay={150} className="col-span-1 md:col-span-1 flex flex-col justify-between">
-          <ChartHeader title="KPI Coverage" badge={`${data.totalObligations} of ${data.totalObligations} tracked`} />
-          <div className="flex flex-col gap-6 flex-1 justify-center">
-            {data.ruleTypeBreakdown.slice(0, 2).map((item, i) => {
-              const pct = data.totalObligations ? (item.value / data.totalObligations) * 100 : 0;
+        <div className="flex items-center gap-3">
+          <div
+            className="kx-tabs flex gap-1 p-1 rounded-xl"
+            style={{ background: C.surfaceSunken, border: `1px solid ${C.border}` }}
+          >
+            {(Object.entries(RANGE_META) as [RangeKey, { label: string; buckets: string[] }][]).map(([key, meta]) => {
+              const activeTab = range === key;
               return (
-                <div key={i} className="flex flex-col gap-2">
-                  <div className="flex justify-between items-end">
-                    <span className="text-sm font-semibold text-slate-700">{item.name}</span>
-                    <span className="text-sm font-bold text-slate-900">{item.value}</span>
-                  </div>
-                  <div className="progress-track">
-                    <div 
-                      className="progress-fill" 
-                      style={{ 
-                        width: `${pct}%`, 
-                        background: i === 0 ? "url(#barGradient)" : "url(#barGradientOrange)"
-                      }} 
-                    />
-                  </div>
-                </div>
+                <button
+                  key={key}
+                  onClick={() => setRange(key)}
+                  className={`px-3.5 py-1.5 rounded-lg text-sm ${activeTab ? "kx-tab-active" : ""}`}
+                  style={{
+                    fontFamily: FONT_BODY,
+                    fontWeight: 500,
+                    background: activeTab ? C.primary : "transparent",
+                    color: activeTab ? "#fff" : C.inkMuted,
+                    boxShadow: activeTab ? "0 6px 16px -6px rgba(46,42,133,0.55)" : "none",
+                  }}
+                >
+                  {meta.label}
+                </button>
               );
             })}
           </div>
-          <div className="mt-6 text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
-            {data.totalObligations} of {data.totalObligations} extracted obligations actively monitored.
-          </div>
-        </CardShell>
-
-        {/* 3. COMPLIANCE FLAGS */}
-        <CardShell delay={200} className="col-span-1 md:col-span-1">
-          <ChartHeader title="Compliance Flags" badge={`${data.activeBreaches} open`} />
-          <div className="flex-1 flex items-center justify-center relative min-h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={[
-                    { name: "Open flags", value: data.activeBreaches, fill: C.red },
-                    { name: "Clear tracked", value: data.totalObligations - data.activeBreaches, fill: "#e2e8f0" },
-                  ]}
-                  dataKey="value"
-                  innerRadius={65}
-                  outerRadius={95}
-                  paddingAngle={0}
-                  cornerRadius={0}
-                  stroke="none"
-                  animationDuration={1200}
-                >
-                  {/* Thick rings without borders for a bulky look */}
-                </Pie>
-                <Tooltip content={<RichTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
-            
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-4xl font-bold text-slate-900 font-mono tracking-tighter">
-                {data.activeBreaches}
-              </span>
-            </div>
-            
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 flex flex-col gap-3">
-               <div className="flex items-center gap-2 text-sm">
-                  <span className="w-3 h-3 rounded-full bg-red-500"></span>
-                  <span className="text-slate-600">Open flags <strong className="text-slate-900">{data.activeBreaches}</strong></span>
-               </div>
-               <div className="flex items-center gap-2 text-sm">
-                  <span className="w-3 h-3 rounded-full bg-slate-200"></span>
-                  <span className="text-slate-600">Clear tracked <strong className="text-slate-900">{data.totalObligations - data.activeBreaches}</strong></span>
-               </div>
-            </div>
-          </div>
-        </CardShell>
-
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        
-        {/* 4. RECOVERIES PIPELINE */}
-        <CardShell delay={250} className="col-span-1 md:col-span-1">
-          <ChartHeader title="Recoveries Pipeline" />
-          <div className="flex-1 min-h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.lifecycle} margin={{ left: 0, right: 0, top: 20, bottom: 0 }} barCategoryGap={10}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="stage" tick={{ fontSize: 10, fill: C.inkMuted, fontWeight: 600 }} axisLine={false} tickLine={false} dy={10} />
+      {/* stat row */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
+        <StatCard delay={0} icon={FileCheck2} label="Total Obligations" value={data.totalObligations} sub={`${data.clientSide} client · ${data.supplierSide} supplier`} tone={C.primary} chip={C.primarySoft} />
+        <StatCard delay={40} icon={ShieldCheck} label="Compliance Rate" value={`${data.complianceRate}%`} sub={RANGE_META[range].label} tone={C.green} chip={C.greenSoft} />
+        <StatCard delay={80} icon={AlertTriangle} label="Active Breaches" value={data.activeBreaches} sub={RANGE_META[range].label} tone={C.red} chip={C.redSoft} />
+        <StatCard delay={120} icon={DollarSign} label="$ At Risk" value={money(existingPortfolioExposure, "USD")} sub="Existing portfolio exposure" tone={C.amber} chip={C.amberSoft} />
+        <StatCard delay={160} icon={DollarSign} label={`${projectCurrency} At Risk`} value={money(projectExposure, projectCurrency)} sub="Current project exposure" tone={C.amber} chip={C.amberSoft} />
+        <StatCard delay={200} icon={Users2} label="Client / Supplier" value={data.totalObligations > 0 ? `${Math.round((data.clientSide / data.totalObligations) * 100)}% / ${Math.round((data.supplierSide / data.totalObligations) * 100)}%` : "0% / 0%"} sub="Obligation split" tone={C.violet} chip={C.violetSoft} />
+      </div>
+
+      {isEmpty ? (
+        <div
+          className="flex flex-col items-center justify-center p-14 text-center border border-dashed rounded-2xl"
+          style={{ borderColor: C.borderStrong, background: C.surfaceSunken }}
+        >
+          <div
+            className="flex items-center justify-center rounded-full mb-4"
+            style={{ width: 52, height: 52, background: C.primarySoft, color: C.primary }}
+          >
+            <FileCheck2 size={22} strokeWidth={2} />
+          </div>
+          <h3 style={{ color: C.ink, fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 17 }}>No Data Yet</h3>
+          <p className="text-sm mt-1.5 max-w-md" style={{ color: C.inkMuted, fontFamily: FONT_BODY }}>
+            Upload contracts and configure KPIs to start seeing compliance trends and financial exposure charts.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* compliance trend - hero */}
+          <CardShell accent={C.primary} delay={240} className="mb-6">
+            <SectionTitle eyebrow="Continuous Monitoring" title="Compliance Health Trend" accent={C.primary} />
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={data.complianceTrend} margin={{ left: -12, right: 12, top: 8 }}>
+                <defs>
+                  <linearGradient id="compliantFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={C.green} stopOpacity={0.7} />
+                    <stop offset="60%" stopColor={C.green} stopOpacity={0.2} />
+                    <stop offset="100%" stopColor={C.green} stopOpacity={0.05} />
+                  </linearGradient>
+                  <linearGradient id="breachedFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={C.red} stopOpacity={0.8} />
+                    <stop offset="60%" stopColor={C.red} stopOpacity={0.25} />
+                    <stop offset="100%" stopColor={C.red} stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke={C.border} vertical={false} />
+                <XAxis dataKey="period" tick={axisTick} axisLine={{ stroke: C.border }} tickLine={false} />
+                <YAxis tick={axisTick} axisLine={false} tickLine={false} width={40} />
+                <Tooltip content={<RichTooltip />} cursor={{ stroke: C.borderStrong, strokeWidth: 1, strokeDasharray: "3 5" }} />
+                <Area type="monotone" dataKey="compliant" stackId="1" stroke={C.green} strokeWidth={6} fill="url(#compliantFill)" name="Compliant" dot={false} activeDot={{ r: 7, strokeWidth: 4, stroke: "#fff" }} animationDuration={1500} animationEasing="ease-in-out" />
+                <Area type="monotone" dataKey="breached" stackId="1" stroke={C.red} strokeWidth={6} fill="url(#breachedFill)" name="Breached" dot={false} activeDot={{ r: 7, strokeWidth: 4, stroke: "#fff" }} animationDuration={1500} animationEasing="ease-in-out" />
+                <Legend wrapperStyle={{ fontSize: 12, fontFamily: FONT_BODY }} iconType="circle" iconSize={10} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardShell>
+
+          {/* coverage + breach source */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <CardShell accent={C.violet} delay={280}>
+              <SectionTitle eyebrow="Extraction Engine" title="Obligation Coverage by Rule Type" accent={C.violet} />
+              <ResponsiveContainer width="100%" height={250}>
+                <PieChart>
+                  <Pie
+                    data={data.ruleTypeBreakdown}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={68}
+                    outerRadius={120}
+                    paddingAngle={4}
+                    cornerRadius={8}
+                    animationDuration={1200}
+                    animationEasing="ease-in-out"
+                  >
+                    {data.ruleTypeBreakdown.map((_, i) => (
+                      <Cell key={i} fill={RULE_TYPE_COLORS[i % RULE_TYPE_COLORS.length]} stroke={C.surface} strokeWidth={4} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<RichTooltip />} />
+                  <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" iconSize={10} wrapperStyle={{ fontSize: 12, fontFamily: FONT_BODY }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardShell>
+
+            <CardShell accent={C.primary} delay={320}>
+              <SectionTitle eyebrow="Real-World Data" title="Breaches detected via Sources" accent={C.primary} />
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={data.breachBySource} layout="vertical" margin={{ left: 16, top: 4 }} barCategoryGap={14}>
+                  <defs>
+                    <linearGradient id="sourceBarFill" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor={C.primary} stopOpacity={0.85} />
+                      <stop offset="100%" stopColor={C.primary} stopOpacity={1} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke={C.border} horizontal={false} />
+                  <XAxis type="number" tick={axisTick} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="source" tick={{ ...axisTick, fill: C.ink }} axisLine={false} tickLine={false} width={104} />
+                  <Tooltip content={<RichTooltip />} cursor={{ fill: C.primarySoft }} />
+                  <Bar dataKey="count" fill="url(#sourceBarFill)" radius={[0, 24, 24, 0]} barSize={48} background={{ fill: C.surfaceSunken, radius: [0, 24, 24, 0] }} animationDuration={1200} animationEasing="ease-in-out" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardShell>
+          </div>
+
+          {/* financial exposure */}
+          <CardShell accent={C.primary} delay={360} className="mb-6">
+            <SectionTitle eyebrow="Business Impact" title="Financial Exposure vs. Recovered" accent={C.primary} />
+            <ResponsiveContainer width="100%" height={280}>
+              <ComposedChart data={data.financialExposure} margin={{ left: -8, right: 12, top: 8 }} barCategoryGap={24}>
+                <defs>
+                  <linearGradient id="atRiskFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={C.primary} stopOpacity={0.95} />
+                    <stop offset="100%" stopColor={C.primary} stopOpacity={0.55} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke={C.border} vertical={false} />
+                <XAxis dataKey="period" tick={axisTick} axisLine={{ stroke: C.border }} tickLine={false} />
+                <YAxis tick={axisTick} axisLine={false} tickLine={false} tickFormatter={(value: number) => money(value, "USD")} width={54} />
+                <Tooltip content={<RichTooltip formatter={(v: number) => money(v, "USD")} />} cursor={{ fill: C.primarySoft }} />
+                <Legend wrapperStyle={{ fontSize: 12, fontFamily: FONT_BODY }} iconType="circle" iconSize={10} />
+                <Bar dataKey="atRisk" name="$ At Risk" fill="url(#atRiskFill)" radius={[16, 16, 0, 0]} barSize={56} background={{ fill: C.surfaceSunken, radius: [16, 16, 0, 0] }} animationDuration={1200} animationEasing="ease-in-out" />
+                <Line type="monotone" dataKey="recovered" name="$ Recovered" stroke={C.amber} strokeWidth={6} dot={{ r: 7, strokeWidth: 3, stroke: "#fff", fill: C.amber }} activeDot={{ r: 9, strokeWidth: 4, stroke: "#fff" }} animationDuration={1500} animationEasing="ease-in-out" />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </CardShell>
+
+          {/* lifecycle funnel */}
+          <CardShell accent={C.primary} delay={400}>
+            <SectionTitle eyebrow="Closing the Loop" title="Breach → Remediation → Recovery Lifecycle" accent={C.primary} />
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart data={data.lifecycle} layout="vertical" margin={{ left: 16, top: 4 }} barCategoryGap={16}>
+                <CartesianGrid stroke={C.border} horizontal={false} />
+                <XAxis type="number" tick={axisTick} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="stage" tick={{ ...axisTick, fill: C.ink }} axisLine={false} tickLine={false} width={136} />
                 <Tooltip content={<RichTooltip />} cursor={{ fill: C.surfaceSunken }} />
-                <Bar 
-                  dataKey="value" 
-                  radius={[6, 6, 0, 0]} 
-                  barSize={45}
-                  animationDuration={1200}
-                >
-                  {data.lifecycle.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                <Bar dataKey="value" radius={[0, 24, 24, 0]} barSize={48} background={{ fill: C.surfaceSunken, radius: [0, 24, 24, 0] }} animationDuration={1200} animationEasing="ease-in-out">
+                  {data.lifecycle.map((d, i) => (
+                    <Cell key={i} fill={d.fill} />
+                  ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </div>
-          <div className="mt-4 flex gap-4">
-             <div className="flex-1 p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Remedies</span>
-                <span className="text-xl font-bold font-mono mt-1">3/6</span>
-             </div>
-             <div className="flex-1 p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Flag Age</span>
-                <span className="text-xl font-bold font-mono mt-1">avg 1d</span>
-             </div>
-          </div>
-        </CardShell>
-
-        {/* 5. BREACHES BY CATEGORY */}
-        <CardShell delay={300} className="col-span-1 md:col-span-1">
-          <ChartHeader title="Breaches by Category" badge="flags by category" />
-          <div className="text-4xl font-mono font-bold text-slate-900 mb-6">{data.activeBreaches}</div>
-          <div className="flex-1 min-h-[160px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.breachBySource.slice(0, 3)} layout="vertical" margin={{ left: -10, right: 10, top: 0, bottom: 0 }} barCategoryGap={16}>
-                <XAxis type="number" hide />
-                <YAxis type="category" dataKey="source" hide />
-                <Tooltip content={<RichTooltip />} cursor={{ fill: C.surfaceSunken }} />
-                <Bar 
-                  dataKey="count" 
-                  radius={8} 
-                  barSize={20}
-                  fill={C.primary}
-                  background={{ fill: "#f1f5f9", radius: 8 }}
-                  animationDuration={1200} 
-                  label={{ position: 'right', fill: C.ink, fontSize: 14, fontWeight: 700, fontFamily: FONT_MONO }}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-            
-            {/* Custom overlay labels for the horizontal bars since recharts YAxis takes space */}
-            <div className="absolute inset-x-6 top-[110px] flex flex-col justify-around h-[160px] pointer-events-none">
-               {data.breachBySource.slice(0, 3).map((d, i) => (
-                  <div key={i} className="flex justify-between text-sm font-semibold text-slate-700 -mt-7 z-10 drop-shadow-sm">
-                     <span className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                        {d.source}
-                     </span>
-                  </div>
-               ))}
-            </div>
-          </div>
-          <div className="mt-4 text-[10px] text-slate-400 uppercase tracking-wider font-semibold leading-relaxed">
-            {data.breachBySource[0]?.source} accounts for {data.breachBySource[0]?.count} of {data.activeBreaches} open breaches — the highest concentration of risk.
-          </div>
-        </CardShell>
-
-        {/* 6. PENALTY EXPOSURE */}
-        <CardShell delay={350} className="col-span-1 md:col-span-1">
-          <ChartHeader title="Penalty Exposure" />
-          
-          <div className="text-center p-4 rounded-xl border border-orange-100 bg-orange-50/50 mb-6">
-             <div className="text-[10px] font-bold text-orange-600 uppercase tracking-widest mb-1">Total Exposure</div>
-             <div className="text-3xl font-bold font-mono text-orange-600">{money(data.breachBySource.reduce((s, d) => s + (d.exposure||0), 0), projectCurrency)}</div>
-          </div>
-
-          <div className="flex flex-col gap-5 flex-1">
-            {data.breachBySource.slice(0, 2).map((item, i) => {
-              const totalExposure = data.breachBySource.reduce((s, d) => s + (d.exposure||0), 0);
-              const pct = totalExposure ? (item.exposure / totalExposure) * 100 : 0;
-              return (
-                <div key={i} className="flex flex-col gap-2">
-                  <div className="flex justify-between items-end">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{item.source.toUpperCase().substring(0, 15)}</span>
-                    <span className="text-sm font-bold font-mono text-slate-900">{money(item.exposure, projectCurrency)}</span>
-                  </div>
-                  <div className="progress-track" style={{ height: 16 }}>
-                    <div 
-                      className="progress-fill" 
-                      style={{ 
-                        width: `${Math.max(5, pct)}%`, 
-                        background: i === 0 ? "url(#barGradientOrange)" : "url(#barGradient)"
-                      }} 
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-6 text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
-            Per-incident consequence values. Exposure = incident count × per-unit rate.
-          </div>
-        </CardShell>
-
-      </div>
+          </CardShell>
+        </>
+      )}
     </div>
   );
 }
