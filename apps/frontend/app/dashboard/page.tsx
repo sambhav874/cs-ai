@@ -1072,6 +1072,12 @@ function DashboardContent() {
   }, [isAuthenticated, selectedProjectId]);
 
   useEffect(() => {
+    if (selectedProjectId && selectedProject) {
+      setProjectStats({ ...emptyStats, ...(selectedProject.stats || {}) });
+    }
+  }, [selectedProjectId, selectedProject]);
+
+  useEffect(() => {
     if (!selectedProjectId) {
       setDocuments([]);
       setProjectStats(emptyStats);
@@ -1084,9 +1090,8 @@ function DashboardContent() {
       setSelectedKpiContractId("");
       return;
     }
-    setProjectStats({ ...emptyStats, ...(selectedProject?.stats || {}) });
     fetchDocuments(1);
-  }, [selectedProjectId, selectedProject, contractSearch, statusFilter, sortConfig, fetchDocuments]);
+  }, [selectedProjectId, contractSearch, statusFilter, sortConfig, fetchDocuments]);
 
   // Set breadcrumbs globally
   useEffect(() => {
