@@ -15,9 +15,9 @@ The goal of ContractSense is to extract structured, trackable Key Performance In
 
 ---
 
-## 🔍 Context & Empirical Benchmarking Test Case (`airport-charges-2025.pdf`)
+## 🔍 Context & Empirical Benchmarking Test Case (`StandardGroundHandlingAgreement.pdf`)
 
-We benchmarked our current extraction pipeline against an actual Standard Ground Handling Agreement Annex B (`airport-charges-2025.pdf`). Out of ~40 ground truth clauses, the pipeline extracted 35 items (~85% recall). An empirical audit revealed **4 critical production bugs & architectural weaknesses**:
+We benchmarked our current extraction pipeline against an actual Standard Ground Handling Agreement Annex B (`StandardGroundHandlingAgreement.pdf`). Out of ~40 ground truth clauses, the pipeline extracted 35 items (~85% recall). An empirical audit revealed **4 critical production bugs & architectural weaknesses**:
 
 ### 1. Table Collapsing / Matrix Unrolling Deficit (Grouping Bug)
 - **Observed Bug**: In § 2.3 of the contract, seat-capacity fee tables (0–40, 41–70, 71–100, 101–190 seats for Passenger and Ramp handling) were squashed by the LLM into **2 single qualitative text blob records** (`"Passenger services pricing per aircraft seat range"`) instead of emitting 8 discrete scalar records (one per seat tier).

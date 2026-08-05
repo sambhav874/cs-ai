@@ -39,6 +39,7 @@ from utils.audit_logger import create_audit_log
 from utils.secure_logger import log_exception
 from utils.http_headers import content_disposition
 from core.cache import cache
+from services.airport_charges_demo import AirportChargesDemoBuilder, is_airport_charges_demo
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ def create_project_download_ticket(
 @limiter.limit("10/minute")
 async def upload_contract(
     request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     owner_team_id: Optional[str] = Query(None),
     project_id: Optional[str] = Query(None),
@@ -193,39 +195,50 @@ async def upload_contract(
                 )
                 account_to_deduct_from_pool_oid = None
 
-        if isinstance(account_to_deduct_from_pool_oid, ObjectId):
-            if page_count > 0:
-                credits_deducted_successfully = await deduct_credits(account_to_deduct_from_pool_oid, page_count)
-                if credits_deducted_successfully:
-                    collection.update_one(
-                        {"_id": contract_oid},
-                        {"$set": {"credits_deducted": True}}
-                    )
-                else:
-                    ingestion_status = "blocked_insufficient_credits"
-                    collection.update_one(
-                        {"_id": contract_oid},
-                        {"$set": {
-                            "index.status": "blocked",
-                            "index.error": f"Insufficient credits. {page_count} credits required to ingest this document.",
-                            "status": "Uploaded",
-                        }}
-                    )
+        if is_airport_charges_demo(contract_id_str, file.filename):
+            if isinstance(account_to_deduct_from_pool_oid, ObjectId):
+                if page_count > 0:
+                    credits_deducted_successfully = await deduct_credits(account_to_deduct_from_pool_oid, page_count)
+                    if credits_deducted_successfully:
+                        collection.update_one(
+                            {"_id": contract_oid},
+                            {"$set": {"credits_deducted": True}}
+                        )
+                    else:
+                        ingestion_status = "blocked_insufficient_credits"
+                        collection.update_one(
+                            {"_id": contract_oid},
+                            {"$set": {
+                                "index.status": "blocked",
+                                "index.error": f"Insufficient credits. {page_count} credits required to ingest this document.",
+                                "status": "Uploaded",
+                            }}
+                        )
 
-            if ingestion_status != "blocked_insufficient_credits":
-                try:
-                    ingestion_job_id = queue_contract_ingestion(
-                        contract_id=contract_id_str,
-                        contract_oid=contract_oid,
-                        file_id=file_id,
-                        file_name=file.filename,
-                        user_id=str(current_user.id),
-                        use_local_marker=False,
-                    )
-                    ingestion_status = "queued" if ingestion_job_id else "failed_to_queue"
-                except Exception as ingestion_error:
-                    ingestion_status = "failed_to_queue"
-                    log_exception(logger, f"Failed to queue auto-ingestion for uploaded contract {contract_id_str}", ingestion_error)
+                if ingestion_status != "blocked_insufficient_credits":
+                    try:
+                        ingestion_job_id = queue_contract_ingestion(
+                            contract_id=contract_id_str,
+                            contract_oid=contract_oid,
+                            file_id=file_id,
+                            file_name=file.filename,
+                            user_id=str(current_user.id),
+                            use_local_marker=False,
+                        )
+                        ingestion_status = "queued" if ingestion_job_id else "failed_to_queue"
+                    except Exception as ingestion_error:
+                        ingestion_status = "failed_to_queue"
+                        log_exception(logger, f"Failed to queue auto-ingestion for uploaded contract {contract_id_str}", ingestion_error)
+
+            try:
+                demo_builder = AirportChargesDemoBuilder(db)
+                background_tasks.add_task(
+                    demo_builder.extract_ground_truth,
+                    contract_doc=contract_doc,
+                    user_id=str(current_user.id)
+                )
+            except Exception as e:
+                log_exception(logger, f"Failed to queue demo KPI extraction for contract {contract_id_str}", e)
 
         audit_account_id = None
         if owner_type == "team" and isinstance(owner_id, ObjectId):

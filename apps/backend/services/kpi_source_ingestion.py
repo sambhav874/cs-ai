@@ -844,10 +844,9 @@ class KpiSourceIngestionService:
             if is_airport_charges_demo_source(config):
                 # Keep uploaded rows for preview/raw audit, but evaluate the
                 # deterministic demo rows so the pitch outcome is stable.
-                from services.airport_charges_demo import AirportChargesDemoBuilder, GROUND_TRUTH_KPIS
-                records = AirportChargesDemoBuilder._kpi_rows(
-                    GROUND_TRUTH_KPIS,
-                    str(config.get("source_type") or "").lower(),
+                from services.airport_charges_demo import HARDCODED_DEMO_TELEMETRY
+                records = HARDCODED_DEMO_TELEMETRY.get(
+                    str(config.get("source_type") or "").lower(), []
                 )
             parked_count = self._park_raw_records(config, run["run_id"], records)
             normalized = self._normalize_records(records, config, run["run_id"])
