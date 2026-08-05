@@ -74,7 +74,7 @@ import { ContractExplorer } from "@/components/dashboard/ContractExplorer";
 import { ProjectOverview } from "@/components/dashboard/ProjectOverview";
 import { ProjectAssistantWorkspace } from "@/components/dashboard/ProjectAssistantWorkspace";
 import { ProjectKPIWorkspace } from "@/components/dashboard/ProjectKPIWorkspace";
-import ProjectDashboard from "@/components/dashboard/ProjectDashboard";
+import ContractKpiManagementPage from "../contracts/[contract_id]/kpis/page";
 
 const PROJECT_SELECTION_KEY = "dashboardSelectedProject";
 
@@ -183,9 +183,11 @@ function DashboardContent() {
         localStorage.removeItem(`${PROJECT_SELECTION_KEY}_${selectedAccountId}`);
       }
     }
-    setProjectTab(projectId ? "contracts" : "overview");
+    const targetProject = projects.find((p) => p._id === projectId);
+    const hasContracts = targetProject ? (targetProject.stats?.total_documents || 0) > 0 : false;
+    setProjectTab(projectId ? (hasContracts ? "dashboard" : "contracts") : "overview");
     setPagination((prev) => ({ ...prev, currentPage: 1 }));
-  }, [selectedAccountId, searchParams, router]);
+  }, [selectedAccountId, searchParams, router, projects]);
 
   useEffect(() => {
     if ((requestedTab === "dashboard" || requestedTab === "contracts" || requestedTab === "assistant" || requestedTab === "reviews" || requestedTab === "playbooks" || requestedTab === "kpis") && requestedProjectId) {
@@ -202,9 +204,11 @@ function DashboardContent() {
 
   useEffect(() => {
     if (selectedProjectId && projectTab === "overview") {
-      setProjectTab("contracts");
+      const targetProject = projects.find((p) => p._id === selectedProjectId);
+      const hasContracts = targetProject ? (targetProject.stats?.total_documents || 0) > 0 : false;
+      setProjectTab(hasContracts ? "dashboard" : "contracts");
     }
-  }, [selectedProjectId, projectTab]);
+  }, [selectedProjectId, projectTab, projects]);
 
   const handleSessionTimeout = useCallback(() => {
     toast({
@@ -293,11 +297,13 @@ function DashboardContent() {
       const loadedProjects = (data || []) as Project[];
       setProjects(loadedProjects);
       setSelectedProjectIdState((current) => {
+        if (current) return current;
         if (requestedView === "all") return null;
+
         const stored = typeof window !== "undefined"
           ? localStorage.getItem(`${PROJECT_SELECTION_KEY}_${selectedAccountId}`)
           : null;
-        const preferred = current || requestedProjectId || stored;
+        const preferred = requestedProjectId || stored;
         if (preferred && loadedProjects.some((project) => project._id === preferred)) {
           return preferred;
         }
@@ -726,7 +732,7 @@ function DashboardContent() {
 
     const processingDocs = documents.filter((doc) =>
       doc.isProcessing ||
-      ["pending", "queued", "Syncronizing", "Indexing", "Summarizing", "processing"].includes(doc.status),
+      ["pending", "queued", "Syncronizing", "Indexing", "Summarizing", "processing", "Processing", "Uploaded", "uploaded"].includes(doc.status),
     );
     if (processingDocs.length === 0) return;
 
@@ -809,7 +815,7 @@ function DashboardContent() {
     return () => sockets.forEach((ws) => ws.close(1000, "unmount"));
   }, [
     documents
-      .filter((doc) => doc.isProcessing || ["pending", "queued", "Syncronizing", "Indexing", "Summarizing", "processing"].includes(doc.status))
+      .filter((doc) => doc.isProcessing || ["pending", "queued", "Syncronizing", "Indexing", "Summarizing", "processing", "Processing", "Uploaded", "uploaded"].includes(doc.status))
       .map((doc) => doc._id)
       .join(","),
     isAuthenticated,
@@ -942,6 +948,12 @@ function DashboardContent() {
     fetchDocuments(1);
     fetchUserCredits();
     void fetchProjectPortfolio();
+    
+    // Elasticsearch might take a moment to index the new document.
+    // Fetch again after 2.5 seconds to ensure it appears in the table.
+    setTimeout(() => {
+      fetchDocuments(1);
+    }, 2500);
   }, [fetchProjects, fetchDocuments, fetchUserCredits, fetchProjectPortfolio]);
 
   const handleToggleLocalMarker = useCallback((checked: boolean) => {
@@ -975,6 +987,7 @@ function DashboardContent() {
       const created = data as Project;
       setProjects((prev) => [created, ...prev]);
       setSelectedProjectId(created._id);
+      fetchProjects();
       setNewProjectName("");
       setNewProjectDescription("");
       setIsProjectDialogOpen(false);
@@ -996,6 +1009,7 @@ function DashboardContent() {
     selectedAccountId,
     handleApiError,
     setSelectedProjectId,
+    fetchProjects,
   ]);
 
   const handleOpenReassignModal = useCallback((doc: Document) => {
@@ -1130,9 +1144,10 @@ function DashboardContent() {
     if (needsDocumentRefresh && !isRefreshing) {
       fetchDocuments(pagination.currentPage);
       fetchProjectStats(selectedProjectId);
+      fetchProjects();
       setNeedsDocumentRefresh(false);
     }
-  }, [needsDocumentRefresh, isRefreshing, fetchDocuments, fetchProjectStats, selectedProjectId, pagination.currentPage]);
+  }, [needsDocumentRefresh, isRefreshing, fetchDocuments, fetchProjectStats, fetchProjects, selectedProjectId, pagination.currentPage]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -1225,10 +1240,10 @@ function DashboardContent() {
                 {[
                   { id: "dashboard", label: "Dashboard" },
                   { id: "contracts", label: "Contracts" },
-                  { id: "kpis", label: "KPIs" },
-                  { id: "reviews", label: "Reviews" },
-                  { id: "playbooks", label: "Playbooks" },
-                  { id: "assistant", label: "Assistant" },
+                  // { id: "kpis", label: "KPIs" },
+                  // { id: "reviews", label: "Reviews" },
+                  // { id: "playbooks", label: "Playbooks" },
+                  // { id: "assistant", label: "Assistant" },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -1278,13 +1293,46 @@ function DashboardContent() {
                 onToggleLocalMarker={handleToggleLocalMarker}
               />
             ) : projectTab === "dashboard" && selectedProject ? (
-              <div className="p-6 md:p-8">
-                <ProjectDashboard 
-                  portfolio={projectPortfolio} 
-                  kpis={projectKpis} 
-                  isEmpty={(selectedProject?.stats?.total_documents ?? 0) === 0} 
-                />
-              </div>
+              isRefreshing && documents.length === 0 ? (
+                <div className="flex h-full w-full flex-col p-8 space-y-6">
+                  <div className="flex items-center space-x-4">
+                    <div className="h-12 w-12 animate-pulse rounded-full bg-gray-200"></div>
+                    <div className="space-y-2">
+                      <div className="h-4 w-[250px] animate-pulse rounded bg-gray-200"></div>
+                      <div className="h-4 w-[200px] animate-pulse rounded bg-gray-200"></div>
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div key={i} className="h-32 w-full animate-pulse rounded-xl bg-gray-100"></div>
+                    ))}
+                  </div>
+                  <div className="h-[400px] w-full animate-pulse rounded-xl bg-gray-100"></div>
+                </div>
+              ) : documents.length === 0 ? (
+                <div className="flex h-[calc(100vh-theme(spacing.24))] flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50/50 p-8 text-center">
+                  <div className="mb-4 rounded-full bg-white p-4 shadow-sm ring-1 ring-gray-900/5">
+                    <FileText className="h-10 w-10 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">No contracts uploaded yet</h3>
+                  <p className="mt-2 max-w-sm text-sm text-gray-500">
+                    Upload your first contract to automatically generate a comprehensive dashboard and begin tracking its key performance indicators.
+                  </p>
+                  <Button
+                    onClick={() => setIsUploadModalOpen(true)}
+                    className="mt-6 bg-cs-primary text-white hover:bg-cs-primary/90"
+                  >
+                    <FileUp className="mr-2 h-4 w-4" />
+                    Upload Contract
+                  </Button>
+                </div>
+              ) : selectedKpiContractId ? (
+                <ContractKpiManagementPage contractIdProp={selectedKpiContractId} />
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground p-8">
+                  Select a contract in the Contracts tab to view its dashboard.
+                </div>
+              )
             ) : projectTab === "kpis" && selectedProject ? (
               <ProjectKPIWorkspace
                 kpis={projectKpis}

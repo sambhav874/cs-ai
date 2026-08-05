@@ -232,5 +232,5 @@ export interface ProjectKpiPortfolio {
 }
 
 export type AIProvider = "groq" | "openai" | "claude" | "gemini";
-export type ProjectTab = "overview" | "dashboard" | "contracts" | "kpis" | "assistant" | "reviews" | "playbooks";
+export type ProjectTab = "overview" | "home" | "dashboard" | "contracts" | "kpis" | "assistant" | "reviews" | "playbooks";
 export type ContractView = "all" | "mine" | "needs-action";

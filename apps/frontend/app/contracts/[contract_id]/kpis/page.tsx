@@ -1130,12 +1130,12 @@ export type RecoveryReminderAction = {
   subject: string;
 };
 
-export default function ContractKpiManagementPage() {
+export default function ContractKpiManagementPage({ contractIdProp }: { contractIdProp?: string } = {}) {
   const { setBreadcrumbs } = useBreadcrumbs();
   const router = useRouter();
   const params = useParams();
   const contractId =
-    typeof params?.contract_id === "string" ? params.contract_id : "";
+    contractIdProp || (typeof params?.contract_id === "string" ? params.contract_id : "");
   const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL;
   const { token, authChecked, isAuthenticated, authenticatedFetch } = useAuth();
 
@@ -2473,7 +2473,7 @@ export default function ContractKpiManagementPage() {
             },
             {
               id: "flags",
-              label: "Compliance Flags",
+              label: "Contract Breaches",
               icon: <AlertCircle className="h-4 w-4" />,
               count: activeBreaches.length,
             },
@@ -5853,7 +5853,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
     const [isAddingSource, setIsAddingSource] = useState(false);
     const [configModalSource, setConfigModalSource] =
       useState<KPISourceConfig | null>(null);
-    const [step, setStep] = useState<"connect" | "match" | "ingest">("connect");
+    const [step, setStep] = useState<"connect" | "ingest">("connect");
     const [showSourceChoices, setShowSourceChoices] = useState(false);
     const [smartMatched, setSmartMatched] = useState<Set<string>>(() => {
       if (typeof window !== "undefined") {
@@ -5876,13 +5876,11 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
       if (selectedSource) {
         if (smartMatched.has(selectedSource.source_config_id)) {
           setStep("ingest");
-        } else if (hasPreviewedTest.has(selectedSource.source_config_id) || uploadedFileIds.has(selectedSource.source_config_id)) {
-          setStep("match");
         } else {
           setStep("connect");
         }
       }
-    }, [selectedSource?.source_config_id]);
+    }, [selectedSource, smartMatched, hasPreviewedTest, uploadedFileIds]);
     useEffect(() => {
       if (typeof window !== "undefined") {
         sessionStorage.setItem("uploadedFileIds", JSON.stringify(Array.from(uploadedFileIds)));
@@ -6288,15 +6286,27 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
             })()}
           </div>
         )}
-        <Button
-          type="button"
-          size="sm"
-          className="float-right bg-cs-primary text-white"
-          disabled={!previewRows.length}
-          onClick={() => setStep("match")}
-        >
-          Next
-        </Button>
+        {previewRows.length > 0 && (
+          <Button
+            type="button"
+            size="sm"
+            className="float-right bg-cs-primary text-white"
+            disabled={(selectedSource && runningSourceIds.has(selectedSource.source_config_id)) as boolean}
+            onClick={() => {
+              if (selectedSource) {
+                setStep("ingest");
+                onRunSourceAction(selectedSource, "fetch");
+              }
+            }}
+          >
+            {selectedSource && runningSourceIds.has(selectedSource.source_config_id) ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            Ingest actuals
+          </Button>
+        )}
         <div className="clear-both" />
       </div>
     ) : (
@@ -6454,17 +6464,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           </div>
         </div>
         <div className="flex justify-end">
-          {selectedSource && smartMatched.has(selectedSource.source_config_id) && (
-            <Button
-              type="button"
-              size="sm"
-              className="bg-cs-primary text-white"
-              disabled={!enabledBindings.length || !hasMeasurementFields}
-              onClick={() => setStep("ingest")}
-            >
-              Continue to ingest
-            </Button>
-          )}
+          {/* Continue to ingest button removed as matching step is skipped */}
         </div>
       </div>
     );
@@ -6496,9 +6496,9 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => setStep("match")}
+            onClick={() => setStep("connect")}
           >
-            Back to matching
+            Back to connect
           </Button>
           <Button
             type="button"
@@ -6587,7 +6587,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                       onClick={() => {
                         onSelectSource(source.source_config_id);
                         setIsAddingSource(false);
-                        setStep(source.last_success_at ? "match" : "connect");
+                        setStep(source.last_success_at ? "ingest" : "connect");
                       }}
                       className="min-w-0 flex-1 p-1 text-left"
                     >
@@ -6789,7 +6789,6 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                       {(
                         [
                           ["connect", "Connect"],
-                          ["match", "Match"],
                           ["ingest", "Ingest"],
                         ] as const
                       ).map(([key, label]) => (
@@ -6814,7 +6813,6 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
 
                   <div className="p-5">
                     {step === "connect" && connectStep}
-                    {step === "match" && matchStep}
                     {step === "ingest" && ingestStep}
                   </div>
                 </div>

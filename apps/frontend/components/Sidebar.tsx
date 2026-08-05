@@ -174,6 +174,7 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
   const isTestUser = currentUser?.username === "test-uploader" || currentUser?.username === "demouser"
 
   const navItems = [
+    { href: "/home", label: "Home", icon: LayoutGrid },
     { href: "/dashboard?view=all", label: "Projects", icon: FolderOpen },
     { href: "/agent", label: "AI Agent", icon: Sparkles },
     { href: "/tabular-reviews", label: "Reviews", icon: Table2 },
@@ -232,7 +233,7 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
         )}
 
         <div className="flex h-16 shrink-0 items-center px-4 overflow-hidden">
-          <Link href="/dashboard" className="flex min-w-0 items-center gap-3 w-full" title="ContractSense">
+          <Link href="/home" className="flex min-w-0 items-center gap-3 w-full" title="ContractSense">
             <img src="/logo.png" alt="ContractSense" className="h-8 w-8 rounded-lg shrink-0" />
             <AnimatePresence>
               {sidebarExpanded && (
