@@ -48,6 +48,8 @@ SOURCE_CONNECTOR_CATALOG = [
     {"source_type": "xlsx", "label": "Excel Workbook", "family": "file", "auth_types": ["none"], "cadences": ["manual", "scheduled"]},
     {"source_type": "json", "label": "JSON Upload", "family": "file", "auth_types": ["none"], "cadences": ["manual", "scheduled"]},
     {"source_type": "xml", "label": "XML Feed", "family": "file", "auth_types": ["none", "basic", "api_key"], "cadences": ["manual", "scheduled"]},
+    {"source_type": "scanned_images", "label": "Scanned Images", "family": "file", "auth_types": ["none"], "cadences": ["manual", "scheduled"]},
+    {"source_type": "file_upload", "label": "File Upload", "family": "file", "auth_types": ["none"], "cadences": ["manual", "scheduled"]},
     {"source_type": "rest_api", "label": "Generic REST Endpoint", "family": "api", "auth_types": ["none", "api_key", "bearer", "basic", "oauth2"], "cadences": ["hourly", "daily", "weekly", "webhook"]},
     {"source_type": "webhook", "label": "Webhook Receiver", "family": "stream", "auth_types": ["shared_secret", "hmac", "api_key"], "cadences": ["real_time"]},
     {"source_type": "sftp", "label": "SFTP File Drop", "family": "file", "auth_types": ["password", "ssh_key"], "cadences": ["on_file_arrival", "hourly", "daily"]},
@@ -79,7 +81,7 @@ SOURCE_CONNECTOR_CATALOG = [
     {"source_type": "manual_attestation", "label": "Manual Attestation", "family": "manual", "auth_types": ["user"], "cadences": ["manual", "scheduled"]},
 ]
 
-USER_CONFIGURABLE_SOURCE_TYPES = {"csv", "xlsx", "json", "xml", "rest_api", "manual_attestation", "oracle_fusion", "sap_s4hana", "oracle_db", "sap_ariba"}
+USER_CONFIGURABLE_SOURCE_TYPES = {"csv", "xlsx", "json", "xml", "scanned_images", "file_upload", "rest_api", "manual_attestation", "oracle_fusion", "sap_s4hana", "oracle_db", "sap_ariba"}
 PLATFORM_MANAGED_SOURCE_TYPES = {
     item["source_type"] for item in SOURCE_CONNECTOR_CATALOG
 } - USER_CONFIGURABLE_SOURCE_TYPES
@@ -1248,6 +1250,45 @@ class ContractKPIManager:
         )
         return self._serialize(self.source_configs.find_one({"contract_id": contract_id, "source_config_id": source_config_id}))
 
+    def _human_source_label(self, source: Any, *, contract_id: Optional[str] = None) -> str:
+        """Return a reader-friendly source name for emails and breach details."""
+        labels = {
+            "scanned_images": "Scanned Images",
+            "file_upload": "File Upload",
+            "csv": "CSV file",
+            "json": "JSON file",
+            "xlsx": "Excel file",
+            "xml": "XML file",
+            "rest_api": "REST feed",
+            "sap_s4hana": "SAP S/4HANA",
+            "manual_attestation": "Manual attestation",
+        }
+        raw = str(source or "").strip()
+        if not raw:
+            return "Operations data"
+
+        source_type = ""
+        if raw.startswith("source_config:"):
+            parts = raw.split(":")
+            source_config_id = parts[1] if len(parts) > 1 else ""
+            source_type = parts[-1].lower() if len(parts) > 2 else ""
+            if source_config_id:
+                config_query = {"source_config_id": source_config_id}
+                if contract_id:
+                    config_query["contract_id"] = contract_id
+                config = self.source_configs.find_one(config_query, {"display_name": 1, "source_type": 1})
+                if config and config.get("display_name"):
+                    return str(config["display_name"])
+                source_type = str((config or {}).get("source_type") or source_type).lower()
+        else:
+            source_type = raw.lower()
+
+        if source_type in labels:
+            return labels[source_type]
+        if raw.lower().startswith("upload:"):
+            return "Uploaded file"
+        return raw.replace("_", " ").replace("-", " ").strip().title()
+
     def flag_breach_remediation_email(
         self,
         breach_id: str,
@@ -1271,6 +1312,11 @@ class ContractKPIManager:
 
         kpi = self.kpis.find_one({"kpi_id": breach["kpi_id"]})
         template = (kpi.get("breach_email_template") if kpi else None) or ""
+        # Older KPI records contain the previous technical template. Require
+        # the source placeholder so existing records are upgraded to the
+        # reader-friendly format below instead of reusing that copy.
+        if "{{source}}" not in template:
+            template = ""
         recipient_email, recipient_source = self._resolve_breach_email_recipient(breach, kpi)
 
         unit = str((breach.get("actual_unit") or (kpi.get("unit") if kpi else "")) or "")
@@ -1283,11 +1329,22 @@ class ContractKPIManager:
         variance_text = f"{variance_percent:+.1f}%" if variance_percent is not None else "N/A"
         severity = breach.get("severity") or "Low"
         operator = breach.get("operator") or "specified"
+        operator_label = {
+            ">=": "at least",
+            ">": "more than",
+            "<=": "no more than",
+            "<": "less than",
+            "=": "exactly",
+            "==": "exactly",
+        }.get(str(operator).lower(), str(operator))
         contract_name = (breach.get("source_kpi") or {}).get("contract_name") or "Contract"
         kpi_name = (breach.get("source_kpi") or {}).get("name") or (kpi.get("name") if kpi else "") or "KPI"
         section = (breach.get("source_kpi") or {}).get("section") or (kpi.get("section") if kpi else "") or ""
         clause = (breach.get("source_kpi") or {}).get("quote") or (kpi.get("quote") if kpi else "") or ""
-        source_label = breach.get("source") or (kpi.get("source_requirements", {}).get("source_type") if kpi else "") or "operations feed"
+        source_label = self._human_source_label(
+            breach.get("source") or (kpi.get("source_requirements", {}).get("source_type") if kpi else ""),
+            contract_id=breach.get("contract_id") or contract_id,
+        )
         remediation = breach.get("remediation") or (kpi.get("remediation") if kpi else None) or "Review the discrepancy and correct the invoice."
         remediation_sla = breach.get("remediation_sla") or (kpi.get("remediation_sla") if kpi else None) or "7 days"
         period = breach.get("period_end") or breach.get("timestamp")
@@ -1305,23 +1362,30 @@ class ContractKPIManager:
             .replace("{{remediation}}", remediation)
             .replace("{{remediation_sla}}", remediation_sla)
             .replace("{{contract_name}}", contract_name)
+            .replace("{{source}}", source_label)
         )
         if not email_draft.strip():
-            clause_block = f'\nClause reference: {section}\n"{clause}"\n' if section or clause else ""
+            clause_block = f'\nContract reference: {section}\n"{clause}"\n' if section or clause else ""
             email_draft = (
-                f"Subject: Breach alert for {kpi_name} ({severity} severity)\n\n"
-                f"Hi,\n\n"
-                f"This is an automated compliance alert regarding {contract_name}.\n\n"
-                f"KPI: {kpi_name}\n"
-                f"Severity: {severity}\n"
-                f"Result: Actual {actual_val}{unit} vs expected {expected_text}{unit} (threshold {operator} {threshold}{unit}) — variance {variance_text}.\n"
-                f"Period: {period_text}\n"
-                f"Source: {source_label}\n"
-                f"Penalty exposure: {penalty_text}\n"
-                f"Required action: {remediation} Please complete within {remediation_sla}.\n"
+                f"Subject: Action needed: {kpi_name} did not meet the contract requirement\n\n"
+                f"Hello,\n\n"
+                f"We found a compliance issue under {contract_name}. Please review the details below.\n\n"
+                f"What happened\n"
+                f"- Requirement: {kpi_name}\n"
+                f"- Contract expectation: {operator_label} {expected_text}{unit}\n"
+                f"- Reported result: {actual_val}{unit}\n"
+                f"- Difference from expectation: {variance_text}\n"
+                f"- Reporting period: {period_text}\n"
+                f"- Data source: {source_label}\n"
+                f"- Severity: {severity}\n\n"
+                f"Why this matters\n"
+                f"- Estimated financial impact: {penalty_text}\n\n"
+                f"What needs to happen\n"
+                f"{remediation}\n"
+                f"Please investigate the cause and send a corrective action plan within {remediation_sla}.\n"
                 f"{clause_block}"
-                f"\nPlease investigate and confirm the corrective action by return.\n\n"
-                f"Best regards,"
+                f"\nPlease confirm once the issue has been reviewed.\n\n"
+                f"Regards,\nContract Compliance Team"
             )
 
         self.breaches.update_one(
@@ -6155,21 +6219,26 @@ class ContractKPIManager:
         remediation: Optional[str],
         remediation_sla: Optional[str],
     ) -> str:
-        recipient = party or "Responsible Party"
         remediation_text = remediation or "Submit root cause analysis and corrective action plan."
         sla_text = remediation_sla or "7 days"
         return (
-            f"Subject: Action Required: {{{{contract_name}}}} - {{{{kpi_name}}}} exception\n\n"
-            f"Dear {recipient},\n\n"
-            "We identified a performance exception under {{contract_name}} for {{kpi_name}}.\n\n"
-            "Contract threshold: {{threshold}}{{unit}}\n"
-            "Recorded performance: {{actual_value}}{{unit}}\n"
-            "Penalty or exposure: {{penalty_amount}}\n\n"
-            f"Required remediation: {{{{remediation}}}}. Current remediation guidance: {remediation_text}\n"
-            f"Response timeline: {{{{remediation_sla}}}}. Current SLA guidance: {sla_text}\n\n"
-            "Please confirm receipt, provide the corrective action owner, and share the expected completion timing.\n\n"
+            "Subject: Action needed: {{kpi_name}} did not meet the contract requirement\n\n"
+            "Hello,\n\n"
+            "We found a compliance issue under {{contract_name}}. Please review the details below.\n\n"
+            "What happened\n"
+            "- Requirement: {{kpi_name}}\n"
+            "- Contract expectation: {{threshold}}{{unit}}\n"
+            "- Reported result: {{actual_value}}{{unit}}\n"
+            "- Data source: {{source}}\n"
+            "- Estimated financial impact: {{penalty_amount}}\n\n"
+            "What needs to happen\n"
+            f"{{{{remediation}}}}\n"
+            f"Please investigate the cause and send a corrective action plan within {{{{remediation_sla}}}}.\n\n"
+            f"Current guidance: {remediation_text}\n"
+            f"Expected response time: {sla_text}\n\n"
+            "Please confirm once the issue has been reviewed.\n\n"
             "Regards,\n"
-            "Contract Performance Team"
+            "Contract Compliance Team"
         )
 
     def _normalize_breach_email_template(
@@ -6190,6 +6259,7 @@ class ContractKPIManager:
             "{{remediation}}",
             "{{remediation_sla}}",
             "{{contract_name}}",
+            "{{source}}",
         }
         if template:
             normalized = clean_text_encoding(template).strip()

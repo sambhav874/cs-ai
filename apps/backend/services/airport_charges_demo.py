@@ -195,8 +195,8 @@ def is_airport_charges_demo(contract_id: str, contract_name: Optional[str] = Non
 SOURCE_KPI_CODES: Dict[str, List[str]] = {
     "scanned_images": ["SGHA-1.1-LANDING", "SGHA-1.3-PASSENGER", "SGHA-1.5-PARKING"],
     "file_upload": ["SGHA-2.3-PASSENGER-SERVICES", "SGHA-2.3-RAMP-HANDLING"],
-    "rest_api": ["SGHA-2.8-DEICING"],
-    "sap_s4hana": ["SGHA-1.6-EXTRA-HOURS"],
+    "rest_api": ["SGHA-2.7-ELECTRICITY", "SGHA-2.8-DEICING", "SGHA-2.12-CANCELLATION"],
+    "sap_s4hana": ["SGHA-1.6-EXTRA-HOURS", "SGHA-2.16-RETURN-TO-RAMP"],
 }
 
 
@@ -204,10 +204,15 @@ def is_airport_charges_demo_source(config: Dict[str, Any]) -> bool:
     """Whether a source config belongs to the named airport demo connectors."""
     display_name = str(config.get("display_name") or "").lower()
     source_type = str(config.get("source_type") or "").lower()
+    legacy_names_by_type = {
+        "scanned_images": {"scanned images", "csv upload", "csv feed"},
+        "file_upload": {"file upload", "json upload", "json feed"},
+    }
     return source_type in SOURCE_KPI_CODES and (
         "airport" in display_name
         or "ground handling rest" in display_name
         or "ground operations" in display_name
+        or display_name in legacy_names_by_type.get(source_type, set())
     )
 
 TRACKED_KPI_CODES: List[str] = sorted(

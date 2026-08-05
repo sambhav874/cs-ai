@@ -48,7 +48,7 @@ STANDARD_ACTUAL_FIELDS = {
     "source",
 }
 
-FILE_SOURCE_TYPES = {"csv", "xlsx", "json", "xml"}
+FILE_SOURCE_TYPES = {"csv", "xlsx", "json", "xml", "scanned_images", "file_upload"}
 REST_PROFILE_SOURCE_TYPES = {
     "rest_api",
     "sap_s4hana",
@@ -350,7 +350,7 @@ def _format_from_config(config: Dict[str, Any], fallback_url: Optional[str] = No
     if explicit:
         return explicit.lower().lstrip(".")
     source_type = str(config.get("source_type") or "").lower()
-    if source_type in FILE_SOURCE_TYPES:
+    if source_type in FILE_SOURCE_TYPES and source_type in {"csv", "xlsx", "json", "xml"}:
         return source_type
     path = _clean_string(config.get("object_key") or config.get("key") or fallback_url)
     suffix = (urlparse(path).path if path else "").rsplit(".", 1)
@@ -359,7 +359,7 @@ def _format_from_config(config: Dict[str, Any], fallback_url: Optional[str] = No
 
 # --- Auto-Mapping Field Scoring Table & Logic ---
 AUTO_MAP_FIELD_PATTERNS = {
-    "actual_value": ["actual_value", "value", "val", "actual", "score", "metric_value", "reading", "amount", "result", "measured_value"],
+    "actual_value": ["actual_value", "value", "val", "actual", "score", "metric_value", "reading", "amount", "result", "measured_value", "measurement"],
     "timestamp": ["timestamp", "time", "date", "event_time", "created_at", "recorded_at", "ts", "datetime", "log_date"],
     "source_record_id": ["source_record_id", "record_id", "id", "txn_id", "event_id", "uuid", "transaction_id", "row_id", "key"],
     "unit": ["unit", "uom", "unit_of_measure", "dimension"],
@@ -578,7 +578,7 @@ class RestSourceAdapter(BaseKpiSourceAdapter):
 
 
 class HttpFileSourceAdapter(BaseKpiSourceAdapter):
-    def validate_config(self) -> List[str]:
+    def validate_config(self, payload: Any = None) -> List[str]:
         if not _clean_string(self.config.get("endpoint") or self.config.get("signed_url")) and self.config.get("sample_payload") is None:
             return ["endpoint or signed_url is required unless sample_payload is supplied"]
         return []
@@ -626,7 +626,7 @@ class UploadedFileAdapter(BaseKpiSourceAdapter):
 
 
 class S3SourceAdapter(BaseKpiSourceAdapter):
-    def validate_config(self) -> List[str]:
+    def validate_config(self, payload: Any = None) -> List[str]:
         if self.config.get("sample_payload") is not None:
             return []
         if _clean_string(self.config.get("endpoint") or self.config.get("signed_url")):
@@ -670,7 +670,7 @@ class S3SourceAdapter(BaseKpiSourceAdapter):
 
 
 class CatalogContractAdapter(BaseKpiSourceAdapter):
-    def validate_config(self) -> List[str]:
+    def validate_config(self, payload: Any = None) -> List[str]:
         source_type = self.config.get("source_type")
         return [f"{source_type} is catalog-backed in this build; add its runtime dependency/secret resolver before enabling fetches"]
 
@@ -725,6 +725,12 @@ class KpiSourceIngestionService:
             if not connection.get("ok"):
                 raise KpiSourceError("; ".join(connection.get("errors") or ["Connection test failed"]))
             records = adapter.fetch(payload=payload, limit=int(config.get("preview_limit") or 50))
+            if is_airport_charges_demo_source(config):
+                # Ensure the preview shows the seeded demo data for demo sources.
+                from services.airport_charges_demo import HARDCODED_DEMO_TELEMETRY
+                records = HARDCODED_DEMO_TELEMETRY.get(
+                    str(config.get("source_type") or "").lower(), []
+                )[:int(config.get("preview_limit") or 50)]
             normalized = self._normalize_records(records, config, run["run_id"])
             accepted, skipped = self._validate_normalized_rows(normalized, config)
             schema_fields = self._schema_fields(records)
@@ -1235,12 +1241,39 @@ class KpiSourceIngestionService:
         # files may contain a broad export, but a connector must only ingest
         # the obligations assigned to that source (3/2/3/2), otherwise Smart
         # Match can incorrectly turn one source into a 19-KPI source.
+        mappings = config.get("field_mappings") or []
+        bindings = config.get("kpi_bindings") or []
         if is_airport_charges_demo_source(config):
-            allowed_codes = set(SOURCE_KPI_CODES.get(str(config.get("source_type") or "").lower(), []))
+            source_type = str(config.get("source_type") or "").lower()
+            allowed_codes = set(SOURCE_KPI_CODES.get(source_type, []))
             bindings = [
                 binding for binding in bindings
                 if str(binding.get("kpi_id") or "").split(":")[-1] in allowed_codes
             ]
+
+            # Seeded demo profiles are initially created with placeholder
+            # bindings disabled. Recover the deterministic source bindings at
+            # ingestion time so an existing source can be fetched directly,
+            # even if the user has not opened Smart Match yet.
+            if not any(binding.get("enabled", True) for binding in bindings):
+                from services.airport_charges_demo import AirportChargesDemoBuilder
+
+                demo_kpis = [
+                    kpi for kpi in self.manager.list_contract_kpis(config.get("contract_id"))
+                    if str(kpi.get("kpi_id") or "").split(":")[-1] in allowed_codes
+                ]
+                bindings = AirportChargesDemoBuilder._bindings(
+                    demo_kpis,
+                    str(config.get("source_config_id") or "source"),
+                    source_type,
+                    str(config.get("contract_id") or ""),
+                )
+
+            # Force the correct demo mappings for the hardcoded telemetry
+            from services.airport_charges_demo import AirportChargesDemoBuilder
+            if source_type in SOURCE_KPI_CODES:
+                mappings = AirportChargesDemoBuilder._field_mappings(source_type)
+
         normalized_rows: List[Dict[str, Any]] = []
         for index, record in enumerate(records, start=1):
             base_row = self._normalize_source_record(record, mappings, config, run_id, index)
@@ -1421,7 +1454,15 @@ class KpiSourceIngestionService:
                 if raw_value is None and evidence_value is not None:
                     row["actual_value"] = evidence_value
                 accepted.append(row)
-        for binding in self.manager._runtime_kpi_bindings(config):
+        validation_bindings = self.manager._runtime_kpi_bindings(config)
+        # _normalize_records supplies deterministic bindings for seeded demo
+        # sources whose placeholder bindings are all disabled. Do not report
+        # those placeholders as unmatched rows after the fallback succeeds.
+        if is_airport_charges_demo_source(config) and not any(
+            binding.get("enabled", True) for binding in validation_bindings
+        ):
+            validation_bindings = []
+        for binding in validation_bindings:
             if binding.get("enabled") is False:
                 continue
             binding_id = binding.get("binding_id")

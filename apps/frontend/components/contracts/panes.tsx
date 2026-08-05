@@ -55,7 +55,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type QuestionAnswerConfidence = 'high' | 'medium' | 'low';
 const PROJECT_SELECTION_KEY = "dashboardSelectedProject";
-const USER_KPI_SOURCE_TYPES = new Set(["csv", "xlsx", "json", "xml", "manual_attestation", "oracle_fusion", "sap_s4hana", "oracle_db", "sap_ariba"]);
+const USER_KPI_SOURCE_TYPES = new Set(["csv", "xlsx", "json", "xml", "scanned_images", "file_upload", "manual_attestation", "oracle_fusion", "sap_s4hana", "oracle_db", "sap_ariba"]);
 
 interface QuestionAnswerFromAPI {
   question: string;
@@ -999,8 +999,41 @@ function severityClass(severity: string) {
   }
 }
 
+const humanizeSourceLabel = (source?: string | null) => {
+  const labels: Record<string, string> = {
+    scanned_images: "Scanned Images",
+    file_upload: "File Upload",
+    csv: "CSV file",
+    json: "JSON file",
+    xlsx: "Excel file",
+    xml: "XML file",
+    rest_api: "REST feed",
+    sap_s4hana: "SAP S/4HANA",
+    manual_attestation: "Manual attestation",
+  };
+  const raw = String(source || "").trim();
+  if (!raw) return "Operations data";
+  if (raw.startsWith("source_config:")) {
+    const sourceType = raw.split(":").pop()?.toLowerCase() || "";
+    return labels[sourceType] || titleCase(sourceType);
+  }
+  if (raw.toLowerCase().startsWith("upload:")) return "Uploaded file";
+  return labels[raw.toLowerCase()] || raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
+
+const humanizeExpectation = (operator: string, value: string, unit: string) => {
+  const operatorLabel: Record<string, string> = {
+    ">=": "at least",
+    ">": "more than",
+    "<=": "no more than",
+    "<": "less than",
+    "=": "exactly",
+    "==": "exactly",
+  };
+  return `${operatorLabel[operator.toLowerCase()] || operator || "the contract threshold"} ${value} ${unit}`.trim();
+};
+
 function buildEscalationDraft(breach: ContractKPIBreach, kpi?: ContractKPI) {
-  const expected = `${breach.operator || kpi?.operator || ""} ${breach.expected_value ?? kpi?.value_min ?? kpi?.value ?? "contract threshold"} ${kpi?.unit || breach.actual_unit || ""}`.trim();
   const actual = `${breach.actual_value ?? "not reported"} ${breach.actual_unit || kpi?.unit || ""}`.trim();
   const unit = kpi?.unit || breach.actual_unit || "";
   const penalty = toNumber(breach.penalty_amount || kpi?.consequence_value);
@@ -1015,26 +1048,41 @@ function buildEscalationDraft(breach: ContractKPIBreach, kpi?: ContractKPI) {
   const periodText = period ? new Date(period).toISOString().slice(0, 10) : "N/A";
   const remediation = breach.remediation || kpi?.remediation || "Please review the discrepancy, confirm the root cause, and provide a corrective action plan.";
   const sla = breach.remediation_sla || kpi?.remediation_sla || "7 days";
-  const clauseBlock = section || clause ? `\nClause reference: ${section}\n"${clause}"\n` : "";
+  const clauseBlock = section || clause ? `\nContract reference: ${section}\n"${clause}"\n` : "";
+  const sourceLabel = humanizeSourceLabel(breach.source || kpi?.source_requirements?.source_type);
+  const expectation = humanizeExpectation(
+    String(breach.operator || kpi?.operator || ""),
+    String(breach.expected_value ?? kpi?.value_min ?? kpi?.value ?? "N/A"),
+    unit,
+  );
   const kpiName = kpi?.name || breach.source_kpi?.name || breach.kpi_id;
   return [
-    `Subject: Breach alert for ${kpiName} (${severity} severity)`,
+    `Subject: Action needed: ${kpiName} did not meet the contract requirement`,
     "",
-    "Hi,",
+    "Hello,",
     "",
-    `This is an automated compliance alert regarding ${contract}.`,
+    `We found a compliance issue under ${contract}. Please review the details below.`,
     "",
-    `KPI: ${kpiName}`,
-    `Severity: ${severity}`,
-    `Result: Actual ${actual} vs expected ${expected} — variance ${varianceText}.`,
-    `Period: ${periodText}`,
-    `Source: ${breach.source || kpi?.source_requirements?.source_type || "operations feed"}`,
-    `Penalty exposure: ${penaltyText}`,
-    `Required action: ${remediation} Please complete within ${sla}.`,
+    "What happened",
+    `- Requirement: ${kpiName}`,
+    `- Contract expectation: ${expectation}`,
+    `- Reported result: ${actual}`,
+    `- Difference from expectation: ${varianceText}`,
+    `- Reporting period: ${periodText}`,
+    `- Data source: ${sourceLabel}`,
+    `- Severity: ${severity}`,
+    "",
+    "Why this matters",
+    `- Estimated financial impact: ${penaltyText}`,
+    "",
+    "What needs to happen",
+    remediation,
+    `Please investigate the cause and send a corrective action plan within ${sla}.`,
     clauseBlock,
-    "Please investigate and confirm the corrective action by return.",
+    "Please confirm once the issue has been reviewed.",
     "",
-    "Best regards,",
+    "Regards,",
+    "Contract Compliance Team",
   ].filter((line) => line !== undefined).join("\n");
 }
 
@@ -1821,13 +1869,15 @@ function KpiActualSourcesWorkspace({
                         Type
                         <select
                           value={selectedSourceConfig.source_type}
-                          onChange={(event) => updateSelectedSource({ source_type: event.target.value, file_format: event.target.value === "manual_attestation" ? "json" : event.target.value })}
+                          onChange={(event) => updateSelectedSource({ source_type: event.target.value, file_format: event.target.value === "scanned_images" ? "csv" : event.target.value === "file_upload" || event.target.value === "manual_attestation" ? "json" : event.target.value })}
                           className="mt-1 h-9 w-full rounded-md border border-border bg-white px-2 text-sm text-gray-700"
                         >
                           <option value="csv">CSV</option>
                           <option value="xlsx">Excel</option>
                           <option value="json">JSON</option>
                           <option value="xml">XML</option>
+                          <option value="scanned_images">Scanned Images</option>
+                          <option value="file_upload">File Upload</option>
                           <option value="manual_attestation">Manual</option>
                         </select>
                       </label>
@@ -2310,7 +2360,7 @@ function ComplianceFlagsDashboardView({
       kpiId: source.kpi_id || kpi?.kpi_id || "",
       breachId: source.breach_id,
       to: recipient,
-      subject: `[BREACH ALERT] ${kpi?.name || breach.source_kpi?.name || breach.kpi_id} (${breachSeverity(breach, kpi)})`,
+      subject: `Action needed: ${kpi?.name || breach.source_kpi?.name || breach.kpi_id} did not meet the contract requirement`,
       body: source.breach_email_draft || buildEscalationDraft(source, kpi),
       recipientSource: source.breach_email_recipient_source,
     });
@@ -2834,7 +2884,7 @@ function PerformanceFetchRuns({ actuals, kpis, isLoading }: { actuals: ContractK
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
   const kpiById = useMemo(() => new Map(kpis.map((kpi) => [kpi.kpi_id, kpi])), [kpis]);
   const grouped = actuals.reduce<Record<string, ContractKPIActual[]>>((acc, actual) => {
-    const source = actual.source || "Manual Upload";
+    const source = humanizeSourceLabel(actual.source);
     acc[source] = acc[source] || [];
     acc[source].push(actual);
     return acc;
@@ -2894,7 +2944,7 @@ function PerformanceFetchRuns({ actuals, kpis, isLoading }: { actuals: ContractK
                             <div className="truncate font-semibold text-gray-900">{kpi?.name || actual.kpi_id}</div>
                             <div className="font-mono text-gray-700">{actual.value ?? "N/A"} {actual.unit || kpi?.unit || ""}</div>
                             <div className="text-gray-600">Feeds threshold check {formatKpiValue(kpi || ({ name: actual.kpi_id, kpi_id: actual.kpi_id } as ContractKPI))}</div>
-                            <div className="text-muted-foreground">{actual.timestamp ? new Date(actual.timestamp).toLocaleDateString() : "No timestamp"} · {actual.source || "manual"}</div>
+                            <div className="text-muted-foreground">{actual.timestamp ? new Date(actual.timestamp).toLocaleDateString() : "No timestamp"} · {humanizeSourceLabel(actual.source)}</div>
                           </div>
                         );
                       })}
@@ -3710,7 +3760,7 @@ export function KpiPerformanceLogsPane({
                     className="grid w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 md:grid-cols-[minmax(160px,0.8fr)_minmax(240px,1.2fr)_minmax(180px,0.8fr)_120px_24px] md:items-center"
                   >
                     <div>
-                      <p className="text-xs font-bold text-gray-800">{actual.source || "manual"}</p>
+                      <p className="text-xs font-bold text-gray-800">{humanizeSourceLabel(actual.source)}</p>
                       <p className="mt-0.5 text-[10px] text-muted-foreground">{timestamp ? new Date(timestamp).toLocaleString() : "No timestamp"}</p>
                     </div>
                     <div className="min-w-0">
@@ -4566,13 +4616,15 @@ export function ContractProjectExplorer({
                         Source type
                         <select
                           value={selectedSourceConfig.source_type}
-                          onChange={(event) => updateSelectedSource({ source_type: event.target.value, file_format: event.target.value === "manual_attestation" ? "json" : event.target.value })}
+                          onChange={(event) => updateSelectedSource({ source_type: event.target.value, file_format: event.target.value === "scanned_images" ? "csv" : event.target.value === "file_upload" || event.target.value === "manual_attestation" ? "json" : event.target.value })}
                           className="mt-1 h-8 w-full rounded-md border border-border bg-white px-2 text-xs text-gray-700"
                         >
                           <option value="csv">CSV</option>
                           <option value="xlsx">Excel</option>
                           <option value="json">JSON</option>
                           <option value="xml">XML</option>
+                          <option value="scanned_images">Scanned Images</option>
+                          <option value="file_upload">File Upload</option>
                           <option value="manual_attestation">Manual</option>
                         </select>
                       </label>
