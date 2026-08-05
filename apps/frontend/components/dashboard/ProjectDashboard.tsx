@@ -8,7 +8,7 @@ import {
   RangeKey, RULE_TYPES, SOURCES, RANGE_META, RANGE_SCALE,
   BASE_VOLUMES, RULE_TYPE_SPLIT, LIFECYCLE_RATIOS,
 } from "./dashboardMockConfig";
-import { useLiveDelta, LiveCounts } from "./useLiveDelta";
+import type { ContractKPI, ProjectKpiPortfolio } from "./types";
 
 /* ---------------------------------- tokens --------------------------------- */
 const C = {
@@ -49,6 +49,121 @@ interface DashboardDataset {
   dollarAtRisk: number;
   complianceRate: number;
   lifecycle: LifecycleStage[];
+}
+
+function displayRuleType(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  const known = RULE_TYPES.find((ruleType) => ruleType.toLowerCase() === normalized);
+  if (known) return known;
+  return value.trim().replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function displaySourceName(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (normalized.includes("csv")) return "CSV Upload";
+  if (normalized.includes("rest") || normalized.includes("api")) return "REST API";
+  if (normalized.includes("sap")) return "SAP S/4HANA";
+  if (normalized.includes("json")) return "JSON Feed";
+  if (normalized.includes("snowflake")) return "Snowflake";
+  if (normalized.includes("salesforce")) return "Salesforce";
+  if (normalized.includes("servicenow")) return "ServiceNow";
+  if (normalized.startsWith("src_cfg") || normalized.length > 28) return "Connected source";
+  return value.trim().replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function buildLiveDataset(portfolio: ProjectKpiPortfolio | null, kpis: ContractKPI[]): DashboardDataset {
+  const summary = portfolio?.summary;
+  const totalObligations = summary?.kpi_count ?? kpis.length;
+  const tracked = summary?.tracked_kpi_count ?? kpis.filter((kpi) => kpi.is_tracked || kpi.tracking_status === "tracked").length;
+  const activeBreaches = summary?.open_breach_count ?? 0;
+  const compliant = Math.max(tracked - activeBreaches, 0);
+  const clientSide = kpis.filter((kpi) => kpi.party_role === "client").length;
+  const supplierSide = kpis.filter((kpi) => kpi.party_role === "supplier").length;
+  const classifiedTotal = clientSide + supplierSide;
+  const ruleCounts = new Map<string, number>();
+  kpis.forEach((kpi) => {
+    const ruleType = displayRuleType(kpi.rule_type || kpi.kpi_type || "Other");
+    ruleCounts.set(ruleType, (ruleCounts.get(ruleType) || 0) + 1);
+  });
+  const ruleTypeBreakdown = Array.from(ruleCounts.entries()).map(([name, value]) => ({ name, value }));
+  const breachCounts = new Map<string, number>();
+  (portfolio?.top_breaches || []).forEach((breach) => {
+    const source = displaySourceName(String(breach.source_config_id || breach.source || breach.data_source || "Tracked sources"));
+    breachCounts.set(source, (breachCounts.get(source) || 0) + 1);
+  });
+  const breachBySource = Array.from(breachCounts.entries())
+    .map(([source, count]) => ({ source, count }))
+    .sort((a, b) => b.count - a.count);
+  if (!breachBySource.length && activeBreaches) breachBySource.push({ source: "Tracked sources", count: activeBreaches });
+  const complianceRate = tracked ? Math.round((compliant / tracked) * 1000) / 10 : 0;
+  const lifecycle = [
+    { stage: "Breach Detected", value: activeBreaches, fill: C.red },
+    { stage: "Notification Sent", value: 0, fill: C.amber },
+    { stage: "In Remediation", value: 0, fill: C.violet },
+    { stage: "Resolved", value: 0, fill: C.primary },
+    { stage: "Claim Recovered", value: 0, fill: C.green },
+  ];
+  return {
+    totalObligations,
+    clientSide,
+    supplierSide,
+    ruleTypeBreakdown: ruleTypeBreakdown.length ? ruleTypeBreakdown : [{ name: "No obligations yet", value: 0 }],
+    complianceTrend: [{ period: "Current", compliant, breached: activeBreaches }],
+    breachBySource: breachBySource.length ? breachBySource : [{ source: "No open breaches", count: 0 }],
+    financialExposure: [{ period: "Current", atRisk: summary?.open_exposure ?? 0, recovered: 0 }],
+    activeBreaches,
+    dollarAtRisk: summary?.open_exposure ?? 0,
+    complianceRate,
+    lifecycle,
+  };
+}
+
+function mergeDashboardDatasets(base: DashboardDataset, live: DashboardDataset): DashboardDataset {
+  const mergeNamedCounts = (left: Array<{ name: string; value: number }>, right: Array<{ name: string; value: number }>) => {
+    const counts = new Map(left.map((item) => [displayRuleType(item.name), item.value]));
+    right.forEach((item) => {
+      const name = displayRuleType(item.name);
+      counts.set(name, (counts.get(name) || 0) + item.value);
+    });
+    return Array.from(counts.entries()).map(([name, value]) => ({ name, value }));
+  };
+  const mergeSourceCounts = (left: SourceBreach[], right: SourceBreach[]) => {
+    const counts = new Map(left.map((item) => [displaySourceName(item.source), item.count]));
+    right.forEach((item) => {
+      const source = displaySourceName(item.source);
+      counts.set(source, (counts.get(source) || 0) + item.count);
+    });
+    return Array.from(counts.entries())
+      .map(([source, count]) => ({ source, count }))
+      .sort((a, b) => b.count - a.count);
+  };
+  const baseEvaluated = base.complianceTrend.reduce((total, point) => total + point.compliant + point.breached, 0);
+  const baseCompliant = base.complianceTrend.reduce((total, point) => total + point.compliant, 0);
+  const livePoint = live.complianceTrend[live.complianceTrend.length - 1];
+  const liveEvaluated = livePoint.compliant + livePoint.breached;
+  const totalEvaluated = baseEvaluated + liveEvaluated;
+  const totalCompliant = baseCompliant + livePoint.compliant;
+  return {
+    totalObligations: base.totalObligations + live.totalObligations,
+    clientSide: base.clientSide + live.clientSide,
+    supplierSide: base.supplierSide + live.supplierSide,
+    ruleTypeBreakdown: mergeNamedCounts(base.ruleTypeBreakdown, live.ruleTypeBreakdown),
+    complianceTrend: [
+      ...base.complianceTrend,
+      { period: "Live project", compliant: livePoint.compliant, breached: livePoint.breached },
+    ],
+    breachBySource: mergeSourceCounts(base.breachBySource, live.breachBySource),
+    // Keep the existing dollar-denominated portfolio chart separate from the
+    // live SEK project exposure shown in the summary card.
+    financialExposure: base.financialExposure,
+    activeBreaches: base.activeBreaches + live.activeBreaches,
+    dollarAtRisk: base.dollarAtRisk + live.dollarAtRisk,
+    complianceRate: totalEvaluated ? Math.round((totalCompliant / totalEvaluated) * 1000) / 10 : base.complianceRate,
+    lifecycle: base.lifecycle.map((stage) => {
+      const liveStage = live.lifecycle.find((item) => item.stage === stage.stage);
+      return { ...stage, value: stage.value + (liveStage?.value || 0) };
+    }),
+  };
 }
 
 /* -------------------------------- mock data builder --------------------------------- */
@@ -117,63 +232,12 @@ function buildDataset(range: RangeKey): DashboardDataset {
   };
 }
 
-/* -------------------------- merge real delta onto mock data -------------------------- */
-// Adds real counts (from useLiveDelta) on top of the mock baseline. Time-bucketed
-// charts get the delta added to their most recent bucket only — we don't try to
-// figure out which exact bucket a live event belongs in, we just show "right now"
-// ticking up, which is the effect you want on stage.
-function applyLiveDelta(dataset: DashboardDataset, delta: LiveCounts | null): DashboardDataset {
-  if (!delta) return dataset;
-
-  const totalObligations = dataset.totalObligations + delta.totalObligations;
-  const clientSide = dataset.clientSide + delta.clientSide;
-  const supplierSide = dataset.supplierSide + delta.supplierSide;
-
-  const ruleTypeBreakdown = dataset.ruleTypeBreakdown.map((slice) => ({
-    ...slice,
-    value: slice.value + (delta.byRuleType[slice.name] || 0),
-  }));
-
-  const complianceTrend = dataset.complianceTrend.map((pt, i, arr) =>
-    i === arr.length - 1 ? { ...pt, breached: pt.breached + delta.totalBreaches } : pt
-  );
-
-  const breachBySource = dataset.breachBySource.map((s) => ({
-    ...s,
-    count: s.count + (delta.breachesBySource[s.source] || 0),
-  }));
-
-  const financialExposure = dataset.financialExposure.map((pt, i, arr) =>
-    i === arr.length - 1 ? { ...pt, atRisk: pt.atRisk + delta.dollarAtRiskOpen } : pt
-  );
-
-  // Stages 0-1 (Detected, Notification Sent) move for real reasons — a live
-  // breach was actually detected and actually triggers a notification.
-  // Stages 2-4 (Remediation, Resolved, Recovered) have no real driver in the
-  // live demo, so this is a COSMETIC-ONLY nudge purely so the funnel doesn't
-  // look half-frozen on stage — these numbers are not derived from anything
-  // real and should not be described as live in the demo script.
-  const cosmeticNudge = [0, 0, 0.6, 0.4, 0.3]; // fraction of delta.totalBreaches, index-aligned to lifecycle stages
-  const lifecycle = dataset.lifecycle.map((stage, i) => {
-    if (i === 0) return { ...stage, value: stage.value + delta.totalBreaches };
-    if (i === 1) return { ...stage, value: stage.value + Math.round(delta.totalBreaches * 0.9) };
-    if (delta.totalBreaches > 0) {
-      return { ...stage, value: stage.value + Math.round(delta.totalBreaches * cosmeticNudge[i]) };
-    }
-    return stage;
-  });
-
-  return {
-    ...dataset,
-    totalObligations, clientSide, supplierSide, ruleTypeBreakdown,
-    complianceTrend, breachBySource, financialExposure, lifecycle,
-    activeBreaches: dataset.activeBreaches + delta.totalBreaches,
-    dollarAtRisk: dataset.dollarAtRisk + delta.dollarAtRiskOpen,
-  };
-}
 
 /* --------------------------------- helpers ---------------------------------- */
-const money = (n: number): string => (n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n}`);
+const money = (n: number, currency: "USD" | "SEK" = "USD"): string => {
+  const prefix = currency === "SEK" ? "SEK " : "$";
+  return n >= 1000 ? `${prefix}${(n / 1000).toFixed(1)}k` : `${prefix}${n}`;
+};
 
 function CardShell({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -225,12 +289,15 @@ const tooltipStyle = {
 };
 
 /* --------------------------------- component --------------------------------- */
-interface ProjectDashboardProps {
-  projectId: string; // needed to fetch real counts for this project
+export default function ProjectDashboard({
+  portfolio,
+  kpis,
+  isEmpty = false,
+}: {
+  portfolio: ProjectKpiPortfolio | null;
+  kpis: ContractKPI[];
   isEmpty?: boolean;
-}
-
-export default function ProjectDashboard({ projectId, isEmpty = false }: ProjectDashboardProps) {
+}) {
   const [range, setRange] = useState<RangeKey>("month");
   
   const baseDataset = useMemo(() => {
@@ -253,8 +320,22 @@ export default function ProjectDashboard({ projectId, isEmpty = false }: Project
     return buildDataset(range);
   }, [range, isEmpty]);
 
-  const { delta, refresh, loading, connected } = useLiveDelta(projectId);
-  const data = useMemo(() => applyLiveDelta(baseDataset, delta), [baseDataset, delta]);
+  const data = useMemo(
+    () => portfolio && !isEmpty
+      ? mergeDashboardDatasets(baseDataset, buildLiveDataset(portfolio, kpis))
+      : baseDataset,
+    [portfolio, kpis, baseDataset, isEmpty],
+  );
+
+  // Keep the existing dashboard portfolio exposure and add the live contract
+  // exposure. Use the month baseline for this summary card so a year-range
+  // chart total is not mistaken for current open risk.
+  const existingPortfolioExposure = isEmpty ? 0 : buildDataset("month").dollarAtRisk;
+  const projectCurrency: "USD" | "SEK" = kpis.some((kpi) => (
+    `${kpi.unit || ""} ${kpi.consequence_unit || ""} ${kpi.contract_name || ""}`.toUpperCase().includes("SEK")
+    || (kpi.contract_name || "").toLowerCase().includes("airport-charges")
+  )) ? "SEK" : "USD";
+  const projectExposure = portfolio?.summary.open_exposure ?? 0;
 
   // Notice we removed the hardcoded background and padding from the outer div 
   // to better blend with the hosting page. The padding can be adjusted there.
@@ -273,27 +354,6 @@ export default function ProjectDashboard({ projectId, isEmpty = false }: Project
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={refresh}
-            disabled={loading}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-opacity"
-            style={{
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: 500,
-              background: C.surface,
-              border: `1px solid ${C.border}`,
-              color: C.ink,
-              opacity: loading ? 0.6 : 1,
-            }}
-            title={connected ? "Pull latest extracted/breach counts from the database" : "Live endpoint not connected — showing mock data only"}
-          >
-            <span
-              className="inline-block w-1.5 h-1.5 rounded-full"
-              style={{ background: connected ? C.green : C.inkFaint }}
-            />
-            {loading ? "Refreshing…" : "Refresh"}
-          </button>
-
           <div className="flex gap-1 p-1 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
           {(Object.entries(RANGE_META) as [RangeKey, { label: string; buckets: string[] }][]).map(([key, meta]) => (
             <button
@@ -315,11 +375,12 @@ export default function ProjectDashboard({ projectId, isEmpty = false }: Project
       </div>
 
       {/* stat row */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
         <StatCard icon={FileCheck2} label="Total Obligations" value={data.totalObligations} sub={`${data.clientSide} client · ${data.supplierSide} supplier`} />
         <StatCard icon={ShieldCheck} label="Compliance Rate" value={`${data.complianceRate}%`} sub={RANGE_META[range].label} tone={C.green} />
         <StatCard icon={AlertTriangle} label="Active Breaches" value={data.activeBreaches} sub={RANGE_META[range].label} tone={C.red} />
-        <StatCard icon={DollarSign} label="$ At Risk" value={money(data.dollarAtRisk)} sub="Open penalty exposure" tone={C.amber} />
+        <StatCard icon={DollarSign} label="$ At Risk" value={money(existingPortfolioExposure, "USD")} sub="Existing portfolio exposure" tone={C.amber} />
+        <StatCard icon={DollarSign} label={`${projectCurrency} At Risk`} value={money(projectExposure, projectCurrency)} sub="Current project exposure" tone={C.amber} />
         <StatCard icon={Users2} label="Client / Supplier" value={data.totalObligations > 0 ? `${Math.round((data.clientSide / data.totalObligations) * 100)}% / ${Math.round((data.supplierSide / data.totalObligations) * 100)}%` : "0% / 0%"} sub="Obligation split" />
       </div>
 
@@ -397,8 +458,8 @@ export default function ProjectDashboard({ projectId, isEmpty = false }: Project
           <ComposedChart data={data.financialExposure} margin={{ left: -8, right: 12 }}>
             <CartesianGrid stroke={C.border} vertical={false} />
             <XAxis dataKey="period" tick={{ fontSize: 12, fill: C.inkMuted, fontFamily: "Inter" }} axisLine={{ stroke: C.border }} tickLine={false} />
-            <YAxis tick={{ fontSize: 12, fill: C.inkMuted, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickFormatter={money} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => money(v)} />
+            <YAxis tick={{ fontSize: 12, fill: C.inkMuted, fontFamily: "Inter" }} axisLine={false} tickLine={false} tickFormatter={(value: number) => money(value, "USD")} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => money(v, "USD")} />
             <Legend wrapperStyle={{ fontSize: 12, fontFamily: "Inter" }} />
             <Bar dataKey="atRisk" name="$ At Risk" fill={C.amber} radius={[4, 4, 0, 0]} barSize={28} />
             <Line type="monotone" dataKey="recovered" name="$ Recovered" stroke={C.green} strokeWidth={2.5} dot={{ r: 3 }} />

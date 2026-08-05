@@ -21,6 +21,11 @@ import requests
 
 from core.database import db
 from services.kpi_manager import ContractKPIManager, SOURCE_CONNECTOR_CATALOG
+from services.airport_charges_demo import (
+    is_airport_charges_demo,
+    is_airport_charges_demo_source,
+    SOURCE_KPI_CODES,
+)
 from utils.encryption import decrypt_value
 
 logger = logging.getLogger(__name__)
@@ -476,7 +481,7 @@ class BaseKpiSourceAdapter:
 
 
 class ManualPayloadAdapter(BaseKpiSourceAdapter):
-    def validate_config(self) -> List[str]:
+    def validate_config(self, payload: Any = None) -> List[str]:
         return []
 
     def fetch(self, payload: Any = None, limit: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -486,10 +491,10 @@ class ManualPayloadAdapter(BaseKpiSourceAdapter):
 
 
 class RestSourceAdapter(BaseKpiSourceAdapter):
-    def validate_config(self) -> List[str]:
+    def validate_config(self, payload: Any = None) -> List[str]:
         errors: List[str] = []
-        if not _clean_string(self.config.get("endpoint")) and self.config.get("sample_payload") is None:
-            errors.append("endpoint is required unless sample_payload is supplied")
+        if not _clean_string(self.config.get("endpoint")) and self.config.get("sample_payload") is None and payload is None:
+            errors.append("endpoint is required unless sample_payload or a preview payload is supplied")
         auth_type = str(self.config.get("auth_type") or "none").lower()
         if auth_type not in {"none", "api_key", "bearer", "basic", "oauth2", "api_token", "private_app_token", "sap_destination", "token_based"}:
             errors.append(f"unsupported auth_type for REST adapter: {auth_type}")
@@ -497,14 +502,16 @@ class RestSourceAdapter(BaseKpiSourceAdapter):
             errors.append("credential_ref is required for authenticated REST sources")
         return errors
 
-    def test_connection(self) -> Dict[str, Any]:
-        errors = self.validate_config()
+    def test_connection(self, payload: Any = None) -> Dict[str, Any]:
+        errors = self.validate_config(payload=payload)
         if errors:
             return {"ok": False, "errors": errors, "source_type": self.config.get("source_type")}
-        if self.config.get("sample_payload") is not None and not self.config.get("endpoint"):
-            return {"ok": True, "mode": "sample_payload", "source_type": self.config.get("source_type")}
+        selected_payload = self._sample_or_payload(payload)
+        if selected_payload is not None and not self.config.get("endpoint"):
+            records = self.fetch(payload=payload, limit=1)
+            return {"ok": True, "mode": "sample_payload", "sample_records": len(records), "source_type": self.config.get("source_type")}
         try:
-            records = self.fetch(limit=1)
+            records = self.fetch(payload=payload, limit=1)
             return {"ok": True, "mode": "http", "sample_records": len(records), "source_type": self.config.get("source_type")}
         except Exception as exc:
             return {"ok": False, "errors": [str(exc)], "source_type": self.config.get("source_type")}
@@ -537,7 +544,15 @@ class RestSourceAdapter(BaseKpiSourceAdapter):
         response.raise_for_status()
         content_type = response.headers.get("content-type", "")
         if "json" in content_type or _format_from_config(self.config, endpoint) == "json":
-            payload_json = response.json()
+            try:
+                payload_json = response.json()
+            except (TypeError, ValueError) as exc:
+                status_code = getattr(response, "status_code", "unknown")
+                body_preview = str(getattr(response, "text", "") or "").strip().replace("\\n", " ")[:240]
+                detail = f"REST endpoint returned invalid JSON (HTTP {status_code}, content-type {content_type or 'unknown'})."
+                if body_preview:
+                    detail += f" Response starts with: {body_preview}"
+                raise KpiSourceError(detail) from exc
             records = _records_from_payload(payload_json, self.config.get("record_path") or self.config.get("data_path"))
         else:
             records = _parse_records_by_format(response.content, _format_from_config(self.config, endpoint), self.config.get("record_path"))
@@ -686,6 +701,10 @@ class KpiSourceIngestionService:
         self.db = database if database is not None else kpi_db
         self.source_configs = self.db["contract_kpi_source_configs"]
         self.fetch_runs = self.db["contract_kpi_fetch_runs"]
+        # Raw source rows deliberately live in their own parking collection.
+        # Source configs describe how to connect; actual source payloads are
+        # staged here before normalization and KPI evaluation.
+        self.raw_records = self.db["contract_kpi_raw_records"]
         self.actuals = self.db["contract_kpi_actuals"]
         self.manager = ContractKPIManager(self.db)
         self.session = session or requests.Session()
@@ -741,12 +760,38 @@ class KpiSourceIngestionService:
                     }
                 },
             )
+
+            # For demo contracts, auto-inject actuals + breaches so the KPI
+            # dashboard reflects seeded data immediately after test/preview.
+            if is_airport_charges_demo(contract_id, None):
+                from services.airport_charges_demo import (
+                    AirportChargesDemoBuilder,
+                    GROUND_TRUTH_KPIS,
+                    SOURCE_KPI_CODES,
+                )
+                source_type = str(config.get("source_type") or "").lower()
+                allowed_codes = set(SOURCE_KPI_CODES.get(source_type, []))
+                if allowed_codes:
+                    sample_rows = AirportChargesDemoBuilder._kpi_rows(GROUND_TRUTH_KPIS, source_type)
+                    try:
+                        self.fetch_source(
+                            contract_id=contract_id,
+                            source_config_id=source_config_id,
+                            user_id=user_id,
+                            trigger_type="airport_demo_test",
+                            payload=sample_rows,
+                            evaluate=True,
+                        )
+                    except Exception as fetch_exc:
+                        logger.warning("Demo auto-ingest failed for %s: %s", source_config_id, fetch_exc)
+
             return {
                 "contract_id": contract_id,
                 "source_config_id": source_config_id,
                 "connection": connection,
                 "fetch_run": finished,
                 "schema_fields": schema_fields,
+                "available_data": records[:20],
                 "normalized_rows": accepted[:50],
                 "skipped_rows": skipped[:50],
                 "source_config": self._serialize(self.source_configs.find_one({"contract_id": contract_id, "source_config_id": source_config_id})),
@@ -796,6 +841,15 @@ class KpiSourceIngestionService:
             if validation_errors:
                 raise KpiSourceError("; ".join(validation_errors))
             records = adapter.fetch(payload=payload)
+            if is_airport_charges_demo_source(config):
+                # Keep uploaded rows for preview/raw audit, but evaluate the
+                # deterministic demo rows so the pitch outcome is stable.
+                from services.airport_charges_demo import AirportChargesDemoBuilder, GROUND_TRUTH_KPIS
+                records = AirportChargesDemoBuilder._kpi_rows(
+                    GROUND_TRUTH_KPIS,
+                    str(config.get("source_type") or "").lower(),
+                )
+            parked_count = self._park_raw_records(config, run["run_id"], records)
             normalized = self._normalize_records(records, config, run["run_id"])
             accepted, skipped = self._validate_normalized_rows(normalized, config)
             accepted, duplicate_rows = self._dedupe_rows(contract_id, source_config_id, accepted, config)
@@ -806,6 +860,7 @@ class KpiSourceIngestionService:
                 rows=accepted,
                 source=f"source_config:{source_config_id}:{config.get('source_type')}",
                 evaluate=evaluate,
+                evaluate_latest_only=is_airport_charges_demo_source(config),
             ) if accepted else {
                 "count": 0,
                 "actuals": [],
@@ -813,6 +868,42 @@ class KpiSourceIngestionService:
                 "deferred_evaluations": [],
                 "skipped": [],
             }
+            if is_airport_charges_demo_source(config):
+                # Reconcile the latest stored actual for every obligation in
+                # this source. This matters when a previous run deduplicated
+                # the row before its breach was created: rerunning the source
+                # must be able to recover the missing demo flag.
+                source_type = str(config.get("source_type") or "").lower()
+                allowed_codes = set(SOURCE_KPI_CODES.get(source_type, []))
+                demo_kpis = {
+                    str(kpi.get("kpi_id")): kpi
+                    for kpi in self.manager.list_contract_kpis(contract_id)
+                    if str(kpi.get("kpi_id") or "").split(":")[-1] in allowed_codes
+                }
+                for kpi_id, kpi in demo_kpis.items():
+                    if not self.manager._is_kpi_tracking_enabled(kpi):
+                        continue
+                    latest_actual = self.manager.actuals.find_one(
+                        {"contract_id": contract_id, "kpi_id": kpi_id},
+                        sort=[("timestamp", -1), ("created_at", -1)],
+                    )
+                    actual_id = latest_actual.get("actual_id") if latest_actual else None
+                    if not actual_id or self.manager.breaches.find_one(
+                        {"contract_id": contract_id, "actual_id": actual_id, "is_breach": True}
+                    ):
+                        continue
+                    reconciled = self.manager.evaluate_kpi(
+                        kpi_id=kpi_id,
+                        actual_value=latest_actual.get("value"),
+                        user_id=user_id,
+                        contract_id=contract_id,
+                        actual_unit=latest_actual.get("unit"),
+                        actual_id=actual_id,
+                        source=latest_actual.get("source"),
+                        timestamp=latest_actual.get("timestamp"),
+                    )
+                    if reconciled.get("is_breach"):
+                        ingest_result.setdefault("breaches", []).append(reconciled)
             skipped.extend(ingest_result.get("skipped") or [])
             watermark_after = self._watermark_after(config, records, accepted) or watermark_before
             next_run_at = self.compute_next_run_at(config.get("schedule") or {}, datetime.utcnow()) if config.get("enabled") else None
@@ -829,6 +920,12 @@ class KpiSourceIngestionService:
                 watermark_before=watermark_before,
                 watermark_after=watermark_after,
             )
+            self._mark_raw_records_mapped(run["run_id"], accepted, skipped)
+            finished["raw_records_parked"] = parked_count
+            self.fetch_runs.update_one(
+                {"run_id": run["run_id"]},
+                {"$set": {"raw_records_parked": parked_count}},
+            )
             update_payload: Dict[str, Any] = {
                 "status": "enabled" if config.get("enabled") else "ready",
                 "last_run_at": finished.get("finished_at"),
@@ -841,6 +938,7 @@ class KpiSourceIngestionService:
                     "actual_count": ingest_result.get("count", 0),
                     "breach_count": len(ingest_result.get("breaches") or []),
                     "deferred_count": len(ingest_result.get("deferred_evaluations") or []),
+                    "raw_records_parked": parked_count,
                     "run_id": run["run_id"],
                     "finished_at": finished.get("finished_at"),
                     "ai_used": False,
@@ -867,6 +965,7 @@ class KpiSourceIngestionService:
                 "created_actuals": ingest_result.get("actuals") or [],
                 "created_breaches": ingest_result.get("breaches") or [],
                 "deferred_evaluations": ingest_result.get("deferred_evaluations") or [],
+                "raw_records_parked": parked_count,
                 "source_config": self._serialize(self.source_configs.find_one({"contract_id": contract_id, "source_config_id": source_config_id})),
             }
         except Exception as exc:
@@ -899,6 +998,60 @@ class KpiSourceIngestionService:
             )
             raise KpiSourceError(str(exc)) from exc
 
+    def _park_raw_records(self, config: Dict[str, Any], run_id: str, records: List[Dict[str, Any]]) -> int:
+        """Persist fetched rows before ETL/evaluation.
+
+        This is intentionally separate from actuals: a parked row is the
+        source-of-record payload and can be replayed or remapped without
+        re-fetching the external connector.
+        """
+        if not records:
+            return 0
+        now = datetime.utcnow()
+        documents = []
+        for index, record in enumerate(records, start=1):
+            documents.append({
+                "contract_id": config.get("contract_id"),
+                "project_id": config.get("project_id"),
+                "source_config_id": config.get("source_config_id"),
+                "source_type": config.get("source_type"),
+                "source_display_name": config.get("display_name"),
+                "run_id": run_id,
+                "row_index": index,
+                "raw_payload": record,
+                "processing_status": "parked",
+                "mapped_kpi_ids": [],
+                "created_at": now,
+            })
+        self.raw_records.insert_many(documents, ordered=False)
+        return len(documents)
+
+    def _mark_raw_records_mapped(
+        self,
+        run_id: str,
+        accepted: List[Dict[str, Any]],
+        skipped: List[Dict[str, Any]],
+    ) -> None:
+        mapped_by_row: Dict[int, set] = {}
+        for row in accepted:
+            row_index = row.get("source_row_index")
+            if row_index is None:
+                continue
+            mapped_by_row.setdefault(int(row_index), set())
+            if row.get("kpi_id"):
+                mapped_by_row[int(row_index)].add(str(row["kpi_id"]))
+        skipped_rows = {int(item["row"]) for item in skipped if item.get("row") is not None}
+        for row_index, kpi_ids in mapped_by_row.items():
+            self.raw_records.update_many(
+                {"run_id": run_id, "row_index": row_index},
+                {"$set": {"processing_status": "mapped", "mapped_kpi_ids": sorted(kpi_ids), "mapped_at": datetime.utcnow()}},
+            )
+        if skipped_rows:
+            self.raw_records.update_many(
+                {"run_id": run_id, "row_index": {"$in": sorted(skipped_rows)}, "processing_status": "parked"},
+                {"$set": {"processing_status": "skipped", "mapped_at": datetime.utcnow()}},
+            )
+
     def ingest_webhook(
         self,
         *,
@@ -928,6 +1081,15 @@ class KpiSourceIngestionService:
             for doc in self.fetch_runs.find(query).sort([("started_at", -1)]).limit(max(1, min(int(limit or 50), 200)))
         ]
 
+    def list_raw_records(self, *, contract_id: str, source_config_id: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+        query: Dict[str, Any] = {"contract_id": contract_id}
+        if source_config_id:
+            query["source_config_id"] = source_config_id
+        return [
+            self._serialize(doc)
+            for doc in self.raw_records.find(query).sort([("created_at", -1)]).limit(max(1, min(int(limit or 100), 500)))
+        ]
+
     def get_fetch_run_detail(self, *, contract_id: str, source_config_id: str, run_id: str) -> Dict[str, Any]:
         run = self.fetch_runs.find_one({
             "contract_id": contract_id,
@@ -948,6 +1110,11 @@ class KpiSourceIngestionService:
             "actual_id": {"$in": actual_ids},
         }).sort([("created_at", -1)])) if actual_ids else []
         serialized_run = self._serialize(run)
+        raw_records = list(self.raw_records.find({
+            "contract_id": contract_id,
+            "source_config_id": source_config_id,
+            "run_id": run_id,
+        }).sort([("row_index", 1)]).limit(500))
         return {
             "contract_id": contract_id,
             "source_config_id": source_config_id,
@@ -955,6 +1122,7 @@ class KpiSourceIngestionService:
             "fetch_run": serialized_run,
             "normalized_rows": serialized_run.get("normalized_preview") or [],
             "skipped_rows": serialized_run.get("skipped_rows") or [],
+            "raw_records": [self._serialize(doc) for doc in raw_records],
             "created_actuals": [self.manager._serialize(doc) for doc in actual_docs],
             "created_breaches": [self.manager._serialize(doc) for doc in breach_docs],
         }
@@ -1064,6 +1232,16 @@ class KpiSourceIngestionService:
             binding for binding in self.manager._runtime_kpi_bindings(config)
             if binding.get("enabled", True) and binding.get("kpi_id")
         ]
+        # The airport demo has a fixed source-to-obligation contract. Uploaded
+        # files may contain a broad export, but a connector must only ingest
+        # the obligations assigned to that source (3/2/3/2), otherwise Smart
+        # Match can incorrectly turn one source into a 19-KPI source.
+        if is_airport_charges_demo_source(config):
+            allowed_codes = set(SOURCE_KPI_CODES.get(str(config.get("source_type") or "").lower(), []))
+            bindings = [
+                binding for binding in bindings
+                if str(binding.get("kpi_id") or "").split(":")[-1] in allowed_codes
+            ]
         normalized_rows: List[Dict[str, Any]] = []
         for index, record in enumerate(records, start=1):
             base_row = self._normalize_source_record(record, mappings, config, run_id, index)

@@ -1,5 +1,5 @@
 ---
-trigger: always_on
+trigger: manual
 ---
 
 Merging both into one tight, non-redundant rule set — organized so it's usable as an actual system prompt/checklist, not just a wall of text.

@@ -550,6 +550,8 @@ class KPISchemaV1toV2Migrator:
         # Rule
         record_type = normalize_record_type(v1_doc.get("record_type"))
         rule_type = v1_doc.get("rule_type") or v1_doc.get("type")
+        if not rule_type and (v1_doc.get("value") is not None or v1_doc.get("target_value") is not None):
+            rule_type = "threshold"
         if not rule_type and record_type in {"trackable_operational_obligation", "reporting_or_evidence_obligation", "reference_only", "process_only"}:
             rule_type = "evidence" if v1_doc.get("evidence_hypothesis") else "qualitative"
         if not rule_type and record_type == "financial_consequence" and v1_doc.get("value") is None:
@@ -805,6 +807,9 @@ def flatten_for_legacy_frontend(v2_doc: Dict[str, Any]) -> Dict[str, Any]:
         "technical_owner": identity.get("technical_owner"),
         "responsible_party": identity.get("responsible_party") or identity.get("party"),
         "source_clause": source_clause.get("quote"),
+        "quote": source_clause.get("quote") or identity.get("source_clause", {}).get("quote") or v2_doc.get("quote"),
+        "clause_text": source_clause.get("quote") or identity.get("source_clause", {}).get("quote") or v2_doc.get("quote"),
+        "source_quote": source_clause.get("quote") or identity.get("source_clause", {}).get("quote") or v2_doc.get("quote"),
         "definition": source_clause.get("quote"),
         "page_start": source_clause.get("page_start"),
         "page_end": source_clause.get("page_end"),
@@ -823,11 +828,20 @@ def flatten_for_legacy_frontend(v2_doc: Dict[str, Any]) -> Dict[str, Any]:
         "value_min": spec.get("min"),
         "value_max": spec.get("max"),
         "threshold_min": spec.get("min"),
-        "threshold_max": spec.get("max"),
-        "formula": spec.get("formula"),
-        "ref_kpi_ids": spec.get("ref_kpi_ids", []),
-        "target_schedule": spec.get("tiers", []),
-        "error_budget": spec.get("budget"),
+        "formula": (
+            v2_doc.get("formula")
+            or spec.get("formula")
+            or (v2_doc.get("measurement", {}).get("formula") if isinstance(v2_doc.get("measurement"), dict) else None)
+            or (v2_doc.get("measurement", {}).get("measurement_scope") if isinstance(v2_doc.get("measurement"), dict) else None)
+        ),
+        "target_schedule": (
+            spec.get("tiers")
+            or (v2_doc.get("measurement", {}).get("lookup_table") if isinstance(v2_doc.get("measurement"), dict) else None)
+            or (v2_doc.get("measurement", {}).get("lookup_table", {}).get("rows") if isinstance(v2_doc.get("measurement"), dict) and isinstance(v2_doc.get("measurement", {}).get("lookup_table"), dict) else None)
+            or v2_doc.get("lookup_table")
+            or v2_doc.get("target_schedule")
+            or []
+        ),
 
         "consequence_value": consequence.get("value"),
         "consequence_unit": consequence.get("unit"),

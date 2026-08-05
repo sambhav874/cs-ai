@@ -49,11 +49,15 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
                     "snippet": section_block.get("snippet") or section_block.get("context", ""),
                     "page": section_block.get("page"),
                 }
+        include_full = bool(tool.args.get("include_full"))
+        max_chars = min(max(_coerce_int(tool.args.get("max_chars"), 50000), 1000), 100000)
         return {
             "summary": f"Read {document.get('contract_name') or document['_id']}.",
             "document_id": str(document["_id"]),
             "filename": document.get("contract_name") or str(document["_id"]),
-            "snippet": content[:12000],
+            "snippet": content[:12000] if not include_full else content[:max_chars],
+            "content_scope": "full indexed document" if include_full else "document excerpt",
+            "truncated": include_full and len(content) > max_chars,
         }
     if tool.name == "search_evidence":
         queries = _coerce_queries(tool.args.get("queries") or tool.args.get("query") or state.message)

@@ -57,7 +57,7 @@ import { ContractPerformanceDashboardPane, KpiRegisterPane, KpiFlagsPane, KpiPer
 
 type QuestionAnswerConfidence = 'high' | 'medium' | 'low';
 const PROJECT_SELECTION_KEY = "dashboardSelectedProject";
-const USER_KPI_SOURCE_TYPES = new Set(["csv", "xlsx", "json", "xml", "manual_attestation"]);
+const USER_KPI_SOURCE_TYPES = new Set(["csv", "xlsx", "json", "xml", "manual_attestation", "oracle_fusion", "sap_s4hana", "oracle_db", "sap_ariba"]);
 
 interface QuestionAnswerFromAPI {
   question: string;

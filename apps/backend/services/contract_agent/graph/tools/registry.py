@@ -57,7 +57,7 @@ def tool_specs() -> Dict[str, ToolSpec]:
         "get_kpi_context": "Retrieve KPI/SLA targets, actuals, breach state, and operational context matching the user query.",
         "list_documents": "List scoped indexed documents available to this agent run.",
         "outline_document": "Read a document outline or high-level structure.",
-        "read_document": "Read an excerpt from the current or requested scoped document.",
+        "read_document": "Read a focused excerpt, or the full indexed document when include_full is enabled for whole-contract summaries.",
         "search_evidence": "Search scoped contracts and return clause-level evidence with quote, context, page, section, score, and evidence ID.",
         "create_tabular_review": "Create a tabular review only after human approval.",
         "extract_kpis": "Extract draft KPI/SLA candidates for a scoped ingested contract only after human approval.",

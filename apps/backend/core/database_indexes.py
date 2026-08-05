@@ -419,8 +419,38 @@ def initialize_all_indexes(db=None):
         )
         _create_index_safe(
             contract_kpis,
+            [("contract_id", ASCENDING), ("kpi_type", ASCENDING), ("name", ASCENDING)],
+            "kpis_contract_type_name"
+        )
+        _create_index_safe(
+            contract_kpis,
             [("project_id", ASCENDING), ("status", ASCENDING), ("kpi_type", ASCENDING)],
             "kpis_project_status_type"
+        )
+        _create_index_safe(
+            contract_kpis,
+            [("project_id", ASCENDING), ("contract_name", ASCENDING), ("kpi_type", ASCENDING), ("name", ASCENDING)],
+            "kpis_project_contract_type_name"
+        )
+        _create_index_safe(
+            contract_kpis,
+            [("contract_id", ASCENDING), ("kpi_id", ASCENDING)],
+            "kpis_contract_id_lookup"
+        )
+        _create_index_safe(
+            contract_kpis,
+            [("project_id", ASCENDING), ("contract_id", ASCENDING)],
+            "kpis_project_contract"
+        )
+        _create_index_safe(
+            contract_kpis,
+            [("contract_id", ASCENDING), ("canonical_metric_key", ASCENDING)],
+            "kpis_contract_metric_key"
+        )
+        _create_index_safe(
+            contract_kpis,
+            [("project_id", ASCENDING), ("canonical_metric_key", ASCENDING)],
+            "kpis_project_metric_key"
         )
         _create_index_safe(
             contract_kpis,
@@ -439,12 +469,52 @@ def initialize_all_indexes(db=None):
             [("contract_id", ASCENDING), ("timestamp", DESCENDING), ("created_at", DESCENDING)],
             "kpi_actuals_contract_timeline"
         )
+        _create_index_safe(
+            contract_kpi_actuals,
+            [("contract_id", ASCENDING), ("kpi_id", ASCENDING), ("timestamp", DESCENDING), ("created_at", DESCENDING)],
+            "kpi_actuals_contract_kpi_timeline"
+        )
+        _create_index_safe(
+            contract_kpi_actuals,
+            [("contract_id", ASCENDING), ("metadata.source_config_id", ASCENDING), ("metadata.source_run_id", ASCENDING), ("timestamp", DESCENDING), ("created_at", DESCENDING)],
+            "kpi_actuals_source_run_timeline"
+        )
+        _create_index_safe(
+            contract_kpi_actuals,
+            [("kpi_id", ASCENDING), ("period", ASCENDING), ("source", ASCENDING), ("timestamp", DESCENDING)],
+            "kpi_actuals_dedupe_lookup"
+        )
+        _create_index_safe(
+            contract_kpi_actuals,
+            [("contract_id", ASCENDING), ("kpi_id", ASCENDING), ("actual_id", ASCENDING)],
+            "kpi_actuals_contract_kpi_id"
+        )
 
         contract_kpi_breaches = kpi_db["contract_kpi_breaches"]
         _create_index_safe(
             contract_kpi_breaches,
             [("contract_id", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)],
             "kpi_breaches_contract_status"
+        )
+        _create_index_safe(
+            contract_kpi_breaches,
+            [("contract_id", ASCENDING), ("kpi_id", ASCENDING), ("created_at", DESCENDING)],
+            "kpi_breaches_contract_kpi_created"
+        )
+        _create_index_safe(
+            contract_kpi_breaches,
+            [("contract_id", ASCENDING), ("actual_id", ASCENDING), ("created_at", DESCENDING)],
+            "kpi_breaches_contract_actual_created"
+        )
+        _create_index_safe(
+            contract_kpi_breaches,
+            [("project_id", ASCENDING), ("status", ASCENDING), ("last_seen_at", DESCENDING)],
+            "kpi_breaches_project_status_seen"
+        )
+        _create_index_safe(
+            contract_kpi_breaches,
+            [("breach_id", ASCENDING)],
+            "kpi_breach_id"
         )
 
         contract_kpi_extraction_runs = kpi_db["contract_kpi_extraction_runs"]
@@ -453,12 +523,22 @@ def initialize_all_indexes(db=None):
             [("contract_id", ASCENDING), ("started_at", DESCENDING)],
             "kpi_runs_contract_started"
         )
+        _create_index_safe(
+            contract_kpi_extraction_runs,
+            [("project_id", ASCENDING), ("started_at", DESCENDING)],
+            "kpi_runs_project_started"
+        )
 
         contract_kpi_source_configs = kpi_db["contract_kpi_source_configs"]
         _create_index_safe(
             contract_kpi_source_configs,
-            [("contract_id", ASCENDING), ("updated_at", DESCENDING)],
-            "kpi_source_configs_contract_updated"
+            [("contract_id", ASCENDING), ("archived_at", ASCENDING), ("updated_at", DESCENDING), ("display_name", ASCENDING)],
+            "kpi_source_configs_contract_active_updated"
+        )
+        _create_index_safe(
+            contract_kpi_source_configs,
+            [("source_config_id", ASCENDING), ("contract_id", ASCENDING)],
+            "kpi_source_config_id_contract"
         )
         _create_index_safe(
             contract_kpi_source_configs,
@@ -471,6 +551,23 @@ def initialize_all_indexes(db=None):
             contract_kpi_fetch_runs,
             [("contract_id", ASCENDING), ("source_config_id", ASCENDING), ("started_at", DESCENDING)],
             "kpi_fetch_runs_source_started"
+        )
+        _create_index_safe(
+            contract_kpi_fetch_runs,
+            [("contract_id", ASCENDING), ("source_config_id", ASCENDING), ("run_id", ASCENDING)],
+            "kpi_fetch_run_id_lookup"
+        )
+
+        contract_kpi_raw_records = kpi_db["contract_kpi_raw_records"]
+        _create_index_safe(
+            contract_kpi_raw_records,
+            [("contract_id", ASCENDING), ("source_config_id", ASCENDING), ("created_at", DESCENDING)],
+            "kpi_raw_records_source_created"
+        )
+        _create_index_safe(
+            contract_kpi_raw_records,
+            [("contract_id", ASCENDING), ("source_config_id", ASCENDING), ("run_id", ASCENDING), ("row_index", ASCENDING)],
+            "kpi_raw_records_run_row"
         )
 
         _create_index_safe(
@@ -509,6 +606,16 @@ def initialize_all_indexes(db=None):
             [("owner_account_id", ASCENDING), ("source_type", ASCENDING), ("status", ASCENDING)],
             "kpi_integration_owner_source_status"
         )
+        _create_index_safe(
+            contract_kpi_integration_profiles,
+            [("owner_account_id", ASCENDING), ("archived_at", ASCENDING), ("updated_at", DESCENDING)],
+            "kpi_integration_owner_active_updated"
+        )
+        _create_index_safe(
+            contract_kpi_integration_profiles,
+            [("source_type", ASCENDING), ("archived_at", ASCENDING)],
+            "kpi_integration_source_active"
+        )
 
         contract_kpi_alert_rules = kpi_db["contract_kpi_alert_rules"]
         _create_unique_index_safe(
@@ -520,6 +627,11 @@ def initialize_all_indexes(db=None):
             contract_kpi_alert_rules,
             [("contract_id", ASCENDING), ("event_type", ASCENDING), ("active", ASCENDING)],
             "kpi_alert_rules_contract_event_active"
+        )
+        _create_index_safe(
+            contract_kpi_alert_rules,
+            [("project_id", ASCENDING), ("event_type", ASCENDING), ("active", ASCENDING)],
+            "kpi_alert_rules_project_event_active"
         )
 
         contract_kpi_alerts = kpi_db["contract_kpi_alerts"]
@@ -537,6 +649,18 @@ def initialize_all_indexes(db=None):
             contract_kpi_alerts,
             [("contract_id", ASCENDING), ("event_type", ASCENDING), ("status", ASCENDING)],
             "kpi_alerts_contract_event_status"
+        )
+        _create_index_safe(
+            contract_kpi_alerts,
+            [("project_id", ASCENDING), ("contract_id", ASCENDING), ("last_seen_at", DESCENDING), ("created_at", DESCENDING)],
+            "kpi_alerts_project_contract_seen"
+        )
+
+        contract_kpi_dispatched_alerts = kpi_db["contract_kpi_dispatched_alerts"]
+        _create_index_safe(
+            contract_kpi_dispatched_alerts,
+            [("contract_id", ASCENDING), ("created_at", DESCENDING)],
+            "kpi_dispatched_alerts_contract_created"
         )
 
         # Benchmark / eval collection indexes (contract_eval_db)

@@ -2828,7 +2828,6 @@ def stream_contract_agent(
             reference_contract_oids.append(reference_oid)
             seen_reference_ids.add(reference_id_text)
 
-    rag_system = ContractRAGSystem(ai_provider=request.ai_provider)
     project_documents: List[Dict[str, Any]] = []
 
     if isinstance(project_id, ObjectId):
@@ -3024,6 +3023,10 @@ def stream_contract_agent(
                 yield format_sse_event("done", {})
                 return
 
+            # The deep agent path above does not need the legacy RAG system.
+            # Initialize it only when we actually fall back to legacy retrieval;
+            # constructing embeddings/vector clients here delayed first response.
+            rag_system = ContractRAGSystem(ai_provider=request.ai_provider)
             yield format_sse_event("status", {"message": "retrieving"})
             final_payload: Optional[Dict[str, Any]] = None
             if operational_payload:
@@ -3254,5 +3257,4 @@ def stream_contract_agent(
             "X-Accel-Buffering": "no",
         },
     )
-
 

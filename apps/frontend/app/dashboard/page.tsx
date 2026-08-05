@@ -64,7 +64,7 @@ import type {
   WorkflowRoles, Document, DocumentWithProgress, UserCredits, UserInDB,
   JobStatusResponse, ContractStatusResponse, ProjectStats, Project,
   AgentArtifact, AgentDocumentSummary, AgentDocumentPreview, ContractKPI,
-  AIProvider, ProjectTab, ContractView
+  ProjectKpiPortfolio, AIProvider, ProjectTab, ContractView
 } from "@/components/dashboard/types";
 import {
   emptyStats, cx, formatDate, isProjectKpiRecommended, isProjectKpiTracked, truncateMiddle, isActiveJobStatus,
@@ -106,6 +106,7 @@ function DashboardContent() {
   const [selectedProjectAgentDocument, setSelectedProjectAgentDocument] = useState<{ documentId: string; versionId: string } | null>(null);
   const [projectAgentPreview, setProjectAgentPreview] = useState<AgentDocumentPreview | null>(null);
   const [projectKpis, setProjectKpis] = useState<ContractKPI[]>([]);
+  const [projectPortfolio, setProjectPortfolio] = useState<ProjectKpiPortfolio | null>(null);
   const [selectedKpiContractId, setSelectedKpiContractId] = useState<string>("");
   const [isProjectKpisLoading, setIsProjectKpisLoading] = useState(false);
   const [isExtractingProjectKpis, setIsExtractingProjectKpis] = useState(false);
@@ -179,7 +180,7 @@ function DashboardContent() {
   }, [selectedAccountId]);
 
   useEffect(() => {
-    if ((requestedTab === "assistant" || requestedTab === "reviews" || requestedTab === "playbooks") && requestedProjectId) {
+    if ((requestedTab === "dashboard" || requestedTab === "contracts" || requestedTab === "assistant" || requestedTab === "reviews" || requestedTab === "playbooks" || requestedTab === "kpis") && requestedProjectId) {
       setProjectTab(requestedTab);
     }
   }, [requestedProjectId, requestedTab]);
@@ -533,6 +534,24 @@ function DashboardContent() {
     }
   }, [apiUrl, token, selectedProjectId]);
 
+  const fetchProjectPortfolio = useCallback(async () => {
+    if (!apiUrl || !token || !selectedProjectId) {
+      setProjectPortfolio(null);
+      return null;
+    }
+    try {
+      const response = await apiFetch(`${apiUrl}/projects/${selectedProjectId}/kpis/portfolio`);
+      if (!response.ok) throw new Error("Could not load project dashboard data.");
+      const payload = await response.json() as ProjectKpiPortfolio;
+      setProjectPortfolio(payload);
+      return payload;
+    } catch (error) {
+      console.error("Failed to fetch project dashboard data:", error);
+      setProjectPortfolio(null);
+      return null;
+    }
+  }, [apiUrl, token, selectedProjectId]);
+
   const extractProjectKpis = useCallback(async () => {
     if (!apiUrl || !token || !selectedProjectId) return;
     if (!selectedKpiContractId) {
@@ -559,6 +578,7 @@ function DashboardContent() {
       }
       const payload = await response.json();
       await fetchProjectKpis();
+      await fetchProjectPortfolio();
       toast({
         title: "Contract KPIs extracted",
         description: `${payload.kpi_count ?? payload.kpis?.length ?? 0} KPI candidates extracted for the selected contract.`,
@@ -573,7 +593,7 @@ function DashboardContent() {
     } finally {
       setIsExtractingProjectKpis(false);
     }
-  }, [apiUrl, token, selectedProjectId, selectedKpiContractId, fetchProjectKpis]);
+  }, [apiUrl, token, selectedProjectId, selectedKpiContractId, fetchProjectKpis, fetchProjectPortfolio]);
 
   const updateProjectKpi = useCallback(async (kpi: ContractKPI, updates: Partial<ContractKPI>) => {
     if (!apiUrl || !token || !kpi.contract_id) return;
@@ -613,11 +633,12 @@ function DashboardContent() {
     if (!candidates.length) return;
     await Promise.all(candidates.map((kpi) => updateProjectKpi(kpi, { status: "approved" })));
     await fetchProjectKpis();
+    await fetchProjectPortfolio();
     toast({
       title: "All KPI candidates accepted",
       description: `${candidates.length} KPI${candidates.length === 1 ? "" : "s"} approved for this project.`,
     });
-  }, [projectKpis, updateProjectKpi, fetchProjectKpis]);
+  }, [projectKpis, updateProjectKpi, fetchProjectKpis, fetchProjectPortfolio]);
 
   const trackRecommendedProjectKpis = useCallback(async () => {
     const candidates = projectKpis.filter((kpi) => isProjectKpiRecommended(kpi) && !isProjectKpiTracked(kpi) && kpi.status !== "ignored");
@@ -628,11 +649,12 @@ function DashboardContent() {
       is_tracked: true,
     })));
     await fetchProjectKpis();
+    await fetchProjectPortfolio();
     toast({
       title: "Recommended KPIs tracked",
       description: `${candidates.length} KPI${candidates.length === 1 ? "" : "s"} will now be monitored for breaches.`,
     });
-  }, [projectKpis, updateProjectKpi, fetchProjectKpis]);
+  }, [projectKpis, updateProjectKpi, fetchProjectKpis, fetchProjectPortfolio]);
 
   const trackProjectKpi = useCallback(async (kpi: ContractKPI) => {
     await updateProjectKpi(kpi, {
@@ -640,11 +662,12 @@ function DashboardContent() {
       tracking_status: "tracked",
       is_tracked: true,
     });
+    await fetchProjectPortfolio();
     toast({
       title: "KPI tracking enabled",
       description: `${kpi.name} will now participate in breach checks.`,
     });
-  }, [updateProjectKpi]);
+  }, [updateProjectKpi, fetchProjectPortfolio]);
 
   const openProjectAgentDocument = useCallback(async (documentId: string, versionId?: string) => {
     if (!apiUrl || !token || !selectedProjectId) return;
@@ -751,6 +774,7 @@ function DashboardContent() {
             setNeedsDocumentRefresh(true);
             fetchUserCredits();
             fetchProjectStats(selectedProjectId);
+            void fetchProjectPortfolio();
             ws.close(1000, "complete");
           } else if (isNowFailed) {
             toast({
@@ -781,6 +805,7 @@ function DashboardContent() {
     token,
     fetchUserCredits,
     fetchProjectStats,
+    fetchProjectPortfolio,
     selectedProjectId,
   ]);
 
@@ -885,10 +910,11 @@ function DashboardContent() {
       fetchProjects(),
       fetchDocuments(pagination.currentPage),
       fetchUserCredits(),
+      fetchProjectPortfolio(),
     ];
     if (projectTab === "kpis") refreshes.push(fetchProjectKpis());
     await Promise.all(refreshes);
-  }, [fetchProjects, fetchDocuments, fetchUserCredits, fetchProjectKpis, projectTab, pagination.currentPage]);
+  }, [fetchProjects, fetchDocuments, fetchUserCredits, fetchProjectKpis, fetchProjectPortfolio, projectTab, pagination.currentPage]);
 
   const handlePageChange = useCallback((page: number) => {
     fetchDocuments(page);
@@ -903,7 +929,8 @@ function DashboardContent() {
     fetchProjects();
     fetchDocuments(1);
     fetchUserCredits();
-  }, [fetchProjects, fetchDocuments, fetchUserCredits]);
+    void fetchProjectPortfolio();
+  }, [fetchProjects, fetchDocuments, fetchUserCredits, fetchProjectPortfolio]);
 
   const handleToggleLocalMarker = useCallback((checked: boolean) => {
     setUseLocalMarker(checked);
@@ -1026,6 +1053,7 @@ function DashboardContent() {
       setProjectAgentPreview(null);
       setSelectedProjectAgentDocument(null);
       setProjectKpis([]);
+      setProjectPortfolio(null);
       setProjectPlaybooks([]);
       setSelectedKpiContractId("");
       return;
@@ -1055,6 +1083,11 @@ function DashboardContent() {
     if (!selectedProjectId || projectTab !== "kpis") return;
     void fetchProjectKpis();
   }, [projectTab, selectedProjectId, fetchProjectKpis]);
+
+  useEffect(() => {
+    if (!selectedProjectId || projectTab !== "dashboard") return;
+    void Promise.all([fetchProjectPortfolio(), fetchProjectKpis()]);
+  }, [projectTab, selectedProjectId, fetchProjectPortfolio, fetchProjectKpis]);
 
   useEffect(() => {
     if (!selectedProjectId || projectTab !== "playbooks") return;
@@ -1176,8 +1209,9 @@ function DashboardContent() {
                 )}
               </div>
               <div className="flex h-10 items-center border-b border-border px-6 md:px-8">
-              <div className="flex flex-1 items-center gap-5 h-full">
+                <div className="flex flex-1 items-center gap-5 h-full">
                 {[
+                  { id: "dashboard", label: "Dashboard" },
                   { id: "contracts", label: "Contracts" },
                   { id: "kpis", label: "KPIs" },
                   { id: "reviews", label: "Reviews" },
@@ -1231,6 +1265,14 @@ function DashboardContent() {
                 useLocalMarker={useLocalMarker}
                 onToggleLocalMarker={handleToggleLocalMarker}
               />
+            ) : projectTab === "dashboard" && selectedProject ? (
+              <div className="p-6 md:p-8">
+                <ProjectDashboard 
+                  portfolio={projectPortfolio} 
+                  kpis={projectKpis} 
+                  isEmpty={(selectedProject?.stats?.total_documents ?? 0) === 0} 
+                />
+              </div>
             ) : projectTab === "kpis" && selectedProject ? (
               <ProjectKPIWorkspace
                 kpis={projectKpis}
@@ -1366,12 +1408,8 @@ function DashboardContent() {
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : projectTab === "contracts" && selectedProject ? (
               <div className="p-6 md:p-8 flex flex-col gap-8">
-                <ProjectDashboard 
-                  projectId={selectedProject?._id || ""} 
-                  isEmpty={(selectedProject?.stats?.total_documents ?? 0) === 0} 
-                />
                 <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden animate-slide-up">
                   <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between bg-muted/50">
                     <div className="flex flex-wrap items-center gap-2">
@@ -1499,7 +1537,7 @@ function DashboardContent() {
                 )}
                 </div>
               </div>
-            )}
+            ) : null}
           </section>
         </main>
       </div>

@@ -32,6 +32,8 @@ class ProjectInput(BaseModel):
 
 class DocumentIdInput(BaseModel):
     document_id: str = Field(default="", description="Unique ID of the target document. Leave blank for the current scoped document.")
+    include_full: bool = Field(default=False, description="For whole-document summaries, return the full indexed text instead of a short excerpt.")
+    max_chars: int = Field(default=50000, ge=1000, le=100000, description="Maximum indexed characters to return when include_full is enabled.")
 
 
 class FetchDocumentsInput(BaseModel):
@@ -202,13 +204,20 @@ def build_langchain_tools(
         return run_read_tool("fetch_documents", {"document_ids": _coerce_list(payload.get("document_ids"))})
 
     @tool("read_document", args_schema=DocumentIdInput)
-    def read_document(document_id: str = "") -> Dict[str, Any]:
-        """Read the current or requested scoped document excerpt. READ-ONLY."""
+    def read_document(document_id: str = "", include_full: bool = False, max_chars: int = 50000) -> Dict[str, Any]:
+        """Read the current or requested scoped document. Use include_full for whole-contract summaries; otherwise returns a focused excerpt. READ-ONLY."""
         payload = _payload_from_react_value(document_id, "document_id")
-        return run_read_tool("read_document", {"document_id": payload.get("document_id", "")})
+        return run_read_tool(
+            "read_document",
+            {
+                "document_id": payload.get("document_id", ""),
+                "include_full": include_full,
+                "max_chars": max_chars,
+            },
+        )
 
     @tool("outline_document", args_schema=DocumentIdInput)
-    def outline_document(document_id: str = "") -> Dict[str, Any]:
+    def outline_document(document_id: str = "", include_full: bool = False, max_chars: int = 50000) -> Dict[str, Any]:
         """Return the current or requested document outline when available. READ-ONLY."""
         payload = _payload_from_react_value(document_id, "document_id")
         return run_read_tool("outline_document", {"document_id": payload.get("document_id", "")})

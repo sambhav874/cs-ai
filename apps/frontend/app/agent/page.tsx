@@ -167,7 +167,17 @@ function formatCost(costUsd?: number): string | null {
 
 function cleanDisplayText(text: string | null | undefined) {
   if (!text) return "";
-  return String(text).replace(/\r\n?/g, "\n").trim();
+  return String(text)
+    .replace(/\r\n?/g, "\n")
+    .replace(/\b(?:document|contract|kpi|source|session|run|breach)\s+id\s*[:#]?\s*[a-z0-9_-]{8,}/gi, "")
+    .replace(/\((?:id|ID)\s+[a-f0-9]{16,}\)/g, "")
+    .replace(/\b[a-f0-9]{24}\b/gi, "")
+    .replace(/\bDocument ID\b/gi, "Document")
+    .trim();
+}
+
+function shouldShowSources(message: AgentMessage) {
+  return /\[\d+(?:\s*,\s*\d+)*\]/.test(message.content);
 }
 
 function citationRefs(rawRefs: string) {
@@ -694,6 +704,9 @@ export default function StandaloneAgentPage() {
     if (eventName === "final") {
       streamTextRef.current.delete(agentMessageId);
       thinkingRef.current.delete(agentMessageId);
+      // Final content has arrived; the network stream may still be sending
+      // citation metadata, but the response must no longer look active.
+      setIsThinking(false);
       const finalAnswer = typeof data.answer === "string" ? cleanDisplayText(data.answer) : "";
 
       const citationDetails = (data.citation_details ?? {}) as any;
@@ -746,6 +759,7 @@ export default function StandaloneAgentPage() {
     if (eventName === "done") {
       streamTextRef.current.delete(agentMessageId);
       thinkingRef.current.delete(agentMessageId);
+      setIsThinking(false);
       return;
     }
 
@@ -1321,13 +1335,13 @@ export default function StandaloneAgentPage() {
                         )}
 
                         {/* Sources Footer */}
-                        {msg.citationAnnotations && msg.citationAnnotations.length > 0 && (
+                        {shouldShowSources(msg) && msg.citationAnnotations && msg.citationAnnotations.length > 0 && (
                           <div className="mt-2 text-[11px] text-black/50 border-t border-black/5 pt-2 text-left">
                             <span className="font-semibold uppercase tracking-wider text-black/40 text-[9px]">Sources</span>
                             <div className="mt-1 flex flex-col gap-1.5">
                               {msg.citationAnnotations.map((annotation) => {
                                 const docName = annotation.filename || "Document";
-                                const pageStr = annotation.page ? `Page ${annotation.page}` : "Page not identified";
+                                const pageStr = annotation.page ? `Page ${annotation.page}` : "Source document";
                                 return (
                                   <div key={annotation.ref} className="flex items-center gap-1.5">
                                     <Popover>

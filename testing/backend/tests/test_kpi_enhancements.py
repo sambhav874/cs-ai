@@ -629,3 +629,88 @@ def test_v1_to_v2_migration_and_translation_shim():
     assert flat["target_value"] == 99.9
     assert flat["name"] == "Legacy Uptime"
     assert flat["custom_tag"] == "enterprise_sla"
+
+
+def test_accept_before_track_enforcement():
+    from test_kpi_source_ingestion import FakeDB
+    db = FakeDB()
+    manager = ContractKPIManager(db)
+
+    # Insert an unapproved/pending KPI
+    kpi_id = "kpi-pending-1"
+    contract_id = "contract-accept-test"
+    db["contract_kpis"].insert_one({
+        "kpi_id": kpi_id,
+        "contract_id": contract_id,
+        "name": "Unaccepted Metric",
+        "status": "pending_review",
+        "tracking_status": "untracked",
+        "is_tracked": False,
+        "operator": "<=",
+        "value": 10.0,
+        "unit": "hours",
+    })
+
+    # Try ingesting an actual for the untracked/unaccepted KPI
+    ingest_res = manager.ingest_actuals(
+        contract_id=contract_id,
+        user_id="test-user",
+        rows=[{"kpi_id": kpi_id, "value": 15.0, "unit": "hours"}],
+        evaluate=True,
+    )
+
+    assert ingest_res["count"] == 1
+    assert len(ingest_res["breaches"]) == 0
+    assert len(ingest_res["deferred_evaluations"]) == 1
+    assert ingest_res["deferred_evaluations"][0]["reason"] == "KPI is not tracked"
+
+    # Now approve/accept the KPI
+    manager.update_kpi(
+        kpi_id=kpi_id,
+        contract_id=contract_id,
+        user_id="test-user",
+        updates={"status": "approved", "tracking_status": "tracked", "is_tracked": True},
+    )
+
+    # Ingest actual after acceptance
+    ingest_res_after = manager.ingest_actuals(
+        contract_id=contract_id,
+        user_id="test-user",
+        rows=[{"kpi_id": kpi_id, "value": 15.0, "unit": "hours", "timestamp": "2026-08-03T12:00:00"}],
+        evaluate=True,
+    )
+
+    assert ingest_res_after["count"] == 1
+    assert len(ingest_res_after["breaches"]) == 1
+    assert ingest_res_after["breaches"][0]["is_breach"] is True
+
+
+def test_ingest_actuals_handles_qualitative_kpis_gracefully():
+    from test_kpi_source_ingestion import FakeDB
+    db = FakeDB()
+    manager = ContractKPIManager(db)
+
+    kpi_id = "kpi-qual-1"
+    contract_id = "contract-qual-test"
+    db["contract_kpis"].insert_one({
+        "kpi_id": kpi_id,
+        "contract_id": contract_id,
+        "name": "Qualitative Audit",
+        "status": "approved",
+        "tracking_status": "tracked",
+        "is_tracked": True,
+        "rule_type": "qualitative",
+    })
+
+    ingest_res = manager.ingest_actuals(
+        contract_id=contract_id,
+        user_id="test-user",
+        rows=[{"kpi_id": kpi_id, "value": "Satisfactory"}],
+        evaluate=True,
+    )
+
+    assert ingest_res["count"] == 1
+    assert len(ingest_res["breaches"]) == 0
+    assert len(ingest_res["deferred_evaluations"]) == 1
+    assert "Qualitative KPI" in ingest_res["deferred_evaluations"][0]["reason"]
+

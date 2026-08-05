@@ -55,7 +55,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type QuestionAnswerConfidence = 'high' | 'medium' | 'low';
 const PROJECT_SELECTION_KEY = "dashboardSelectedProject";
-const USER_KPI_SOURCE_TYPES = new Set(["csv", "xlsx", "json", "xml", "manual_attestation"]);
+const USER_KPI_SOURCE_TYPES = new Set(["csv", "xlsx", "json", "xml", "manual_attestation", "oracle_fusion", "sap_s4hana", "oracle_db", "sap_ariba"]);
 
 interface QuestionAnswerFromAPI {
   question: string;
@@ -359,6 +359,7 @@ interface ContractKPI {
   name: string;
   description?: string;
   kpi_type?: string;
+  category?: string | null;
   party?: string | null;
   operator?: string;
   value?: string | number | null;
@@ -505,11 +506,20 @@ interface ContractKPIBreach {
   } | null;
   email_flagged_at?: string | null;
   email_flagged_by?: string | null;
+  severity?: string;
+  penalty_amount?: number | null;
+  variance?: number | null;
+  variance_percent?: number | null;
+  period_end?: string | null;
+  timestamp?: string;
+  source?: string | null;
   source_kpi?: {
     name?: string;
     quote?: string;
     page_start?: number | null;
     contract_name?: string;
+    category?: string;
+    section?: string;
   };
   created_at?: string;
 }
@@ -649,6 +659,14 @@ function titleCase(value?: string | null) {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function statusTone(value?: string | null) {
+  const status = String(value || "").toLowerCase();
+  if (status === "in_action") return "border-blue-200 bg-blue-50 text-blue-700";
+  if (["clear", "ok", "completed"].includes(status)) return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (["open", "failed", "critical", "high"].some((item) => status.includes(item))) return "border-red-200 bg-red-50 text-red-700";
+  return "border-gray-200 bg-gray-50 text-gray-600";
 }
 
 function getKpiCitation(kpi: ContractKPI): ContractKPICitation {
@@ -817,10 +835,16 @@ function toNumber(value?: string | number | null) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function dashboardMoney(value: number) {
+function extractCurrency(unit?: string | null): string {
+  if (!unit) return "USD";
+  const match = unit.match(/^([A-Z]{3})\b/);
+  return match ? match[1] : "USD";
+}
+
+function dashboardMoney(value: number, currency?: string) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
+    currency: currency || "USD",
     maximumFractionDigits: 0,
   }).format(Math.max(0, value));
 }
@@ -978,14 +1002,40 @@ function severityClass(severity: string) {
 function buildEscalationDraft(breach: ContractKPIBreach, kpi?: ContractKPI) {
   const expected = `${breach.operator || kpi?.operator || ""} ${breach.expected_value ?? kpi?.value_min ?? kpi?.value ?? "contract threshold"} ${kpi?.unit || breach.actual_unit || ""}`.trim();
   const actual = `${breach.actual_value ?? "not reported"} ${breach.actual_unit || kpi?.unit || ""}`.trim();
+  const unit = kpi?.unit || breach.actual_unit || "";
+  const penalty = toNumber(breach.penalty_amount || kpi?.consequence_value);
+  const penaltyText = penalty ? `${penalty.toLocaleString()} ${unit}`.trim() : "not defined in the agreement";
+  const variance = breach.variance_percent;
+  const varianceText = variance !== null && variance !== undefined ? `${variance >= 0 ? "+" : ""}${variance.toFixed(1)}%` : "N/A";
+  const severity = breachSeverity(breach, kpi);
+  const contract = breach.source_kpi?.contract_name || kpi?.contract_name || "the agreement";
+  const section = breach.source_kpi?.section || kpi?.section || "";
+  const clause = breach.source_kpi?.quote || kpi?.quote || "";
+  const period = breach.period_end || breach.timestamp || breach.created_at;
+  const periodText = period ? new Date(period).toISOString().slice(0, 10) : "N/A";
+  const remediation = breach.remediation || kpi?.remediation || "Please review the discrepancy, confirm the root cause, and provide a corrective action plan.";
+  const sla = breach.remediation_sla || kpi?.remediation_sla || "7 days";
+  const clauseBlock = section || clause ? `\nClause reference: ${section}\n"${clause}"\n` : "";
+  const kpiName = kpi?.name || breach.source_kpi?.name || breach.kpi_id;
   return [
-    `Breach alert for ${kpi?.name || breach.source_kpi?.name || breach.kpi_id}`,
+    `Subject: Breach alert for ${kpiName} (${severity} severity)`,
     "",
-    `Expected: ${expected}`,
-    `Actual: ${actual}`,
-    `Status: ${breach.status || (breach.is_breach ? "open" : "clear")}`,
-    `Remediation: ${breach.remediation || kpi?.remediation || "Please provide corrective action and owner update."}`,
-  ].join("\n");
+    "Hi,",
+    "",
+    `This is an automated compliance alert regarding ${contract}.`,
+    "",
+    `KPI: ${kpiName}`,
+    `Severity: ${severity}`,
+    `Result: Actual ${actual} vs expected ${expected} — variance ${varianceText}.`,
+    `Period: ${periodText}`,
+    `Source: ${breach.source || kpi?.source_requirements?.source_type || "operations feed"}`,
+    `Penalty exposure: ${penaltyText}`,
+    `Required action: ${remediation} Please complete within ${sla}.`,
+    clauseBlock,
+    "Please investigate and confirm the corrective action by return.",
+    "",
+    "Best regards,",
+  ].filter((line) => line !== undefined).join("\n");
 }
 
 export function ContractPerformanceDashboardPane({
@@ -1037,6 +1087,10 @@ export function ContractPerformanceDashboardPane({
   const activeBreaches = visibleBreaches.filter((breach) => breach.is_breach && breach.status !== "resolved");
   const highCriticalCount = activeBreaches.filter((breach) => ["Critical", "High"].includes(breachSeverity(breach, kpiById.get(breach.kpi_id)))).length;
   const exposure = activeBreaches.reduce((total, breach) => total + Math.abs(toNumber(kpiById.get(breach.kpi_id)?.consequence_value) || 0), 0);
+  const contractCurrency = useMemo(() => {
+    const firstConsequenceUnit = sortedKpis.find((kpi) => kpi.consequence_unit)?.consequence_unit;
+    return extractCurrency(firstConsequenceUnit);
+  }, [sortedKpis]);
   const approvedCount = sortedKpis.filter((kpi) => kpi.status === "approved").length;
   const pendingCount = sortedKpis.filter((kpi) => !["approved", "ignored"].includes(kpi.status || "")).length;
   const removedCount = sortedKpis.filter((kpi) => kpi.status === "ignored").length;
@@ -1511,7 +1565,7 @@ function KpiCardField({ label, value, toneClass }: { label: string; value: strin
   return (
     <div className={`min-w-0 rounded-md border px-2.5 py-2 ${toneClass || "border-border bg-muted/30 text-gray-700"}`}>
       <p className="text-[10px] font-bold uppercase tracking-wide opacity-60">{label}</p>
-      <p className="mt-1 truncate text-xs font-semibold">{value || "Not specified"}</p>
+      <p className="mt-1 break-words text-xs font-semibold whitespace-normal leading-relaxed">{value || "Not specified"}</p>
     </div>
   );
 }
@@ -2221,7 +2275,8 @@ function ComplianceFlagsDashboardView({
   onFlagRemediationEmail: (breach: ContractKPIBreach) => ContractKPIBreach | null | void | Promise<ContractKPIBreach | null | void>;
 }) {
   const [expandedFlagId, setExpandedFlagId] = useState<string | null>(null);
-  const [alertDraft, setAlertDraft] = useState<{ to: string; subject: string; body: string; recipientSource?: ContractKPIBreach["breach_email_recipient_source"] } | null>(null);
+  const [isDispatching, setIsDispatching] = useState(false);
+  const [alertDraft, setAlertDraft] = useState<{ contractId?: string; kpiId?: string; breachId?: string; to: string; subject: string; body: string; recipientSource?: ContractKPIBreach["breach_email_recipient_source"] } | null>(null);
   const kpiById = useMemo(() => new Map(kpis.map((kpi) => [kpi.kpi_id, kpi])), [kpis]);
   const orderedBreaches = useMemo(() => (
     [...breaches].sort((a, b) => {
@@ -2237,8 +2292,11 @@ function ComplianceFlagsDashboardView({
     const source = updated || breach;
     const recipient = source.breach_email_to || kpi?.contact_email || "";
     setAlertDraft({
+      contractId: kpi?.contract_id || source.contract_id || "",
+      kpiId: source.kpi_id || kpi?.kpi_id || "",
+      breachId: source.breach_id,
       to: recipient,
-      subject: `[BREACH ALERT] ${kpi?.name || breach.source_kpi?.name || breach.kpi_id}`,
+      subject: `[BREACH ALERT] ${kpi?.name || breach.source_kpi?.name || breach.kpi_id} (${breachSeverity(breach, kpi)})`,
       body: source.breach_email_draft || buildEscalationDraft(source, kpi),
       recipientSource: source.breach_email_recipient_source,
     });
@@ -2297,31 +2355,39 @@ function ComplianceFlagsDashboardView({
                     </p>
                   </button>
                   <div className={breach.is_breach ? "font-semibold text-red-600" : "font-semibold text-emerald-700"}>
-                    {exposure ? `-${dashboardMoney(exposure)}` : "No penalty"}
+                    {exposure ? `-${dashboardMoney(exposure, extractCurrency(kpi?.consequence_unit))}` : "No penalty"}
                   </div>
-                  <select className="h-8 rounded-md border border-border bg-white px-2 text-xs font-semibold text-gray-700" defaultValue={breach.status || (breach.is_breach ? "open" : "clear")}>
-                    <option value="open">Open</option>
-                    <option value="in_progress">In progress</option>
-                    <option value="resolved">Resolved</option>
-                    <option value="clear">Clear</option>
-                  </select>
-                  <span className={`w-fit rounded-full border px-2 py-1 text-[11px] font-semibold ${severityClass(severity)}`}>{severity}</span>
-                  <button type="button" onClick={() => setExpandedFlagId(expanded ? null : breach.breach_id)} className="rounded p-1 hover:bg-gray-100">
-                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`} />
-                  </button>
+                  <div>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusTone(breach.status || (breach.is_breach ? "open" : "clear"))}`}>
+                      {titleCase(breach.status || (breach.is_breach ? "open" : "clear"))}
+                    </span>
+                  </div>
+                  <div>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusTone(severity)}`}>{severity}</span>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setExpandedFlagId(expanded ? null : breach.breach_id)}>
+                      <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                    </Button>
+                  </div>
                 </div>
 
                 {expanded && (
-                  <div className="space-y-3 border-t border-border bg-muted/30 px-4 py-4">
-                    <p className="text-sm text-gray-700">
-                      Actual performance for this tracked KPI {breach.is_breach ? "fell outside" : "met"} the contract threshold.
-                    </p>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Expected</p>
-                        <p className="mt-1 text-sm font-semibold text-emerald-900">{expected}</p>
+                  <div className="space-y-3 border-t border-gray-100 bg-muted/20 p-4 text-xs">
+                    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-md border bg-white p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Metric</p>
+                        <p className="mt-1 text-sm font-semibold text-gray-950">{kpi?.name || breach.source_kpi?.name || breach.kpi_id}</p>
                       </div>
-                      <div className="rounded-md border border-red-200 bg-red-50 p-3">
+                      <div className="rounded-md border bg-white p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Category</p>
+                        <p className="mt-1 text-sm font-semibold text-gray-950">{titleCase(kpi?.category || breach.source_kpi?.category || "SLA")}</p>
+                      </div>
+                      <div className="rounded-md border bg-white p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Expected</p>
+                        <p className="mt-1 text-sm font-semibold text-gray-950">{expected}</p>
+                      </div>
+                      <div className="rounded-md border bg-white p-3">
                         <p className="text-[10px] font-bold uppercase tracking-wide text-red-700">Actual</p>
                         <p className="mt-1 text-sm font-semibold text-red-900">{actual}</p>
                       </div>
@@ -2380,16 +2446,39 @@ function ComplianceFlagsDashboardView({
                 ].filter(Boolean).join(" · ")} />
               )}
               <KpiDetail label="Subject" value={alertDraft.subject} />
-              <Textarea value={alertDraft.body} onChange={(event) => setAlertDraft({ ...alertDraft, body: event.target.value })} className="min-h-[240px] font-mono text-xs" />
+              <Textarea value={alertDraft.body} onChange={(event) => setAlertDraft({ ...alertDraft, body: event.target.value })} className="min-h-[320px] resize-y font-mono text-xs" />
             </div>
           )}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setAlertDraft(null)}>Cancel</Button>
-            <Button type="button" className="bg-red-600 text-white hover:bg-red-700" disabled={!alertDraft?.to} onClick={() => {
-              toast({ title: "Escalation alert dispatched", description: "The breach alert has been marked for supplier follow-up." });
-              setAlertDraft(null);
+            <Button type="button" className="bg-red-600 text-white hover:bg-red-700" disabled={!alertDraft?.to || isDispatching} onClick={async () => {
+              if (!alertDraft?.to || !alertDraft?.kpiId || !alertDraft?.contractId) {
+                toast({ title: "Alert dispatch failed", description: "Missing recipient email, KPI ID, or Contract ID.", variant: "destructive" });
+                return;
+              }
+              setIsDispatching(true);
+              try {
+                const res = await fetch(`/api/v1/contracts/${alertDraft.contractId}/kpis/alerts/dispatch`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    kpi_id: alertDraft.kpiId,
+                    recipient: alertDraft.to,
+                    subject: alertDraft.subject,
+                    body: alertDraft.body,
+                    breach_id: alertDraft.breachId,
+                  }),
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                toast({ title: "Escalation alert dispatched", description: "The breach alert email has been sent and logged." });
+              } catch (err: any) {
+                toast({ title: "Alert dispatch failed", description: err?.message || "Failed to send alert.", variant: "destructive" });
+              } finally {
+                setIsDispatching(false);
+                setAlertDraft(null);
+              }
             }}>
-              Dispatch Alert
+              {isDispatching ? "Dispatching..." : "Dispatch Alert"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2422,6 +2511,10 @@ function PerformanceLogsDashboardView({
   onNavigate: (panel: KpiDashboardPanel) => void;
 }) {
   const kpiById = useMemo(() => new Map(kpis.map((kpi) => [kpi.kpi_id, kpi])), [kpis]);
+  const contractCurrency = useMemo(() => {
+    const firstConsequenceUnit = kpis.find((kpi) => kpi.consequence_unit)?.consequence_unit;
+    return extractCurrency(firstConsequenceUnit);
+  }, [kpis]);
   const nextActionBreach = activeBreaches[0];
   const nextActionKpi = nextActionBreach ? kpiById.get(nextActionBreach.kpi_id) : trackedKpis.find((kpi) => !isKpiTracked(kpi));
   const typeCounts = kpis.reduce<Record<string, number>>((acc, kpi) => {
@@ -2442,7 +2535,7 @@ function PerformanceLogsDashboardView({
         <MetricTile label="KPIs Tracked" value={`${trackedKpis.length} / ${kpis.length}`} hint={`${kpis.length - trackedKpis.length} deferred`} icon={<Play className="h-4 w-4" />} />
         <MetricTile label="Critical / High" value={`${highCriticalCount} / ${activeBreaches.length || 1}`} hint="Open severity queue" icon={<AlertCircle className="h-4 w-4" />} />
         <MetricTile label="Active Breaches" value={`${activeBreaches.length}`} hint={`${breaches.length} total evaluations`} icon={<Clock className="h-4 w-4" />} />
-        <MetricTile label="Current Exposure" value={dashboardMoney(exposure)} hint="Penalty exposure" icon={<BarChart3 className="h-4 w-4" />} />
+        <MetricTile label="Current Exposure" value={dashboardMoney(exposure, contractCurrency)} hint="Penalty exposure" icon={<BarChart3 className="h-4 w-4" />} />
       </div>
 
       <section className="rounded-lg border border-border bg-white p-4 shadow-sm">
@@ -2480,7 +2573,7 @@ function PerformanceLogsDashboardView({
             { label: "Supplier", value: exposure || 1, color: "#2563eb" },
             { label: "Buyer", value: Math.max(0, Math.round(exposure * 0.25)), color: "#14b8a6" },
             { label: "Shared", value: Math.max(0, Math.round(exposure * 0.15)), color: "#a855f7" },
-          ]} center={dashboardMoney(exposure)} />
+          ]} center={dashboardMoney(exposure, contractCurrency)} />
         </ChartCard>
         <ChartCard title="One-Year KPI Target Attainment">
           <SparkLine actuals={actuals} />

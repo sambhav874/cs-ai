@@ -19,6 +19,7 @@ from core.database import (
     accounts_collection,
     teams_collection,
     projects_collection,
+    kpi_db,
 )
 from core.security import get_current_active_user
 from models.domain import UserInDB
@@ -26,6 +27,7 @@ from utils.audit_logger import create_audit_log
 from utils.secure_logger import log_exception
 from services.kpi_manager import ContractKPIManager, USER_CONFIGURABLE_SOURCE_TYPES
 from services.kpi_source_ingestion import KpiSourceError, KpiSourceIngestionService, parse_sample_file_bytes
+from services.airport_charges_demo import AirportChargesDemoBuilder, is_airport_charges_demo
 from api.dependencies import check_contract_access, get_contract_and_verify_access, get_project_and_verify_access
 from api.routes.projects import verify_project_access, build_accessible_contract_query
 from core.cache import cache
@@ -216,14 +218,27 @@ class KPIAlertRuleRequest(BaseModel):
     threshold: Optional[Any] = None
     notes: Optional[str] = None
 
+class DispatchEscalationAlertRequest(BaseModel):
+    kpi_id: str
+    recipient: str
+    subject: str
+    body: str
+    breach_id: Optional[str] = None
+    delivery_mode: str = "mock"
+
+class KPIRecoveryReminderRequest(BaseModel):
+    audience: str = "client"
+    delivery_mode: str = "mock"
+
 
 
 # --- KPI Helper Functions ---
 def _kpi_manager() -> ContractKPIManager:
-    return ContractKPIManager(db)
+    return ContractKPIManager(kpi_db)
+
 
 def _kpi_source_ingestion() -> KpiSourceIngestionService:
-    return KpiSourceIngestionService(db)
+    return KpiSourceIngestionService(kpi_db)
 
 
 
@@ -299,6 +314,16 @@ def create_kpi_integration_profile(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@kpis_router.get("/kpis/integrations/profiles/recent")
+def list_recent_kpi_integration_profiles(
+    limit: int = Query(20, ge=1, le=50),
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    owner_account_id = str(current_user.ownedAccountId) if current_user.ownedAccountId else None
+    profiles = _kpi_manager().list_recent_integration_profiles(owner_account_id=owner_account_id, limit=limit)
+    return {"count": len(profiles), "profiles": profiles}
 
 
 @kpis_router.post("/kpis/integrations/profiles/{profile_id}/test")
@@ -425,12 +450,17 @@ async def upload_contract_kpi_source_sample(
         raise HTTPException(status_code=400, detail=f"Failed to parse sample file: {str(exc)}")
 
     # Update source config with parsed schema fields, sample payload, and auto field mappings
+    existing_config = _kpi_manager().source_configs.find_one(
+        {"source_config_id": source_config_id, "contract_id": contract_id}
+    )
     updated = _kpi_manager().upsert_source_config(
         contract_id=contract_id,
         project_id=str(contract.get("projectId")) if contract.get("projectId") else None,
         user_id=str(current_user.id),
         source_config_id=source_config_id,
         payload={
+            "source_type": (existing_config or {}).get("source_type", file_format),
+            "display_name": (existing_config or {}).get("display_name"),
             "file_format": file_format,
             "schema_fields": parsed["schema_fields"],
             "sample_payload": parsed["sample_payload"],
@@ -554,6 +584,34 @@ def list_contract_kpi_source_fetch_runs(
     }
 
 
+@kpis_router.get("/contracts/{contract_id}/kpis/source-configs/{source_config_id}/raw-records")
+def list_contract_kpi_source_raw_records(
+    contract_id: str,
+    source_config_id: str,
+    limit: int = Query(100, ge=1, le=500),
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Read the raw parking layer for a source without exposing connector secrets."""
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+
+    contract = collection.find_one({"_id": contract_oid}, {"_id": 1, "ownerType": 1, "ownerId": 1})
+    check_contract_access(contract, current_user)
+    records = _kpi_source_ingestion().list_raw_records(
+        contract_id=contract_id,
+        source_config_id=source_config_id,
+        limit=limit,
+    )
+    return {
+        "contract_id": contract_id,
+        "source_config_id": source_config_id,
+        "count": len(records),
+        "raw_records": records,
+    }
+
+
 @kpis_router.get("/contracts/{contract_id}/kpis/source-configs/{source_config_id}/fetch-runs/{run_id}")
 def get_contract_kpi_source_fetch_run_detail(
     contract_id: str,
@@ -635,6 +693,18 @@ def extract_contract_kpis(
     check_contract_access(contract, current_user)
     if (contract.get("index") or {}).get("status") != "success":
         raise HTTPException(status_code=400, detail="Contract must be ingested before KPI extraction.")
+
+    if is_airport_charges_demo(contract_id, contract.get("contract_name")):
+        builder = AirportChargesDemoBuilder(kpi_db)
+        result = builder.extract_ground_truth(
+            contract_doc=contract,
+            user_id=str(current_user.id),
+            replace_drafts=request.replace_drafts,
+        )
+        owner_account_id = str(current_user.ownedAccountId) if current_user.ownedAccountId else None
+        builder.seed_integration_profiles(owner_account_id=owner_account_id)
+        cache.delete(f"kpi:list:{contract_id}")
+        return result
 
     result = _kpi_manager().extract_for_contract(
         contract_doc=contract,
@@ -765,6 +835,56 @@ def update_contract_kpi_alert_rule(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@kpis_router.post("/contracts/{contract_id}/kpis/alerts/dispatch")
+def dispatch_contract_kpi_alert(
+    contract_id: str,
+    request: DispatchEscalationAlertRequest,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+
+    contract = collection.find_one({"_id": contract_oid}, {"_id": 1, "ownerType": 1, "ownerId": 1, "projectId": 1})
+    check_contract_access(contract, current_user)
+    try:
+        result = _kpi_manager().dispatch_escalation_alert(
+            contract_id=contract_id,
+            user_id=str(current_user.id),
+            kpi_id=request.kpi_id,
+            recipient=request.recipient,
+            subject=request.subject,
+            body=request.body,
+            breach_id=request.breach_id,
+            delivery_mode=request.delivery_mode,
+        )
+        if request.breach_id:
+            _kpi_manager().breaches.update_one(
+                {"contract_id": contract_id, "breach_id": request.breach_id},
+                {"$set": {"status": "in_action"}},
+            )
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@kpis_router.get("/contracts/{contract_id}/kpis/alerts/dispatches")
+def list_contract_kpi_alert_dispatches(
+    contract_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+    contract = collection.find_one({"_id": contract_oid}, {"_id": 1, "ownerType": 1, "ownerId": 1})
+    check_contract_access(contract, current_user)
+    dispatches = _kpi_manager().list_dispatched_alerts(contract_id=contract_id, limit=limit)
+    return {"contract_id": contract_id, "count": len(dispatches), "dispatches": dispatches}
 
 
 @kpis_router.post("/contracts/{contract_id}/kpis/actuals")
@@ -954,6 +1074,104 @@ def flag_breach_remediation_email(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return result
+
+
+@kpis_router.get("/contracts/{contract_id}/kpis/recoveries")
+def list_contract_kpi_recoveries(
+    contract_id: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Recovery register for the contract's open breach flags: remedy, SLA,
+    penalty, flagged escalation email, and reminder actions already taken."""
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+
+    contract = collection.find_one({"_id": contract_oid}, {"_id": 1, "ownerType": 1, "ownerId": 1})
+    check_contract_access(contract, current_user)
+    return _kpi_manager().list_recoveries(contract_id=contract_id)
+
+
+@kpis_router.post("/contracts/{contract_id}/kpis/recoveries/{breach_id}/remind")
+def remind_breach_recovery(
+    contract_id: str,
+    breach_id: str,
+    request: KPIRecoveryReminderRequest = KPIRecoveryReminderRequest(),
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Send (mock-dispatched) recovery reminders for an open breach.
+
+    audience "team_owner" targets the owner of the team that owns the contract,
+    "client" targets the counterparty resolved from the breach/KPI/contract records,
+    and "both" dispatches to each.
+    dispatches to each. Emails are logged as mock dispatches in demo mode.
+    """
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+
+    contract = collection.find_one({"_id": contract_oid}, {"_id": 1, "ownerType": 1, "ownerId": 1})
+    check_contract_access(contract, current_user)
+    manager = _kpi_manager()
+    audience = str(request.audience or "client").lower().strip()
+    if audience == "user":
+        # Backward-compatible alias for older clients.
+        audience = "team_owner"
+    if audience not in {"team_owner", "client", "both"}:
+        raise HTTPException(status_code=400, detail="audience must be one of: team_owner, client, both.")
+
+    targets: List[Tuple[str, str]] = []
+    if audience in {"team_owner", "both"}:
+        team_owner_email = ""
+        if contract.get("ownerType") == "team" and contract.get("ownerId"):
+            team = teams_collection.find_one({"_id": contract.get("ownerId")}, {"creatorId": 1})
+            creator_id = (team or {}).get("creatorId")
+            if creator_id:
+                creator_oid = ObjectId(str(creator_id)) if ObjectId.is_valid(str(creator_id)) else creator_id
+                team_owner = users_collection.find_one({"_id": creator_oid}, {"email": 1})
+                team_owner_email = str((team_owner or {}).get("email") or "")
+        if not team_owner_email:
+            team_owner_email = str(getattr(current_user, "email", "") or "")
+        targets.append(("team_owner", team_owner_email))
+    if audience in {"client", "both"}:
+        try:
+            recipient_email, _ = manager.resolve_breach_email_recipient(
+                breach_id=breach_id,
+                contract_id=contract_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        if recipient_email:
+            targets.append(("client", recipient_email))
+
+    if not targets:
+        raise HTTPException(
+            status_code=400,
+            detail="No recipient email available. Add a contact email to the KPI or contract, then retry.",
+        )
+
+    dispatched = []
+    for target_audience, recipient in targets:
+        try:
+            dispatched.append(manager.dispatch_recovery_reminder(
+                contract_id=contract_id,
+                user_id=str(current_user.id),
+                breach_id=breach_id,
+                recipient=recipient,
+                audience=target_audience,
+                delivery_mode=request.delivery_mode,
+            ))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "contract_id": contract_id,
+        "breach_id": breach_id,
+        "audience": audience,
+        "dispatched_count": len(dispatched),
+        "dispatches": dispatched,
+    }
 
 
 def _accessible_project_contracts(project_id: str, current_user: UserInDB, *, indexed_only: bool = False) -> List[Dict[str, Any]]:
@@ -1170,6 +1388,4 @@ def extract_project_kpis(
         "kpis": project_kpis,
         "summary": manager.summarize_kpis(project_kpis),
     }
-
-
 
