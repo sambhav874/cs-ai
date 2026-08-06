@@ -39,7 +39,6 @@ from utils.audit_logger import create_audit_log
 from utils.secure_logger import log_exception
 from utils.http_headers import content_disposition
 from core.cache import cache
-from services.airport_charges_demo import AirportChargesDemoBuilder, is_airport_charges_demo
 
 logger = logging.getLogger(__name__)
 
@@ -228,17 +227,6 @@ async def upload_contract(
                 except Exception as ingestion_error:
                     ingestion_status = "failed_to_queue"
                     log_exception(logger, f"Failed to queue auto-ingestion for uploaded contract {contract_id_str}", ingestion_error)
-
-        if is_airport_charges_demo(contract_id_str, file.filename):
-            try:
-                demo_builder = AirportChargesDemoBuilder(db)
-                background_tasks.add_task(
-                    demo_builder.extract_ground_truth,
-                    contract_doc=contract_doc,
-                    user_id=str(current_user.id)
-                )
-            except Exception as e:
-                log_exception(logger, f"Failed to queue demo KPI extraction for contract {contract_id_str}", e)
 
         audit_account_id = None
         if owner_type == "team" and isinstance(owner_id, ObjectId):
@@ -1458,4 +1446,3 @@ async def get_contract_stats(
 async def frontend_debug_log(payload: Dict[str, Any]):
     logger.info(f"[FRONTEND DEBUG] {payload.get('message')} | Data: {payload.get('data')}")
     return {"status": "ok"}
-

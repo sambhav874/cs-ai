@@ -77,6 +77,13 @@ interface DashboardDataset {
 
 function displayRuleType(value: string): string {
   const normalized = value.trim().toLowerCase();
+  if (normalized.includes("tiered") || normalized.includes("mtow")) return "Tiered";
+  if (normalized.includes("deadline")) return "Deadline";
+  if (normalized.includes("composite") || normalized.includes("combined") || normalized.includes("conditional") || normalized.includes("aggregate")) return "Composite";
+  if (normalized.includes("seat_band") || normalized.includes("range")) return "Range";
+  if (normalized.includes("qualitative") || normalized.includes("cross_referenced")) return "Qualitative";
+  if (normalized.includes("flat") || normalized.includes("threshold") || normalized.includes("per_item")) return "Threshold";
+
   const known = RULE_TYPES.find((ruleType) => ruleType.toLowerCase() === normalized);
   if (known) return known;
   return value.trim().replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -84,11 +91,10 @@ function displayRuleType(value: string): string {
 
 function displaySourceName(value: string): string {
   const normalized = value.trim().toLowerCase();
-  if (normalized.includes("csv")) return "CSV Upload";
-  if (normalized.includes("rest") || normalized.includes("api")) return "REST API";
-  if (normalized.includes("sap")) return "SAP S/4HANA";
-  if (normalized.includes("json")) return "JSON Feed";
-  if (normalized.includes("snowflake")) return "Snowflake";
+  if (normalized.includes("csv") || normalized.includes("file_upload")) return "CSV Upload";
+  if (normalized.includes("rest") || normalized.includes("api")) return "Rest endpoints";
+  if (normalized.includes("sap") || normalized.includes("dispatch")) return "SAP Dispatch";
+  if (normalized.includes("scanned") || normalized.includes("ocr") || normalized.includes("snowflake")) return "Snowflake";
   if (normalized.includes("salesforce")) return "Salesforce";
   if (normalized.includes("servicenow")) return "ServiceNow";
   if (normalized.startsWith("src_cfg") || normalized.length > 28) return "Connected source";
@@ -99,10 +105,10 @@ function buildLiveDataset(portfolio: ProjectKpiPortfolio | null, kpis: ContractK
   const summary = portfolio?.summary;
   const totalObligations = summary?.kpi_count ?? kpis.length;
   const tracked = summary?.tracked_kpi_count ?? kpis.filter((kpi) => kpi.is_tracked || kpi.tracking_status === "tracked").length;
-  const activeBreaches = summary?.open_breach_count ?? 0;
+  const activeBreaches = summary?.open_breach_count ?? (portfolio?.top_breaches?.length || 0);
   const compliant = Math.max(tracked - activeBreaches, 0);
-  const clientSide = kpis.filter((kpi) => kpi.party_role === "client").length;
-  const supplierSide = kpis.filter((kpi) => kpi.party_role === "supplier").length;
+  const clientSide = kpis.filter((kpi) => String(kpi.party_role || "").toLowerCase() === "client").length;
+  const supplierSide = Math.max(totalObligations - clientSide, 0);
   const ruleCounts = new Map<string, number>();
   kpis.forEach((kpi) => {
     const ruleType = displayRuleType(kpi.rule_type || kpi.kpi_type || "Other");
@@ -111,13 +117,13 @@ function buildLiveDataset(portfolio: ProjectKpiPortfolio | null, kpis: ContractK
   const ruleTypeBreakdown = Array.from(ruleCounts.entries()).map(([name, value]) => ({ name, value }));
   const breachCounts = new Map<string, number>();
   (portfolio?.top_breaches || []).forEach((breach) => {
-    const source = displaySourceName(String(breach.source_config_id || breach.source || breach.data_source || "Tracked sources"));
+    const source = displaySourceName(String(breach.source_config_id || breach.source || breach.data_source || breach.source_type || "Tracked sources"));
     breachCounts.set(source, (breachCounts.get(source) || 0) + 1);
   });
   const breachBySource = Array.from(breachCounts.entries())
     .map(([source, count]) => ({ source, count }))
     .sort((a, b) => b.count - a.count);
-  if (!breachBySource.length && activeBreaches) breachBySource.push({ source: "Tracked sources", count: activeBreaches });
+  if (!breachBySource.length && activeBreaches) breachBySource.push({ source: "Snowflake", count: activeBreaches });
   const complianceRate = tracked ? Math.round((compliant / tracked) * 1000) / 10 : 0;
   const lifecycle = [
     { stage: "Breach Detected", value: activeBreaches, fill: "#B23A2E" },
@@ -430,11 +436,18 @@ export default function ProjectDashboard({
     return buildDataset(range);
   }, [range, isEmpty]);
 
+  const hasLive = Boolean(
+    !isEmpty && (
+      (portfolio && ((portfolio.summary?.kpi_count ?? 0) > 0 || (portfolio.summary?.open_breach_count ?? 0) > 0 || (portfolio.top_breaches?.length ?? 0) > 0)) ||
+      (kpis && kpis.length > 0)
+    )
+  );
+
   const data = useMemo(
-    () => portfolio && !isEmpty
+    () => hasLive
       ? mergeDashboardDatasets(baseDataset, buildLiveDataset(portfolio, kpis))
       : baseDataset,
-    [portfolio, kpis, baseDataset, isEmpty],
+    [portfolio, kpis, baseDataset, isEmpty, hasLive],
   );
 
   // Keep the existing dashboard portfolio exposure and add the live contract

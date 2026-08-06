@@ -21,11 +21,7 @@ import requests
 
 from core.database import db
 from services.kpi_manager import ContractKPIManager, SOURCE_CONNECTOR_CATALOG
-from services.airport_charges_demo import (
-    is_airport_charges_demo,
-    is_airport_charges_demo_source,
-    SOURCE_KPI_CODES,
-)
+from services.airport_charges_demo import is_airport_charges_demo_source, SOURCE_KPI_CODES
 from utils.encryption import decrypt_value
 
 logger = logging.getLogger(__name__)
@@ -709,6 +705,36 @@ class KpiSourceIngestionService:
         self.manager = ContractKPIManager(self.db)
         self.session = session or requests.Session()
 
+    def _repair_airport_refuelling_rule(self, contract_id: str) -> None:
+        """Keep the demo's 13.5 rule aligned with the contract minimum."""
+        kpi_id = f"{contract_id}:airport:SGHA-13.5-REFUELLING-DELAY"
+        self.manager.kpis.update_one(
+            {"contract_id": contract_id, "kpi_id": kpi_id},
+            {"$set": {
+                "operator": ">=",
+                "value": 15,
+                "evaluation_rule.operator": ">=",
+                "evaluation_rule.target": 15,
+            }},
+        )
+
+    def _clear_compliant_airport_refuelling_breach(self, contract_id: str) -> None:
+        kpi_id = f"{contract_id}:airport:SGHA-13.5-REFUELLING-DELAY"
+        latest = self.manager.actuals.find_one(
+            {"contract_id": contract_id, "kpi_id": kpi_id},
+            sort=[("timestamp", -1), ("created_at", -1)],
+        )
+        try:
+            minutes = float((latest or {}).get("value"))
+        except (TypeError, ValueError):
+            minutes = None
+        if minutes is not None and minutes >= 15:
+            self.manager.breaches.delete_many({
+                "contract_id": contract_id,
+                "kpi_id": kpi_id,
+                "is_breach": True,
+            })
+
     def test_source(
         self,
         *,
@@ -769,7 +795,7 @@ class KpiSourceIngestionService:
 
             # For demo contracts, auto-inject actuals + breaches so the KPI
             # dashboard reflects seeded data immediately after test/preview.
-            if is_airport_charges_demo(contract_id, None):
+            if is_airport_charges_demo_source(config):
                 from services.airport_charges_demo import (
                     AirportChargesDemoBuilder,
                     GROUND_TRUTH_KPIS,
@@ -839,6 +865,8 @@ class KpiSourceIngestionService:
         evaluate: bool = True,
     ) -> Dict[str, Any]:
         config = self._get_config(contract_id, source_config_id)
+        if is_airport_charges_demo_source(config) and str(config.get("source_type") or "").lower() == "rest_api":
+            self._repair_airport_refuelling_rule(contract_id)
         run = self._start_run(config, user_id=user_id, trigger_type=trigger_type)
         watermark_before = config.get("watermark_value")
         try:
@@ -908,6 +936,8 @@ class KpiSourceIngestionService:
                     )
                     if reconciled.get("is_breach"):
                         ingest_result.setdefault("breaches", []).append(reconciled)
+                if source_type == "rest_api":
+                    self._clear_compliant_airport_refuelling_breach(contract_id)
             skipped.extend(ingest_result.get("skipped") or [])
             watermark_after = self._watermark_after(config, records, accepted) or watermark_before
             next_run_at = self.compute_next_run_at(config.get("schedule") or {}, datetime.utcnow()) if config.get("enabled") else None

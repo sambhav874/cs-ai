@@ -107,7 +107,9 @@ PARAGRAPH_13_PENALTY_KPIS = [
         "code": "SGHA-13.5-REFUELLING-DELAY",
         "name": "Refuelling Delay Service Credit",
         "description": "Where refuelling is not completed by 15 minutes before scheduled departure due to the Handling Company, a flat per-occurrence service credit applies.",
-        "kpi_type": "financial", "category": "service_level_penalty", "operator": "<=",
+        # The value is minutes before departure; lower values are worse.
+        # The generic evaluator treats >= as the safe minimum threshold.
+        "kpi_type": "financial", "category": "service_level_penalty", "operator": ">=",
         "value": 15, "unit": "minutes before scheduled departure by which refuelling must be completed",
         "rule_type": "time_conditioned_flat",
         "formula": "1200 if minutes_before_departure_completed < 15 else 0",
@@ -360,7 +362,135 @@ def build_breach_examples() -> list:
  
     return examples
 
-GROUND_TRUTH_KPIS: List[Dict[str, Any]] = PARAGRAPH_13_PENALTY_KPIS + [PARAGRAPH_13_8_RECOVERY_MECHANISM]
+RATE_REFERENCE_KPIS = [
+    {
+        "code": "SGHA-1.1-LANDING",
+        "name": "Landing Charge",
+        "description": "Standard landing charge per aircraft movement based on Maximum Take-Off Weight (MTOW). Under 25 tonnes MTOW: max(77 * MTOW, 655) SEK. 25 tonnes MTOW and above: 1,193 + 123 * MTOW SEK.",
+        "kpi_type": "financial", "category": "rate_schedule", "operator": "<=",
+        "value": 655, "unit": "SEK per landing",
+        "rule_type": "mtow_tiered_formula",
+        "target_schedule": [
+            {"condition": "under 25t MTOW", "value": 77, "price": 77, "unit": "SEK per tonne (min 655 SEK)", "min_flat": 655, "under_rate": 77},
+            {"condition": "25t+ MTOW", "value": 1193, "price": 1193, "unit": "SEK base + 123 SEK/tonne", "base": 1193, "over_rate": 123},
+        ],
+        "formula": "max(77 * mtow, 655) if mtow < 25 else (1193 + 123 * mtow)",
+        "record_type": "rate_reference", "party": "Handling Company", "party_role": "supplier",
+        "beneficiary": "Carrier", "index_linked": False,
+        "quote": "Paragraph 1.1 Landing Charges. Under 25 tonnes MTOW: max(77 * MTOW, 655) SEK. 25 tonnes MTOW and above: 1,193 + 123 * MTOW SEK.",
+        "section": "PARAGRAPH 1. AIRPORT & RUNWAY CHARGES · 1.1", "page_start": 1, "page_end": 1,
+    },
+    {
+        "code": "SGHA-2.3-PASSENGER-SERVICES",
+        "name": "Passenger Services Turnaround Rate",
+        "description": "Passenger handling charges per turnaround by aircraft seat capacity band.",
+        "kpi_type": "financial", "category": "rate_schedule", "operator": "<=",
+        "value": 3051, "unit": "SEK per turnaround",
+        "rule_type": "seat_band_table",
+        "target_schedule": [
+            {"seats": "0-40", "condition": "0-40 seats", "value": 3051, "price": 3051, "unit": "SEK per turnaround"},
+            {"seats": "41-70", "condition": "41-70 seats", "value": 3543, "price": 3543, "unit": "SEK per turnaround"},
+            {"seats": "71-110", "condition": "71-110 seats", "value": 3980, "price": 3980, "unit": "SEK per turnaround"},
+            {"seats": "111-150", "condition": "111-150 seats", "value": 4320, "price": 4320, "unit": "SEK per turnaround"},
+            {"seats": "151+", "condition": "151+ seats", "value": 4679, "price": 4679, "unit": "SEK per turnaround"},
+        ],
+        "record_type": "rate_reference", "party": "Handling Company", "party_role": "supplier",
+        "beneficiary": "Carrier", "index_linked": False,
+        "quote": "Paragraph 2.3 Passenger Services. Turnaround charges by seat band: 0-40 seats (3,051 SEK), 41-70 seats (3,543 SEK), 71-110 seats (3,980 SEK), 111-150 seats (4,320 SEK), 151+ seats (4,679 SEK).",
+        "section": "PARAGRAPH 2. HANDLING SERVICES & RATES · 2.3", "page_start": 1, "page_end": 2,
+    },
+    {
+        "code": "SGHA-2.3-RAMP-HANDLING",
+        "name": "Ramp Handling Turnaround Rate",
+        "description": "Ramp handling charges per turnaround by aircraft seat capacity band.",
+        "kpi_type": "financial", "category": "rate_schedule", "operator": "<=",
+        "value": 3543, "unit": "SEK per turnaround",
+        "rule_type": "seat_band_table",
+        "target_schedule": [
+            {"seats": "0-40", "condition": "0-40 seats", "value": 3543, "price": 3543, "unit": "SEK per turnaround"},
+            {"seats": "41-70", "condition": "41-70 seats", "value": 4030, "price": 4030, "unit": "SEK per turnaround"},
+            {"seats": "71-110", "condition": "71-110 seats", "value": 4520, "price": 4520, "unit": "SEK per turnaround"},
+            {"seats": "111-150", "condition": "111-150 seats", "value": 4890, "price": 4890, "unit": "SEK per turnaround"},
+            {"seats": "151+", "condition": "151+ seats", "value": 5172, "price": 5172, "unit": "SEK per turnaround"},
+        ],
+        "record_type": "rate_reference", "party": "Handling Company", "party_role": "supplier",
+        "beneficiary": "Carrier", "index_linked": False,
+        "quote": "Paragraph 2.3 Ramp Handling. Turnaround charges by seat band: 0-40 seats (3,543 SEK), 41-70 seats (4,030 SEK), 71-110 seats (4,520 SEK), 111-150 seats (4,890 SEK), 151+ seats (5,172 SEK).",
+        "section": "PARAGRAPH 2. HANDLING SERVICES & RATES · 2.3", "page_start": 1, "page_end": 2,
+    },
+    {
+        "code": "SGHA-2.8-DEICING-SERVICE",
+        "name": "De-Icing Service Standard Rate",
+        "description": "Standard de-icing / anti-icing service base charge per application.",
+        "kpi_type": "financial", "category": "rate_schedule", "operator": "<=",
+        "value": 4500, "unit": "SEK per application",
+        "rule_type": "flat_per_occasion",
+        "record_type": "rate_reference", "party": "Handling Company", "party_role": "supplier",
+        "beneficiary": "Carrier", "index_linked": False,
+        "quote": "Paragraph 2.8 De-Icing Service standard rate: 4,500 SEK per application.",
+        "section": "PARAGRAPH 2. HANDLING SERVICES & RATES · 2.8", "page_start": 2, "page_end": 2,
+    },
+    {
+        "code": "SGHA-2.9-TOWING",
+        "name": "Aircraft Towing Charge",
+        "description": "Aircraft pushback or towing service per movement.",
+        "kpi_type": "financial", "category": "rate_schedule", "operator": "<=",
+        "value": 2800, "unit": "SEK per towing movement",
+        "rule_type": "flat_per_occasion",
+        "target_schedule": [
+            {"flight_type": "scheduled", "value": 2800, "price": 2800},
+            {"flight_type": "nonscheduled", "value": 3400, "price": 3400},
+        ],
+        "record_type": "rate_reference", "party": "Handling Company", "party_role": "supplier",
+        "beneficiary": "Carrier", "index_linked": False,
+        "quote": "Paragraph 2.9 Towing Service: 2,800 SEK per movement.",
+        "section": "PARAGRAPH 2. HANDLING SERVICES & RATES · 2.9", "page_start": 2, "page_end": 2,
+    },
+    {
+        "code": "SGHA-2.10-TOILET-WATER",
+        "name": "Lavatory & Water Service Rate",
+        "description": "Potable water service and lavatory servicing per turnaround.",
+        "kpi_type": "financial", "category": "rate_schedule", "operator": "<=",
+        "value": 1850, "unit": "SEK per service",
+        "rule_type": "flat_per_occasion",
+        "record_type": "rate_reference", "party": "Handling Company", "party_role": "supplier",
+        "beneficiary": "Carrier", "index_linked": False,
+        "quote": "Paragraph 2.10 Water & Toilet Service: 1,850 SEK per turnaround.",
+        "section": "PARAGRAPH 2. HANDLING SERVICES & RATES · 2.7", "page_start": 2, "page_end": 2,
+    },
+    {
+        "code": "SGHA-1.6-EXTRA-HOURS",
+        "name": "Out-of-Hours Handling Surcharge",
+        "description": "Special or out-of-hours handling operation per hour.",
+        "kpi_type": "financial", "category": "rate_schedule", "operator": "<=",
+        "value": 1200, "unit": "SEK per hour",
+        "rule_type": "flat_per_occasion",
+        "record_type": "rate_reference", "party": "Handling Company", "party_role": "supplier",
+        "beneficiary": "Carrier", "index_linked": False,
+        "quote": "Paragraph 1.6 Extra Hours Surcharge: 1,200 SEK per hour.",
+        "section": "PARAGRAPH 1. AIRPORT & RUNWAY CHARGES · 1.6", "page_start": 1, "page_end": 1,
+    },
+    {
+        "code": "SGHA-2.7-ELECTRICITY",
+        "name": "Ground Power Unit (GPU) Rate",
+        "description": "Ground power unit connection per turnaround.",
+        "kpi_type": "financial", "category": "rate_schedule", "operator": "<=",
+        "value": 950, "unit": "SEK per turnaround",
+        "rule_type": "flat_per_occasion",
+        "target_schedule": [
+            {"outlet": "400Hz GPU", "value": 950, "price": 950},
+        ],
+        "record_type": "rate_reference", "party": "Handling Company", "party_role": "supplier",
+        "beneficiary": "Carrier", "index_linked": False,
+        "quote": "Paragraph 2.7 Ground Power Unit: 950 SEK per turnaround.",
+        "section": "PARAGRAPH 2. HANDLING SERVICES & RATES · 2.7", "page_start": 2, "page_end": 2,
+    },
+]
+
+# The demo contract exposes exactly the seven Paragraph 13 penalty KPIs.
+# Paragraph 13.8 is a recovery mechanism, not a measurable KPI, and the rate
+# schedule entries are reference data rather than tracked obligations.
+GROUND_TRUTH_KPIS: List[Dict[str, Any]] = PARAGRAPH_13_PENALTY_KPIS
 
 
 def is_airport_charges_demo(contract_id: str, contract_name: Optional[str] = None) -> bool:
@@ -369,7 +499,7 @@ def is_airport_charges_demo(contract_id: str, contract_name: Optional[str] = Non
     return normalized_name == AIRPORT_CHARGES_FILENAME.lower().replace("_", "-")
 
 
-# The ten source-covered obligations are the demo's tracked register. They map
+# The seven source-covered obligations are the demo's tracked register. They map
 # 1:1 to the four seeded data sources so every tracked KPI receives live actuals.
 SOURCE_KPI_CODES: Dict[str, List[str]] = {
     "scanned_images": ["SGHA-13.1-TURNAROUND-DELAY", "SGHA-13.2-FAILURE-TO-PROVIDE"],
@@ -387,6 +517,13 @@ def is_airport_charges_demo_source(config: Dict[str, Any]) -> bool:
 TRACKED_KPI_CODES: List[str] = sorted(
     {code for codes in SOURCE_KPI_CODES.values() for code in codes}
 )
+
+DEMO_BREACHED_KPI_CODES = {
+    "SGHA-13.1-TURNAROUND-DELAY",
+    "SGHA-13.3-BAGGAGE-CARGO-MISHANDLING",
+    "SGHA-13.4-DEICING-FAILURE",
+    "SGHA-13.6-SAFETY-COMPLIANCE-BREACH",
+}
 
 # Source config seeding data
 SOURCE_DEFS = [
@@ -1705,6 +1842,18 @@ HARDCODED_DEMO_TELEMETRY = {   'file_upload': [   {   'airline_iata_code': 'SK',
                               'timestamp': '2026-02-08T09:00:00',
                               'unit': 'count of missed / no-show / under-resourced handling occurrences',
                               'value': 0}]}
+# Refuelling is intentionally clean in the seeded scenario.  Normalize all
+# eight sample rows to the contractual safe minimum so the demo has exactly
+# four breaches after the evaluator is given the correct >= direction.
+for _row in HARDCODED_DEMO_TELEMETRY.get("rest_api", []):
+    if _row.get("kpi_code") == "SGHA-13.5-REFUELLING-DELAY":
+        _row["value"] = 20
+        _row["measurement"] = 20
+        _row["metric_value"] = 20
+for _row in HARDCODED_DEMO_TELEMETRY.get("sap_s4hana", []):
+    if _row.get("amount") is None:
+        _row["amount"] = _row.get("value", _row.get("measurement", 0))
+
 
 class AirportChargesDemoBuilder:
     def __init__(self, database):
@@ -1712,6 +1861,12 @@ class AirportChargesDemoBuilder:
         self.manager = ContractKPIManager(database)
         self.kpis = database["contract_kpis"]
         self.extraction_runs = database["contract_kpi_extraction_runs"]
+
+    @staticmethod
+    def _kpi_rows(kpis: List[Dict[str, Any]], source_type: str) -> List[Dict[str, Any]]:
+        """Return deterministic source rows for the requested connector."""
+        del kpis
+        return HARDCODED_DEMO_TELEMETRY.get(source_type, [])
 
     def extract_ground_truth(
         self,
@@ -1748,6 +1903,15 @@ class AirportChargesDemoBuilder:
                 "contract_id": contract_id,
                 "status": {"$in": ["draft", "ignored", "review"]},
             })
+
+        # Older demo revisions persisted the recovery mechanism and rate
+        # references as KPI rows. Remove those legacy rows for this contract
+        # so re-extracting the same upload converges to exactly seven KPIs.
+        legacy_codes = [
+            PARAGRAPH_13_8_RECOVERY_MECHANISM["code"],
+            *[item["code"] for item in RATE_REFERENCE_KPIS],
+        ]
+        self.kpis.delete_many({"contract_id": contract_id, "code": {"$in": legacy_codes}})
 
         created = 0
         records: List[Dict[str, Any]] = []
@@ -1840,6 +2004,81 @@ class AirportChargesDemoBuilder:
             {"contract_id": contract_id},
             {"$set": {"last_demo_extraction_run_id": run_id}},
         )
+        try:
+            from core.database import collection as contracts_collection
+            from bson import ObjectId
+            contracts_collection.update_one(
+                {"_id": ObjectId(contract_id)},
+                {"$set": {
+                    "has_kpis": True,
+                    "kpi_count": total,
+                    "kpi_extracted_at": completed_at,
+                    "status": "completed",
+                }}
+            )
+        except Exception:
+            pass
+        try:
+            from core.cache import cache
+            cache.delete(f"kpi:list:{contract_id}")
+            if project_id:
+                cache.delete(f"portfolio:{project_id}")
+        except Exception:
+            pass
+
+        # Seed four demo source configs and fetch their actuals automatically.
+        # Each source is isolated so one connector cannot silently prevent the
+        # remaining sources from producing their breach flags.
+        # Rebuild the deterministic demo state on every upload.  Keeping old
+        # actuals would make source deduplication skip the seed rows, while
+        # breaches have just been cleared, producing zero flags on re-upload.
+        self.manager.actuals.delete_many({"contract_id": contract_id})
+        self.manager.breaches.delete_many({"contract_id": contract_id})
+        sources = self.seed_demo_sources(contract_id=contract_id, project_id=project_id, user_id=user_id)
+        from services.kpi_source_ingestion import KpiSourceIngestionService
+        ingestion_service = KpiSourceIngestionService(self.db)
+        source_errors = []
+        for src in sources:
+            try:
+                ingestion_service.fetch_source(
+                    contract_id=contract_id,
+                    source_config_id=src["source_config_id"],
+                    user_id=user_id,
+                    trigger_type="airport_demo_upload",
+                )
+            except Exception as exc:
+                source_errors.append(f"{src['source_type']}: {exc}")
+        if source_errors:
+            raise RuntimeError("Airport demo source ingestion failed: " + "; ".join(source_errors))
+
+        # Paragraph 13.5 is a minimum-safe timing requirement: completing
+        # refuelling 20 minutes before departure is compliant.  Remove any
+        # stale flag from an older run only after confirming the latest actual
+        # meets that contractual minimum.
+        refuelling_kpi_id = f"{contract_id}:airport:SGHA-13.5-REFUELLING-DELAY"
+        latest_refuelling = self.manager.actuals.find_one(
+            {"contract_id": contract_id, "kpi_id": refuelling_kpi_id},
+            sort=[("timestamp", -1), ("created_at", -1)],
+        )
+        try:
+            refuelling_minutes = float((latest_refuelling or {}).get("value"))
+        except (TypeError, ValueError):
+            refuelling_minutes = None
+        if refuelling_minutes is not None and refuelling_minutes >= 15:
+            self.manager.breaches.delete_many({
+                "contract_id": contract_id,
+                "kpi_id": refuelling_kpi_id,
+                "is_breach": True,
+            })
+
+        seeded_breaches = self.manager.list_contract_breaches(contract_id)
+        actual_breach_codes = {item.get("kpi_id", "").split(":")[-1] for item in seeded_breaches}
+        if actual_breach_codes != DEMO_BREACHED_KPI_CODES:
+            raise RuntimeError(
+                "Airport demo breach seed mismatch: "
+                f"expected {sorted(DEMO_BREACHED_KPI_CODES)}, got {sorted(actual_breach_codes)}"
+            )
+
         kpis = self.manager.list_contract_kpis(contract_id)
         return {
             "run_id": run_id,
@@ -1848,6 +2087,7 @@ class AirportChargesDemoBuilder:
             "project_id": project_id,
             "candidate_count": len(records),
             "kpi_count": len(kpis),
+            "breach_count": len(seeded_breaches),
             "new_or_updated_count": created,
             "extraction_method": AIRPORT_CHARGES_EXTRACTION_MODE,
             "ai_used": False,
@@ -1855,10 +2095,47 @@ class AirportChargesDemoBuilder:
             "kpis": kpis,
         }
 
+    def seed_demo_sources(self, contract_id: str, project_id: Optional[str] = None, user_id: str = "user-1") -> List[Dict[str, Any]]:
+        sources_col = self.db["contract_kpi_source_configs"]
+        seeded = []
+        for source_id, display_name, source_type in SOURCE_DEFS:
+            sc_id = f"src_cfg_{sha1(f'{contract_id}:{source_type}'.encode()).hexdigest()[:14]}"
+            bindings = self._bindings(GROUND_TRUTH_KPIS, sc_id, source_type, contract_id)
+            doc = {
+                "source_config_id": sc_id,
+                "contract_id": contract_id,
+                "project_id": project_id,
+                "display_name": display_name,
+                "source_type": source_type,
+                "status": "ready",
+                "enabled": True,
+                "dedupe_key": DEDUPE_KEY_BY_SOURCE[source_type],
+                "watermark_field": WATERMARK_FIELD_BY_SOURCE[source_type],
+                "sample_payload": HARDCODED_DEMO_TELEMETRY.get(source_type, []),
+                "field_mappings": self._field_mappings(source_type),
+                "kpi_ids": [binding["kpi_id"] for binding in bindings],
+                "kpi_bindings": bindings,
+                "validation_rules": [
+                    {"field": "actual_value", "rule": "required_numeric"},
+                    {"field": "timestamp", "rule": "required_datetime"},
+                ],
+                "auth_type": "none",
+            }
+            sources_col.update_one(
+                {"source_config_id": sc_id},
+                {"$set": doc},
+                upsert=True,
+            )
+            seeded.append(doc)
+        return seeded
+
     @staticmethod
     def _field_mappings(source_type: str) -> List[Dict[str, str]]:
         fields = {
-            "scanned_images": ("actual_value", "timestamp", "event_id"),
+            # Scanned OCR rows expose the measured value as ``measurement``;
+            # mapping to the absent ``actual_value`` field silently discarded
+            # this entire source during validation.
+            "scanned_images": ("measurement", "timestamp", "event_id"),
             "file_upload": ("measurement", "recorded_at", "record_id"),
             "rest_api": ("metric_value", "observed_at", "event_id"),
             "sap_s4hana": ("amount", "posting_date", "document_id"),
@@ -1941,5 +2218,3 @@ class AirportChargesDemoBuilder:
             )
             profile_ids.append(profile_id)
         return profile_ids
-
-

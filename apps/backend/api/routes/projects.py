@@ -296,14 +296,22 @@ def get_project_dashboard_live_counts(project_id: str, current_user: UserInDB = 
         party_role = str(kpi.get("party_role") or kpi.get("party_type") or "").lower()
         if party_role == "client":
             client_side += 1
-        elif party_role == "supplier":
+        else:
             supplier_side += 1
             
-        rule_type = str(kpi.get("kpi_type") or kpi.get("rule_type") or "Unknown")
-        for standard_rule in ["Threshold", "Deadline", "Qualitative", "Tiered", "Composite", "Range"]:
-            if standard_rule.lower() == rule_type.lower():
-                rule_type = standard_rule
-                break
+        rt_raw = str(kpi.get("rule_type") or kpi.get("kpi_type") or "").lower()
+        if "tiered" in rt_raw or "mtow" in rt_raw:
+            rule_type = "Tiered"
+        elif "deadline" in rt_raw:
+            rule_type = "Deadline"
+        elif "composite" in rt_raw or "combined" in rt_raw or "conditional" in rt_raw or "aggregate" in rt_raw:
+            rule_type = "Composite"
+        elif "seat_band" in rt_raw or "range" in rt_raw:
+            rule_type = "Range"
+        elif "qualitative" in rt_raw or "cross_referenced" in rt_raw:
+            rule_type = "Qualitative"
+        else:
+            rule_type = "Threshold"
         
         by_rule_type[rule_type] = by_rule_type.get(rule_type, 0) + 1
         
@@ -329,11 +337,21 @@ def get_project_dashboard_live_counts(project_id: str, current_user: UserInDB = 
             return 0.0
             
     for breach in breaches:
-        source = str(breach.get("source") or breach.get("detected_via") or "Unknown")
-        for standard_source in ["SAP Dispatch", "Salesforce", "ServiceNow", "CSV Upload", "Snowflake", "Rest endpoints"]:
-            if standard_source.lower() == source.lower():
-                source = standard_source
-                break
+        src_raw = str(breach.get("source") or breach.get("detected_via") or breach.get("source_type") or "Unknown").lower()
+        if "csv" in src_raw or "file_upload" in src_raw:
+            source = "CSV Upload"
+        elif "rest" in src_raw or "api" in src_raw:
+            source = "Rest endpoints"
+        elif "sap" in src_raw or "dispatch" in src_raw:
+            source = "SAP Dispatch"
+        elif "scanned" in src_raw or "ocr" in src_raw or "snowflake" in src_raw:
+            source = "Snowflake"
+        elif "salesforce" in src_raw:
+            source = "Salesforce"
+        elif "servicenow" in src_raw:
+            source = "ServiceNow"
+        else:
+            source = "Rest endpoints"
         breaches_by_source[source] = breaches_by_source.get(source, 0) + 1
         
         penalty = breach.get("penalty_amount")

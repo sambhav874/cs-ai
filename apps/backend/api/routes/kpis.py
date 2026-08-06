@@ -259,7 +259,7 @@ def list_contract_kpis(
 
     cache_key = f"kpi:list:{contract_id}"
     cached = cache.get(cache_key)
-    if cached is not None:
+    if cached is not None and isinstance(cached, dict) and len(cached.get("kpis", [])) >= 10:
         return cached
 
     manager = _kpi_manager()

@@ -31,17 +31,16 @@ from services.kpi_source_ingestion import KpiSourceIngestionService
 
 SEED_USER_ID = "airport-charges-demo"
 PROJECT_PROFILE_PREFIX = "airport_charges_2025"
-RECORDS_PER_KPI = 15
+RECORDS_PER_KPI = 8
 
 # Exactly one breach-inducing row per breached KPI, placed on the most recent
-# record so the "Latest" value is the breaching one. This keeps the demo at a
-# deterministic 6 open flags across the 10 source-covered KPIs (3 of them penalty-bearing)
-# while guaranteeing at least one flagged KPI is sourced from SAP S/4HANA.
+# record so the "Latest" value is the breaching one. The upload demo has four
+# deterministic open flags across its seven source-covered KPIs.
 BREACHED_KPI_CODES_BY_SOURCE = {
-    "scanned_images": {"SGHA-1.1-LANDING", "SGHA-1.3-PASSENGER"},
-    "file_upload": set(),
-    "rest_api": {"SGHA-2.8-DEICING"},
-    "sap_s4hana": {"SGHA-1.6-EXTRA-HOURS"},
+    "scanned_images": {"SGHA-13.1-TURNAROUND-DELAY"},
+    "file_upload": {"SGHA-13.3-BAGGAGE-CARGO-MISHANDLING"},
+    "rest_api": {"SGHA-13.4-DEICING-FAILURE"},
+    "sap_s4hana": {"SGHA-13.6-SAFETY-COMPLIANCE-BREACH"},
 }
 
 
