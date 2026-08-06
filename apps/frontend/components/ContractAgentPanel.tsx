@@ -274,8 +274,8 @@ This agreement is Annex B to the 2018 IATA Standard Ground Handling Agreement (S
 
 - The Carrier must pay all agreed airport and handling charges, including landing, passenger, infrastructure, parking, electricity, de-icing, passenger services, ramp handling, and any applicable disbursements. [1]
 - The Carrier must settle invoices within 30 days and prepay a monthly deposit if requested by the Handling Company. [2]
-- The Handling Company must provide the agreed ground-handling services in accordance with the Carrier's written operational instructions and applicable aviation regulations. [2]
-- The Handling Company must ensure personnel are appropriately trained, particularly for Dangerous Goods handling, and maintain compliance with IATA, ICAO, EU OPS, JAR OPS, Live Animals Regulations, and other applicable legal requirements. [2]
+- The Handling Company must provide the agreed ground-handling services in accordance with the Carrier's written operational instructions and applicable aviation regulations. [3]
+- The Handling Company must ensure personnel are appropriately trained, particularly for Dangerous Goods handling, and maintain compliance with IATA, ICAO, EU OPS, JAR OPS, Live Animals Regulations, and other applicable legal requirements. [3]
 
 ### Deadlines and commercial mechanics
 
@@ -285,11 +285,11 @@ This agreement is Annex B to the 2018 IATA Standard Ground Handling Agreement (S
 
 ### Financial exposure
 
-The largest financial exposure comes from airport and handling charges, variable charges based on aircraft size and passenger numbers, extra opening hours, de-icing services, electricity usage, and late cancellation fees. In addition, the agreement includes recoverable service credits for turnaround delays, missed handling services, baggage mishandling, de-icing delays, refuelling delays, regulatory breaches, and poor monthly on-time performance. [3]
+The largest financial exposure comes from airport and handling charges, variable charges based on aircraft size and passenger numbers, extra opening hours, de-icing services, electricity usage, and late cancellation fees. In addition, the agreement includes recoverable service credits for turnaround delays, missed handling services, baggage mishandling, de-icing delays, refuelling delays, regulatory breaches, and poor monthly on-time performance. [4]
 
 ### Operational risk
 
-Operational risks include maintaining qualified personnel, complying with aviation safety regulations, meeting service-level targets, preventing delays, and ensuring all operational procedures follow the Carrier's written instructions. Failure to meet these obligations may result in contractual service credits recoverable by the Carrier. [2][3]
+Operational risks include maintaining qualified personnel, complying with aviation safety regulations, meeting service-level targets, preventing delays, and ensuring all operational procedures follow the Carrier's written instructions. Failure to meet these obligations may result in contractual service credits recoverable by the Carrier. [3][4]
 
 ### Recommended next steps
 
@@ -308,7 +308,7 @@ Invoices are payable within 30 days net and all prices exclude VAT. If requested
 
 Additional commercial exposure includes reimbursement of third-party disbursements at actual cost plus an 8% accounting surcharge, late cancellation charges of 50% or 100% depending on notice provided, and CPI-based annual price adjustments for most service charges. [1][2]
 
-Although the Carrier bears most payment obligations, the Handling Company may also become financially liable through contractual service credits if operational performance standards are not achieved, including turnaround delays, service failures, baggage mishandling, safety breaches, and missed service levels. [3]
+Although the Carrier bears most payment obligations, the Handling Company may also become financially liable through contractual service credits if operational performance standards are not achieved, including turnaround delays, service failures, baggage mishandling, safety breaches, and missed service levels. [4]
 
 ### Recommended control
 
@@ -316,11 +316,11 @@ Match every invoice against the aircraft MTOW, passenger count, applicable servi
 
 const demoOperationsBriefing = `## Operational obligations and compliance requirements
 
-The operational obligations focus on safe delivery of ground-handling services, regulatory compliance, personnel competence, and achievement of defined operational service levels. Most operational responsibilities belong to the Handling Company. [2]
+The operational obligations focus on safe delivery of ground-handling services, regulatory compliance, personnel competence, and achievement of defined operational service levels. Most operational responsibilities belong to the Handling Company. [3]
 
-The Handling Company must perform all technical, flight operations, and other safety-related services in accordance with the Carrier's written operating instructions. [2]
+The Handling Company must perform all technical, flight operations, and other safety-related services in accordance with the Carrier's written operating instructions. [3]
 
-Personnel involved in ground handling must receive appropriate training, particularly for Dangerous Goods handling, and must remain competent to perform their assigned duties. Operations must comply with applicable IATA, ICAO, AHM, EU OPS, JAR OPS, Live Animals Regulations, and other applicable legal requirements. [2]
+Personnel involved in ground handling must receive appropriate training, particularly for Dangerous Goods handling, and must remain competent to perform their assigned duties. Operations must comply with applicable IATA, ICAO, AHM, EU OPS, JAR OPS, Live Animals Regulations, and other applicable legal requirements. [3]
 
 The agreement also establishes measurable operational performance requirements through service-level credits. The Handling Company is expected to:
 
@@ -330,9 +330,9 @@ The agreement also establishes measurable operational performance requirements t
 - Commence de-icing within the required response time.
 - Complete refuelling before scheduled departure.
 - Maintain compliance with all applicable safety and regulatory requirements.
-- Achieve at least 95% monthly on-time turnaround performance. [3]
+- Achieve at least 95% monthly on-time turnaround performance. [4]
 
-Failure to meet these operational requirements may result in predefined contractual service credits payable to the Carrier. [3]
+Failure to meet these operational requirements may result in predefined contractual service credits payable to the Carrier. [4]
 
 ### Evidence to retain
 
@@ -1960,7 +1960,7 @@ export default function ContractAgentPanel({
           page: 1,
           page_start: 1,
           page_end: 1,
-          quote: "This Annex B is prepared in accordance with the simplified procedure whereby the Parties agree that the terms of the Main Agreement and Annex A of the SGHA of January 2018 as published by the International Air Transport Association shall apply as if such terms were repeated here in full.",
+          quote: "PREAMBLE: Prepared under the simplified procedure; the terms of the Main Agreement and Annex A of the SGHA of January 2018 (IATA) apply as if repeated in full. All prices and fees are stated in SEK",
           verified: true,
         },
         {
@@ -1968,10 +1968,10 @@ export default function ContractAgentPanel({
           ref: 2,
           document_id: contractId || undefined,
           filename: contractName || "StandardGroundHandlingAgreement.pdf",
-          page: 6,
-          page_start: 6,
-          page_end: 6,
-          quote: "The Handling Company shall ensure that all personnel assigned to, or directly involved in the ground operations are properly instructed and trained, have demonstrated their abilities in their particular duties and are aware of their responsibilities and the relationship of such duties and operations.",
+          page: 2,
+          page_start: 2,
+          page_end: 2,
+          quote: "8.1 Settlement 30 days net. All prices exclude VAT. ... 10.1 All prices above, except de-icing fluid, are index-linked to the October CPI (total index, 1980 base).",
           verified: true,
         },
         {
@@ -1979,10 +1979,10 @@ export default function ContractAgentPanel({
           ref: 3,
           document_id: contractId || undefined,
           filename: contractName || "StandardGroundHandlingAgreement.pdf",
-          page: 5,
-          page_start: 5,
-          page_end: 5,
-          quote: "8.1 Notwithstanding SubArticle 7.2 of the Main Agreement, settlement of account shall be effected 30 days net. All price’s excluding VAT.",
+          page: 2,
+          page_start: 2,
+          page_end: 2,
+          quote: "9.1 The Handling Company carries out technical/flight-operations and other safety-related services per the Carrier’s instructions, confirmed in writing. ... 9.4 Staff are trained to handle Dangerous Goods ... 9.5 The Handling Company complies with all applicable IATA, AHM, ICAO, EU OPS, JAR OPS",
           verified: true,
         },
         {
@@ -1990,10 +1990,10 @@ export default function ContractAgentPanel({
           ref: 4,
           document_id: contractId || undefined,
           filename: contractName || "StandardGroundHandlingAgreement.pdf",
-          page: 6,
-          page_start: 6,
-          page_end: 6,
-          quote: "All prices above, except deicing fluid, is matched to the index number for October month stated year (= base) according to consumer price index (total index) with 1980 as base year.",
+          page: 2,
+          page_start: 2,
+          page_end: 2,
+          quote: "The following service credits are recoverable by the Carrier from the Handling Company where the Handling Company fails to meet the service and performance standards below.",
           verified: true,
         },
       ];
