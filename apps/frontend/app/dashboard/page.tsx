@@ -399,10 +399,14 @@ function DashboardContent() {
           let statusData: ContractStatusResponse | null = null;
 
           if (isProcessing) {
-            statusData = doc.latest_job ? null : await fetchContractStatus(doc._id);
-            const latestJob = doc.latest_job || statusData?.jobs.sort((a, b) =>
+            // Always ask the status endpoint for the active job. The
+            // `latest_job` embedded in the document list can be a snapshot
+            // from the last document query and remain at an old progress
+            // value after the worker has completed.
+            statusData = await fetchContractStatus(doc._id);
+            const latestJob = statusData?.jobs.sort((a, b) =>
               new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime(),
-            )[0];
+            )[0] || doc.latest_job;
             if (latestJob) {
               isProcessing = isActiveJobStatus(latestJob.status);
               progress = latestJob.progress || 0;
@@ -723,104 +727,33 @@ function DashboardContent() {
     window.URL.revokeObjectURL(objectUrl);
   }, [apiUrl, token, projectAgentPreview]);
 
+  // Poll the authoritative contract-status endpoint while an upload is
+  // processing. This is the primary update path for the table and does not
+  // depend on Mongo change streams or a WebSocket connection.
   useEffect(() => {
-    if (!isAuthenticated || !hasInitialized || !token) return;
+    const processingDocumentKey = documents
+      .filter((doc) =>
+        doc.isProcessing ||
+        ["pending", "queued", "Syncronizing", "Indexing", "Summarizing", "processing", "Processing", "Uploaded", "uploaded"].includes(doc.status),
+      )
+      .map((doc) => doc._id)
+      .join(",");
+    if (!processingDocumentKey) return;
 
-    const processingDocs = documents.filter((doc) =>
-      doc.isProcessing ||
-      ["pending", "queued", "Syncronizing", "Indexing", "Summarizing", "processing", "Processing", "Uploaded", "uploaded"].includes(doc.status),
-    );
-    if (processingDocs.length === 0) return;
+    const pollTimer = window.setInterval(() => {
+      void fetchDocuments(paginationRef.current.currentPage);
+    }, 2000);
 
-    const wsBase = (process.env.NEXT_PUBLIC_EXTRACTOR_API_URL ?? "http://localhost:8000/api/v1").replace(/^http/, "ws");
-    const sockets: WebSocket[] = [];
-
-    processingDocs.forEach((doc) => {
-      const clientId = `${doc._id}-${Date.now()}`;
-      const ws = new WebSocket(`${wsBase}/ws/job-status/${clientId}`);
-
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: "subscribe", contract_id: doc._id }));
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data as string);
-          if (msg.type !== "job_update") return;
-
-          const latestJob = [...(msg.jobs ?? [])].sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0))[0];
-          if (!latestJob) return;
-
-          const isNowComplete = latestJob.status === "COMPLETED";
-          const isNowFailed = latestJob.status === "FAILED";
-          const isStillActive = isActiveJobStatus(latestJob.status);
-          const completedStatus = completedStatusForJob(latestJob.job_type);
-
-          setDocuments((prevDocs) =>
-            prevDocs.map((current) => {
-              if (current._id !== doc._id) return current;
-              return {
-                ...current,
-                isProcessing: isStillActive,
-                progress: latestJob.progress ?? current.progress,
-                currentStep: latestJob.current_step ?? current.currentStep,
-                activeJobId: latestJob.job_id,
-                status: isNowComplete ? completedStatus : isNowFailed ? "error" : isStillActive ? "processing" : current.status,
-                error: isNowFailed
-                  ? {
-                    step: latestJob.current_step ?? "unknown",
-                    message: latestJob.error ?? "Job failed",
-                    timestamp: new Date().toISOString(),
-                  }
-                  : current.error,
-              };
-            }),
-          );
-
-          if (isNowComplete) {
-            toast({
-              title: latestJob.job_type === "indexing" ? "Contract ingested" : "Processing complete",
-              description: latestJob.job_type === "indexing"
-                ? "The contract is indexed and ready for the agent."
-                : "All steps completed successfully.",
-            });
-            setCurrentlyProcessing(null);
-            setNeedsDocumentRefresh(true);
-            fetchUserCredits();
-            fetchProjectStats(selectedProjectId);
-            void fetchProjectPortfolio();
-            ws.close(1000, "complete");
-          } else if (isNowFailed) {
-            toast({
-              title: "Processing failed",
-              description: latestJob.error || "The processing job failed.",
-              variant: "destructive",
-            });
-            setCurrentlyProcessing(null);
-            setNeedsDocumentRefresh(true);
-            ws.close(1000, "failed");
-          }
-        } catch {
-          // Ignore malformed websocket payloads.
-        }
-      };
-
-      sockets.push(ws);
-    });
-
-    return () => sockets.forEach((ws) => ws.close(1000, "unmount"));
+    return () => window.clearInterval(pollTimer);
   }, [
     documents
-      .filter((doc) => doc.isProcessing || ["pending", "queued", "Syncronizing", "Indexing", "Summarizing", "processing", "Processing", "Uploaded", "uploaded"].includes(doc.status))
+      .filter((doc) =>
+        doc.isProcessing ||
+        ["pending", "queued", "Syncronizing", "Indexing", "Summarizing", "processing", "Processing", "Uploaded", "uploaded"].includes(doc.status),
+      )
       .map((doc) => doc._id)
       .join(","),
-    isAuthenticated,
-    hasInitialized,
-    token,
-    fetchUserCredits,
-    fetchProjectStats,
-    fetchProjectPortfolio,
-    selectedProjectId,
+    fetchDocuments,
   ]);
 
   const startProcessing = useCallback(async (contractId: string) => {

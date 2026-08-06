@@ -83,6 +83,7 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
   const [contractRoles, setContractRoles] = useState<Record<string, ContractRoles>>({})
   const [showRolePanel, setShowRolePanel] = useState(false)
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
+  const [roleValidationMessage, setRoleValidationMessage] = useState<string | null>(null)
 
   const { selectedAccountId } = useAccountContext()
   const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL
@@ -99,6 +100,7 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
       setTotalPages(0); setUploading(false); setAccountMembers([]); setIsLoadingMembers(false)
       setBulkEditorUserId(null); setBulkApproverUserId(null); setSavedRoleTemplate(null)
       setContractRoles({}); setShowRolePanel(false); setOpenDropdownId(null)
+      setRoleValidationMessage(null)
     }
   }, [isOpen])
 
@@ -212,6 +214,7 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
   }, [files, apiUrl, selectedAccountId, projectId, isProAccount, bulkEditorUserId, bulkApproverUserId, savedRoleTemplate, onUploadSuccess])
 
   const updateContractRole = (contractId: string, field: 'editorUserId' | 'approverUserId', value: string | null) => {
+    setRoleValidationMessage(null)
     setContractRoles(prev => ({
       ...prev,
       [contractId]: { ...prev[contractId], [field]: value, status: 'pending', error: undefined }
@@ -220,8 +223,11 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
 
   const applyBulkToAll = () => {
     if (!bulkEditorUserId || !bulkApproverUserId) {
-      toast({ title: "Select both roles first", variant: "destructive" }); return
+      const message = "Select both an editor and an approver before applying roles."
+      setRoleValidationMessage(message)
+      toast({ title: "Select both roles first", description: message, variant: "destructive" }); return
     }
+    setRoleValidationMessage(null)
     setContractRoles(prev => {
       const next = { ...prev }
       for (const id of Object.keys(next)) {
@@ -235,10 +241,19 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
   const saveAllRoles = useCallback(async () => {
     const entries = Object.entries(contractRoles).filter(([, r]) => r.status !== 'done')
     const incomplete = entries.filter(([, r]) => !r.editorUserId || !r.approverUserId)
-    if (incomplete.length > 0) {
-      toast({ title: "Roles missing", description: `Select editor and approver for ${incomplete.length} contract(s).`, variant: "destructive" })
+    if (entries.length === 0) {
+      const message = "There are no contracts waiting for role assignment."
+      setRoleValidationMessage(message)
+      toast({ title: "Nothing to save", description: message, variant: "destructive" })
       return
     }
+    if (incomplete.length > 0) {
+      const message = `Select both editor and approver for ${incomplete.length} contract${incomplete.length === 1 ? "" : "s"} before saving.`
+      setRoleValidationMessage(message)
+      toast({ title: "Roles missing", description: message, variant: "destructive" })
+      return
+    }
+    setRoleValidationMessage(null)
 
     let ok = 0
     for (const [cid, roles] of entries) {
@@ -569,6 +584,12 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
                   })}
                 </div>
               </div>
+              {roleValidationMessage && (
+                <div role="alert" className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                  <span>{roleValidationMessage}</span>
+                </div>
+              )}
             </div>
           )}
         </div>
