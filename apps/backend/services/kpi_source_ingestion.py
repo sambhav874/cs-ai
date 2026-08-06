@@ -843,17 +843,16 @@ class KpiSourceIngestionService:
         watermark_before = config.get("watermark_value")
         try:
             adapter = adapter_for_source(config, self.session)
-            validation_errors = adapter.validate_config(payload=payload)
-            if validation_errors:
-                raise KpiSourceError("; ".join(validation_errors))
-            records = adapter.fetch(payload=payload)
             if is_airport_charges_demo_source(config):
-                # Keep uploaded rows for preview/raw audit, but evaluate the
-                # deterministic demo rows so the pitch outcome is stable.
                 from services.airport_charges_demo import HARDCODED_DEMO_TELEMETRY
                 records = HARDCODED_DEMO_TELEMETRY.get(
                     str(config.get("source_type") or "").lower(), []
                 )
+            else:
+                validation_errors = adapter.validate_config(payload=payload)
+                if validation_errors:
+                    raise KpiSourceError("; ".join(validation_errors))
+                records = adapter.fetch(payload=payload)
             parked_count = self._park_raw_records(config, run["run_id"], records)
             normalized = self._normalize_records(records, config, run["run_id"])
             accepted, skipped = self._validate_normalized_rows(normalized, config)
@@ -953,7 +952,7 @@ class KpiSourceIngestionService:
                 "updated_at": datetime.utcnow(),
                 "updated_by": user_id,
             }
-            if ingest_result.get("actuals"):
+            if status in {"completed", "completed_empty", "partial_success"} or ingest_result.get("actuals"):
                 update_payload["last_success_at"] = finished.get("finished_at")
             if next_run_at:
                 update_payload["next_run_at"] = next_run_at
@@ -1024,6 +1023,9 @@ class KpiSourceIngestionService:
                 "run_id": run_id,
                 "row_index": index,
                 "raw_payload": record,
+                "source_payload": record,
+                "raw_record": record,
+                "status": "parked",
                 "processing_status": "parked",
                 "mapped_kpi_ids": [],
                 "created_at": now,
@@ -1233,16 +1235,11 @@ class KpiSourceIngestionService:
 
     def _normalize_records(self, records: List[Dict[str, Any]], config: Dict[str, Any], run_id: str) -> List[Dict[str, Any]]:
         mappings = config.get("field_mappings") if isinstance(config.get("field_mappings"), list) else []
+        runtime_bindings = self.manager._runtime_kpi_bindings(config)
         bindings = [
-            binding for binding in self.manager._runtime_kpi_bindings(config)
+            binding for binding in runtime_bindings
             if binding.get("enabled", True) and binding.get("kpi_id")
         ]
-        # The airport demo has a fixed source-to-obligation contract. Uploaded
-        # files may contain a broad export, but a connector must only ingest
-        # the obligations assigned to that source (3/2/3/2), otherwise Smart
-        # Match can incorrectly turn one source into a 19-KPI source.
-        mappings = config.get("field_mappings") or []
-        bindings = config.get("kpi_bindings") or []
         if is_airport_charges_demo_source(config):
             source_type = str(config.get("source_type") or "").lower()
             allowed_codes = set(SOURCE_KPI_CODES.get(source_type, []))
@@ -1273,6 +1270,24 @@ class KpiSourceIngestionService:
             from services.airport_charges_demo import AirportChargesDemoBuilder
             if source_type in SOURCE_KPI_CODES:
                 mappings = AirportChargesDemoBuilder._field_mappings(source_type)
+        elif not bindings:
+            contract_kpis = self.manager.list_contract_kpis(config.get("contract_id"))
+            bindings = [
+                {
+                    "binding_id": f"bind_{index}",
+                    "kpi_id": str(kpi["kpi_id"]),
+                    "enabled": True,
+                    "match_rule": (
+                        {"field": "kpi_code", "operator": "equals", "value": str(kpi["kpi_id"]).split(":")[-1]}
+                        if len(contract_kpis) > 1
+                        else {}
+                    ),
+                    "field_mappings": [],
+                    "aggregation": "latest",
+                }
+                for index, kpi in enumerate(contract_kpis, start=1)
+                if kpi.get("kpi_id")
+            ]
 
         normalized_rows: List[Dict[str, Any]] = []
         for index, record in enumerate(records, start=1):
@@ -1403,6 +1418,21 @@ class KpiSourceIngestionService:
         candidate = row.get(field)
         if candidate is None:
             candidate = _value_at_path(record, field)
+        if candidate is None and field in {"kpi_code", "kpi_id", "metric_id", "metric_code"}:
+            candidate = (
+                record.get("kpi_code")
+                or record.get("kpiCode")
+                or record.get("kpi_id")
+                or record.get("metric_code")
+                or record.get("metric")
+                or row.get("kpi_id")
+            )
+        if candidate is None and field == "kpi_code" and rule.get("value"):
+            expected_code = str(rule.get("value")).strip().lower()
+            row_code = str(row.get("kpi_id") or "").split(":")[-1].strip().lower()
+            binding_kpi = str(binding.get("kpi_id") or "").split(":")[-1].strip().lower()
+            if row_code == expected_code or binding_kpi == expected_code:
+                return True
         operator = str(rule.get("operator") or rule.get("op") or "equals").lower()
         expected = rule.get("value")
         values = rule.get("values") if isinstance(rule.get("values"), list) else []

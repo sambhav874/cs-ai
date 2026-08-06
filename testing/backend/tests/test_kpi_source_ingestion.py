@@ -50,8 +50,11 @@ def _matches(doc, query):
 
 class FakeCollection:
     def __init__(self, name="fake", docs=None):
+        if isinstance(name, (list, tuple, set)) and docs is None:
+            docs = name
+            name = "fake"
         self.name = name
-        self.docs = list(docs or [])
+        self.docs = [dict(d) for d in (docs or [])]
 
     def create_index(self, keys, **kwargs):
         return "index_ok"
@@ -70,6 +73,14 @@ class FakeCollection:
     def insert_one(self, doc):
         self.docs.append(dict(doc))
         return MagicMock(inserted_id="fake")
+
+    def insert_many(self, docs, ordered=False):
+        inserted = []
+        for doc in docs:
+            d = dict(doc)
+            self.docs.append(d)
+            inserted.append("fake")
+        return MagicMock(inserted_ids=inserted)
 
     def update_one(self, query, update, upsert=False):
         for doc in self.docs:
@@ -93,6 +104,13 @@ class FakeCollection:
                 doc.update((update or {}).get("$set", {}))
                 matched += 1
         return MagicMock(matched_count=matched)
+
+    def delete_many(self, query):
+        self.docs = [d for d in self.docs if not _matches(d, query)]
+        return MagicMock(deleted_count=1)
+
+    def count_documents(self, query):
+        return len([d for d in self.docs if _matches(d, query)])
 
 
 class FakeDB:
@@ -228,7 +246,7 @@ def test_source_catalog_scopes_split_uploads_from_platform_connectors():
     assert {source["source_type"] for source in user_catalog} == USER_CONFIGURABLE_SOURCE_TYPES
     assert all(source["managed_by"] == "workspace_user" for source in user_catalog)
     assert all(source["enabled_for_contract_users"] for source in user_catalog)
-    assert "sap_s4hana" in {source["source_type"] for source in platform_catalog}
+    assert "servicenow" in {source["source_type"] for source in platform_catalog}
     assert all(source["managed_by"] == "contractsense_platform" for source in platform_catalog)
     assert all(not source["enabled_for_contract_users"] for source in platform_catalog)
 

@@ -115,7 +115,7 @@ def check_contract_access(contract_doc: Optional[Dict[str, Any]], current_user: 
         is_owner = current_user.ownedAccountId == owner_id_str
         is_member = owner_id_str in user_team_ids
         direct_membership = False
-        if not is_owner and not is_member and teams_collection and isinstance(owner_id, ObjectId):
+        if not is_owner and not is_member and teams_collection is not None and isinstance(owner_id, ObjectId):
             direct_membership = bool(teams_collection.find_one(
                 {"_id": owner_id, "members.userId": user_oid},
                 {"_id": 1}

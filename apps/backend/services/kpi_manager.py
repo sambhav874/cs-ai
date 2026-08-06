@@ -1166,12 +1166,13 @@ class ContractKPIManager:
         kpi_ids = [str(item) for item in config.get("kpi_ids", []) if item]
         normalized = []
         for index, kpi_id in enumerate(dict.fromkeys(kpi_ids), start=1):
+            kpi_code = kpi_id.split(":")[-1]
             binding = {
                 "binding_id": self._source_binding_id(source_config_id, kpi_id, index),
                 "kpi_id": kpi_id,
                 "enabled": True,
                 "match_rule": (
-                    {"field": "kpi_id", "operator": "equals", "value": kpi_id}
+                    {"field": "kpi_code", "operator": "equals", "value": kpi_code}
                     if len(kpi_ids) > 1
                     else {}
                 ),
@@ -3575,10 +3576,15 @@ class ContractKPIManager:
     def _build_kpi_lookup(self, kpis: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
         lookup: Dict[str, Dict[str, Any]] = {}
         for kpi in kpis:
+            kpi_id = str(kpi.get("kpi_id") or "")
+            kpi_code = kpi_id.split(":")[-1] if ":" in kpi_id else kpi_id
             keys = [
-                kpi.get("kpi_id"),
+                kpi_id,
+                kpi_code,
+                kpi.get("code"),
                 kpi.get("name"),
                 self._normalize_lookup_key(kpi.get("name")),
+                self._normalize_lookup_key(kpi_code),
             ]
             for key in keys:
                 if key:
@@ -3586,7 +3592,7 @@ class ContractKPIManager:
         return lookup
 
     def _resolve_actual_kpi(self, row: Dict[str, Any], lookup: Dict[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        for key in ("kpi_id", "kpi_name", "name", "metric"):
+        for key in ("kpi_id", "kpi_code", "kpi_name", "name", "metric", "code"):
             value = row.get(key)
             if value is None:
                 continue

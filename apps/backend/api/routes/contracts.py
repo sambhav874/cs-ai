@@ -195,41 +195,41 @@ async def upload_contract(
                 )
                 account_to_deduct_from_pool_oid = None
 
+        if isinstance(account_to_deduct_from_pool_oid, ObjectId):
+            if page_count > 0:
+                credits_deducted_successfully = await deduct_credits(account_to_deduct_from_pool_oid, page_count)
+                if credits_deducted_successfully:
+                    collection.update_one(
+                        {"_id": contract_oid},
+                        {"$set": {"credits_deducted": True}}
+                    )
+                else:
+                    ingestion_status = "blocked_insufficient_credits"
+                    collection.update_one(
+                        {"_id": contract_oid},
+                        {"$set": {
+                            "index.status": "blocked",
+                            "index.error": f"Insufficient credits. {page_count} credits required to ingest this document.",
+                            "status": "Uploaded",
+                        }}
+                    )
+
+            if ingestion_status != "blocked_insufficient_credits":
+                try:
+                    ingestion_job_id = queue_contract_ingestion(
+                        contract_id=contract_id_str,
+                        contract_oid=contract_oid,
+                        file_id=file_id,
+                        file_name=file.filename,
+                        user_id=str(current_user.id),
+                        use_local_marker=False,
+                    )
+                    ingestion_status = "queued" if ingestion_job_id else "failed_to_queue"
+                except Exception as ingestion_error:
+                    ingestion_status = "failed_to_queue"
+                    log_exception(logger, f"Failed to queue auto-ingestion for uploaded contract {contract_id_str}", ingestion_error)
+
         if is_airport_charges_demo(contract_id_str, file.filename):
-            if isinstance(account_to_deduct_from_pool_oid, ObjectId):
-                if page_count > 0:
-                    credits_deducted_successfully = await deduct_credits(account_to_deduct_from_pool_oid, page_count)
-                    if credits_deducted_successfully:
-                        collection.update_one(
-                            {"_id": contract_oid},
-                            {"$set": {"credits_deducted": True}}
-                        )
-                    else:
-                        ingestion_status = "blocked_insufficient_credits"
-                        collection.update_one(
-                            {"_id": contract_oid},
-                            {"$set": {
-                                "index.status": "blocked",
-                                "index.error": f"Insufficient credits. {page_count} credits required to ingest this document.",
-                                "status": "Uploaded",
-                            }}
-                        )
-
-                if ingestion_status != "blocked_insufficient_credits":
-                    try:
-                        ingestion_job_id = queue_contract_ingestion(
-                            contract_id=contract_id_str,
-                            contract_oid=contract_oid,
-                            file_id=file_id,
-                            file_name=file.filename,
-                            user_id=str(current_user.id),
-                            use_local_marker=False,
-                        )
-                        ingestion_status = "queued" if ingestion_job_id else "failed_to_queue"
-                    except Exception as ingestion_error:
-                        ingestion_status = "failed_to_queue"
-                        log_exception(logger, f"Failed to queue auto-ingestion for uploaded contract {contract_id_str}", ingestion_error)
-
             try:
                 demo_builder = AirportChargesDemoBuilder(db)
                 background_tasks.add_task(
