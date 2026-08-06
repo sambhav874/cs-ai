@@ -1194,6 +1194,7 @@ export default function ContractKpiManagementPage() {
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [samplePayload, setSamplePayload] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isKpiDataPending, setIsKpiDataPending] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingSource, setIsSavingSource] = useState(false);
@@ -1495,6 +1496,7 @@ export default function ContractKpiManagementPage() {
       ].find((result) => result.error);
       if (firstError?.error) throw new Error(firstError.error);
       const loadedContract = contractResult.data || null;
+      setIsKpiDataPending(Boolean(kpiResult.data?.extraction_in_progress));
       setContract(loadedContract);
       setKpis(Array.isArray(kpiResult.data?.kpis) ? kpiResult.data.kpis : []);
       setSummary(kpiResult.data?.summary || null);
@@ -1562,6 +1564,7 @@ export default function ContractKpiManagementPage() {
         setKpiAlerts([]);
       }
     } catch (loadError) {
+      setIsKpiDataPending(false);
       const message =
         loadError instanceof Error
           ? loadError.message
@@ -1575,6 +1578,14 @@ export default function ContractKpiManagementPage() {
   useEffect(() => {
     void loadWorkspace();
   }, [loadWorkspace]);
+
+  useEffect(() => {
+    if (!isKpiDataPending) return;
+    const refreshTimer = window.setTimeout(() => {
+      void loadWorkspace({ showLoading: false });
+    }, 1500);
+    return () => window.clearTimeout(refreshTimer);
+  }, [isKpiDataPending, loadWorkspace]);
 
   useEffect(() => {
     if (selectedSource) void loadFetchRuns(selectedSource);
@@ -2398,9 +2409,19 @@ export default function ContractKpiManagementPage() {
         <div className="px-4 py-4 md:px-8">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0">
-              <h1 className="truncate text-2xl font-semibold tracking-tight text-gray-950">
-                {contract?.contract_name || "Contract Obligation Management"}
-              </h1>
+              <Link
+                href={`/contracts/${contractId}`}
+                title="View Contract PDF"
+                className="group relative flex max-w-[95%] items-center"
+              >
+                <div className="relative overflow-hidden pr-8">
+                  <h1 className="truncate text-2xl font-semibold tracking-tight text-gray-950 transition-colors group-hover:text-cs-primary">
+                    {contract?.contract_name || "Contract Obligation Management"}
+                  </h1>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-r from-transparent to-white transition-opacity group-hover:opacity-0" />
+                </div>
+                <ChevronRight className="absolute right-0 h-6 w-6 text-gray-400 opacity-50 transition-all duration-200 group-hover:translate-x-1 group-hover:text-cs-primary group-hover:opacity-100" />
+              </Link>
               <div className="mt-3 flex flex-wrap gap-2 text-xs">
                 <Pill tone="emerald">{trackedKpis.length} tracked</Pill>
                 <Pill tone="amber">{deferredCount} deferred</Pill>
@@ -2412,6 +2433,17 @@ export default function ContractKpiManagementPage() {
             </div>
 
             <div className="flex shrink-0 flex-wrap gap-2">
+              <Link href={`/contracts/${contractId}`}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5 text-xs"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  View PDF
+                </Button>
+              </Link>
               <Button
                 type="button"
                 variant="outline"
@@ -2558,8 +2590,15 @@ export default function ContractKpiManagementPage() {
         </aside>
 
         <section className="min-w-0">
-          {isLoading ? (
-            <LoadingState label="Loading KPI workspace..." embedded />
+          {isLoading || isKpiDataPending ? (
+            <LoadingState
+              label={
+                isKpiDataPending
+                  ? "Preparing KPI obligations and compliance data..."
+                  : "Loading KPI workspace..."
+              }
+              embedded
+            />
           ) : error ? (
             <div className="rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800">
               {error}

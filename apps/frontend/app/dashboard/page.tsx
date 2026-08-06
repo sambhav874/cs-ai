@@ -183,14 +183,12 @@ function DashboardContent() {
         localStorage.removeItem(`${PROJECT_SELECTION_KEY}_${selectedAccountId}`);
       }
     }
-    const targetProject = projects.find((p) => p._id === projectId);
-    const hasContracts = targetProject ? (targetProject.stats?.total_documents || 0) > 0 : false;
-    setProjectTab(projectId ? (hasContracts ? "dashboard" : "contracts") : "overview");
+    setProjectTab(projectId ? "contracts" : "overview");
     setPagination((prev) => ({ ...prev, currentPage: 1 }));
   }, [selectedAccountId, searchParams, router, projects]);
 
   useEffect(() => {
-    if ((requestedTab === "dashboard" || requestedTab === "contracts" || requestedTab === "assistant" || requestedTab === "reviews" || requestedTab === "playbooks" || requestedTab === "kpis") && requestedProjectId) {
+    if ((requestedTab === "contracts" || requestedTab === "assistant" || requestedTab === "reviews" || requestedTab === "playbooks" || requestedTab === "kpis") && requestedProjectId) {
       setProjectTab(requestedTab);
     }
   }, [requestedProjectId, requestedTab]);
@@ -204,9 +202,7 @@ function DashboardContent() {
 
   useEffect(() => {
     if (selectedProjectId && projectTab === "overview") {
-      const targetProject = projects.find((p) => p._id === selectedProjectId);
-      const hasContracts = targetProject ? (targetProject.stats?.total_documents || 0) > 0 : false;
-      setProjectTab(hasContracts ? "dashboard" : "contracts");
+      setProjectTab("contracts");
     }
   }, [selectedProjectId, projectTab, projects]);
 
@@ -1116,11 +1112,6 @@ function DashboardContent() {
   }, [projectTab, selectedProjectId, fetchProjectKpis]);
 
   useEffect(() => {
-    if (!selectedProjectId || projectTab !== "dashboard") return;
-    void Promise.all([fetchProjectPortfolio(), fetchProjectKpis()]);
-  }, [projectTab, selectedProjectId, fetchProjectPortfolio, fetchProjectKpis]);
-
-  useEffect(() => {
     if (!selectedProjectId || projectTab !== "playbooks") return;
     void fetchProjectPlaybooks();
   }, [projectTab, selectedProjectId, fetchProjectPlaybooks]);
@@ -1243,7 +1234,6 @@ function DashboardContent() {
               <div className="flex h-10 items-center border-b border-border px-6 md:px-8">
                 <div className="flex flex-1 items-center gap-5 h-full">
                 {[
-                  { id: "dashboard", label: "Dashboard" },
                   { id: "contracts", label: "Contracts" },
                   // { id: "kpis", label: "KPIs" },
                   // { id: "reviews", label: "Reviews" },
@@ -1297,47 +1287,6 @@ function DashboardContent() {
                 useLocalMarker={useLocalMarker}
                 onToggleLocalMarker={handleToggleLocalMarker}
               />
-            ) : projectTab === "dashboard" && selectedProject ? (
-              isRefreshing && documents.length === 0 ? (
-                <div className="flex h-full w-full flex-col p-8 space-y-6">
-                  <div className="flex items-center space-x-4">
-                    <div className="h-12 w-12 animate-pulse rounded-full bg-gray-200"></div>
-                    <div className="space-y-2">
-                      <div className="h-4 w-[250px] animate-pulse rounded bg-gray-200"></div>
-                      <div className="h-4 w-[200px] animate-pulse rounded bg-gray-200"></div>
-                    </div>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                    {[1, 2, 3, 4].map((i) => (
-                      <div key={i} className="h-32 w-full animate-pulse rounded-xl bg-gray-100"></div>
-                    ))}
-                  </div>
-                  <div className="h-[400px] w-full animate-pulse rounded-xl bg-gray-100"></div>
-                </div>
-              ) : documents.length === 0 ? (
-                <div className="flex h-[calc(100vh-theme(spacing.24))] flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50/50 p-8 text-center">
-                  <div className="mb-4 rounded-full bg-white p-4 shadow-sm ring-1 ring-gray-900/5">
-                    <FileText className="h-10 w-10 text-gray-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-900">No contracts uploaded yet</h3>
-                  <p className="mt-2 max-w-sm text-sm text-gray-500">
-                    Upload your first contract to automatically generate a comprehensive dashboard and begin tracking its key performance indicators.
-                  </p>
-                  <Button
-                    onClick={() => setIsUploadModalOpen(true)}
-                    className="mt-6 bg-cs-primary text-white hover:bg-cs-primary/90"
-                  >
-                    <FileUp className="mr-2 h-4 w-4" />
-                    Upload Contract
-                  </Button>
-                </div>
-              ) : selectedKpiContractId ? (
-                <ContractKpiManagementPage contractIdProp={selectedKpiContractId} />
-              ) : (
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground p-8">
-                  Select a contract in the Contracts tab to view its dashboard.
-                </div>
-              )
             ) : projectTab === "kpis" && selectedProject ? (
               <ProjectKPIWorkspace
                 kpis={projectKpis}
