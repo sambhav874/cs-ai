@@ -268,70 +268,87 @@ const quickActions = [
 
 const demoBriefing = `## Executive contract briefing
 
-This is Annex B to the 2018 IATA Standard Ground Handling Agreement (SGHA), using the simplified procedure and incorporating the Main Agreement and Annex A. It applies to ground-handling services at Lycksele Airport from 1 January through 31 December 2025. [1]
+This agreement is Annex B to the 2018 IATA Standard Ground Handling Agreement (SGHA), prepared under the simplified procedure for ground handling services at Lycksele Airport. It applies from 1 January 2025 through 31 December 2025 and incorporates the Main Agreement and Annex A. [1]
 
 ### Key obligations
 
-- The Carrier must pay the agreed airport and handling charges, including landing, passenger, infrastructure, parking, extra opening hours, electricity, de-icing, passenger services, and ramp-handling charges. [1]
-- The Handling Company must provide the agreed ground-handling services and maintain the permits, licences, and authorisations required to perform them. [2]
-- The Handling Company must ensure assigned personnel are instructed, trained, competent for their duties, and aware of their responsibilities. [2]
-- The Handling Company must comply with applicable IATA, AHM, ICAO, EU OPS, JAR OPS, dangerous-goods, animal-transport, and other applicable regulations. [2]
+- The Carrier must pay all agreed airport and handling charges, including landing, passenger, infrastructure, parking, electricity, de-icing, passenger services, ramp handling, and any applicable disbursements. [1]
+- The Carrier must settle invoices within 30 days and prepay a monthly deposit if requested by the Handling Company. [2]
+- The Handling Company must provide the agreed ground-handling services in accordance with the Carrier's written operational instructions and applicable aviation regulations. [2]
+- The Handling Company must ensure personnel are appropriately trained, particularly for Dangerous Goods handling, and maintain compliance with IATA, ICAO, EU OPS, JAR OPS, Live Animals Regulations, and other applicable legal requirements. [2]
 
 ### Deadlines and commercial mechanics
 
-- Settlement is due 30 days net, excluding VAT. The Carrier must also accept and prepay a deposit for the coming month's calculated invoice if the Handling Company requests prepayment. [3]
-- All prices except de-icing fluid may be adjusted against the Swedish consumer price index; the contract states the October 2022 base index as 384.04 and the first adjustment date as 1 January 2024. [4]
-- Services outside Paragraph 2 are charged at current local rates, and disbursements are reimbursed at cost plus an 8% accounting surcharge. [1]
+- Settlement is due 30 days net, excluding VAT. If requested, the Carrier prepays a deposit equal to the estimated invoice for the coming month. [2]
+- Most charges are indexed to the Swedish Consumer Price Index using October 2022 (384.04) as the base, with adjustments beginning on 1 January 2024. De-icing fluid is excluded from indexation. [2]
+- Disbursements are reimbursed at actual cost plus an 8% accounting surcharge. [1]
 
 ### Financial exposure
 
-The highest-risk items are rate mismatches on landing, parking, extra opening hours, electricity, de-icing, and passenger or ramp handling. Cancellation with less than 24 hours' notice can also make passenger-service and ramp-handling charges payable at 50% or 100%, depending on the notice period. [1]
+The largest financial exposure comes from airport and handling charges, variable charges based on aircraft size and passenger numbers, extra opening hours, de-icing services, electricity usage, and late cancellation fees. In addition, the agreement includes recoverable service credits for turnaround delays, missed handling services, baggage mishandling, de-icing delays, refuelling delays, regulatory breaches, and poor monthly on-time performance. [3]
 
 ### Operational risk
 
-The main non-financial risks relate to service continuity, safety compliance, training, dangerous-goods handling, permits, and adherence to airport operating procedures. Assign owners for each obligation, retain evidence of completion, and escalate unresolved exceptions before they affect flight operations. [2]
+Operational risks include maintaining qualified personnel, complying with aviation safety regulations, meeting service-level targets, preventing delays, and ensuring all operational procedures follow the Carrier's written instructions. Failure to meet these obligations may result in contractual service credits recoverable by the Carrier. [2][3]
 
 ### Recommended next steps
 
-1. Validate the current rate schedule against the latest invoices, aircraft MTOW, passenger counts, and service category.
-2. Assign accountable owners for settlement, training, permits, safety, and regulatory obligations.
-3. Track cancellation, extra-hours, de-icing, and rate-indexation events as evidence-backed exceptions.
-4. Review the agreement whenever an indexed rate, service scope, or airport procedure changes. [4]`;
+1. Verify current airport and handling charges against the latest indexed pricing schedule.
+2. Assign owners for invoicing, settlement, safety compliance, training, and operational performance.
+3. Monitor turnaround performance, cancellation events, de-icing response times, baggage handling, and safety incidents against the contractual service-level requirements.
+4. Maintain supporting evidence for every operational activity and review indexed pricing whenever CPI adjustments occur.`;
 
 const demoPaymentBriefing = `## Key financial and payment obligations
 
-The key financial and payment obligations in this agreement are the payment of agreed airport and ground-handling charges, timely settlement of invoices, and control of variable or exception-based charges. For this contract, those obligations sit primarily with the Carrier. [1]
+The primary financial obligations under this agreement relate to payment of airport charges, ground-handling charges, settlement of invoices, reimbursement of disbursements, and management of variable operational costs. These obligations primarily sit with the Carrier. [1]
 
-The covered charges include landing, passenger, infrastructure, parking, extra opening hours, electricity, de-icing, passenger services, and ramp handling. The applicable amount depends on the aircraft, MTOW, passenger count, service type, notice period, and published operating hours. [1]
+The Carrier is responsible for paying charges covering landing fees, passenger charges, infrastructure fees, parking, extra opening hours, passenger services, ramp handling, electricity, de-icing, refuelling tariffs, tow-in/pushback services, and any additional agreed handling services. Most charges vary depending on aircraft MTOW, passenger count, service type, operating hours, or usage. [1]
 
-Settlement is due 30 days net, with prices stated excluding VAT. If the Handling Company requests prepayment, the Carrier must accept and prepay a deposit based on the calculated invoice for the coming month. [3]
+Invoices are payable within 30 days net and all prices exclude VAT. If requested by the Handling Company, the Carrier must prepay a deposit based on the estimated invoice for the following month. [2]
 
-The Carrier should also monitor variable commercial exposure: services outside the agreed scope are charged at current local rates, disbursements include an 8% accounting surcharge, and cancellation with less than 24 hours' notice can trigger 50% or 100% charges for passenger and ramp handling. [1]
+Additional commercial exposure includes reimbursement of third-party disbursements at actual cost plus an 8% accounting surcharge, late cancellation charges of 50% or 100% depending on notice provided, and CPI-based annual price adjustments for most service charges. [1][2]
+
+Although the Carrier bears most payment obligations, the Handling Company may also become financially liable through contractual service credits if operational performance standards are not achieved, including turnaround delays, service failures, baggage mishandling, safety breaches, and missed service levels. [3]
 
 ### Recommended control
 
-Match every invoice to the aircraft MTOW, passenger count, service category, notice period, and current indexed rate schedule before approval. Retain the invoice, operating log, and any cancellation or exception evidence together.`;
+Match every invoice against the aircraft MTOW, passenger count, applicable service category, cancellation notice period, and current indexed rate schedule before approval. Retain invoices together with flight logs, operational records, and supporting documentation for any exceptions or service-credit claims.`;
 
 const demoOperationsBriefing = `## Operational obligations and compliance requirements
 
-The operational obligations to track are service delivery, personnel competence, safety controls, permits, and compliance with the applicable aviation and dangerous-goods regulations. In this contract, these responsibilities sit primarily with the Handling Company. [1]
+The operational obligations focus on safe delivery of ground-handling services, regulatory compliance, personnel competence, and achievement of defined operational service levels. Most operational responsibilities belong to the Handling Company. [2]
 
-The Handling Company must provide the agreed ground-handling services and hold the permits, licences, and authorisations required to operate at Lycksele Airport. [1]
+The Handling Company must perform all technical, flight operations, and other safety-related services in accordance with the Carrier's written operating instructions. [2]
 
-Personnel assigned to ground operations must be properly instructed and trained, demonstrate competence for their duties, and understand their responsibilities. Staff handling dangerous goods must also be trained under the latest ICAO Technical Instructions and IATA Dangerous Goods Regulations. [2]
+Personnel involved in ground handling must receive appropriate training, particularly for Dangerous Goods handling, and must remain competent to perform their assigned duties. Operations must comply with applicable IATA, ICAO, AHM, EU OPS, JAR OPS, Live Animals Regulations, and other applicable legal requirements. [2]
 
-The Handling Company must perform technical and flight operations services with a safety aspect in accordance with the Carrier's instructions, and it must comply with applicable IATA, AHM, ICAO, EU OPS, JAR OPS, dangerous-goods, animal-transport, and other local or international regulations. [2]
+The agreement also establishes measurable operational performance requirements through service-level credits. The Handling Company is expected to:
+
+- Deliver turnaround services within agreed timelines.
+- Provide passenger and ramp services as scheduled.
+- Prevent baggage and cargo mishandling.
+- Commence de-icing within the required response time.
+- Complete refuelling before scheduled departure.
+- Maintain compliance with all applicable safety and regulatory requirements.
+- Achieve at least 95% monthly on-time turnaround performance. [3]
+
+Failure to meet these operational requirements may result in predefined contractual service credits payable to the Carrier. [3]
 
 ### Evidence to retain
 
-- Training and competence records for assigned personnel.
-- Current permits, licences, and authorisations.
-- Written confirmation that the Carrier's operating instructions were received.
-- Safety, dangerous-goods, and service-delivery records.
+- Written operating instructions received from the Carrier.
+- Personnel training and Dangerous Goods certification records.
+- Safety compliance documentation.
+- Turnaround timing records.
+- Refuelling completion records.
+- De-icing request and response logs.
+- Baggage and cargo incident reports.
+- Monthly on-time performance reports.
+- Regulatory inspection and audit records.
 
 ### Recommended control
 
-Assign an accountable owner for each operational obligation and review the evidence before the relevant flight operation or service is delivered.`;
+Assign accountable owners for each operational obligation, continuously monitor the contractual KPIs, retain evidence supporting compliance before each flight operation, and investigate service failures immediately to minimise contractual service-credit exposure.`;
 
 const demoResponses: Record<string, string> = {
   [quickActions[0]]: demoBriefing,
@@ -543,7 +560,7 @@ function MarkdownTable({ children }: { children: ReactNode }) {
       </div>
 
       {isFullscreen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 sm:p-10"
           style={{ animation: "fadeIn 0.2s ease-out forwards" }}
           onClick={() => setIsFullscreen(false)}
@@ -558,14 +575,14 @@ function MarkdownTable({ children }: { children: ReactNode }) {
               to { transform: scale(1); opacity: 1; }
             }
           `}</style>
-          <div 
+          <div
             className="bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-6xl max-h-[85vh] flex flex-col p-6 overflow-hidden"
             style={{ animation: "scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 shrink-0">
               <h3 className="font-semibold text-gray-900 text-sm">Table Preview</h3>
-              <button 
+              <button
                 onClick={() => setIsFullscreen(false)}
                 className="p-1 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors flex items-center justify-center cursor-pointer active:scale-95"
                 title="Close"
@@ -1439,13 +1456,13 @@ export default function ContractAgentPanel({
       ? response.suggestions
       : approval
         ? [{
-            id: `${response.workflow_id}-${approval.approval_id}`,
-            action: approval.action,
-            label: approval.title || approval.description || "Approve this action",
-            preview: approval.description || null,
-            payload: approval.payload || undefined,
-            confidence: "medium" as const,
-          }]
+          id: `${response.workflow_id}-${approval.approval_id}`,
+          action: approval.action,
+          label: approval.title || approval.description || "Approve this action",
+          preview: approval.description || null,
+          payload: approval.payload || undefined,
+          confidence: "medium" as const,
+        }]
         : [];
 
     // Set or clear pending suggestion for the input area
@@ -1870,9 +1887,9 @@ export default function ContractAgentPanel({
         reference_contract_ids: explicitReferenceIds,
         displayed_document: !isProjectScope && contractId
           ? {
-              document_id: contractId,
-              filename: contractName,
-            }
+            document_id: contractId,
+            filename: contractName,
+          }
           : undefined,
         attached_documents: attachedDocumentsPayload.length ? attachedDocumentsPayload : undefined,
       };
@@ -2097,16 +2114,16 @@ export default function ContractAgentPanel({
         : null;
     const fallbackSegment: CitedSegment | null = citationText
       ? {
-          id: annotation.segment_id || `citation-${annotation.ref}`,
-          text: citationText,
-          page: annotation.page ?? null,
-          page_number: Number.isFinite(parsedPage) ? parsedPage : null,
-          page_start: annotation.page_start ?? (Number.isFinite(parsedPage) ? parsedPage : null),
-          page_end: annotation.page_end ?? null,
-          type: "citation",
-          contract_id: targetContractId,
-          contract_name: targetFilename,
-        }
+        id: annotation.segment_id || `citation-${annotation.ref}`,
+        text: citationText,
+        page: annotation.page ?? null,
+        page_number: Number.isFinite(parsedPage) ? parsedPage : null,
+        page_start: annotation.page_start ?? (Number.isFinite(parsedPage) ? parsedPage : null),
+        page_end: annotation.page_end ?? null,
+        type: "citation",
+        contract_id: targetContractId,
+        contract_name: targetFilename,
+      }
       : null;
     const segmentsForViewer = citedSegments.length ? citedSegments : fallbackSegment ? [fallbackSegment] : undefined;
     onCitationClick?.(
@@ -2129,7 +2146,7 @@ export default function ContractAgentPanel({
       ? `Page ${annotation.page_start}-${annotation.page_end}`
       : annotation.page
         ? `Page ${annotation.page}`
-      : "Source document";
+        : "Source document";
     const documentName = citationDocumentName(annotation);
     const isSourceVariant = variant === "source";
     const isUnverified = annotation.verified === false;
@@ -2500,12 +2517,12 @@ export default function ContractAgentPanel({
     const subtitle = isKpiExtraction
       ? `${artifact.kpi_count ?? 0} KPI rows · ${artifact.new_or_updated_count ?? 0} new/updated${artifact.extraction_method ? ` · ${artifact.extraction_method}` : ""}`
       : isRedline
-      ? `Redline copy${changeCount ? ` · ${changeCount} applied` : ""}${unmatchedCount ? ` · ${unmatchedCount} unmatched` : ""}${artifact.version_number ? ` · Version ${artifact.version_number}` : ""}`
-      : editAnnotations.length
-        ? `Tracked edits · ${editAnnotations.filter((edit) => edit.status === "pending").length} pending${artifact.version_number ? ` · Version ${artifact.version_number}` : ""}`
-      : artifact.editable || artifact.artifact_kind?.includes("contract_copy")
-        ? `Editable copy${artifact.version_number ? ` · Version ${artifact.version_number}` : ""}`
-        : "Generated Word document";
+        ? `Redline copy${changeCount ? ` · ${changeCount} applied` : ""}${unmatchedCount ? ` · ${unmatchedCount} unmatched` : ""}${artifact.version_number ? ` · Version ${artifact.version_number}` : ""}`
+        : editAnnotations.length
+          ? `Tracked edits · ${editAnnotations.filter((edit) => edit.status === "pending").length} pending${artifact.version_number ? ` · Version ${artifact.version_number}` : ""}`
+          : artifact.editable || artifact.artifact_kind?.includes("contract_copy")
+            ? `Editable copy${artifact.version_number ? ` · Version ${artifact.version_number}` : ""}`
+            : "Generated Word document";
 
     return (
       <div
@@ -2681,440 +2698,440 @@ export default function ContractAgentPanel({
 
   return (
     <TooltipProvider delayDuration={150}>
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-white">
-      <div className="flex h-12 shrink-0 items-center border-b border-gray-200 bg-white px-3 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2">
-          <Sparkles className="h-4 w-4 shrink-0 text-gray-700" />
-          <div className="truncate text-sm font-semibold text-gray-800">
-            {isProjectScope ? "Project Assistant" : "Contract Assistant"}
-          </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Info className="h-4 w-4 shrink-0 cursor-help text-gray-400 hover:text-gray-600" />
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="start" className="max-w-[200px] text-center">
-              <p>Search, cite, and decide from the attached contract in one agent thread.</p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-gray-500 hover:text-gray-900"
-                disabled={isThinking || sessions.length === 0}
-                title="Chat history"
-                aria-label="Chat history"
-              >
-                <History className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="max-h-80 w-72 overflow-y-auto">
-              <DropdownMenuLabel className="text-xs text-gray-500">Chat history</DropdownMenuLabel>
-              {sessions.map((session) => (
-                <DropdownMenuItem
-                  key={session.session_id}
-                  onClick={() => loadSessionMessages(session.session_id)}
-                  className="items-start gap-2"
-                >
-                  <Check className={cn("mt-0.5 h-4 w-4", sessionId === session.session_id ? "opacity-100" : "opacity-0")} />
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">{session.title || "Contract assistant chat"}</span>
-                    <span className="block text-xs text-gray-500">
-                      {session.message_count || 0} messages
-                    </span>
-                  </span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-gray-500 hover:text-gray-900"
-            disabled={isThinking}
-            title="New assistant chat"
-            onClick={startNewSession}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-gray-500 hover:text-gray-900"
-            disabled={isThinking || (!sessionId && messages.length === 0)}
-            title="Clear assistant chat"
-            onClick={clearCurrentSession}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 scroll-pb-32 sm:px-4">
-        {messages.length === 0 ? (
-          <div className="flex min-h-full flex-col justify-center pb-6">
-            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-gray-900">
-              <Sparkles className="h-7 w-7" />
+      <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-white">
+        <div className="flex h-12 shrink-0 items-center border-b border-gray-200 bg-white px-3 sm:px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <Sparkles className="h-4 w-4 shrink-0 text-gray-700" />
+            <div className="truncate text-sm font-semibold text-gray-800">
+              {isProjectScope ? "Project Assistant" : "Contract Assistant"}
             </div>
-            <h2 className="mt-4 text-center font-serif text-2xl font-light text-gray-900">
-              Hi, {userName || "there"}
-            </h2>
-
-            <div className="mt-6 grid gap-2">
-              {quickActions.map((action) => (
-                <button
-                  key={action}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-4 w-4 shrink-0 cursor-help text-gray-400 hover:text-gray-600" />
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="start" className="max-w-[200px] text-center">
+                <p>Search, cite, and decide from the attached contract in one agent thread.</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <div className="ml-auto flex items-center gap-1.5">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
                   type="button"
-                  onClick={() => handleQuickAction(action)}
-                  disabled={isThinking}
-                  className="group flex min-h-12 items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-gray-500 hover:text-gray-900"
+                  disabled={isThinking || sessions.length === 0}
+                  title="Chat history"
+                  aria-label="Chat history"
                 >
-                  <span className="min-w-0 pr-3">{action}</span>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-gray-400 group-hover:text-gray-700" />
-                </button>
-              ))}
-            </div>
+                  <History className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="max-h-80 w-72 overflow-y-auto">
+                <DropdownMenuLabel className="text-xs text-gray-500">Chat history</DropdownMenuLabel>
+                {sessions.map((session) => (
+                  <DropdownMenuItem
+                    key={session.session_id}
+                    onClick={() => loadSessionMessages(session.session_id)}
+                    className="items-start gap-2"
+                  >
+                    <Check className={cn("mt-0.5 h-4 w-4", sessionId === session.session_id ? "opacity-100" : "opacity-0")} />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{session.title || "Contract assistant chat"}</span>
+                      <span className="block text-xs text-gray-500">
+                        {session.message_count || 0} messages
+                      </span>
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-gray-500 hover:text-gray-900"
+              disabled={isThinking}
+              title="New assistant chat"
+              onClick={startNewSession}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-gray-500 hover:text-gray-900"
+              disabled={isThinking || (!sessionId && messages.length === 0)}
+              title="Clear assistant chat"
+              onClick={clearCurrentSession}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
 
           </div>
-        ) : (
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 overflow-x-hidden pb-28">
-            {messages.map((message) => {
-              const isLastAgentMessage = messages.filter((m) => m.role === "agent").slice(-1)[0]?.id === message.id;
-              const isRunning = isThinking && isLastAgentMessage;
+        </div>
 
-              return (
-                <div
-                  key={message.id}
-                  className={cn(
-                    "flex w-full",
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  )}
-                >
-                  {message.role === "agent" ? (
-                    <div className="flex flex-col gap-3 w-full">
-                      {/* Collapsible Agent Trace / Thinking */}
-                      {(message.currentThinking || message.agentTrace) && (
-                        <div className="flex flex-col gap-2 select-none">
-                          <ThinkingDisplay
-                            thinking={message.currentThinking}
-                            isStreaming={isRunning && !visibleAnswerText(message.content)}
-                            hasRedacted={false}
-                            durationMs={undefined}
-                            defaultExpanded={false}
-                          />
-
-                          {/* ReAct steps if any */}
-                          {renderAgentReActSteps(message, isRunning)}
-                        </div>
-                      )}
-
-                      {isRunning && !visibleAnswerText(message.content) && !message.currentThinking && !message.agentTrace?.length && (
-                        <div className="flex items-center gap-2 px-4 py-3 text-sm text-black/45">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <span>Thinking…</span>
-                        </div>
-                      )}
-
-                      {/* Markdown text in message container */}
-                      {visibleAnswerText(message.content) ? (
-                        <div className={cn(
-                          "prose prose-neutral prose-p:my-1 max-w-none text-black/85 leading-relaxed text-left text-xs sm:text-[13px] bg-black/[0.015] border border-black/5 hover:bg-black/[0.03] hover:border-black/10 p-4 rounded-xl transition-all duration-300 shadow-sm"
-                        )}>
-                          {renderMarkdownMessage(message)}
-                        </div>
-                      ) : null}
-
-                      {visibleAnswerText(message.content) && (
-                        <MessageActions text={visibleAnswerText(message.content)} />
-                      )}
-
-                      {message.artifacts?.length ? (
-                        <div className="space-y-2 mt-1">
-                          {message.artifacts.map(renderArtifactCard)}
-                        </div>
-                      ) : null}
-
-                      {shouldShowSources(message) && (message.citationAnnotations?.length || message.citation) ? (
-                        <div className="mt-2 flex min-w-0 flex-col gap-1 border-t border-black/5 pt-2 text-[10px] text-black/50">
-                          {message.citationAnnotations?.length ? (
-                            <>
-                              <span className="font-semibold uppercase tracking-wider text-black/40">Sources</span>
-                              <div className="mt-1 flex min-w-0 flex-col gap-1.5">
-                                {getUsedAndSortedAnnotations(message).map((annotation) => {
-                                  const docName = citationDocumentName(annotation);
-                                  const page = annotation.page ? `Page ${annotation.page}` : "Source document";
-                                  return (
-                                    <div key={annotation.ref} className="flex min-w-0 items-center gap-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleCitationClick(message, annotation)}
-                                        className="h-4 min-w-4 shrink-0 rounded border border-black/15 bg-white px-1 text-[9px] font-bold text-black hover:bg-black/5 transition-colors"
-                                      >
-                                        {annotation.ref}
-                                      </button>
-                                      <span className="truncate font-medium text-black/70" title={docName}>{docName}</span>
-                                      <span className="shrink-0 text-black/30">·</span>
-                                      <span className="shrink-0 text-black/50">{page}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </>
-                          ) : message.citation ? (
-                            <span className="min-w-0 break-words text-black/45">Source: {cleanDisplayText(message.citation)}</span>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="max-w-[80%] rounded-2xl bg-black/5 text-black px-4 py-3 text-sm shadow-sm font-medium break-words">
-                      {message.content}
-                    </div>
-                  )}
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 scroll-pb-32 sm:px-4">
+          {messages.length === 0 ? (
+            <div className="flex min-h-full flex-col justify-center pb-6">
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-white text-gray-900">
+                <Sparkles className="h-7 w-7" />
               </div>
-            );
-          })}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-      </div>
+              <h2 className="mt-4 text-center font-serif text-2xl font-light text-gray-900">
+                Hi, {userName || "there"}
+              </h2>
 
-      <div className="shrink-0 border-t border-gray-100 bg-white px-3 pb-2 pt-2">
-        {pendingSuggestion ? (
-          <div>
-            <ApprovalInput
-              suggestion={pendingSuggestion}
-              busy={isThinking}
-              onApprove={() => {
-                // Find the last agent message with a matching workflow
-                const workflowMsg = messages.find((m) => m.role === "agent" && m.workflow?.workflowId === pendingWorkflowId);
-                if (workflowMsg?.workflow) {
-                  approveWorkflow(workflowMsg.id, workflowMsg.workflow);
-                }
-              }}
-              onReject={() => {
-                const workflowMsg = messages.find((m) => m.role === "agent" && m.workflow?.workflowId === pendingWorkflowId);
-                if (workflowMsg?.workflow) {
-                  rejectWorkflow(workflowMsg.id, workflowMsg.workflow);
-                } else {
-                  // No workflow found — likely a non-workflow suggestion, just dismiss
+              <div className="mt-6 grid gap-2">
+                {quickActions.map((action) => (
+                  <button
+                    key={action}
+                    type="button"
+                    onClick={() => handleQuickAction(action)}
+                    disabled={isThinking}
+                    className="group flex min-h-12 items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <span className="min-w-0 pr-3">{action}</span>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-gray-400 group-hover:text-gray-700" />
+                  </button>
+                ))}
+              </div>
+
+            </div>
+          ) : (
+            <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 overflow-x-hidden pb-28">
+              {messages.map((message) => {
+                const isLastAgentMessage = messages.filter((m) => m.role === "agent").slice(-1)[0]?.id === message.id;
+                const isRunning = isThinking && isLastAgentMessage;
+
+                return (
+                  <div
+                    key={message.id}
+                    className={cn(
+                      "flex w-full",
+                      message.role === "user" ? "justify-end" : "justify-start"
+                    )}
+                  >
+                    {message.role === "agent" ? (
+                      <div className="flex flex-col gap-3 w-full">
+                        {/* Collapsible Agent Trace / Thinking */}
+                        {(message.currentThinking || message.agentTrace) && (
+                          <div className="flex flex-col gap-2 select-none">
+                            <ThinkingDisplay
+                              thinking={message.currentThinking}
+                              isStreaming={isRunning && !visibleAnswerText(message.content)}
+                              hasRedacted={false}
+                              durationMs={undefined}
+                              defaultExpanded={false}
+                            />
+
+                            {/* ReAct steps if any */}
+                            {renderAgentReActSteps(message, isRunning)}
+                          </div>
+                        )}
+
+                        {isRunning && !visibleAnswerText(message.content) && !message.currentThinking && !message.agentTrace?.length && (
+                          <div className="flex items-center gap-2 px-4 py-3 text-sm text-black/45">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Thinking…</span>
+                          </div>
+                        )}
+
+                        {/* Markdown text in message container */}
+                        {visibleAnswerText(message.content) ? (
+                          <div className={cn(
+                            "prose prose-neutral prose-p:my-1 max-w-none text-black/85 leading-relaxed text-left text-xs sm:text-[13px] bg-black/[0.015] border border-black/5 hover:bg-black/[0.03] hover:border-black/10 p-4 rounded-xl transition-all duration-300 shadow-sm"
+                          )}>
+                            {renderMarkdownMessage(message)}
+                          </div>
+                        ) : null}
+
+                        {visibleAnswerText(message.content) && (
+                          <MessageActions text={visibleAnswerText(message.content)} />
+                        )}
+
+                        {message.artifacts?.length ? (
+                          <div className="space-y-2 mt-1">
+                            {message.artifacts.map(renderArtifactCard)}
+                          </div>
+                        ) : null}
+
+                        {shouldShowSources(message) && (message.citationAnnotations?.length || message.citation) ? (
+                          <div className="mt-2 flex min-w-0 flex-col gap-1 border-t border-black/5 pt-2 text-[10px] text-black/50">
+                            {message.citationAnnotations?.length ? (
+                              <>
+                                <span className="font-semibold uppercase tracking-wider text-black/40">Sources</span>
+                                <div className="mt-1 flex min-w-0 flex-col gap-1.5">
+                                  {getUsedAndSortedAnnotations(message).map((annotation) => {
+                                    const docName = citationDocumentName(annotation);
+                                    const page = annotation.page ? `Page ${annotation.page}` : "Source document";
+                                    return (
+                                      <div key={annotation.ref} className="flex min-w-0 items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCitationClick(message, annotation)}
+                                          className="h-4 min-w-4 shrink-0 rounded border border-black/15 bg-white px-1 text-[9px] font-bold text-black hover:bg-black/5 transition-colors"
+                                        >
+                                          {annotation.ref}
+                                        </button>
+                                        <span className="truncate font-medium text-black/70" title={docName}>{docName}</span>
+                                        <span className="shrink-0 text-black/30">·</span>
+                                        <span className="shrink-0 text-black/50">{page}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </>
+                            ) : message.citation ? (
+                              <span className="min-w-0 break-words text-black/45">Source: {cleanDisplayText(message.citation)}</span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="max-w-[80%] rounded-2xl bg-black/5 text-black px-4 py-3 text-sm shadow-sm font-medium break-words">
+                        {message.content}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+        </div>
+
+        <div className="shrink-0 border-t border-gray-100 bg-white px-3 pb-2 pt-2">
+          {pendingSuggestion ? (
+            <div>
+              <ApprovalInput
+                suggestion={pendingSuggestion}
+                busy={isThinking}
+                onApprove={() => {
+                  // Find the last agent message with a matching workflow
+                  const workflowMsg = messages.find((m) => m.role === "agent" && m.workflow?.workflowId === pendingWorkflowId);
+                  if (workflowMsg?.workflow) {
+                    approveWorkflow(workflowMsg.id, workflowMsg.workflow);
+                  }
+                }}
+                onReject={() => {
+                  const workflowMsg = messages.find((m) => m.role === "agent" && m.workflow?.workflowId === pendingWorkflowId);
+                  if (workflowMsg?.workflow) {
+                    rejectWorkflow(workflowMsg.id, workflowMsg.workflow);
+                  } else {
+                    // No workflow found — likely a non-workflow suggestion, just dismiss
+                    setPendingSuggestion(null);
+                    setPendingWorkflowId(null);
+                  }
+                }}
+                onCustom={(instruction) => {
+                  // Reset the input, then submit the custom instruction as a new query
                   setPendingSuggestion(null);
                   setPendingWorkflowId(null);
-                }
-              }}
-              onCustom={(instruction) => {
-                // Reset the input, then submit the custom instruction as a new query
-                setPendingSuggestion(null);
-                setPendingWorkflowId(null);
 
-                // Build the request body the same way handleSubmit does
-                const followUp = `Regarding your suggestion: ${instruction}`;
+                  // Build the request body the same way handleSubmit does
+                  const followUp = `Regarding your suggestion: ${instruction}`;
 
-                // Add user message, then trigger the stream
-                const agentMessageId = `agent-${Date.now()}`;
-                setMessages((current) => [
-                  ...current,
-                  { id: `user-${Date.now()}`, role: "user", content: followUp },
-                  { id: agentMessageId, role: "agent", content: "" },
-                ]);
-                setIsThinking(true);
+                  // Add user message, then trigger the stream
+                  const agentMessageId = `agent-${Date.now()}`;
+                  setMessages((current) => [
+                    ...current,
+                    { id: `user-${Date.now()}`, role: "user", content: followUp },
+                    { id: agentMessageId, role: "agent", content: "" },
+                  ]);
+                  setIsThinking(true);
 
-                (async () => {
-                  try {
-                    if (!agentBasePath || !token) {
-                      throw new Error("Agent is not connected to the backend.");
+                  (async () => {
+                    try {
+                      if (!agentBasePath || !token) {
+                        throw new Error("Agent is not connected to the backend.");
+                      }
+                      const requestBody = {
+                        message: followUp,
+                        session_id: sessionId,
+                        ai_provider: selectedProvider,
+                        reference_contract_ids: explicitReferenceIds,
+                        displayed_document: !isProjectScope && contractId
+                          ? { document_id: contractId, filename: contractName }
+                          : undefined,
+                        attached_documents: attachedDocumentsPayload.length ? attachedDocumentsPayload : undefined,
+                      };
+                      const response = await apiFetch(`${agentBasePath}/query/stream`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(requestBody),
+                      });
+                      if (!response.ok) {
+                        const errorText = await response.text();
+                        let detail = errorText || "Agent query failed.";
+                        try { detail = JSON.parse(errorText)?.detail || detail; } catch { /* ignore */ }
+                        throw new Error(detail);
+                      }
+                      await readAgentStream(response, agentMessageId);
+                    } catch (error) {
+                      updateAgentMessage(agentMessageId, (message) => ({
+                        ...message,
+                        content: error instanceof Error ? error.message : "Agent query failed.",
+                      }));
+                    } finally {
+                      setIsThinking(false);
+                      void refreshSessions();
                     }
-                    const requestBody = {
-                      message: followUp,
-                      session_id: sessionId,
-                      ai_provider: selectedProvider,
-                      reference_contract_ids: explicitReferenceIds,
-                      displayed_document: !isProjectScope && contractId
-                        ? { document_id: contractId, filename: contractName }
-                        : undefined,
-                      attached_documents: attachedDocumentsPayload.length ? attachedDocumentsPayload : undefined,
-                    };
-                    const response = await apiFetch(`${agentBasePath}/query/stream`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify(requestBody),
-                    });
-                    if (!response.ok) {
-                      const errorText = await response.text();
-                      let detail = errorText || "Agent query failed.";
-                      try { detail = JSON.parse(errorText)?.detail || detail; } catch { /* ignore */ }
-                      throw new Error(detail);
-                    }
-                    await readAgentStream(response, agentMessageId);
-                  } catch (error) {
-                    updateAgentMessage(agentMessageId, (message) => ({
-                      ...message,
-                      content: error instanceof Error ? error.message : "Agent query failed.",
-                    }));
-                  } finally {
-                    setIsThinking(false);
-                    void refreshSessions();
-                  }
-                })();
-              }}
-            />
-            <p className="pt-1.5 text-center text-[11px] leading-4 text-gray-500">AI can make mistakes. Answers are not legal advice.</p>
-          </div>
-        ) : (
-          <>
-        <form onSubmit={handleSubmit} className="w-full rounded-2xl border border-black/10 bg-white/70 backdrop-blur-2xl p-4 shadow-[0_4px_40px_rgba(0,0,0,0.06)] transition-all duration-300 focus-within:border-black/25 focus-within:shadow-[0_4px_60px_rgba(0,0,0,0.1)]">
-          <div className="flex flex-col gap-2 min-h-[80px] text-left">
-            <textarea
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  handleSubmit();
-                }
-              }}
-              disabled={isThinking}
-              placeholder={isProjectScope ? "Ask a question about this project..." : "Ask a question about this contract..."}
-              className="w-full bg-transparent border-0 p-0 text-sm text-black placeholder-black/30 outline-none focus:ring-0 focus:outline-none resize-none min-h-[50px] leading-relaxed"
-            />
-
-            {/* Bottom Accessory Row with dropdown selectors side-by-side and Send button */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-black/8">
-              <div className="flex flex-wrap items-center gap-1.5">
-                {/* 1. Context / Doc Selector */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-2 rounded-lg border-black/10 bg-white px-3 text-xs font-medium text-black/70 shadow-sm hover:bg-black/[0.02] hover:border-black/20 hover:text-black transition-all disabled:opacity-25"
-                      disabled={isThinking || (isProjectScope ? availableReferenceDocuments.length === 0 : availableReferenceDocuments.length <= 1)}
-                    >
-                      <Link2 className="h-3.5 w-3.5 text-black/40" />
-                      <span className="max-w-[120px] truncate">{selectedReferenceLabel}</span>
-                      <ChevronDown className="h-3 w-3 text-black/30" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="top" align="start" className="max-h-80 w-72 overflow-y-auto rounded-xl border-black/10 bg-white p-1.5 text-black shadow-xl z-50">
-                    <DropdownMenuLabel className="px-2.5 py-1.5 text-[10px] font-semibold text-black/40 uppercase tracking-wider">Refer to</DropdownMenuLabel>
-                    <DropdownMenuSeparator className="bg-black/5 mx-1" />
-                    <DropdownMenuItem
-                      onSelect={(event) => {
-                        event.preventDefault();
-                        setSelectedReferenceIds([]);
-                      }}
-                      className="flex items-center justify-between rounded-lg hover:bg-black/[0.04] cursor-pointer text-xs py-2 px-2.5"
-                    >
-                      <span className="text-black/80">
-                        {isProjectScope ? "All project docs" : "Current contract only"}
-                      </span>
-                      {selectedReferenceIds.length === 0 && <Check className="h-3.5 w-3.5 text-black/40" />}
-                    </DropdownMenuItem>
-                    {!isProjectScope && (
-                      <DropdownMenuItem
-                        onSelect={(event) => {
-                          event.preventDefault();
-                          setSelectedReferenceIds(["all"]);
-                        }}
-                        className="flex items-center justify-between rounded-lg hover:bg-black/[0.04] cursor-pointer text-xs py-2 px-2.5"
-                      >
-                        <span className="text-black/80">All project docs</span>
-                        {selectedReferenceIds.includes("all") && <Check className="h-3.5 w-3.5 text-black/40" />}
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator className="bg-black/5 mx-1" />
-                    {availableReferenceDocuments.map((document) => {
-                      const isReady = isReferenceDocumentReady(document);
-                      const isChecked = (!isProjectScope && document.isCurrent) || selectedReferenceSet.has(document.id);
-                      return (
-                        <DropdownMenuCheckboxItem
-                          key={document.id}
-                          checked={isChecked}
-                          disabled={(!isProjectScope && document.isCurrent) || !isReady}
-                          onSelect={(event) => {
-                            event.preventDefault();
-                            if ((isProjectScope || !document.isCurrent) && isReady) {
-                              toggleReferenceDocument(document.id);
-                            }
-                          }}
-                          className="flex items-start gap-2.5 p-2 rounded-lg hover:bg-black/5 cursor-pointer text-xs transition-colors"
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm font-medium text-black/80">{document.name}</span>
-                            <span className="block text-[10px] text-black/40 truncate">
-                              {!isProjectScope && document.isCurrent ? "Current" : isReady ? "Indexed" : document.status || "Not indexed"}
-                            </span>
-                          </span>
-                        </DropdownMenuCheckboxItem>
-                      );
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* 2. Model Selector */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-2 rounded-lg border-black/10 bg-white px-3 text-xs font-medium shadow-sm hover:bg-black/[0.02] hover:border-black/20 transition-all disabled:opacity-25"
-                      disabled={isThinking}
-                      style={{
-                        color: selectedProvider === "claude" ? "#6b4fa0" : selectedProvider === "openai" ? "#10a37f" : selectedProvider === "gemini" ? "#4285f4" : "#333"
-                      }}
-                    >
-                      <Sparkles className="h-3.5 w-3.5" style={{ opacity: 0.7 }} />
-                      <span>{providerLabel(selectedProvider)}</span>
-                      <ChevronDown className="h-3 w-3 text-black/30" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="top" align="start" className="w-52 rounded-xl border-black/10 bg-white p-1.5 text-black shadow-xl z-50">
-                    {modelOptions.map((option) => (
-                      <DropdownMenuItem
-                        key={option.value}
-                        onClick={() => handleProviderChange(option.value)}
-                        className="flex flex-col items-start gap-0.5 rounded-lg hover:bg-black/[0.04] cursor-pointer px-2.5 py-2 text-xs"
-                      >
-                        <div className="flex items-center gap-1.5 w-full font-medium text-black/80">
-                          {option.label}
-                          {selectedProvider === option.value && <Check className="h-3.5 w-3.5 ml-auto text-black/40" />}
-                        </div>
-                        <span className="text-[10px] text-black/35">{option.description}</span>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-              {/* Send button */}
-              <Button
-                type="submit"
-                disabled={!draft.trim() || isThinking}
-                className="h-8 w-8 rounded-lg bg-black hover:bg-black/85 text-white transition-all duration-200 shadow-sm disabled:bg-black/8 disabled:text-black/20 disabled:shadow-none"
-              >
-                {isThinking ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ArrowRight className="h-4 w-4" />
-                )}
-              </Button>
+                  })();
+                }}
+              />
+              <p className="pt-1.5 text-center text-[11px] leading-4 text-gray-500">AI can make mistakes. Answers are not legal advice.</p>
             </div>
-          </div>
-        </form>
-        <p className="pt-1.5 text-center text-[11px] leading-4 text-gray-500">AI can make mistakes. Answers are not legal advice.</p>
-        </>
-        )}
+          ) : (
+            <>
+              <form onSubmit={handleSubmit} className="w-full rounded-2xl border border-black/10 bg-white/70 backdrop-blur-2xl p-4 shadow-[0_4px_40px_rgba(0,0,0,0.06)] transition-all duration-300 focus-within:border-black/25 focus-within:shadow-[0_4px_60px_rgba(0,0,0,0.1)]">
+                <div className="flex flex-col gap-2 min-h-[80px] text-left">
+                  <textarea
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        handleSubmit();
+                      }
+                    }}
+                    disabled={isThinking}
+                    placeholder={isProjectScope ? "Ask a question about this project..." : "Ask a question about this contract..."}
+                    className="w-full bg-transparent border-0 p-0 text-sm text-black placeholder-black/30 outline-none focus:ring-0 focus:outline-none resize-none min-h-[50px] leading-relaxed"
+                  />
+
+                  {/* Bottom Accessory Row with dropdown selectors side-by-side and Send button */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-black/8">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {/* 1. Context / Doc Selector */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-2 rounded-lg border-black/10 bg-white px-3 text-xs font-medium text-black/70 shadow-sm hover:bg-black/[0.02] hover:border-black/20 hover:text-black transition-all disabled:opacity-25"
+                            disabled={isThinking || (isProjectScope ? availableReferenceDocuments.length === 0 : availableReferenceDocuments.length <= 1)}
+                          >
+                            <Link2 className="h-3.5 w-3.5 text-black/40" />
+                            <span className="max-w-[120px] truncate">{selectedReferenceLabel}</span>
+                            <ChevronDown className="h-3 w-3 text-black/30" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="top" align="start" className="max-h-80 w-72 overflow-y-auto rounded-xl border-black/10 bg-white p-1.5 text-black shadow-xl z-50">
+                          <DropdownMenuLabel className="px-2.5 py-1.5 text-[10px] font-semibold text-black/40 uppercase tracking-wider">Refer to</DropdownMenuLabel>
+                          <DropdownMenuSeparator className="bg-black/5 mx-1" />
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.preventDefault();
+                              setSelectedReferenceIds([]);
+                            }}
+                            className="flex items-center justify-between rounded-lg hover:bg-black/[0.04] cursor-pointer text-xs py-2 px-2.5"
+                          >
+                            <span className="text-black/80">
+                              {isProjectScope ? "All project docs" : "Current contract only"}
+                            </span>
+                            {selectedReferenceIds.length === 0 && <Check className="h-3.5 w-3.5 text-black/40" />}
+                          </DropdownMenuItem>
+                          {!isProjectScope && (
+                            <DropdownMenuItem
+                              onSelect={(event) => {
+                                event.preventDefault();
+                                setSelectedReferenceIds(["all"]);
+                              }}
+                              className="flex items-center justify-between rounded-lg hover:bg-black/[0.04] cursor-pointer text-xs py-2 px-2.5"
+                            >
+                              <span className="text-black/80">All project docs</span>
+                              {selectedReferenceIds.includes("all") && <Check className="h-3.5 w-3.5 text-black/40" />}
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator className="bg-black/5 mx-1" />
+                          {availableReferenceDocuments.map((document) => {
+                            const isReady = isReferenceDocumentReady(document);
+                            const isChecked = (!isProjectScope && document.isCurrent) || selectedReferenceSet.has(document.id);
+                            return (
+                              <DropdownMenuCheckboxItem
+                                key={document.id}
+                                checked={isChecked}
+                                disabled={(!isProjectScope && document.isCurrent) || !isReady}
+                                onSelect={(event) => {
+                                  event.preventDefault();
+                                  if ((isProjectScope || !document.isCurrent) && isReady) {
+                                    toggleReferenceDocument(document.id);
+                                  }
+                                }}
+                                className="flex items-start gap-2.5 p-2 rounded-lg hover:bg-black/5 cursor-pointer text-xs transition-colors"
+                              >
+                                <span className="min-w-0">
+                                  <span className="block truncate text-sm font-medium text-black/80">{document.name}</span>
+                                  <span className="block text-[10px] text-black/40 truncate">
+                                    {!isProjectScope && document.isCurrent ? "Current" : isReady ? "Indexed" : document.status || "Not indexed"}
+                                  </span>
+                                </span>
+                              </DropdownMenuCheckboxItem>
+                            );
+                          })}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      {/* 2. Model Selector */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-2 rounded-lg border-black/10 bg-white px-3 text-xs font-medium shadow-sm hover:bg-black/[0.02] hover:border-black/20 transition-all disabled:opacity-25"
+                            disabled={isThinking}
+                            style={{
+                              color: selectedProvider === "claude" ? "#6b4fa0" : selectedProvider === "openai" ? "#10a37f" : selectedProvider === "gemini" ? "#4285f4" : "#333"
+                            }}
+                          >
+                            <Sparkles className="h-3.5 w-3.5" style={{ opacity: 0.7 }} />
+                            <span>{providerLabel(selectedProvider)}</span>
+                            <ChevronDown className="h-3 w-3 text-black/30" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="top" align="start" className="w-52 rounded-xl border-black/10 bg-white p-1.5 text-black shadow-xl z-50">
+                          {modelOptions.map((option) => (
+                            <DropdownMenuItem
+                              key={option.value}
+                              onClick={() => handleProviderChange(option.value)}
+                              className="flex flex-col items-start gap-0.5 rounded-lg hover:bg-black/[0.04] cursor-pointer px-2.5 py-2 text-xs"
+                            >
+                              <div className="flex items-center gap-1.5 w-full font-medium text-black/80">
+                                {option.label}
+                                {selectedProvider === option.value && <Check className="h-3.5 w-3.5 ml-auto text-black/40" />}
+                              </div>
+                              <span className="text-[10px] text-black/35">{option.description}</span>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+
+                    {/* Send button */}
+                    <Button
+                      type="submit"
+                      disabled={!draft.trim() || isThinking}
+                      className="h-8 w-8 rounded-lg bg-black hover:bg-black/85 text-white transition-all duration-200 shadow-sm disabled:bg-black/8 disabled:text-black/20 disabled:shadow-none"
+                    >
+                      {isThinking ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ArrowRight className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </form>
+              <p className="pt-1.5 text-center text-[11px] leading-4 text-gray-500">AI can make mistakes. Answers are not legal advice.</p>
+            </>
+          )}
+        </div>
       </div>
-    </div>
     </TooltipProvider>
   );
 }

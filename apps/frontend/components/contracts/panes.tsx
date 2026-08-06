@@ -904,6 +904,7 @@ function setKpiSourceMapping(
 
 export function kpiBindingsForSource(config: KPISourceConfig, kpis: ContractKPI[]) {
   const hasExplicitBindings = Array.isArray(config.kpi_bindings) && config.kpi_bindings.length > 0;
+  const inferBindings = !(config.kpi_bindings || []).some((binding) => binding?.enabled !== false);
   const bindingByKpiId = new Map<string, KPISourceBinding>();
   (config.kpi_bindings || []).forEach((binding) => {
     if (binding?.kpi_id) bindingByKpiId.set(String(binding.kpi_id), binding);
@@ -914,8 +915,8 @@ export function kpiBindingsForSource(config: KPISourceConfig, kpis: ContractKPI[
     return {
       binding_id: existing?.binding_id || sourceBindingId(config.source_config_id, kpi.kpi_id, index + 1),
       kpi_id: kpi.kpi_id,
-      enabled: existing ? existing.enabled !== false : !hasExplicitBindings && legacyKpiIds.has(kpi.kpi_id),
-      match_rule: existing?.match_rule || {},
+      enabled: existing ? inferBindings || existing.enabled !== false : inferBindings || (!hasExplicitBindings && legacyKpiIds.has(kpi.kpi_id)),
+      match_rule: existing?.match_rule && Object.keys(existing.match_rule).length > 0 ? existing.match_rule : { field: "kpi_code", operator: "equals", value: kpi.kpi_id.split(":").pop() || kpi.kpi_id },
       field_mappings: normalizeKpiSourceMappings(existing?.field_mappings),
       aggregation: existing?.aggregation || kpi.aggregation_type || "latest",
       unit_override: existing?.unit_override || null,
