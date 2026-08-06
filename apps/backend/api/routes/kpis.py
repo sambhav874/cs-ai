@@ -1073,6 +1073,30 @@ def list_contract_kpi_breaches(
     breaches = _kpi_manager().list_contract_breaches(contract_id)
     return {"contract_id": contract_id, "count": len(breaches), "breaches": breaches}
 
+class BreachUpdateModel(BaseModel):
+    status: Optional[str] = None
+
+@kpis_router.patch("/contracts/{contract_id}/kpis/breaches/{breach_id}")
+def update_contract_kpi_breach(
+    contract_id: str,
+    breach_id: str,
+    update: BreachUpdateModel,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+    contract = collection.find_one({"_id": contract_oid}, {"_id": 1, "ownerType": 1, "ownerId": 1})
+    check_contract_access(contract, current_user)
+    
+    breach = _kpi_manager().get_breach(breach_id, contract_id=contract_id)
+    if not breach:
+        raise HTTPException(status_code=404, detail="Breach not found.")
+        
+    updated = _kpi_manager().update_breach(breach_id, update.dict(exclude_unset=True), contract_id=contract_id)
+    return {"breach_id": breach_id, "breach": updated}
+
 
 @kpis_router.post("/contracts/{contract_id}/kpis/breaches/{breach_id}/flag-remediation-email")
 def flag_breach_remediation_email(

@@ -410,6 +410,22 @@ class ContractKPIManager:
         doc = self.breaches.find_one(query)
         return self._serialize(doc) if doc else None
 
+    def update_breach(self, breach_id: str, updates: Dict[str, Any], *, contract_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        query: Dict[str, Any] = {"breach_id": breach_id}
+        if contract_id:
+            query["contract_id"] = contract_id
+        
+        allowed_updates = {}
+        if "status" in updates:
+            allowed_updates["status"] = updates["status"]
+        
+        if not allowed_updates:
+            return self.get_breach(breach_id, contract_id=contract_id)
+            
+        allowed_updates["updated_at"] = datetime.utcnow()
+        self.breaches.update_one(query, {"$set": allowed_updates})
+        return self.get_breach(breach_id, contract_id=contract_id)
+
     def list_source_catalog(self, scope: Optional[str] = None) -> List[Dict[str, Any]]:
         scope_key = str(scope or "all").strip().lower()
         user_scopes = {"user", "workspace", "customer", "contract"}
@@ -1290,6 +1306,34 @@ class ContractKPIManager:
             return "Uploaded file"
         return raw.replace("_", " ").replace("-", " ").strip().title()
 
+    def _format_financial_impact(
+        self,
+        amount: Any,
+        breach: Dict[str, Any],
+        kpi: Optional[Dict[str, Any]],
+    ) -> str:
+        """Format a monetary consequence without appending the KPI's metric unit."""
+        numeric_amount = self._numeric(amount)
+        if numeric_amount is None:
+            return "not defined in the agreement"
+
+        kpi = kpi or {}
+        currency = (
+            breach.get("penalty_currency")
+            or kpi.get("consequence_currency")
+            or kpi.get("currency")
+        )
+        if not currency:
+            consequence_unit = str(kpi.get("consequence_unit") or "").upper()
+            currency_match = re.search(
+                r"\b(SEK|USD|EUR|GBP|NOK|DKK|CHF|CAD|AUD|JPY|CNY|INR)\b|([$€£])",
+                consequence_unit,
+            )
+            currency = currency_match.group(1) if currency_match else None
+
+        amount_text = f"{numeric_amount:,.0f}"
+        return f"{currency} {amount_text}" if currency else amount_text
+
     def flag_breach_remediation_email(
         self,
         breach_id: str,
@@ -1318,11 +1362,20 @@ class ContractKPIManager:
         # reader-friendly format below instead of reusing that copy.
         if "{{source}}" not in template:
             template = ""
+        else:
+            # Upgrade templates saved before the human-friendly email format.
+            # The old adjacent placeholders produced values such as
+            # "0count" and "1count".
+            template = (
+                template
+                .replace("{{threshold}}{{unit}}", "{{threshold}} {{unit}}")
+                .replace("{{actual_value}}{{unit}}", "{{actual_value}} {{unit}}")
+            )
         recipient_email, recipient_source = self._resolve_breach_email_recipient(breach, kpi)
 
         unit = str((breach.get("actual_unit") or (kpi.get("unit") if kpi else "")) or "")
         penalty = breach.get("penalty_amount")
-        penalty_text = f"{penalty:,.0f} {unit}".strip() if penalty else "not defined in the agreement"
+        penalty_text = self._format_financial_impact(penalty, breach, kpi)
         expected = breach.get("expected_value")
         threshold = breach.get("threshold_value")
         actual_val = breach.get("actual_value", "N/A")
@@ -1351,7 +1404,8 @@ class ContractKPIManager:
         period = breach.get("period_end") or breach.get("timestamp")
         period_text = period.strftime("%Y-%m-%d") if hasattr(period, "strftime") else (str(period) if period else "N/A")
         expected_text = f"{expected:,.2f}" if expected is not None else "N/A"
-        threshold_text = f"{threshold}{unit}".strip() if threshold is not None else "N/A"
+        threshold_text = f"{threshold:,.2f}" if isinstance(threshold, (int, float)) else (str(threshold) if threshold is not None else "N/A")
+        unit_suffix = f" {unit}" if unit else ""
 
         email_draft = (
             template
@@ -1373,8 +1427,8 @@ class ContractKPIManager:
                 f"We found a compliance issue under {contract_name}. Please review the details below.\n\n"
                 f"What happened\n"
                 f"- Requirement: {kpi_name}\n"
-                f"- Contract expectation: {operator_label} {expected_text}{unit}\n"
-                f"- Reported result: {actual_val}{unit}\n"
+                f"- Contract expectation: {operator_label} {expected_text}{unit_suffix}\n"
+                f"- Reported result: {actual_val}{unit_suffix}\n"
                 f"- Difference from expectation: {variance_text}\n"
                 f"- Reporting period: {period_text}\n"
                 f"- Data source: {source_label}\n"
@@ -1484,7 +1538,7 @@ class ContractKPIManager:
         severity = breach.get("severity") or "Medium"
         unit = str((breach.get("actual_unit") or (kpi.get("unit") if kpi else "")) or "")
         penalty = breach.get("penalty_amount")
-        penalty_text = f"{penalty:,.0f} {unit}".strip() if penalty else "not defined in the agreement"
+        penalty_text = self._format_financial_impact(penalty, breach, kpi)
         remediation = breach.get("remediation") or (kpi.get("remediation") if kpi else None) or "Review the discrepancy and provide a corrective action plan."
         sla = breach.get("remediation_sla") or (kpi.get("remediation_sla") if kpi else None) or "7 days"
         subject = f"Reminder: {kpi_name} breach requires remediation ({severity} severity)"
@@ -6233,8 +6287,8 @@ class ContractKPIManager:
             "We found a compliance issue under {{contract_name}}. Please review the details below.\n\n"
             "What happened\n"
             "- Requirement: {{kpi_name}}\n"
-            "- Contract expectation: {{threshold}}{{unit}}\n"
-            "- Reported result: {{actual_value}}{{unit}}\n"
+            "- Contract expectation: {{threshold}} {{unit}}\n"
+            "- Reported result: {{actual_value}} {{unit}}\n"
             "- Data source: {{source}}\n"
             "- Estimated financial impact: {{penalty_amount}}\n\n"
             "What needs to happen\n"

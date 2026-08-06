@@ -567,6 +567,17 @@ function extractCurrency(unit?: string | null): string {
   return match ? match[1] : "USD";
 }
 
+const financialImpactText = (amount: number | null, kpi?: ContractKPI) => {
+  if (amount == null) return "not defined in the agreement";
+  const consequenceUnit = String(
+    (kpi as any)?.consequence_currency || kpi?.consequence_unit || "",
+  );
+  const currency = consequenceUnit.match(
+    /\b(SEK|USD|EUR|GBP|NOK|DKK|CHF|CAD|AUD|JPY|CNY|INR)\b/i,
+  )?.[1]?.toUpperCase();
+  return `${currency ? `${currency} ` : ""}${amount.toLocaleString()}`;
+};
+
 const money = (value: number, currency?: string) =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -983,7 +994,7 @@ const buildEscalationDraft = (breach: ContractKPIBreach, kpi?: ContractKPI) => {
   const actual =
     `${breach.actual_value ?? "not reported"} ${breach.actual_unit || unit}`.trim();
   const penalty = toNumber(breach.penalty_amount ?? kpi?.consequence_value);
-  const penaltyText = penalty ? `${penalty.toLocaleString()} ${unit}`.trim() : "not defined in the agreement";
+  const penaltyText = financialImpactText(penalty, kpi);
   const variance = breach.variance_percent;
   const varianceText = variance !== null && variance !== undefined ? `${variance >= 0 ? "+" : ""}${variance.toFixed(1)}%` : "N/A";
   const severity = breach.severity || "Medium";
@@ -1269,7 +1280,8 @@ export default function ContractKpiManagementPage() {
         (breach) =>
           isKpiTracked(kpiById.get(breach.kpi_id)) &&
           breach.is_breach &&
-          breach.status !== "resolved",
+          breach.status !== "resolved" &&
+          breach.status !== "closed",
       ),
     [airportDemoFlagsReady, breaches, kpiById],
   );
@@ -1638,6 +1650,36 @@ export default function ContractKpiManagementPage() {
     const updated = result.data as ContractKPI;
     setKpis((current) =>
       current.map((item) => (item.kpi_id === updated.kpi_id ? updated : item)),
+    );
+    return updated;
+  };
+
+  const updateBreachStatus = async (breachId: string, status: string) => {
+    if (!apiUrl) return null;
+    const previous = [...breaches];
+    setBreaches((current) =>
+      current.map((b) => (b.breach_id === breachId ? { ...b, status } : b)),
+    );
+    const result = await authenticatedFetch(
+      `${apiUrl}/contracts/${contractId}/kpis/breaches/${encodeURIComponent(breachId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      },
+    );
+    if (result.error) {
+      setBreaches(previous);
+      toast({
+        title: "Could not update status",
+        description: result.error,
+        variant: "destructive",
+      });
+      return null;
+    }
+    const updated = result.data.breach as ContractKPIBreach;
+    setBreaches((current) =>
+      current.map((item) => (item.breach_id === updated.breach_id ? updated : item)),
     );
     return updated;
   };
@@ -2686,7 +2728,7 @@ export default function ContractKpiManagementPage() {
               onUploadSampleFile={uploadSourceSampleFile}
             />
           ) : activePanel === "recoveries" ? (
-            <RecoveriesPanel breaches={visibleBreaches} kpiById={kpiById} actionLogs={actionLogs} setActionLogs={setActionLogs} />
+            <RecoveriesPanel breaches={visibleBreaches} kpiById={kpiById} actionLogs={actionLogs} setActionLogs={setActionLogs} updateBreachStatus={updateBreachStatus} />
           ) : activePanel === "flags" ? (
             <FlagsPanel
               breaches={visibleBreaches}
@@ -4117,7 +4159,7 @@ function PerformanceSummaryCards({
           tone={totalExposure > 0 ? "red" : "neutral"}
         />
         <HeadlineCard
-          label="Open Compliance Flags"
+          label="Open Contract Breaches"
           value={String(openFlags.length)}
           unit={`of ${breaches.length}`}
           tone={openFlags.length > 0 ? "red" : "green"}
@@ -4183,7 +4225,7 @@ function PerformanceSummaryCards({
         <section className="group rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-gray-200 flex flex-col">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Compliance Flags
+              Contract Breaches
             </h3>
             <span
               className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium ${openFlags.length
@@ -7139,7 +7181,7 @@ function FlagsPanel({
       <section className="rounded-lg border border-gray-200 bg-white">
         <div className="border-b border-gray-100 p-4">
           <h2 className="text-base font-semibold text-gray-950">
-            Compliance Flags
+            Contract Breaches
           </h2>
           <p className="mt-1 text-xs text-gray-500">
             Detailed breach records with threshold, source, remediation, and
@@ -7155,7 +7197,7 @@ function FlagsPanel({
                 <ShieldAlert className="h-10 w-10 text-cs-primary" />
               </div>
             </div>
-            <h3 className="text-xl font-bold tracking-tight text-gray-900">Identifying Compliance Flags...</h3>
+            <h3 className="text-xl font-bold tracking-tight text-gray-900">Identifying Contract Breaches...</h3>
             <p className="mt-2 max-w-sm text-center text-sm text-gray-500">
               Analyzing ingested actuals against contract thresholds, service levels, and penalty clauses.
             </p>
@@ -7199,7 +7241,7 @@ function FlagsPanel({
           </div>
         ) : !ordered.length ? (
           <div className="px-6 py-16 text-center text-sm text-gray-500">
-            No compliance flags for tracked KPIs.
+            No contract breaches for tracked KPIs.
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
@@ -7543,11 +7585,13 @@ function RecoveriesPanel({
   kpiById,
   actionLogs,
   setActionLogs,
+  updateBreachStatus,
 }: {
   breaches: ContractKPIBreach[];
   kpiById: Map<string, ContractKPI>;
   actionLogs: Record<string, RecoveryReminderAction[]>;
   setActionLogs: React.Dispatch<React.SetStateAction<Record<string, RecoveryReminderAction[]>>>;
+  updateBreachStatus: (breachId: string, status: string) => Promise<any>;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [alertDraft, setAlertDraft] = useState<{ status?: "sent" } | null>(null);
@@ -7570,7 +7614,7 @@ function RecoveriesPanel({
       );
   }, [breaches, kpiById]);
 
-  const receivedStatuses = new Set(["resolved", "recovered", "received", "recovery_received"]);
+  const receivedStatuses = new Set(["resolved", "recovered", "received", "recovery_received", "closed"]);
   const hasPenalty = (breach: ContractKPIBreach) =>
     Math.abs(
       toNumber(breach.penalty_amount) ||
@@ -7806,7 +7850,7 @@ function RecoveriesPanel({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-8 gap-1.5 text-xs"
+                      className="h-8 w-36 gap-1.5 text-xs"
                       onClick={() =>
                         setExpandedId(expanded ? null : breach.breach_id)
                       }
@@ -7817,6 +7861,18 @@ function RecoveriesPanel({
                           }`}
                       />
                     </Button>
+                    {String(breach.status || "open").toLowerCase() !== "closed" && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-36 gap-1.5 text-xs"
+                        onClick={() => breach.breach_id && void updateBreachStatus(breach.breach_id, "closed")}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                        Mark completed
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -7944,6 +8000,18 @@ function RecoveriesPanel({
                           Reminders become available after the escalation email is dispatched.
                         </p>
                       )}
+                      {String(breach.status || "open").toLowerCase() !== "closed" && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5 text-xs"
+                          onClick={() => breach.breach_id && void updateBreachStatus(breach.breach_id, "closed")}
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                          Mark as completed
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -8045,7 +8113,7 @@ function LogsPanel({
           </h2>
           <p className="mt-1 text-xs text-gray-500">
             Source fetch runs, records accepted, duplicate skips, and generated
-            compliance flags.
+            contract breaches.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -8236,7 +8304,7 @@ function LogsPanel({
                         <RunPreviewBlock
                           title="Generated Flags"
                           rows={breachRows}
-                          empty="No compliance flags were generated in this run."
+                          empty="No contract breaches were generated in this run."
                         />
                       </div>
                     )}

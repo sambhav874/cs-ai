@@ -1038,7 +1038,15 @@ function buildEscalationDraft(breach: ContractKPIBreach, kpi?: ContractKPI) {
   const actual = `${breach.actual_value ?? "not reported"} ${breach.actual_unit || kpi?.unit || ""}`.trim();
   const unit = kpi?.unit || breach.actual_unit || "";
   const penalty = toNumber(breach.penalty_amount || kpi?.consequence_value);
-  const penaltyText = penalty ? `${penalty.toLocaleString()} ${unit}`.trim() : "not defined in the agreement";
+  const consequenceUnit = String(
+    (kpi as any)?.consequence_currency || kpi?.consequence_unit || "",
+  );
+  const currency = consequenceUnit.match(
+    /\b(SEK|USD|EUR|GBP|NOK|DKK|CHF|CAD|AUD|JPY|CNY|INR)\b/i,
+  )?.[1]?.toUpperCase();
+  const penaltyText = penalty == null
+    ? "not defined in the agreement"
+    : `${currency ? `${currency} ` : ""}${penalty.toLocaleString()}`;
   const variance = breach.variance_percent;
   const varianceText = variance !== null && variance !== undefined ? `${variance >= 0 ? "+" : ""}${variance.toFixed(1)}%` : "N/A";
   const severity = breachSeverity(breach, kpi);
@@ -2380,7 +2388,7 @@ function ComplianceFlagsDashboardView({
   return (
     <section className="rounded-lg border border-border bg-white shadow-sm">
       <div className="border-b border-border px-4 py-3">
-        <h3 className="text-base font-semibold text-gray-950">Compliance Flags</h3>
+        <h3 className="text-base font-semibold text-gray-950">Contract Breaches</h3>
         <p className="mt-1 text-xs text-muted-foreground">Tracked KPI breach checks sorted by impact and severity.</p>
       </div>
 
@@ -2395,7 +2403,7 @@ function ComplianceFlagsDashboardView({
       {!orderedBreaches.length ? (
         <div className="px-6 py-14 text-center">
           <AlertCircle className="mx-auto h-8 w-8 text-gray-300" />
-          <p className="mt-3 text-sm font-medium text-muted-foreground">No compliance flags for tracked KPIs.</p>
+          <p className="mt-3 text-sm font-medium text-muted-foreground">No contract breaches for tracked KPIs.</p>
           <p className="mt-1 text-xs text-muted-foreground">Track KPIs and upload actuals to populate this queue.</p>
         </div>
       ) : (
@@ -2694,7 +2702,7 @@ function PerformanceLogsDashboardView({
         {[
           { id: "review", label: "KPI Registry" },
           { id: "integrations", label: "Integrations" },
-          { id: "flags", label: "Compliance Flags" },
+          { id: "flags", label: "Contract Breaches" },
           { id: "logs", label: "Performance Logs" },
         ].map((item) => (
           <button
@@ -3123,7 +3131,7 @@ export function KpiRegisterPane({
         <div className="mt-3 flex flex-wrap gap-1 rounded-lg bg-gray-100 p-1 text-xs font-semibold">
           {[
             { id: "registry", label: "KPI Registry", count: sortedKpis.length },
-            { id: "flags", label: "Compliance Flags", count: visibleBreachCount },
+            { id: "flags", label: "Contract Breaches", count: visibleBreachCount },
             { id: "actuals", label: "Performance Logs", count: actuals.length },
           ].map((item) => (
             <button
@@ -3621,12 +3629,12 @@ export function KpiFlagsPane({
     <div className="p-4">
       <div className="overflow-hidden rounded-lg border border-border bg-white">
         <div className="border-b border-border px-4 py-3">
-          <h3 className="text-sm font-semibold text-gray-900">Compliance Flags</h3>
+          <h3 className="text-sm font-semibold text-gray-900">Contract Breaches</h3>
           <p className="mt-1 text-xs text-muted-foreground">Breach evaluation results from KPI actuals, sorted by flagged items first.</p>
         </div>
         {orderedBreaches.length === 0 ? (
           <div className="py-12 text-center text-sm italic text-muted-foreground">
-            No compliance flags for tracked KPIs. Track a KPI, then upload actuals to run breach checks.
+            No contract breaches for tracked KPIs. Track a KPI, then upload actuals to run breach checks.
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
