@@ -7482,22 +7482,6 @@ function FlagsPanel({
                     value={alertDraft.to || "No contract email found"}
                     tone={alertDraft.to ? "gray" : "amber"}
                   />
-                  {alertDraft.recipientSource?.source && (
-                    <DetailTile
-                      label="Recipient Source"
-                      value={[
-                        alertDraft.recipientSource.source,
-                        alertDraft.recipientSource.matched_party
-                          ? `party: ${alertDraft.recipientSource.matched_party}`
-                          : "",
-                        alertDraft.recipientSource.confidence
-                          ? `confidence: ${alertDraft.recipientSource.confidence}`
-                          : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    />
-                  )}
                   <DetailTile label="Subject" value={alertDraft.subject} />
                   <Textarea
                     value={alertDraft.body}

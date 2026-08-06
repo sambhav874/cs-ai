@@ -1355,19 +1355,28 @@ class ContractKPIManager:
         if not breach.get("is_breach"):
             raise ValueError("Cannot flag a remediation email for a non-breach evaluation record.")
 
+        # Fetch related actual telemetry document if available to enrich breach details
+        actual_doc = None
+        if breach.get("actual_id"):
+            actual_doc = self.actuals.find_one({"actual_id": breach["actual_id"]})
+        if not actual_doc and breach.get("kpi_id"):
+            actual_doc = self.actuals.find_one({"kpi_id": breach["kpi_id"]}, sort=[("timestamp", -1)])
+
+        flight_num = (actual_doc or {}).get("flight_number") or breach.get("flight_number")
+        airport_code = (actual_doc or {}).get("airport_iata_code") or breach.get("airport_iata_code")
+        airport_name = (actual_doc or {}).get("airport_name") or breach.get("airport_name")
+        station_text = f"{airport_name} ({airport_code})" if (airport_name and airport_code) else (airport_code or "N/A")
+
         kpi = self.kpis.find_one({"kpi_id": breach["kpi_id"]})
         template = (kpi.get("breach_email_template") if kpi else None) or ""
-        # Older KPI records contain the previous technical template. Require
-        # the source placeholder so existing records are upgraded to the
-        # reader-friendly format below instead of reusing that copy.
+        # Older KPI records contain legacy template placeholders. Sanitize and upgrade.
         if "{{source}}" not in template:
             template = ""
         else:
-            # Upgrade templates saved before the human-friendly email format.
-            # The old adjacent placeholders produced values such as
-            # "0count" and "1count".
             template = (
                 template
+                .replace("{{penalty_amount}} {{unit}}", "{{penalty_amount}}")
+                .replace("{{penalty_amount}}{{unit}}", "{{penalty_amount}}")
                 .replace("{{threshold}}{{unit}}", "{{threshold}} {{unit}}")
                 .replace("{{actual_value}}{{unit}}", "{{actual_value}} {{unit}}")
             )
@@ -1379,8 +1388,31 @@ class ContractKPIManager:
         expected = breach.get("expected_value")
         threshold = breach.get("threshold_value")
         actual_val = breach.get("actual_value", "N/A")
+
+        def _fmt_val(val: Any) -> str:
+            if val is None:
+                return "N/A"
+            if isinstance(val, float) and val.is_integer():
+                return f"{int(val):,}"
+            if isinstance(val, int):
+                return f"{val:,}"
+            if isinstance(val, float):
+                return f"{val:,.2f}"
+            return str(val)
+
+        expected_text = _fmt_val(expected)
+        threshold_text = _fmt_val(threshold)
+        actual_val_text = _fmt_val(actual_val)
+        unit_suffix = f" {unit}" if unit else ""
+
         variance_percent = breach.get("variance_percent")
-        variance_text = f"{variance_percent:+.1f}%" if variance_percent is not None else "N/A"
+        if variance_percent is not None:
+            variance_text = f"{variance_percent:+.1f}%"
+        elif expected == 0 and isinstance(actual_val, (int, float)) and actual_val > 0:
+            variance_text = f"+{actual_val_text}{unit_suffix} above contract target"
+        else:
+            variance_text = "N/A"
+
         severity = breach.get("severity") or "Low"
         operator = breach.get("operator") or "specified"
         operator_label = {
@@ -1403,15 +1435,12 @@ class ContractKPIManager:
         remediation_sla = breach.get("remediation_sla") or (kpi.get("remediation_sla") if kpi else None) or "7 days"
         period = breach.get("period_end") or breach.get("timestamp")
         period_text = period.strftime("%Y-%m-%d") if hasattr(period, "strftime") else (str(period) if period else "N/A")
-        expected_text = f"{expected:,.2f}" if expected is not None else "N/A"
-        threshold_text = f"{threshold:,.2f}" if isinstance(threshold, (int, float)) else (str(threshold) if threshold is not None else "N/A")
-        unit_suffix = f" {unit}" if unit else ""
 
         email_draft = (
             template
             .replace("{{kpi_name}}", kpi_name)
             .replace("{{threshold}}", threshold_text)
-            .replace("{{actual_value}}", str(actual_val))
+            .replace("{{actual_value}}", actual_val_text)
             .replace("{{unit}}", unit)
             .replace("{{penalty_amount}}", penalty_text)
             .replace("{{remediation}}", remediation)
@@ -1420,6 +1449,8 @@ class ContractKPIManager:
             .replace("{{source}}", source_label)
         )
         if not email_draft.strip():
+            flight_line = f"- Flight Number: {flight_num}\n" if flight_num else ""
+            station_line = f"- Station / Location: {station_text}\n" if station_text != "N/A" else ""
             clause_block = f'\nContract reference: {section}\n"{clause}"\n' if section or clause else ""
             email_draft = (
                 f"Subject: Action needed: {kpi_name} did not meet the contract requirement\n\n"
@@ -1428,8 +1459,10 @@ class ContractKPIManager:
                 f"What happened\n"
                 f"- Requirement: {kpi_name}\n"
                 f"- Contract expectation: {operator_label} {expected_text}{unit_suffix}\n"
-                f"- Reported result: {actual_val}{unit_suffix}\n"
+                f"- Reported result: {actual_val_text}{unit_suffix}\n"
                 f"- Difference from expectation: {variance_text}\n"
+                f"{flight_line}"
+                f"{station_line}"
                 f"- Reporting period: {period_text}\n"
                 f"- Data source: {source_label}\n"
                 f"- Severity: {severity}\n\n"

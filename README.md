@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./apps/frontend/public/logo.png" alt="ContractSense Logo" width="200" />
+</p>
+
 # ContractSense — AI-Powered Contract Analysis Platform
 
 ContractSense is a full-stack application that ingests PDF contracts, converts them to structured markdown via OCR, generates executive summaries via LLM, and performs deep question-answering (RAG) over the document. Results are surfaced in a rich Next.js dashboard with real-time progress via WebSockets.

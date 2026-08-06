@@ -2526,13 +2526,6 @@ function ComplianceFlagsDashboardView({
                   ContractSense did not find an email in the KPI contact field, contract parties, contacts, or indexed contract text.
                 </div>
               )}
-              {alertDraft.recipientSource?.source && alertDraft.to && (
-                <KpiDetail label="Recipient Source" value={[
-                  alertDraft.recipientSource.source,
-                  alertDraft.recipientSource.matched_party ? `party: ${alertDraft.recipientSource.matched_party}` : "",
-                  alertDraft.recipientSource.confidence ? `confidence: ${alertDraft.recipientSource.confidence}` : "",
-                ].filter(Boolean).join(" · ")} />
-              )}
               <KpiDetail label="Subject" value={alertDraft.subject} />
               <Textarea value={alertDraft.body} onChange={(event) => setAlertDraft({ ...alertDraft, body: event.target.value })} className="min-h-[320px] resize-y font-mono text-xs" />
             </div>
