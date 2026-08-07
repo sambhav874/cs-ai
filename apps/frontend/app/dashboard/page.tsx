@@ -95,6 +95,9 @@ function DashboardContent() {
   const requestedSessionId = searchParams.get("session_id");
   const requestedView = searchParams.get("view");
   const [projects, setProjects] = useState<Project[]>([]);
+  const [paginatedProjects, setPaginatedProjects] = useState<Project[]>([]);
+  const [projectsPage, setProjectsPage] = useState(1);
+  const [projectsTotal, setProjectsTotal] = useState(0);
   const [selectedProjectId, setSelectedProjectIdState] = useState<string | null>(null);
   const [projectStats, setProjectStats] = useState<ProjectStats>(emptyStats);
   const [projectSearch, setProjectSearch] = useState("");
@@ -283,7 +286,7 @@ function DashboardContent() {
       const params = new URLSearchParams();
       if (selectedAccountId) params.set("context_id", selectedAccountId);
       const qs = params.toString();
-      const url = `${apiUrl}/projects/${qs ? `?${qs}` : ""}`;
+      const url = `${apiUrl}/projects/all${qs ? `?${qs}` : ""}`;
       const { data, error } = await authenticatedFetch(url);
       if (error) {
         if (handleApiError(error)) return;
@@ -316,6 +319,39 @@ function DashboardContent() {
       setIsProjectLoading(false);
     }
   }, [isAuthenticated, accountInitialized, apiUrl, selectedAccountId, requestedProjectId, requestedView, authenticatedFetch, handleApiError]);
+
+  const fetchPaginatedProjects = useCallback(async () => {
+    if (!isAuthenticated || !accountInitialized || !apiUrl) return;
+    setIsProjectLoading(true);
+    try {
+      const limit = 10; // max of 10 projects in one page
+      const skip = (projectsPage - 1) * limit;
+      const params = new URLSearchParams();
+      if (selectedAccountId) params.set("context_id", selectedAccountId);
+      params.set("skip", skip.toString());
+      params.set("limit", limit.toString());
+      if (projectSearch) params.set("search", projectSearch);
+      
+      const url = `${apiUrl}/projects/?${params.toString()}`;
+      const { data, error } = await authenticatedFetch(url);
+      
+      if (error) {
+        if (handleApiError(error)) return;
+        throw new Error(error);
+      }
+      
+      setPaginatedProjects(data.items || []);
+      setProjectsTotal(data.total || 0);
+    } catch (error) {
+      console.error("Failed to fetch paginated projects:", error);
+    } finally {
+      setIsProjectLoading(false);
+    }
+  }, [isAuthenticated, accountInitialized, apiUrl, selectedAccountId, projectsPage, projectSearch, authenticatedFetch, handleApiError]);
+
+  useEffect(() => {
+    fetchPaginatedProjects();
+  }, [fetchPaginatedProjects]);
 
   const fetchProjectStats = useCallback(async (projectId: string | null) => {
     if (!isAuthenticated || !apiUrl || !projectId) {
@@ -1201,7 +1237,7 @@ function DashboardContent() {
           <section className={cx("min-h-0 flex-1 bg-background", projectTab === "assistant" ? "overflow-hidden" : "overflow-y-auto")}>
             {!selectedProjectId ? (
               <ProjectOverview
-                projects={filteredProjects}
+                projects={paginatedProjects}
                 selectedProject={selectedProject}
                 onSelectProject={setSelectedProjectId}
                 projectSearch={projectSearch}
@@ -1210,15 +1246,21 @@ function DashboardContent() {
                 newProjectName={newProjectName}
                 newProjectDescription={newProjectDescription}
                 isCreatingProject={isCreatingProject}
-                onProjectSearchChange={setProjectSearch}
+                onProjectSearchChange={(val) => {
+                  setProjectSearch(val);
+                  setProjectsPage(1); // Reset to page 1 on search
+                }}
                 onProjectDialogChange={setIsProjectDialogOpen}
                 onProjectNameChange={setNewProjectName}
                 onProjectDescriptionChange={setNewProjectDescription}
                 onCreateProject={handleCreateProject}
-                onRefresh={handleManualRefresh}
-                isRefreshing={isRefreshing || isCreditLoading}
+                onRefresh={fetchPaginatedProjects}
+                isRefreshing={isProjectLoading}
                 useLocalMarker={useLocalMarker}
-                onToggleLocalMarker={handleToggleLocalMarker}
+                onToggleLocalMarker={setUseLocalMarker}
+                currentPage={projectsPage}
+                totalPages={Math.ceil(projectsTotal / 10)}
+                onPageChange={setProjectsPage}
               />
             ) : projectTab === "kpis" && selectedProject ? (
               <ProjectKPIWorkspace

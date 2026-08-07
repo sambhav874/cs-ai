@@ -220,3 +220,22 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=120)
     description: Optional[str] = Field(None, max_length=500)
+
+
+class ProjectLightInDB(BaseModel):
+    id: str = Field(alias="_id")
+    name: str
+    ownerId: ObjectIdStr
+    ownerType: Literal["user", "team"]
+    createdAt: datetime
+    updatedAt: datetime
+    
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_encoders={ObjectId: str}
+    )
+
+class PaginatedProjects(BaseModel):
+    items: List[ProjectInDB]
+    total: int
+

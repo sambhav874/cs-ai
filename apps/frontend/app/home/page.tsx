@@ -20,7 +20,7 @@ export default function HomePage() {
     if (!isAuthenticated) return;
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
-      const projectsRes = await authenticatedFetch(`${apiUrl}/projects/`);
+      const projectsRes = await authenticatedFetch(`${apiUrl}/projects/all`);
       const projectsList = Array.isArray(projectsRes.data) ? projectsRes.data : [];
       
       if (projectsList.length > 0) {

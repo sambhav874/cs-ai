@@ -3,11 +3,11 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 
 from core.database import collection, projects_collection, teams_collection
 from core.security import get_current_active_user
-from models.domain import ProjectCreate, ProjectInDB, ProjectUpdate, UserInDB
+from models.domain import ProjectCreate, ProjectInDB, ProjectUpdate, UserInDB, PaginatedProjects, ProjectLightInDB
 
 logger = logging.getLogger(__name__)
 
@@ -184,17 +184,109 @@ def verify_project_access(project_id: str, current_user: UserInDB) -> Dict[str, 
     return project
 
 
-@router.get("/", response_model=List[ProjectInDB])
-def list_projects(
+@router.get("/all", response_model=List[ProjectLightInDB])
+def list_projects_all(
     context_id: Optional[str] = Query(None, description="Account/team id, or personal"),
     current_user: UserInDB = Depends(get_current_active_user),
 ):
     owner_type, owner_id = _resolve_owner(current_user, context_id)
-    default_project = ensure_default_project(owner_type, owner_id)
-    assign_unprojected_contracts(owner_type, owner_id, default_project["_id"])
-
     projects = list(projects_collection.find({"ownerType": owner_type, "ownerId": owner_id}).sort("updatedAt", -1))
-    return [_serialize_project(project, _project_stats(project, current_user)) for project in projects]
+    
+    serialized_projects = []
+    for project in projects:
+        serialized_projects.append({
+            "_id": str(project["_id"]),
+            "name": project.get("name", "Untitled Project"),
+            "ownerId": str(project.get("ownerId")),
+            "ownerType": project.get("ownerType"),
+            "createdAt": project.get("createdAt"),
+            "updatedAt": project.get("updatedAt"),
+        })
+    return serialized_projects
+
+def get_bulk_project_stats(project_ids: List[ObjectId], owner_type: str, owner_id: ObjectId, current_user: UserInDB) -> Dict[str, Dict[str, int]]:
+    # This is an optimization to fetch stats for multiple projects at once
+    # However, to be fully safe with existing access logic, we could just filter by project_ids and owner
+    # For now, let's implement a single aggregation for all project_ids that belong to the user
+    user_oid = ObjectId(current_user.id)
+    match_query: Dict[str, Any] = {
+        "projectId": {"$in": project_ids},
+        "ownerType": owner_type,
+        "ownerId": owner_id,
+    }
+    
+    if owner_type == "team" and current_user.ownedAccountId != str(owner_id):
+        match_query["$or"] = [
+            {"uploaded_by": user_oid},
+            {"workflowRoles.editorUserId": user_oid},
+            {"workflowRoles.approverUserId": user_oid},
+        ]
+        
+    processing_statuses = ["Indexing", "Summarizing", "Processing", "queued", "pending", "processing", "Queued"]
+    
+    pipeline = [
+        {"$match": match_query},
+        {
+            "$group": {
+                "_id": "$projectId",
+                "total_documents": {"$sum": 1},
+                "processing_count": {"$sum": {"$cond": [{"$in": ["$status", processing_statuses]}, 1, 0]}},
+            }
+        },
+    ]
+    
+    stats_list = list(collection.aggregate(pipeline))
+    stats_map = {}
+    
+    empty_stats = {
+        "total_documents": 0,
+        "processing_count": 0,
+    }
+    
+    for stat in stats_list:
+        pid = str(stat["_id"])
+        stat.pop("_id", None)
+        stats_map[pid] = {key: int(stat.get(key, 0)) for key in empty_stats}
+        
+    return stats_map
+
+@router.get("/", response_model=PaginatedProjects)
+def list_projects(
+    background_tasks: BackgroundTasks,
+    context_id: Optional[str] = Query(None, description="Account/team id, or personal"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=1000),
+    search: Optional[str] = Query(None, description="Search by project name"),
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    owner_type, owner_id = _resolve_owner(current_user, context_id)
+    default_project = ensure_default_project(owner_type, owner_id)
+    
+    # Run synchronously-blocking updates in background instead
+    background_tasks.add_task(assign_unprojected_contracts, owner_type, owner_id, default_project["_id"])
+
+    base_query = {"ownerType": owner_type, "ownerId": owner_id}
+    if search:
+        base_query["name"] = {"$regex": search, "$options": "i"}
+
+    total = projects_collection.count_documents(base_query)
+    projects = list(projects_collection.find(base_query).sort("updatedAt", -1).skip(skip).limit(limit))
+    
+    project_ids = [p["_id"] for p in projects]
+    stats_map = get_bulk_project_stats(project_ids, owner_type, owner_id, current_user)
+    
+    empty_stats = {
+        "total_documents": 0,
+        "processing_count": 0,
+    }
+
+    serialized_items = []
+    for project in projects:
+        pid = str(project["_id"])
+        p_stats = stats_map.get(pid, empty_stats)
+        serialized_items.append(_serialize_project(project, p_stats))
+        
+    return {"items": serialized_items, "total": total}
 
 
 @router.post("/", response_model=ProjectInDB)

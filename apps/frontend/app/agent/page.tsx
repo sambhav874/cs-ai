@@ -474,7 +474,7 @@ export default function StandaloneAgentPage() {
           queryParams.set("context_id", selectedAccountId);
         }
         const qs = queryParams.toString();
-        const url = `${apiUrl}/projects/${qs ? `?${qs}` : ""}`;
+        const url = `${apiUrl}/projects/all${qs ? `?${qs}` : ""}`;
         const { data, error, response } = await apiJson(url);
         if (error || !response?.ok) {
           console.error("Failed to load projects details:", error);

@@ -27,6 +27,9 @@ export function ProjectOverview({
   isRefreshing,
   useLocalMarker,
   onToggleLocalMarker,
+  currentPage = 1,
+  totalPages = 1,
+  onPageChange,
 }: {
   projects: Project[];
   selectedProject?: Project | null;
@@ -46,6 +49,9 @@ export function ProjectOverview({
   isRefreshing?: boolean;
   useLocalMarker?: boolean;
   onToggleLocalMarker?: (checked: boolean) => void;
+  currentPage?: number;
+  totalPages?: number;
+  onPageChange?: (page: number) => void;
 }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortConfig, setSortConfig] = useState<{ field: "updatedAt"; direction: "asc" | "desc" }>({
@@ -189,39 +195,85 @@ export function ProjectOverview({
           </TableHeader>
           <TableBody className="bg-card">
             {isProjectLoading ? (
-              <TableRow>
-                <TableCell colSpan={4} className="h-32 text-center text-sm text-muted-foreground">
-                  Loading projects...
-                </TableCell>
-              </TableRow>
+              [...Array(10)].map((_, index) => (
+                <TableRow key={`skeleton-${index}`} className="h-14">
+                  <TableCell className="pl-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-5 w-5 rounded-sm bg-muted animate-pulse" />
+                      <div className="h-4 w-48 rounded bg-muted animate-pulse" />
+                    </div>
+                  </TableCell>
+                  <TableCell><div className="h-4 w-8 rounded bg-muted animate-pulse" /></TableCell>
+                  <TableCell><div className="h-4 w-8 rounded bg-muted animate-pulse" /></TableCell>
+                  <TableCell><div className="h-4 w-24 rounded bg-muted animate-pulse" /></TableCell>
+                </TableRow>
+              ))
             ) : displayProjects.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="h-32 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={4} className="h-[560px] text-center text-sm text-muted-foreground">
                   No projects found.
                 </TableCell>
               </TableRow>
             ) : (
-              displayProjects.map((project) => (
-                <TableRow
-                  key={project._id}
-                  onClick={() => onSelectProject(project._id)}
-                  className="cursor-pointer h-14 transition-colors hover:bg-muted/50"
-                >
-                  <TableCell className="pl-4">
-                    <div className="flex items-center gap-3">
-                      <FolderOpen className="h-5 w-5 text-muted-foreground" />
-                      <span className="truncate font-medium text-foreground">{project.name}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground/80">{project.stats?.total_documents || 0}</TableCell>
-                  <TableCell className="text-muted-foreground/80">{project.stats?.processing_count || 0}</TableCell>
-                  <TableCell className="text-muted-foreground">{formatDate(project.updatedAt)}</TableCell>
-                </TableRow>
-              ))
+              <>
+                {displayProjects.map((project) => (
+                  <TableRow
+                    key={project._id}
+                    onClick={() => onSelectProject(project._id)}
+                    className="cursor-pointer h-14 transition-colors hover:bg-muted/50"
+                  >
+                    <TableCell className="pl-4">
+                      <div className="flex items-center gap-3">
+                        <FolderOpen className="h-5 w-5 text-muted-foreground" />
+                        <span className="truncate font-medium text-foreground">{project.name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground/80">{project.stats?.total_documents || 0}</TableCell>
+                    <TableCell className="text-muted-foreground/80">{project.stats?.processing_count || 0}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatDate(project.updatedAt)}</TableCell>
+                  </TableRow>
+                ))}
+                {displayProjects.length > 0 && displayProjects.length < 10 && (
+                  [...Array(10 - displayProjects.length)].map((_, index) => (
+                    <TableRow key={`empty-${index}`} className="h-14 pointer-events-none hover:bg-transparent">
+                      <TableCell colSpan={4} />
+                    </TableRow>
+                  ))
+                )}
+              </>
             )}
           </TableBody>
           </Table>
         </div>
+        
+        {/* Pagination Controls */}
+        {totalPages > 0 && onPageChange && (
+          <div className="flex items-center justify-end border-t border-border/50 p-4">
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-8" 
+                onClick={() => onPageChange(Math.max(1, currentPage - 1))} 
+                disabled={currentPage === 1 || isProjectLoading}
+              >
+                Previous
+              </Button>
+              <span className="text-sm font-medium text-foreground">
+                Page {currentPage} of {Math.max(totalPages, 1)}
+              </span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-8" 
+                onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))} 
+                disabled={currentPage >= totalPages || isProjectLoading}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
