@@ -174,27 +174,28 @@ function DashboardContent() {
 
   const setSelectedProjectId = useCallback((projectId: string | null) => {
     setSelectedProjectIdState(projectId);
-    if (typeof window !== "undefined") {
-      if (projectId) {
-        localStorage.setItem(`${PROJECT_SELECTION_KEY}_${selectedAccountId}`, projectId);
-        if (searchParams.get("view") === "all") {
-          const params = new URLSearchParams(searchParams.toString());
-          params.delete("view");
-          router.replace(`/dashboard${params.toString() ? `?${params.toString()}` : ""}`, { scroll: false });
-        }
-      } else {
+    if (projectId) {
+      router.push(`/dashboard/projects/${projectId}`);
+    } else {
+      if (typeof window !== "undefined") {
         localStorage.removeItem(`${PROJECT_SELECTION_KEY}_${selectedAccountId}`);
       }
+      setProjectTab("overview");
+      setPagination((prev) => ({ ...prev, currentPage: 1 }));
     }
-    setProjectTab(projectId ? "contracts" : "overview");
-    setPagination((prev) => ({ ...prev, currentPage: 1 }));
-  }, [selectedAccountId, searchParams, router, projects]);
+  }, [selectedAccountId, router]);
 
   useEffect(() => {
-    if ((requestedTab === "contracts" || requestedTab === "assistant" || requestedTab === "reviews" || requestedTab === "playbooks" || requestedTab === "kpis") && requestedProjectId) {
-      setProjectTab(requestedTab);
+    if (requestedProjectId) {
+      if (!requestedTab || requestedTab === "contracts") {
+        router.replace(`/dashboard/projects/${requestedProjectId}`);
+        return;
+      }
+      if (requestedTab === "assistant" || requestedTab === "reviews" || requestedTab === "playbooks" || requestedTab === "kpis") {
+        setProjectTab(requestedTab);
+      }
     }
-  }, [requestedProjectId, requestedTab]);
+  }, [requestedProjectId, requestedTab, router]);
 
   useEffect(() => {
     if (!requestedUpload || !selectedProjectId) return;
@@ -299,10 +300,7 @@ function DashboardContent() {
         if (current) return current;
         if (requestedView === "all") return null;
 
-        const stored = typeof window !== "undefined"
-          ? localStorage.getItem(`${PROJECT_SELECTION_KEY}_${selectedAccountId}`)
-          : null;
-        const preferred = requestedProjectId || stored;
+        const preferred = requestedProjectId;
         if (preferred && loadedProjects.some((project) => project._id === preferred)) {
           return preferred;
         }
@@ -1064,7 +1062,7 @@ function DashboardContent() {
       setBreadcrumbs([{ label: "Projects" }]);
     } else {
       setBreadcrumbs([
-        { label: "Projects", href: "/dashboard?view=all" },
+        { label: "Projects", href: "/dashboard" },
         { label: selectedProject?.name || "Project" },
       ]);
     }
@@ -1395,135 +1393,6 @@ function DashboardContent() {
                       </Link>
                     </Button>
                   </div>
-                </div>
-              </div>
-            ) : projectTab === "contracts" && selectedProject ? (
-              <div className="p-6 md:p-8 flex flex-col gap-8">
-                <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden animate-slide-up">
-                  <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between bg-muted/50">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex items-center gap-1 rounded-lg bg-background shadow-sm border border-border p-1">
-                        {[
-                          { id: "all", label: "All" },
-                          { id: "mine", label: "Mine" },
-                          { id: "needs-action", label: "Needs action" },
-                        ].map((view) => (
-                          <button
-                            key={view.id}
-                            onClick={() => setContractView(view.id as ContractView)}
-                            className={cx(
-                              "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
-                              contractView === view.id ? "bg-card text-foreground shadow-sm border border-border" : "text-muted-foreground hover:text-foreground hover:bg-card/50",
-                            )}
-                          >
-                            {view.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="relative">
-                        <select
-                          value={statusFilter}
-                          onChange={(event) => {
-                            setStatusFilter(event.target.value);
-                            setPagination((prev) => ({ ...prev, currentPage: 1 }));
-                          }}
-                          className="h-8 appearance-none rounded-md border border-border bg-background pl-3 pr-8 text-xs font-medium text-foreground/80 outline-none transition-colors hover:bg-muted/30"
-                        >
-                          <option value="all">All statuses</option>
-                          <option value="processing">Processing</option>
-                          <option value="ingested">Ingested</option>
-                          <option value="error">Error</option>
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/80" />
-                      </div>
-
-                      <button
-                        onClick={() => setSortConfig((prev) => ({
-                          field: "uploaded_at",
-                          direction: prev.direction === "desc" ? "asc" : "desc",
-                        }))}
-                        className="flex h-8 items-center gap-2 rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground/80 transition-colors hover:bg-muted/30"
-                      >
-                        Date
-                        <ChevronDown className={cx("h-4 w-4 transition-transform text-foreground/80", sortConfig.direction === "asc" && "rotate-180")} />
-                      </button>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        onClick={handleManualRefresh}
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-2 bg-card hover:bg-muted border-border"
-                        disabled={isRefreshing || isCreditLoading}
-                      >
-                        <RefreshCw className={cx("h-3.5 w-3.5", (isRefreshing || isCreditLoading) && "animate-spin")} />
-                        Refresh
-                      </Button>
-                      <div className="relative">
-                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          value={contractSearch}
-                          onChange={(event) => {
-                            setContractSearch(event.target.value);
-                            setPagination((prev) => ({ ...prev, currentPage: 1 }));
-                          }}
-                          placeholder="Search contracts..."
-                          className="h-8 w-56 rounded-md border border-border bg-card pl-8 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-border"
-                        />
-                        {contractSearch && (
-                          <button
-                            onClick={() => setContractSearch("")}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground/70"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-
-                      <Button
-                        size="sm"
-                        onFocus={preloadFileUploadModal}
-                        onClick={() => setIsUploadModalOpen(true)}
-                        onMouseEnter={preloadFileUploadModal}
-                        className="flex h-8 items-center gap-2 rounded-md bg-cs-primary px-3 text-xs font-medium text-white shadow-sm transition-colors hover:bg-cs-primary/90 disabled:opacity-40"
-                        disabled={!selectedProjectId}
-                      >
-                        <UploadCloud className="h-4 w-4" />
-                        Upload
-                      </Button>
-                    </div>
-                  </div>
-
-                <ContractExplorer
-                  documents={visibleDocuments}
-                  currentUserInfo={currentUserInfo}
-                  currentlyProcessing={currentlyProcessing}
-                  isLoading={isRefreshing}
-                  displayStatusForDoc={displayStatusForDoc}
-                  onProcess={handleProcess}
-                  onEditRoles={handleOpenReassignModal}
-                />
-
-                {pagination.totalItems > 0 && (
-                  <div className="flex items-center justify-between border-t border-border/50 p-4">
-                    <p className="text-sm text-muted-foreground">
-                      Showing {visibleDocuments.length} of {pagination.totalItems} contracts
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" className="h-8" onClick={() => handlePageChange(Math.max(1, pagination.currentPage - 1))} disabled={pagination.currentPage === 1 || isRefreshing}>
-                        Previous
-                      </Button>
-                      <span className="text-sm font-medium text-foreground">
-                        Page {pagination.currentPage} of {Math.max(pagination.totalPages, 1)}
-                      </span>
-                      <Button variant="outline" size="sm" className="h-8" onClick={() => handlePageChange(Math.min(pagination.totalPages, pagination.currentPage + 1))} disabled={pagination.currentPage === pagination.totalPages || isRefreshing}>
-                        Next
-                      </Button>
-                    </div>
-                  </div>
-                )}
                 </div>
               </div>
             ) : null}

@@ -175,7 +175,7 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
 
   const navItems = [
     { href: "/home", label: "Home", icon: LayoutGrid },
-    { href: "/dashboard?view=all", label: "Projects", icon: FolderOpen },
+    { href: "/dashboard", label: "Projects", icon: FolderOpen },
     { href: "/agent", label: "AI Agent", icon: Sparkles },
     { href: "/tabular-reviews", label: "Reviews", icon: Table2 },
     { href: "/playbooks", label: "Playbooks", icon: BookOpen },
@@ -313,7 +313,7 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
                       {recentProjects.slice(0, showAllProjects ? undefined : 6).map((project) => (
                         <Link
                           key={project._id}
-                          href={`/dashboard?project_id=${encodeURIComponent(project._id)}`}
+                          href={`/dashboard/projects/${encodeURIComponent(project._id)}`}
                           onClick={() => selectProject(project._id)}
                           className="flex h-8 min-w-0 items-center gap-2.5 rounded-md px-2 text-sm text-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
                           title={project.name}

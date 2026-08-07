@@ -4260,7 +4260,7 @@ export function ContractProjectExplorer({
       : userSourceCatalog.filter((source) => (source.family || "other") === sourceFamilyFilter)
   ), [userSourceCatalog, sourceFamilyFilter]);
   const uploadHref = projectId
-    ? `/dashboard?project_id=${encodeURIComponent(projectId)}&tab=contracts&upload=1`
+    ? `/dashboard/projects/${encodeURIComponent(projectId)}?upload=1`
     : "/dashboard?upload=1";
 
   useEffect(() => {
