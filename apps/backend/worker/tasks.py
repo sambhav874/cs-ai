@@ -538,33 +538,7 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                 current_step="indexing",
                 progress=calculate_stage_progress("indexing", 100)
             )
-            # Automatically seed the Demo KPI and Integrations right after ingestion completes.
-            try:
-                from services.airport_charges_demo import is_airport_charges_demo, AirportChargesDemoBuilder
-                if is_airport_charges_demo(contract_id, file_name):
-                    from core.database import kpi_db, users_collection
-                    from core.cache import cache
-                    from bson import ObjectId
-                    
-                    contract_doc = collection.find_one({"_id": contract_oid})
-                    builder = AirportChargesDemoBuilder(kpi_db)
-                    
-                    # Extract ground truth KPIs silently
-                    builder.extract_ground_truth(
-                        contract_doc=contract_doc,
-                        user_id=user_id,
-                        replace_drafts=True,
-                    )
-                    
-                    # Look up user to find their team ownerAccount
-                    user_doc = users_collection.find_one({"_id": ObjectId(user_id)})
-                    owner_account_id = str(user_doc.get("ownedAccountId")) if user_doc and user_doc.get("ownedAccountId") else None
-                    
-                    builder.seed_integration_profiles(owner_account_id=owner_account_id)
-                    cache.delete(f"kpi:list:{contract_id}")
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"Failed to auto-seed demo KPIs: {e}")
+
 
             
             return {

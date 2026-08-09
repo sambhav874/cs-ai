@@ -21,7 +21,6 @@ import requests
 
 from core.database import db
 from services.kpi_manager import ContractKPIManager, SOURCE_CONNECTOR_CATALOG
-from services.airport_charges_demo import is_airport_charges_demo_source, SOURCE_KPI_CODES
 from utils.encryption import decrypt_value
 
 logger = logging.getLogger(__name__)
@@ -705,36 +704,6 @@ class KpiSourceIngestionService:
         self.manager = ContractKPIManager(self.db)
         self.session = session or requests.Session()
 
-    def _repair_airport_refuelling_rule(self, contract_id: str) -> None:
-        """Keep the demo's 13.5 rule aligned with the contract minimum."""
-        kpi_id = f"{contract_id}:airport:SGHA-13.5-REFUELLING-DELAY"
-        self.manager.kpis.update_one(
-            {"contract_id": contract_id, "kpi_id": kpi_id},
-            {"$set": {
-                "operator": ">=",
-                "value": 15,
-                "evaluation_rule.operator": ">=",
-                "evaluation_rule.target": 15,
-            }},
-        )
-
-    def _clear_compliant_airport_refuelling_breach(self, contract_id: str) -> None:
-        kpi_id = f"{contract_id}:airport:SGHA-13.5-REFUELLING-DELAY"
-        latest = self.manager.actuals.find_one(
-            {"contract_id": contract_id, "kpi_id": kpi_id},
-            sort=[("timestamp", -1), ("created_at", -1)],
-        )
-        try:
-            minutes = float((latest or {}).get("value"))
-        except (TypeError, ValueError):
-            minutes = None
-        if minutes is not None and minutes >= 15:
-            self.manager.breaches.delete_many({
-                "contract_id": contract_id,
-                "kpi_id": kpi_id,
-                "is_breach": True,
-            })
-
     def test_source(
         self,
         *,
@@ -751,12 +720,6 @@ class KpiSourceIngestionService:
             if not connection.get("ok"):
                 raise KpiSourceError("; ".join(connection.get("errors") or ["Connection test failed"]))
             records = adapter.fetch(payload=payload, limit=int(config.get("preview_limit") or 50))
-            if is_airport_charges_demo_source(config):
-                # Ensure the preview shows the seeded demo data for demo sources.
-                from services.airport_charges_demo import HARDCODED_DEMO_TELEMETRY
-                records = HARDCODED_DEMO_TELEMETRY.get(
-                    str(config.get("source_type") or "").lower(), []
-                )[:int(config.get("preview_limit") or 50)]
             normalized = self._normalize_records(records, config, run["run_id"])
             accepted, skipped = self._validate_normalized_rows(normalized, config)
             schema_fields = self._schema_fields(records)
@@ -792,30 +755,6 @@ class KpiSourceIngestionService:
                     }
                 },
             )
-
-            # For demo contracts, auto-inject actuals + breaches so the KPI
-            # dashboard reflects seeded data immediately after test/preview.
-            if is_airport_charges_demo_source(config):
-                from services.airport_charges_demo import (
-                    AirportChargesDemoBuilder,
-                    GROUND_TRUTH_KPIS,
-                    SOURCE_KPI_CODES,
-                )
-                source_type = str(config.get("source_type") or "").lower()
-                allowed_codes = set(SOURCE_KPI_CODES.get(source_type, []))
-                if allowed_codes:
-                    sample_rows = AirportChargesDemoBuilder._kpi_rows(GROUND_TRUTH_KPIS, source_type)
-                    try:
-                        self.fetch_source(
-                            contract_id=contract_id,
-                            source_config_id=source_config_id,
-                            user_id=user_id,
-                            trigger_type="airport_demo_test",
-                            payload=sample_rows,
-                            evaluate=True,
-                        )
-                    except Exception as fetch_exc:
-                        logger.warning("Demo auto-ingest failed for %s: %s", source_config_id, fetch_exc)
 
             return {
                 "contract_id": contract_id,
@@ -865,22 +804,14 @@ class KpiSourceIngestionService:
         evaluate: bool = True,
     ) -> Dict[str, Any]:
         config = self._get_config(contract_id, source_config_id)
-        if is_airport_charges_demo_source(config) and str(config.get("source_type") or "").lower() == "rest_api":
-            self._repair_airport_refuelling_rule(contract_id)
         run = self._start_run(config, user_id=user_id, trigger_type=trigger_type)
         watermark_before = config.get("watermark_value")
         try:
             adapter = adapter_for_source(config, self.session)
-            if is_airport_charges_demo_source(config):
-                from services.airport_charges_demo import HARDCODED_DEMO_TELEMETRY
-                records = HARDCODED_DEMO_TELEMETRY.get(
-                    str(config.get("source_type") or "").lower(), []
-                )
-            else:
-                validation_errors = adapter.validate_config(payload=payload)
-                if validation_errors:
-                    raise KpiSourceError("; ".join(validation_errors))
-                records = adapter.fetch(payload=payload)
+            validation_errors = adapter.validate_config(payload=payload)
+            if validation_errors:
+                raise KpiSourceError("; ".join(validation_errors))
+            records = adapter.fetch(payload=payload)
             parked_count = self._park_raw_records(config, run["run_id"], records)
             normalized = self._normalize_records(records, config, run["run_id"])
             accepted, skipped = self._validate_normalized_rows(normalized, config)
@@ -892,7 +823,6 @@ class KpiSourceIngestionService:
                 rows=accepted,
                 source=f"source_config:{source_config_id}:{config.get('source_type')}",
                 evaluate=evaluate,
-                evaluate_latest_only=is_airport_charges_demo_source(config),
             ) if accepted else {
                 "count": 0,
                 "actuals": [],
@@ -900,44 +830,6 @@ class KpiSourceIngestionService:
                 "deferred_evaluations": [],
                 "skipped": [],
             }
-            if is_airport_charges_demo_source(config):
-                # Reconcile the latest stored actual for every obligation in
-                # this source. This matters when a previous run deduplicated
-                # the row before its breach was created: rerunning the source
-                # must be able to recover the missing demo flag.
-                source_type = str(config.get("source_type") or "").lower()
-                allowed_codes = set(SOURCE_KPI_CODES.get(source_type, []))
-                demo_kpis = {
-                    str(kpi.get("kpi_id")): kpi
-                    for kpi in self.manager.list_contract_kpis(contract_id)
-                    if str(kpi.get("kpi_id") or "").split(":")[-1] in allowed_codes
-                }
-                for kpi_id, kpi in demo_kpis.items():
-                    if not self.manager._is_kpi_tracking_enabled(kpi):
-                        continue
-                    latest_actual = self.manager.actuals.find_one(
-                        {"contract_id": contract_id, "kpi_id": kpi_id},
-                        sort=[("timestamp", -1), ("created_at", -1)],
-                    )
-                    actual_id = latest_actual.get("actual_id") if latest_actual else None
-                    if not actual_id or self.manager.breaches.find_one(
-                        {"contract_id": contract_id, "actual_id": actual_id, "is_breach": True}
-                    ):
-                        continue
-                    reconciled = self.manager.evaluate_kpi(
-                        kpi_id=kpi_id,
-                        actual_value=latest_actual.get("value"),
-                        user_id=user_id,
-                        contract_id=contract_id,
-                        actual_unit=latest_actual.get("unit"),
-                        actual_id=actual_id,
-                        source=latest_actual.get("source"),
-                        timestamp=latest_actual.get("timestamp"),
-                    )
-                    if reconciled.get("is_breach"):
-                        ingest_result.setdefault("breaches", []).append(reconciled)
-                if source_type == "rest_api":
-                    self._clear_compliant_airport_refuelling_breach(contract_id)
             skipped.extend(ingest_result.get("skipped") or [])
             watermark_after = self._watermark_after(config, records, accepted) or watermark_before
             next_run_at = self.compute_next_run_at(config.get("schedule") or {}, datetime.utcnow()) if config.get("enabled") else None
@@ -1270,37 +1162,7 @@ class KpiSourceIngestionService:
             binding for binding in runtime_bindings
             if binding.get("enabled", True) and binding.get("kpi_id")
         ]
-        if is_airport_charges_demo_source(config):
-            source_type = str(config.get("source_type") or "").lower()
-            allowed_codes = set(SOURCE_KPI_CODES.get(source_type, []))
-            bindings = [
-                binding for binding in bindings
-                if str(binding.get("kpi_id") or "").split(":")[-1] in allowed_codes
-            ]
-
-            # Seeded demo profiles are initially created with placeholder
-            # bindings disabled. Recover the deterministic source bindings at
-            # ingestion time so an existing source can be fetched directly,
-            # even if the user has not opened Smart Match yet.
-            if not any(binding.get("enabled", True) for binding in bindings):
-                from services.airport_charges_demo import AirportChargesDemoBuilder
-
-                demo_kpis = [
-                    kpi for kpi in self.manager.list_contract_kpis(config.get("contract_id"))
-                    if str(kpi.get("kpi_id") or "").split(":")[-1] in allowed_codes
-                ]
-                bindings = AirportChargesDemoBuilder._bindings(
-                    demo_kpis,
-                    str(config.get("source_config_id") or "source"),
-                    source_type,
-                    str(config.get("contract_id") or ""),
-                )
-
-            # Force the correct demo mappings for the hardcoded telemetry
-            from services.airport_charges_demo import AirportChargesDemoBuilder
-            if source_type in SOURCE_KPI_CODES:
-                mappings = AirportChargesDemoBuilder._field_mappings(source_type)
-        elif not bindings:
+        if not bindings:
             contract_kpis = self.manager.list_contract_kpis(config.get("contract_id"))
             bindings = [
                 {
@@ -1514,14 +1376,6 @@ class KpiSourceIngestionService:
                 if raw_value is None and evidence_value is not None:
                     row["actual_value"] = evidence_value
                 accepted.append(row)
-        validation_bindings = self.manager._runtime_kpi_bindings(config)
-        # _normalize_records supplies deterministic bindings for seeded demo
-        # sources whose placeholder bindings are all disabled. Do not report
-        # those placeholders as unmatched rows after the fallback succeeds.
-        if is_airport_charges_demo_source(config) and not any(
-            binding.get("enabled", True) for binding in validation_bindings
-        ):
-            validation_bindings = []
         for binding in validation_bindings:
             if binding.get("enabled") is False:
                 continue

@@ -26,12 +26,6 @@ from models.domain import UserInDB
 from utils.audit_logger import create_audit_log
 from utils.secure_logger import log_exception
 from services.kpi_manager import ContractKPIManager, USER_CONFIGURABLE_SOURCE_TYPES
-from services.kpi_source_ingestion import KpiSourceError, KpiSourceIngestionService, parse_sample_file_bytes
-from services.airport_charges_demo import (
-    AirportChargesDemoBuilder,
-    GROUND_TRUTH_KPIS,
-    is_airport_charges_demo,
-)
 from api.dependencies import check_contract_access, get_contract_and_verify_access, get_project_and_verify_access
 from api.routes.projects import verify_project_access, build_accessible_contract_query
 from core.cache import cache
@@ -265,31 +259,12 @@ def list_contract_kpis(
     check_contract_access(contract, current_user)
 
     cache_key = f"kpi:list:{contract_id}"
-    is_demo_contract = is_airport_charges_demo(contract_id, (contract or {}).get("contract_name"))
-    expected_demo_kpi_count = len(GROUND_TRUTH_KPIS)
     cached = cache.get(cache_key)
-    # Empty results can be transient while seeded extraction is running.
-    if isinstance(cached, dict) and cached.get("kpis") and (
-        not is_demo_contract or len(cached.get("kpis") or []) >= expected_demo_kpi_count
-    ):
+    if isinstance(cached, dict) and cached.get("kpis"):
         return cached
 
     manager = _kpi_manager()
     kpis = manager.list_contract_kpis(contract_id)
-    if is_demo_contract:
-        latest_run = kpi_db["contract_kpi_extraction_runs"].find_one(
-            {"contract_id": contract_id},
-            sort=[("started_at", -1)],
-        )
-        extraction_in_progress = str((latest_run or {}).get("status") or "").lower() == "processing"
-        if extraction_in_progress and len(kpis) < expected_demo_kpi_count:
-            return {
-                "contract_id": contract_id,
-                "count": 0,
-                "summary": manager.summarize_kpis([]),
-                "kpis": [],
-                "extraction_in_progress": True,
-            }
     result = {
         "contract_id": contract_id,
         "count": len(kpis),
@@ -720,21 +695,6 @@ def extract_contract_kpis(
         },
     )
     check_contract_access(contract, current_user)
-    if (contract.get("index") or {}).get("status") != "success":
-        raise HTTPException(status_code=400, detail="Contract must be ingested before KPI extraction.")
-
-    if is_airport_charges_demo(contract_id, contract.get("contract_name")):
-        builder = AirportChargesDemoBuilder(kpi_db)
-        result = builder.extract_ground_truth(
-            contract_doc=contract,
-            user_id=str(current_user.id),
-            replace_drafts=request.replace_drafts,
-        )
-        owner_account_id = str(current_user.ownedAccountId) if current_user.ownedAccountId else None
-        builder.seed_integration_profiles(owner_account_id=owner_account_id)
-        cache.delete(f"kpi:list:{contract_id}")
-        return result
-
     result = _kpi_manager().extract_for_contract(
         contract_doc=contract,
         user_id=str(current_user.id),
