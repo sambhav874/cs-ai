@@ -356,6 +356,149 @@ const demoResponses: Record<string, string> = {
   [quickActions[2]]: demoOperationsBriefing,
 };
 
+// Baltia Airlines / Swissport USA JFK GHA demo -- same quick-action wording
+// as the generic cards above, but the answers and citations are grounded in
+// the real extracted obligations (demo_data/baltia_jfk_ground_truth.json),
+// not the leftover Lycksele SGHA content those generic cards were written
+// for. isBaltiaContractName() mirrors the backend's filename gate
+// (services/baltia_jfk_demo.py::is_baltia_jfk_demo) so this only swaps in
+// for that one contract.
+function isBaltiaContractName(name: string | null | undefined): boolean {
+  const lowered = (name || "").toLowerCase();
+  const hints = ["baltia", "swissport", "jfk", "gha"];
+  return hints.filter((hint) => lowered.includes(hint)).length >= 2;
+}
+
+const baltiaQuickActions = quickActions;
+
+const baltiaDemoBriefing = `## Executive contract briefing — Baltia Airlines / Swissport USA JFK GHA
+
+This is the JFK ground handling agreement between Baltia Airlines (Carrier) and Swissport USA, Inc. (Handling Company), covering ramp, passenger service, and flight operations/dispatch handling for B747-200 turnarounds at John F. Kennedy International Airport. [1]
+
+### Key obligations
+
+- Swissport must staff every turnaround per the agreed manning table: 1 supervisor, 1 centralized load control position, 8 check-in/gate agents, 3 arrivals agents, and 1 baggage service position. [2]
+- Flights arriving or departing within 60 minutes of the scheduled ETA/ETD are handled at the standard turnaround rate. [3]
+- Fixed per-turnaround charges apply for B747-200 aircraft: $2,395.00 ramp handling, $1,490.00 passenger service, $280.00 flight ops/dispatch — $4,165.00 combined.
+- Rates escalate each contract anniversary by the greater of CPI or a contractual minimum of 3%. [4]
+
+### Deadlines and commercial mechanics
+
+- Baltia provides a monthly prepayment of anticipated charges, reconciled against actuals (Annex B P9.1).
+- Late payments accrue interest at 1.5%/month; disputed invoice items get their payment deadline extended until resolved (Annex B P9.4).
+- Persistent non-payment lets Swissport place Baltia on a cash-in-advance basis or suspend services.
+
+### Operational risk
+
+- A ramp return involving a load change is charged at the technical-landing rate, not the standard turnaround rate (Annex B P1.2.4).
+- No surcharge applies for night, Sunday, or holiday service — Swissport absorbs that cost inside the standard rate (Annex B P1.2.5).
+- Missing the manning commitment or the on-schedule handling window creates evidenced, escalatable non-compliance — both are tracked as open breach flags in the KPI register today.
+
+### Recommended next steps
+
+1. Reconcile monthly prepayments against actual turnaround counts and the fixed per-turnaround charges.
+2. Verify Swissport's on-site headcount against the manning table at each B747-200 turnaround.
+3. Track ETA/ETD variance against the 60-minute window — late arrivals shift the charging basis.
+4. Confirm the next CPI anniversary date and audit the applied escalation percentage.`;
+
+const baltiaDemoPaymentBriefing = `## Key financial and payment obligations — Baltia / Swissport JFK GHA
+
+The primary financial obligation sits with Baltia Airlines, who pays Swissport USA a fixed per-turnaround rate for every B747-200 ground handling cycle. [1]
+
+Baltia pays three separate fixed charges per turnaround: $2,395.00 for ramp handling, $1,490.00 for passenger service, and $280.00 for flight operations/dispatch — $4,165.00 combined (Annex B P1.2.A-C).
+
+Additional financial mechanics:
+
+- Rates escalate annually on the contract anniversary date by the greater of CPI or a contractual minimum of 3%. [4]
+- A ramp return involving a load change bills at the technical-landing rate instead of the standard turnaround rate (Annex B P1.2.4).
+- No night/Sunday/holiday surcharge applies — service at any hour bills at the standard rate (Annex B P1.2.5).
+- Baltia provides a monthly prepayment of anticipated charges, reconciled against actuals (Annex B P9.1).
+- Late payments accrue interest at 1.5%/month; disputed invoice items get their payment deadline extended until resolved (Annex B P9.4).
+- Persistent non-payment lets Swissport move Baltia to a cash-in-advance basis or suspend handling services.
+
+### Recommended control
+
+Reconcile every invoice against actual turnaround count, verify the applied CPI escalation on each contract anniversary, and flag any ramp-return or night/holiday charge that deviates from the fixed-rate terms above.`;
+
+const baltiaDemoOperationsBriefing = `## Operational obligations and compliance requirements — Baltia / Swissport JFK GHA
+
+Most operational responsibility sits with Swissport USA as the ground handling company at JFK.
+
+Swissport must staff every turnaround to the agreed manning table: 1 supervisor (8 man-hours), 1 centralized load control position, 8 check-in/gate agents for B747-200 service (4 man-hours each), 3 arrivals agents (4 man-hours each), and 1 centralized baggage service position. [2]
+
+Flights are handled within a fixed schedule window — arrivals and departures within 60 minutes of the agreed ETA/ETD are covered at the standard rate. [3] Handling outside that window, or a ramp return involving a load change, shifts the charging basis to the technical-landing rate (Annex B P1.2.4).
+
+### Evidence to retain
+
+- On-site headcount records per turnaround, matched against the manning table.
+- Actual ETA/ETD timestamps versus scheduled flight times.
+- Ramp-return incident logs, noting whether a load change occurred.
+- De-icing service records (Type I / Type IV fluid usage and rates).
+- Invoice-level records for every fixed and variable charge applied.
+
+### Recommended control
+
+Track headcount and on-schedule performance per turnaround as the two leading indicators of Swissport's operational compliance — both drive the open breach flags already showing in the KPI register.`;
+
+const baltiaDemoResponses: Record<string, string> = {
+  [baltiaQuickActions[0]]: baltiaDemoBriefing,
+  [baltiaQuickActions[1]]: baltiaDemoPaymentBriefing,
+  [baltiaQuickActions[2]]: baltiaDemoOperationsBriefing,
+};
+
+function buildBaltiaSourceAnnotations(
+  contractId: string | null | undefined,
+  contractName: string | null | undefined,
+): CitationAnnotation[] {
+  const filename = contractName || "baltia-jfk-gha1.pdf";
+  return [
+    {
+      type: "citation_data",
+      ref: 1,
+      document_id: contractId || undefined,
+      filename,
+      page: 3,
+      page_start: 3,
+      page_end: 3,
+      quote: "B747-200 series aircraft $2,395.00/turnaround",
+      verified: true,
+    },
+    {
+      type: "citation_data",
+      ref: 2,
+      document_id: contractId || undefined,
+      filename,
+      page: 4,
+      page_start: 4,
+      page_end: 4,
+      quote: "Passenger Service Pricing is based upon the following mutually agreed manning",
+      verified: true,
+    },
+    {
+      type: "citation_data",
+      ref: 3,
+      document_id: contractId || undefined,
+      filename,
+      page: 4,
+      page_start: 4,
+      page_end: 4,
+      quote: "flights operating within sixty (60) minutes of scheduled arrival or departure",
+      verified: true,
+    },
+    {
+      type: "citation_data",
+      ref: 4,
+      document_id: contractId || undefined,
+      filename,
+      page: 8,
+      page_start: 8,
+      page_end: 8,
+      quote: "will be subject to an increase each anniversary date of the contract",
+      verified: true,
+    },
+  ];
+}
+
 const modelOptions: Array<{ value: AIProvider; label: string; description: string }> = [
   { value: "groq", label: "Groq", description: "Fast contract Q&A" },
   { value: "gemini", label: "Gemini", description: "Google Gemini models" },
@@ -1949,9 +2092,14 @@ export default function ContractAgentPanel({
     setDraft("");
     setIsThinking(true);
 
-    const mockResponse = demoResponses[action] || demoBriefing;
+    const isBaltia = isBaltiaContractName(contractName);
+    const mockResponse = isBaltia
+      ? baltiaDemoResponses[action] || baltiaDemoBriefing
+      : demoResponses[action] || demoBriefing;
     window.setTimeout(() => {
-      const sourceAnnotations: CitationAnnotation[] = [
+      const sourceAnnotations: CitationAnnotation[] = isBaltia
+        ? buildBaltiaSourceAnnotations(contractId, contractName)
+        : [
         {
           type: "citation_data",
           ref: 1,

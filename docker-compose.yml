@@ -85,12 +85,14 @@ services:
       - API_TIMEOUT=${API_TIMEOUT:-300}
       - REDIS_URL=${REDIS_URL:-}
       - RATE_LIMIT_STORAGE_URI=${REDIS_URL:-memory://}
+      - DEMO_DATA_DIR=/demo_data
     depends_on:
       rabbitmq:
         condition: service_healthy
         required: false
     volumes:
       - ./final_evaluation:/final_evaluation
+      - ./demo_data:/demo_data:ro
     networks:
       - contractsense-net
     restart: unless-stopped
@@ -119,6 +121,7 @@ services:
     volumes:
       - ./final_evaluation:/final_evaluation
       - ./apps/backend:/app/backend
+      - ./demo_data:/demo_data:ro
     env_file:
       - ./apps/backend/.env
     environment:
@@ -126,6 +129,7 @@ services:
       - CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-60}
       - CELERY_POOL=${CELERY_POOL:-gevent}
       - CELERY_QUEUES=${CELERY_QUEUES:-default,indexing,kpi_ingestion}
+      - DEMO_DATA_DIR=/demo_data
     depends_on:
       rabbitmq:
         condition: service_healthy

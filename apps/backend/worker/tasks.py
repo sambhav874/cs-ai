@@ -32,7 +32,8 @@ class JobStatus(Enum):
 
 from utils.helpers import JobManager
 from core.config import Settings
-from core.database import collection, db, fs, teams_collection, accounts_collection
+from core.database import collection, db, fs, teams_collection, accounts_collection, kpi_db
+from services.baltia_jfk_demo import is_baltia_jfk_demo, BaltiaJfkDemoBuilder
 from services.contract_agent.rag import ContractRAGSystem
 from services.kpi_source_ingestion import KpiSourceIngestionService
 
@@ -501,6 +502,28 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                 progress=calculate_stage_progress("indexing", 80)
             )
 
+            # Obligations extraction happens automatically alongside ingestion
+            # for the Baltia/Swissport JFK GHA demo contract. This must run
+            # BEFORE the contract is flipped to status="Ingested" below --
+            # the contracts list polls that status and a user clicking into
+            # the KPI page the moment it reads "Ingested" would otherwise
+            # race the seed and see a partial obligations register. A
+            # failure here must never fail contract ingestion itself; the
+            # demo can always be reseeded via scripts/prepare_baltia_jfk_demo.py.
+            try:
+                demo_contract_doc = collection.find_one(
+                    {"_id": contract_oid},
+                    {"_id": 1, "contract_name": 1, "projectId": 1},
+                )
+                if demo_contract_doc and is_baltia_jfk_demo(
+                    contract_id, contract_name=demo_contract_doc.get("contract_name")
+                ):
+                    BaltiaJfkDemoBuilder(kpi_db).extract_ground_truth(
+                        contract_doc=demo_contract_doc,
+                        user_id=user_id,
+                    )
+            except Exception as demo_exc:
+                log_exception(logger, f"Baltia/Swissport JFK GHA demo auto-seed failed for contract {contract_id}", demo_exc)
 
             update_result = collection.update_one(
                 {"_id": contract_oid},
@@ -539,8 +562,6 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                 progress=calculate_stage_progress("indexing", 100)
             )
 
-
-            
             return {
                 "status": "success",
                 "contract_id": contract_id,

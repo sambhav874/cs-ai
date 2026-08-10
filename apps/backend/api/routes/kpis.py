@@ -26,6 +26,8 @@ from models.domain import UserInDB
 from utils.audit_logger import create_audit_log
 from utils.secure_logger import log_exception
 from services.kpi_manager import ContractKPIManager, USER_CONFIGURABLE_SOURCE_TYPES
+from services.kpi_source_ingestion import KpiSourceIngestionService, KpiSourceError, parse_sample_file_bytes
+from services.baltia_jfk_demo import is_baltia_jfk_demo, BaltiaJfkDemoBuilder, MANUAL_FINDING_SOURCE_DISPLAY_NAME
 from api.dependencies import check_contract_access, get_contract_and_verify_access, get_project_and_verify_access
 from api.routes.projects import verify_project_access, build_accessible_contract_query
 from core.cache import cache
@@ -324,7 +326,7 @@ def list_recent_kpi_integration_profiles(
     current_user: UserInDB = Depends(get_current_active_user),
 ) -> Dict[str, Any]:
     owner_account_id = str(current_user.ownedAccountId) if current_user.ownedAccountId else None
-    builder = AirportChargesDemoBuilder(kpi_db)
+    builder = BaltiaJfkDemoBuilder(kpi_db)
     builder.seed_integration_profiles(owner_account_id=owner_account_id)
     profiles = _kpi_manager().list_recent_integration_profiles(owner_account_id=owner_account_id, limit=limit)
     return {"count": len(profiles), "profiles": profiles}
@@ -546,10 +548,10 @@ def fetch_contract_kpi_source_config(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid contract ID format.")
 
-    contract = collection.find_one({"_id": contract_oid}, {"_id": 1, "ownerType": 1, "ownerId": 1})
+    contract = collection.find_one({"_id": contract_oid}, {"_id": 1, "ownerType": 1, "ownerId": 1, "contract_name": 1})
     check_contract_access(contract, current_user)
     try:
-        return _kpi_source_ingestion().fetch_source(
+        result = _kpi_source_ingestion().fetch_source(
             contract_id=contract_id,
             source_config_id=source_config_id,
             user_id=str(current_user.id),
@@ -557,6 +559,17 @@ def fetch_contract_kpi_source_config(
             payload=request.payload,
             evaluate=request.evaluate,
         )
+        if is_baltia_jfk_demo(contract_id, contract_name=contract.get("contract_name")):
+            demo_builder = BaltiaJfkDemoBuilder(kpi_db)
+            source_display_name = (result.get("source_config") or {}).get("display_name")
+            if source_display_name == MANUAL_FINDING_SOURCE_DISPLAY_NAME:
+                manual_finding = demo_builder.seed_manual_findings(
+                    contract_id=contract_id, user_id=str(current_user.id)
+                )
+                if manual_finding:
+                    result.setdefault("created_breaches", []).append(manual_finding)
+            demo_builder.enrich_breach_penalties(contract_id=contract_id)
+        return result
     except KpiSourceError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -695,12 +708,19 @@ def extract_contract_kpis(
         },
     )
     check_contract_access(contract, current_user)
-    result = _kpi_manager().extract_for_contract(
-        contract_doc=contract,
-        user_id=str(current_user.id),
-        replace_drafts=request.replace_drafts,
-        ai_provider=request.ai_provider,
-    )
+    if is_baltia_jfk_demo(contract_id, contract_name=contract.get("contract_name")):
+        result = BaltiaJfkDemoBuilder(kpi_db).extract_ground_truth(
+            contract_doc=contract,
+            user_id=str(current_user.id),
+            replace_drafts=request.replace_drafts,
+        )
+    else:
+        result = _kpi_manager().extract_for_contract(
+            contract_doc=contract,
+            user_id=str(current_user.id),
+            replace_drafts=request.replace_drafts,
+            ai_provider=request.ai_provider,
+        )
     cache.delete(f"kpi:list:{contract_id}")
     return result
 
