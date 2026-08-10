@@ -1428,11 +1428,11 @@ export default function ContractKpiManagementPage() {
   useEffect(() => {
     if (contract) {
       setBreadcrumbs([
-        { label: "Projects", href: "/dashboard?view=all" },
-        {
-          label: contract.project?.name || "Contract",
-          href: `/dashboard?project=${contract.project_id || contract.projectId || contract.project?._id || ""}`,
-        },
+        { label: "Projects", href: "/dashboard" },
+        ...(contract?.project_id || contract?.projectId || contract?.project?._id ? [{
+          label: contract.project_name || contract.project?.name || "Project",
+          href: `/dashboard/projects/${contract.project_id || contract.projectId || contract.project?._id || ""}`,
+        }] : []),
         {
           label: contract.contract_name || "Contract",
           href: `/contracts/${contractId}`,
@@ -1441,7 +1441,7 @@ export default function ContractKpiManagementPage() {
       ]);
     } else {
       setBreadcrumbs([
-        { label: "Projects", href: "/dashboard?view=all" },
+        { label: "Projects", href: "/dashboard" },
         { label: "KPI Management", href: `/contracts/${contractId}/kpis` },
       ]);
     }

@@ -834,12 +834,12 @@ export default function ContractView() {
   useEffect(() => {
     if (contract) {
       setBreadcrumbs([
-        { label: "Projects", href: "/dashboard?view=all" },
-        { label: workspaceProjectName || "Project", href: workspaceProjectId ? `/dashboard?project_id=${workspaceProjectId}` : "/dashboard?view=all" },
+        { label: "Projects", href: "/dashboard" },
+        { label: workspaceProjectName || "Project", href: workspaceProjectId ? `/dashboard/projects/${workspaceProjectId}` : "/dashboard" },
         { label: contract.contract_name || "Contract" }
       ]);
     } else {
-      setBreadcrumbs([{ label: "Projects", href: "/dashboard?view=all" }]);
+      setBreadcrumbs([{ label: "Projects", href: "/dashboard" }]);
     }
   }, [contract, workspaceProjectId, workspaceProjectName, setBreadcrumbs]);
 
