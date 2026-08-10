@@ -220,7 +220,14 @@ export function ProjectOverview({
                   <TableRow
                     key={project._id}
                     onClick={() => onSelectProject(project._id)}
-                    className="cursor-pointer h-14 transition-colors hover:bg-muted/50"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelectProject(project._id);
+                      }
+                    }}
+                    tabIndex={0}
+                    className="cursor-pointer h-14 transition-colors hover:bg-muted/50 focus:outline-none focus:bg-muted/50"
                   >
                     <TableCell className="pl-4">
                       <div className="flex items-center gap-3">

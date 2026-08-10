@@ -193,7 +193,7 @@ function TabularReviewsContent() {
     const project = projects.find((p) => p._id === projectFilter);
     if (projectFilter && project) {
       setBreadcrumbs([
-        { label: project.name, href: `/dashboard?project_id=${project._id}` },
+        { label: project.name, href: `/dashboard/projects/${project._id}` },
         { label: "Reviews" }
       ]);
     } else {
