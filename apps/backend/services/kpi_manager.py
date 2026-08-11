@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
-from pymongo import UpdateOne
+from pymongo import ReturnDocument, UpdateOne
 from bson import ObjectId
 
 from core.config import settings
@@ -2488,9 +2488,12 @@ class ContractKPIManager:
         if breach_docs_to_insert:
             self.breaches.insert_many(breach_docs_to_insert)
             kpi_by_id = {str(k["kpi_id"]): k for k in kpis}
+            alert_rule_doc_cache: Dict[tuple, List[Dict[str, Any]]] = {}
             for breach in breach_docs_to_insert:
                 try:
-                    self._trigger_alerts_for_breach(breach, kpi_by_id.get(breach["kpi_id"]) or {})
+                    self._trigger_alerts_for_breach(
+                        breach, kpi_by_id.get(breach["kpi_id"]) or {}, rule_doc_cache=alert_rule_doc_cache,
+                    )
                 except Exception as alert_exc:
                     logger.warning("Failed to create KPI breach alert for %s: %s", breach.get("breach_id"), alert_exc)
 
@@ -3317,31 +3320,48 @@ class ContractKPIManager:
         kpi_id: Optional[str] = None,
         owner: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        rule_doc_cache: Optional[Dict[tuple, List[Dict[str, Any]]]] = None,
     ) -> List[Dict[str, Any]]:
+        # The DB fetch below only depends on (contract_id, project_id,
+        # event_type) -- kpi_id/owner/severity only affect the in-memory
+        # filtering in _alert_rule_matches. Batch callers (e.g. ingest_actuals
+        # evaluating many breaches for the same contract) can pass a cache so
+        # this round-trips to Mongo once per contract instead of once per
+        # breach.
+        cache_key = (contract_id, project_id, event_type)
+        if rule_doc_cache is not None and cache_key in rule_doc_cache:
+            candidate_docs = rule_doc_cache[cache_key]
+        else:
+            candidate_docs = []
+            seen_rule_ids: set = set()
+            query_shapes = []
+            if contract_id:
+                query_shapes.append({"contract_id": contract_id, "event_type": event_type})
+            if project_id:
+                query_shapes.append({"project_id": project_id, "event_type": event_type})
+            for query in query_shapes:
+                for rule in self.alert_rules.find(query):
+                    rule_id = str(rule.get("rule_id") or id(rule))
+                    if rule_id in seen_rule_ids:
+                        continue
+                    seen_rule_ids.add(rule_id)
+                    candidate_docs.append(rule)
+            if rule_doc_cache is not None:
+                rule_doc_cache[cache_key] = candidate_docs
+
         candidates: List[Dict[str, Any]] = []
-        seen_rule_ids: set = set()
-        query_shapes = []
-        if contract_id:
-            query_shapes.append({"contract_id": contract_id, "event_type": event_type})
-        if project_id:
-            query_shapes.append({"project_id": project_id, "event_type": event_type})
-        for query in query_shapes:
-            for rule in self.alert_rules.find(query):
-                rule_id = str(rule.get("rule_id") or id(rule))
-                if rule_id in seen_rule_ids:
-                    continue
-                seen_rule_ids.add(rule_id)
-                if self._alert_rule_matches(
-                    rule,
-                    contract_id=contract_id,
-                    project_id=project_id,
-                    kpi_id=kpi_id,
-                    owner=owner,
-                    event_type=event_type,
-                    severity=severity,
-                    metadata=metadata or {},
-                ):
-                    candidates.append(rule)
+        for rule in candidate_docs:
+            if self._alert_rule_matches(
+                rule,
+                contract_id=contract_id,
+                project_id=project_id,
+                kpi_id=kpi_id,
+                owner=owner,
+                event_type=event_type,
+                severity=severity,
+                metadata=metadata or {},
+            ):
+                candidates.append(rule)
         return candidates
 
     def _alert_rule_matches(
@@ -3416,6 +3436,7 @@ class ContractKPIManager:
         breach_id: Optional[str] = None,
         source_config_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        rule_doc_cache: Optional[Dict[tuple, List[Dict[str, Any]]]] = None,
     ) -> Dict[str, Any]:
         if event_type not in CONTRACTSENSE_ALERT_TYPES:
             raise ValueError(f"Unsupported KPI alert event_type: {event_type}")
@@ -3430,6 +3451,7 @@ class ContractKPIManager:
             kpi_id=kpi_id,
             owner=metadata.get("owner") or metadata.get("business_owner"),
             metadata=metadata,
+            rule_doc_cache=rule_doc_cache,
         )
         channels = ["in_app"]
         recipients: List[str] = []
@@ -3451,7 +3473,7 @@ class ContractKPIManager:
             and "email" in channels
             and (existing_alert or {}).get("delivery", {}).get("email") not in {"queued", "sent"}
         )
-        self.alerts.update_one(
+        updated_doc = self.alerts.find_one_and_update(
             {"alert_key": dedupe_key},
             {
                 "$setOnInsert": {
@@ -3485,8 +3507,9 @@ class ContractKPIManager:
                 "$inc": {"occurrence_count": 1},
             },
             upsert=True,
+            return_document=ReturnDocument.AFTER,
         )
-        alert = self._serialize(self.alerts.find_one({"alert_key": dedupe_key}))
+        alert = self._serialize(updated_doc)
         if should_queue_email:
             self._queue_alert_email(alert)
         return alert
@@ -3511,7 +3534,12 @@ class ContractKPIManager:
         except Exception as exc:
             logger.warning("KPI alert email queue failed for %s: %s", alert.get("alert_id"), exc)
 
-    def _trigger_alerts_for_breach(self, breach: Dict[str, Any], kpi: Dict[str, Any]) -> None:
+    def _trigger_alerts_for_breach(
+        self,
+        breach: Dict[str, Any],
+        kpi: Dict[str, Any],
+        rule_doc_cache: Optional[Dict[tuple, List[Dict[str, Any]]]] = None,
+    ) -> None:
         if not breach.get("is_breach"):
             return
         self._create_alert(
@@ -3532,6 +3560,7 @@ class ContractKPIManager:
                 "remediation": breach.get("remediation") or kpi.get("remediation"),
                 "source_clause": self._kpi_lineage(kpi),
             },
+            rule_doc_cache=rule_doc_cache,
         )
 
     def _breach_alert_message(self, breach: Dict[str, Any], kpi: Dict[str, Any]) -> str:

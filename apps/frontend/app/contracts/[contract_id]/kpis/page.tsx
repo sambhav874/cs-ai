@@ -6356,54 +6356,71 @@ function GuidedSourcesPanel({
     const catalogByType = new Map(
       sourceCatalog.map((item) => [item.source_type, item]),
     );
-    const createdConfigs: KPISourceConfig[] = [];
-    for (const profile of availableProfiles) {
-      const catalog = catalogByType.get(profile.source_type);
-      if (!catalog) continue;
-      const created = await onCreateSource({
-        ...catalog,
-        label: profile.display_name,
-      });
-      if (!created) continue;
-      const configured = await onUpdateSource(created, {
-        display_name: profile.display_name,
-        endpoint: profile.endpoint,
-        method: profile.method,
-        auth_type: profile.auth_type || "none",
-        record_path: profile.record_path,
-        data_path: profile.data_path,
-        field_mappings: profile.field_mappings,
-        sample_payload: profile.sample_payload,
-        dedupe_key: profile.dedupe_key,
-        watermark_field: profile.watermark_field,
-        schedule: profile.schedule,
-        status: "mapped",
-        enabled: true,
-      });
-      createdConfigs.push(configured || created);
-    }
+    const eligibleProfiles = availableProfiles.filter((profile) =>
+      catalogByType.has(profile.source_type),
+    );
+    // Create + configure every source in parallel instead of one at a time --
+    // each pair is an independent round trip (new source_config_id, no shared
+    // state besides functional setSourceConfigs updates), so sequential
+    // awaiting here was pure added latency (N sources = N x round-trip time).
+    const createdConfigs = (
+      await Promise.all(
+        eligibleProfiles.map(async (profile) => {
+          const catalog = catalogByType.get(profile.source_type);
+          if (!catalog) return null;
+          const created = await onCreateSource({
+            ...catalog,
+            label: profile.display_name,
+          });
+          if (!created) return null;
+          const configured = await onUpdateSource(created, {
+            display_name: profile.display_name,
+            endpoint: profile.endpoint,
+            method: profile.method,
+            auth_type: profile.auth_type || "none",
+            record_path: profile.record_path,
+            data_path: profile.data_path,
+            field_mappings: profile.field_mappings,
+            sample_payload: profile.sample_payload,
+            dedupe_key: profile.dedupe_key,
+            watermark_field: profile.watermark_field,
+            schedule: profile.schedule,
+            status: "mapped",
+            enabled: true,
+          });
+          return configured || created;
+        }),
+      )
+    ).filter((config): config is KPISourceConfig => Boolean(config));
     if (!createdConfigs.length) return;
     const lastCreated = createdConfigs[createdConfigs.length - 1];
     onSelectSource(lastCreated.source_config_id);
     setStep("connect");
 
-    // All sources connected -- now fetch every one of them and only hand
-    // control back (switching straight to Contract Breaches) once every
-    // fetch has actually landed, instead of leaving the user staring at an
-    // empty sources list while ingestion runs in the background.
+    // All sources connected -- now fetch every one of them in parallel (each
+    // hits a distinct, non-overlapping set of KPIs, so there's no ordering
+    // dependency) and only hand control back (switching straight to Contract
+    // Breaches) once every fetch has actually landed, instead of leaving the
+    // user staring at an empty sources list while ingestion runs one source
+    // at a time in the background.
     setIsBulkFetching(true);
     try {
-      for (let i = 0; i < createdConfigs.length; i += 1) {
-        const config = createdConfigs[i];
-        setBulkFetchStatus(
-          `Fetching ${config.display_name || `source ${i + 1}`} (${i + 1} of ${createdConfigs.length})...`,
-        );
-        try {
-          await onRunSourceAction(config, "fetch");
-        } catch {
-          // one source failing shouldn't block the rest from fetching
-        }
-      }
+      let completed = 0;
+      setBulkFetchStatus(`Fetching ${createdConfigs.length} sources...`);
+      await Promise.all(
+        createdConfigs.map(async (config) => {
+          try {
+            await onRunSourceAction(config, "fetch");
+          } catch {
+            // one source failing shouldn't block the rest from fetching
+          } finally {
+            completed += 1;
+            setBulkFetchStatus(
+              `Fetched ${completed} of ${createdConfigs.length} sources...`,
+            );
+          }
+        }),
+      );
       onAllSourcesReady?.();
     } finally {
       setIsBulkFetching(false);
