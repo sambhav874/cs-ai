@@ -157,6 +157,20 @@ class BaltiaJfkDemoBuilder:
         project_id = str(contract_doc.get("projectId")) if contract_doc.get("projectId") else None
         contract_name = contract_doc.get("contract_name") or "Baltia Airlines / Swissport USA JFK GHA"
 
+        logger.info(
+            "BaltiaJfkDemoBuilder.extract_ground_truth start contract_id=%s run_id=%s "
+            "demo_data_loaded=%s demo_data_dir=%s ground_truth_kpi_count=%s",
+            contract_id, run_id, DEMO_DATA_LOADED, DEMO_DATA_DIR, len(GROUND_TRUTH_KPIS),
+        )
+        if not DEMO_DATA_LOADED or not GROUND_TRUTH_KPIS:
+            logger.warning(
+                "BaltiaJfkDemoBuilder.extract_ground_truth found ZERO ground-truth KPI definitions "
+                "(demo_data_loaded=%s, demo_data_dir=%s) -- this run will upsert 0 KPIs. "
+                "Check that demo_data/baltia_jfk_ground_truth.json is present at that path "
+                "(set DEMO_DATA_DIR env var, or verify the volume/bind mount on this server).",
+                DEMO_DATA_LOADED, DEMO_DATA_DIR,
+            )
+
         self.extraction_runs.update_one(
             {"run_id": run_id},
             {"$set": {
@@ -266,6 +280,11 @@ class BaltiaJfkDemoBuilder:
             created = (bulk_result.upserted_count or 0) + (bulk_result.modified_count or 0)
 
         total = self.kpis.count_documents({"contract_id": contract_id})
+        logger.info(
+            "BaltiaJfkDemoBuilder.extract_ground_truth done contract_id=%s run_id=%s "
+            "definitions=%s operations=%s upserted_or_modified=%s kpis_in_db=%s",
+            contract_id, run_id, len(GROUND_TRUTH_KPIS), len(operations), created, total,
+        )
         completed_at = datetime.utcnow()
         self.extraction_runs.update_one(
             {"run_id": run_id},
