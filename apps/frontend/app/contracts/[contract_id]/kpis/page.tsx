@@ -585,6 +585,22 @@ const money = (value: number, currency?: string) =>
     maximumFractionDigits: 0,
   }).format(Math.max(0, value));
 
+// Most extracted obligations don't carry an explicit remediation clause, so
+// breach.remediation / kpi.remediation are usually empty and every card fell
+// back to one identical hardcoded sentence. This derives distinct guidance
+// per breach from fields the obligation actually has (name, clause, party,
+// whether it carries a financial penalty) instead of inventing new facts.
+const defaultRemediationText = (kpi?: ContractKPI, breach?: ContractKPIBreach) => {
+  const clause =
+    kpi?.section || (kpi as any)?.section_path || (kpi as any)?.structural_path || "the applicable clause";
+  const name = kpi?.name || breach?.source_kpi?.name || "this obligation";
+  const party = kpi?.party || "the counterparty";
+  const hasPenalty = Boolean(toNumber(breach?.penalty_amount) || toNumber(kpi?.consequence_value));
+  return hasPenalty
+    ? `Issue a recovery notice to ${party} for the "${name}" variance under ${clause} and apply the corrective billing adjustment.`
+    : `Escalate "${name}" non-compliance to ${party} under ${clause} and request a corrective action plan.`;
+};
+
 const tierScheduleFor = (kpi: ContractKPI): Array<Record<string, any>> => {
   const lt =
     (kpi as any).measurement?.lookup_table ||
@@ -2726,6 +2742,7 @@ export default function ContractKpiManagementPage() {
               onRunSourceAction={runSourceAction}
               onTestSourceConfiguration={testSourceConfiguration}
               onUploadSampleFile={uploadSourceSampleFile}
+              onAllSourcesReady={() => setActivePanel("flags")}
             />
           ) : activePanel === "recoveries" ? (
             <RecoveriesPanel breaches={visibleBreaches} kpiById={kpiById} actionLogs={actionLogs} setActionLogs={setActionLogs} updateBreachStatus={updateBreachStatus} />
@@ -4099,9 +4116,9 @@ const EXTRA_CHARTS: Array<{ key: ExtraChartKey; label: string }> = [
   { key: "recoveries", label: "Recoveries Pipeline" },
   { key: "category", label: "Breaches by Category" },
   { key: "penalty", label: "Penalty Exposure" },
-  { key: "turnaround", label: "Turnaround Charge by Seat Band" },
-  { key: "landing", label: "Landing Charge vs MTOW" },
-  { key: "occasions", label: "Per-Occasion Charges Ranked" },
+  { key: "turnaround", label: "B747-200 Turnaround Charge Mix" },
+  { key: "landing", label: "Extra Labor Rate: Straight vs Overtime" },
+  { key: "occasions", label: "Ancillary Charges Ranked" },
 ];
 
 function PerformanceSummaryCards({
@@ -4155,7 +4172,7 @@ function PerformanceSummaryCards({
         <HeadlineCard
           label="Total Penalty Exposure"
           value={totalExposure > 0 ? `${totalExposure.toLocaleString()}` : "—"}
-          unit="SEK"
+          unit="USD"
           tone={totalExposure > 0 ? "red" : "neutral"}
         />
         <HeadlineCard
@@ -4299,11 +4316,11 @@ function PerformanceSummaryCards({
                         {EXTRA_CHARTS.find((c) => c.key === key)?.label}
                       </h3>
                       {key === "turnaround" ? (
-                        <TurnaroundSeatBandChart kpis={kpis} />
+                        <TurnaroundChargeMixChart kpis={kpis} />
                       ) : key === "landing" ? (
-                        <LandingChargeCurveChart kpis={kpis} />
+                        <LaborRateEscalationChart kpis={kpis} />
                       ) : (
-                        <PerOccasionChargesChart kpis={kpis} />
+                        <AncillaryChargesChart kpis={kpis} />
                       )}
                     </section>
                   ),
@@ -4320,8 +4337,8 @@ function PerformanceSummaryCards({
           </p>
           <p className="mt-1 text-xs text-gray-500">
             Recoveries pipeline, severity mix, penalty exposure, turnaround
-            pricing, the landing MTOW curve, and per-occasion charges light up
-            once a source is mapped.
+            pricing, extra labor rates, and ancillary charges light up once a
+            source is mapped.
           </p>
         </div>
       )}
@@ -4564,132 +4581,73 @@ function BreachesByCategoryChart({
 const kpiCodeFor = (kpi: ContractKPI) =>
   kpi.kpi_id.split(":").slice(-1)[0] || kpi.kpi_id;
 
-function TurnaroundSeatBandChart({ kpis }: { kpis: ContractKPI[] }) {
+function TurnaroundChargeMixChart({ kpis }: { kpis: ContractKPI[] }) {
   const byCode = (code: string) =>
     kpis.find((kpi) => kpiCodeFor(kpi)?.trim().toUpperCase() === code);
 
-  const passenger = byCode("SGHA-2.3-PASSENGER-SERVICES");
-  const ramp = byCode("SGHA-2.3-RAMP-HANDLING");
+  const readValue = (kpi?: ContractKPI) => Number((kpi as any)?.value) || 0;
 
-  const seatOrder = (label: string) => {
-    const match = label.match(/\d+/);
-    return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
-  };
+  const bars = [
+    { label: "Ramp Handling", value: readValue(byCode("BALTIA-JFK-GHA-001")), color: "#9333ea", hover: "#7e22ce" },
+    { label: "Passenger Service", value: readValue(byCode("BALTIA-JFK-GHA-002")), color: "#0070f3", hover: "#0051a8" },
+    { label: "Flight Ops/Dispatch", value: readValue(byCode("BALTIA-JFK-GHA-003")), color: "#10b981", hover: "#059669" },
+  ].filter((bar) => bar.value > 0);
 
-  const readValue = (entry: any) =>
-    Number(entry?.price ?? entry?.value ?? entry?.rate ?? entry?.amount) || 0;
-
-  const rawBands = (passenger?.target_schedule || [])
-    .map((entry) => {
-      const seats = String(entry.seats ?? entry.condition ?? entry.band ?? "—");
-      const rampEntry = (ramp?.target_schedule || []).find(
-        (item) =>
-          String(item.seats ?? item.condition ?? item.band ?? "").trim() ===
-          seats.trim(),
-      );
-      return {
-        seats,
-        passenger: readValue(entry),
-        ramp: readValue(rampEntry),
-      };
-    })
-    .sort((a, b) => seatOrder(a.seats) - seatOrder(b.seats));
-
-  const fallbackBands = [
-    { seats: "Up to 50", passenger: 3200, ramp: 4500 },
-    { seats: "51-100", passenger: 4800, ramp: 6800 },
-    { seats: "101-150", passenger: 6500, ramp: 9200 },
-    { seats: "151-200", passenger: 8100, ramp: 12400 },
-    { seats: "201+", passenger: 10500, ramp: 16800 },
-  ];
-
-  const bands =
-    rawBands.length > 0 && !rawBands.every((b) => b.passenger === 0 && b.ramp === 0)
-      ? rawBands
-      : fallbackBands;
-
-  const max = Math.max(...bands.map((b) => Math.max(b.passenger, b.ramp)), 1);
+  const max = Math.max(...bars.map((b) => b.value), 1);
   const barHeight = 200;
-  const first = bands[0];
-  const last = bands[bands.length - 1];
+  const total = bars.reduce((sum, b) => sum + b.value, 0);
 
   return (
     <div className="flex h-full flex-col">
       <div className="mb-8 flex items-center justify-between gap-2">
         <span className="text-[11px] text-gray-400">
-          SEK per turnaround, by aircraft seat band
-        </span>
-        <span className="flex items-center gap-3 text-[10px] font-medium text-gray-500">
-          <span className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-sm bg-[#0070f3]" /> Passenger
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-sm bg-[#9333ea]" /> Ramp
-          </span>
+          USD per B747-200 turnaround, fixed rate by charge category
         </span>
       </div>
 
-      <div
-        className="flex flex-1 items-end justify-between gap-2 pb-6"
-        style={{ minHeight: barHeight + 40 }}
-      >
-        {bands.map((band) => (
-          <div
-            key={band.seats}
-            className="group/band flex h-full flex-1 cursor-default flex-col items-center justify-end gap-2"
-          >
-            <div className="flex h-full items-end justify-center gap-1.5">
-              <div className="flex h-full flex-col items-center justify-end gap-1.5">
-                <span className="text-[10px] font-semibold tabular-nums text-[#0070f3]">
-                  {band.passenger.toLocaleString()}
-                </span>
-                <div
-                  className="flex w-9 items-end rounded-t border border-black/5 bg-white/80 backdrop-blur-md"
-                  style={{ height: barHeight }}
-                >
-                  <motion.div
-                    initial={{ height: 0 }}
-                    animate={{
-                      height: `${Math.max(4, (band.passenger / max) * barHeight)}px`,
-                    }}
-                    transition={{ duration: 0.5, ease: "easeOut" }}
-                    className="w-full rounded-t bg-[#0070f3] transition-all duration-200 group-hover/band:bg-[#0051a8]"
-                  />
-                </div>
+      {bars.length ? (
+        <div
+          className="flex flex-1 items-end justify-around gap-2 pb-6"
+          style={{ minHeight: barHeight + 40 }}
+        >
+          {bars.map((bar) => (
+            <div
+              key={bar.label}
+              className="group/band flex h-full flex-1 cursor-default flex-col items-center justify-end gap-2"
+            >
+              <span
+                className="text-[11px] font-semibold tabular-nums"
+                style={{ color: bar.color }}
+              >
+                {bar.value.toLocaleString()}
+              </span>
+              <div
+                className="flex w-14 items-end rounded-t border border-black/5 bg-white/80 backdrop-blur-md"
+                style={{ height: barHeight }}
+              >
+                <motion.div
+                  initial={{ height: 0 }}
+                  animate={{ height: `${Math.max(4, (bar.value / max) * barHeight)}px` }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  className="w-full rounded-t transition-all duration-200"
+                  style={{ backgroundColor: bar.color }}
+                />
               </div>
-
-              <div className="flex h-full flex-col items-center justify-end gap-1.5">
-                <span className="text-[10px] font-semibold tabular-nums text-[#9333ea]">
-                  {band.ramp.toLocaleString()}
-                </span>
-                <div
-                  className="flex w-9 items-end rounded-t border border-black/5 bg-white/80 backdrop-blur-md"
-                  style={{ height: barHeight }}
-                >
-                  <motion.div
-                    initial={{ height: 0 }}
-                    animate={{
-                      height: `${Math.max(4, (band.ramp / max) * barHeight)}px`,
-                    }}
-                    transition={{ duration: 0.5, ease: "easeOut" }}
-                    className="w-full rounded-t bg-[#9333ea] transition-all duration-200 group-hover/band:bg-[#7e22ce]"
-                  />
-                </div>
-              </div>
+              <span className="mt-2 text-center text-[10px] font-medium text-gray-400">
+                {bar.label}
+              </span>
             </div>
-
-            <span className="mt-2 text-[10px] font-medium text-gray-400">
-              {band.seats} seats
-            </span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-1 items-center justify-center rounded border border-dashed border-gray-200 p-6 text-xs text-gray-400">
+          Turnaround charge KPIs not extracted.
+        </div>
+      )}
 
       <p className="mt-auto pt-4 text-[11px] text-gray-400">
-        Ramp handling prices above passenger services at every seat band; the gap
-        widens as aircraft size grows ({first.passenger.toLocaleString()}→
-        {last.passenger.toLocaleString()} vs {first.ramp.toLocaleString()}→
-        {last.ramp.toLocaleString()} SEK per turnaround).
+        Every B747-200 turnaround bills {total.toLocaleString()} USD across ramp
+        handling, passenger service, and flight ops/dispatch combined (Annex B P1.1).
       </p>
     </div>
   );
@@ -4712,7 +4670,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
           Total Exposure
         </span>
         <span className="mt-1 block text-2xl font-bold text-[#c2410c] tabular-nums">
-          {totalExposure.toLocaleString()} <span className="text-sm font-medium">SEK</span>
+          {totalExposure.toLocaleString()} <span className="text-sm font-medium">USD</span>
         </span>
       </div>
       {rows.length ? (
@@ -4724,7 +4682,7 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
                   {row.label}
                 </span>
                 <span className="font-semibold text-gray-900 tracking-wide tabular-nums">
-                  {row.amount.toLocaleString()} SEK
+                  {row.amount.toLocaleString()} USD
                 </span>
               </div>
               <div className="h-3 overflow-hidden rounded-full bg-slate-100/50">
@@ -4751,225 +4709,144 @@ function PenaltyExposureChart({ openFlags }: { openFlags: ContractKPIBreach[] })
   );
 }
 
-function LandingChargeCurveChart({ kpis }: { kpis: ContractKPI[] }) {
-  const landing = kpis.find(
-    (kpi) => kpiCodeFor(kpi)?.trim().toUpperCase() === "SGHA-1.1-LANDING",
-  );
-  const schedule = landing?.target_schedule || [];
+function LaborRateEscalationChart({ kpis }: { kpis: ContractKPI[] }) {
+  const byCode = (code: string) =>
+    kpis.find((kpi) => kpiCodeFor(kpi)?.trim().toUpperCase() === code);
 
-  // Extract a tonnage threshold straight from the condition text, rather than
-  // misreading the per-tonne rate ("value") as if it were a tonnage cutoff.
-  const tonnesInCondition = (entry: any) => {
-    const cond = String(entry.condition || "");
-    const match = cond.match(/(\d+(?:\.\d+)?)\s*tonnes?/i);
-    return match ? Number(match[1]) : null;
+  const tierValue = (kpi: ContractKPI | undefined, keyword: string) => {
+    const entry = (kpi?.target_schedule || []).find((item) =>
+      String(item.condition || "").toLowerCase().includes(keyword),
+    );
+    return Number(entry?.value) || 0;
   };
 
-  const findEntry = (keywords: string[], exclude?: string[]) =>
-    schedule.find((entry) => {
-      const cond = String(entry.condition || "").toLowerCase();
-      if (exclude?.some((ex) => cond.includes(ex))) return false;
-      return keywords.some((kw) => cond.includes(kw));
-    });
+  const groups = [
+    { label: "Ramp/Cleaning", kpi: byCode("BALTIA-JFK-GHA-015") },
+    { label: "Passenger Agent", kpi: byCode("BALTIA-JFK-GHA-016") },
+    { label: "CTX Bag Runner", kpi: byCode("BALTIA-JFK-GHA-017") },
+  ]
+    .map((g) => ({
+      label: g.label,
+      straight: tierValue(g.kpi, "straight"),
+      overtime: tierValue(g.kpi, "overtime"),
+    }))
+    .filter((g) => g.straight > 0 || g.overtime > 0);
 
-  const under =
-    findEntry(["less than", "under", "< 25", "below"], ["more", "above", "≥"]) ||
-    schedule.find((e) => {
-      const t = tonnesInCondition(e);
-      return t !== null && t <= 25;
-    }) ||
-    schedule[0];
-
-  const over =
-    findEntry(
-      ["25 tonnes or more", "≥25", ">=25", "25 t or", "over 25"],
-      ["less", "under", "<"],
-    ) ||
-    schedule.find((e) => {
-      const t = tonnesInCondition(e);
-      return t !== null && t >= 25;
-    }) ||
-    schedule[schedule.length - 1];
-
-  let flatMin = Number(under?.minimum_fee) || 800;
-  let underRate = Number(under?.price ?? under?.value) || 120;
-  let base = Number(over?.base) || 3000;
-  let overRate = Number(over?.price ?? over?.value) || 145;
-
-  if (underRate === 0 && overRate === 0) {
-    flatMin = 800;
-    underRate = 120;
-    base = 3000;
-    overRate = 145;
-  }
-
-  const crossTonnes = flatMin > 0 && underRate > 0 ? flatMin / underRate : 0;
-  const breakTonnes = 25;
-  const maxTonnes = 60;
-  const chargeAt25 = base + overRate * breakTonnes;
-  const maxCharge = Math.max(
-    base + overRate * maxTonnes,
-    chargeAt25,
-    flatMin + 100,
-  );
-  const width = 320;
-  const height = 170;
-  const padL = 36;
-  const padR = 12;
-  const padT = 14;
-  const padB = 26;
-  const x = (tonnes: number) =>
-    padL + (tonnes / maxTonnes) * (width - padL - padR);
-  const y = (charge: number) =>
-    padT + (1 - charge / maxCharge) * (height - padT - padB);
-  const chargeAt = (tonnes: number) => {
-    if (tonnes < breakTonnes) {
-      return Math.max(flatMin, underRate * tonnes);
-    }
-    return base + overRate * tonnes;
-  };
-  const points: Array<[number, number]> = [];
-  for (let tonnes = 0; tonnes <= Math.max(crossTonnes, breakTonnes); tonnes += 0.5) {
-    points.push([tonnes, chargeAt(tonnes)]);
-  }
-  points.push([breakTonnes, chargeAt(breakTonnes - 0.01)]);
-  points.push([breakTonnes, chargeAt(breakTonnes)]);
-  for (let tonnes = breakTonnes; tonnes <= maxTonnes; tonnes += 1) {
-    points.push([tonnes, chargeAt(tonnes)]);
-  }
-  const path = points
-    .map(
-      ([tonnes, charge], index) =>
-        `${index === 0 ? "M" : "L"} ${x(tonnes).toFixed(1)} ${y(charge).toFixed(1)}`,
-    )
-    .join(" ");
-  const yTicks = 4;
+  const max = Math.max(...groups.map((g) => Math.max(g.straight, g.overtime)), 1);
+  const barHeight = 200;
 
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-[11px] text-gray-500">
-          Landing charge (SEK) vs MTOW tonnes
+    <div className="flex h-full flex-col">
+      <div className="mb-8 flex items-center justify-between gap-2">
+        <span className="text-[11px] text-gray-400">
+          USD/hour, extra labor beyond staffed positions
         </span>
-        <span className="text-[10px] font-medium text-gray-400 bg-white/80 backdrop-blur-md border border-black/5 px-2 py-0.5 rounded-full">
-          kink at {breakTonnes} t
+        <span className="flex items-center gap-3 text-[10px] font-medium text-gray-500">
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-sm bg-[#0070f3]" /> Straight Time
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-sm bg-[#9333ea]" /> Overtime
+          </span>
         </span>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
-        <defs>
-          <linearGradient id="landing-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#0070f3" />
-            <stop offset="100%" stopColor="#2563eb" />
-          </linearGradient>
-        </defs>
-        {Array.from({ length: yTicks + 1 }, (_, i) => {
-          const yPos = padT + (i / yTicks) * (height - padT - padB);
-          const val = maxCharge - (i / yTicks) * maxCharge;
-          return (
-            <g key={i}>
-              <line x1={padL} y1={yPos} x2={width - padR} y2={yPos} stroke="#f3f4f6" strokeWidth="0.5" />
-              <text x={padL - 4} y={yPos + 3} textAnchor="end" fill="#9ca3af" fontSize="8" fontFamily="system-ui">
-                {Math.round(val).toLocaleString()}
-              </text>
-            </g>
-          );
-        })}
-        <line
-          x1={x(breakTonnes)}
-          y1={padT}
-          x2={x(breakTonnes)}
-          y2={height - padB}
-          stroke="#d1d5db"
-          strokeDasharray="4 3"
-          strokeWidth="0.8"
-        />
-        <path d={path} fill="none" stroke="url(#landing-gradient)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-        <line
-          x1={padL}
-          y1={y(flatMin)}
-          x2={x(breakTonnes)}
-          y2={y(flatMin)}
-          stroke="#0070f3"
-          strokeDasharray="4 3"
-          strokeWidth="0.8"
-          strokeOpacity="0.4"
-        />
-        <circle cx={x(breakTonnes)} cy={y(chargeAt(breakTonnes - 0.01))} r="3.5" fill="white" stroke="#0070f3" strokeWidth="2" />
-        <circle cx={x(breakTonnes)} cy={y(chargeAt(breakTonnes))} r="4" fill="white" stroke="#0070f3" strokeWidth="2" />
-        <rect x={x(breakTonnes) + 6} y={padT + 2} width="84" height="20" rx="4" fill="#eff6ff" fillOpacity="0.95" />
-        <text x={x(breakTonnes) + 10} y={padT + 15} fontSize="8" fill="#1d4ed8" fontWeight="500" fontFamily="system-ui">
-          ≥{breakTonnes}t: {base.toLocaleString()}+{overRate}/t → {Math.round(chargeAt25).toLocaleString()} SEK
-        </text>
-        <rect x={padL + 2} y={y(flatMin) - 16} width="56" height="13" rx="3" fill="#eff6ff" fillOpacity="0.9" />
-        <text x={padL + 5} y={y(flatMin) - 6} fontSize="8" fill="#1d4ed8" fontWeight="500" fontFamily="system-ui">
-          {flatMin.toLocaleString()} SEK min
-        </text>
-        <text x={padL} y={height - 8} fontSize="9" fill="#9ca3af" fontFamily="system-ui">
-          0 t
-        </text>
-        <text x={x(maxTonnes) - 30} y={height - 8} fontSize="9" fill="#9ca3af" fontFamily="system-ui">
-          {maxTonnes} t MTOW
-        </text>
-      </svg>
-      <p className="mt-2 text-[11px] text-gray-500">
-        Flat {flatMin.toLocaleString()} SEK until cross-over, then {underRate} SEK/t
-        (≈{Math.round(chargeAt(breakTonnes - 0.01)).toLocaleString()} SEK just below
-        the {breakTonnes}t mark), then a hard jump to {base.toLocaleString()} + {overRate}/t ={" "}
-        {Math.round(chargeAt25).toLocaleString()} SEK at {breakTonnes}t.
+
+      {groups.length ? (
+        <div
+          className="flex flex-1 items-end justify-between gap-2 pb-6"
+          style={{ minHeight: barHeight + 40 }}
+        >
+          {groups.map((g) => (
+            <div
+              key={g.label}
+              className="group/band flex h-full flex-1 cursor-default flex-col items-center justify-end gap-2"
+            >
+              <div className="flex h-full items-end justify-center gap-1.5">
+                <div className="flex h-full flex-col items-center justify-end gap-1.5">
+                  <span className="text-[10px] font-semibold tabular-nums text-[#0070f3]">
+                    {g.straight.toLocaleString()}
+                  </span>
+                  <div
+                    className="flex w-9 items-end rounded-t border border-black/5 bg-white/80 backdrop-blur-md"
+                    style={{ height: barHeight }}
+                  >
+                    <motion.div
+                      initial={{ height: 0 }}
+                      animate={{ height: `${Math.max(4, (g.straight / max) * barHeight)}px` }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
+                      className="w-full rounded-t bg-[#0070f3] transition-all duration-200 group-hover/band:bg-[#0051a8]"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex h-full flex-col items-center justify-end gap-1.5">
+                  <span className="text-[10px] font-semibold tabular-nums text-[#9333ea]">
+                    {g.overtime.toLocaleString()}
+                  </span>
+                  <div
+                    className="flex w-9 items-end rounded-t border border-black/5 bg-white/80 backdrop-blur-md"
+                    style={{ height: barHeight }}
+                  >
+                    <motion.div
+                      initial={{ height: 0 }}
+                      animate={{ height: `${Math.max(4, (g.overtime / max) * barHeight)}px` }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
+                      className="w-full rounded-t bg-[#9333ea] transition-all duration-200 group-hover/band:bg-[#7e22ce]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <span className="mt-2 text-center text-[10px] font-medium text-gray-400">
+                {g.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-1 items-center justify-center rounded border border-dashed border-gray-200 p-6 text-xs text-gray-400">
+          Extra labor rate KPIs not extracted.
+        </div>
+      )}
+
+      <p className="mt-auto pt-4 text-[11px] text-gray-400">
+        Overtime runs 1.5x straight time across every labor category (Annex B
+        P1.4) — the rate Swissport bills when a turnaround needs staff beyond
+        the committed manning table.
       </p>
     </div>
   );
 }
 
-function perOccasionChargeEntries(kpis: ContractKPI[]) {
+function ancillaryChargeEntries(kpis: ContractKPI[]) {
   const byCode = (code: string) =>
-    kpis.find((kpi) => kpiCodeFor(kpi) === code);
+    kpis.find((kpi) => kpiCodeFor(kpi)?.trim().toUpperCase() === code);
   const entries: Array<{ label: string; value: number }> = [];
-  const extraHours = byCode("SGHA-1.6-EXTRA-HOURS");
-  if (extraHours) {
-    entries.push({ label: "Extra opening hours (manhour)", value: Number(extraHours.value) || 0 });
-  }
-  const deicing = byCode("SGHA-2.8-DEICING-SERVICE");
-  if (deicing) {
-    entries.push({ label: "De-icing fixed charge", value: Number(deicing.value) || 0 });
-  }
-  const toilet = byCode("SGHA-2.10-TOILET-WATER");
-  if (toilet) {
-    entries.push({ label: "Toilet & water service", value: Number(toilet.value) || 0 });
-  }
-  const tow = byCode("SGHA-2.9-TOWING");
-  const nonscheduled = (tow?.target_schedule || []).find(
-    (entry) => entry.flight_type === "nonscheduled",
-  );
-  if (nonscheduled) {
-    entries.push({ label: "Tow/pushback (nonscheduled)", value: Number(nonscheduled.price ?? nonscheduled.value) || 0 });
-  }
-  (byCode("SGHA-2.7-ELECTRICITY")?.target_schedule || []).forEach((entry) => {
-    if (entry.outlet) {
-      entries.push({ label: `Electricity ${entry.outlet} (day)`, value: Number(entry.price ?? entry.value) || 0 });
-    }
+
+  (byCode("BALTIA-JFK-GHA-004")?.target_schedule || []).forEach((entry) => {
+    const condition = String(entry.condition || "Deicing fluid");
+    entries.push({ label: `Deice fluid — ${condition}`, value: Number(entry.value) || 0 });
   });
-  if (entries.length === 0) {
-    entries.push(
-      { label: "De-icing fixed charge", value: 4500 },
-      { label: "Tow/pushback (nonscheduled)", value: 3400 },
-      { label: "Extra opening hours (manhour)", value: 1850 },
-      { label: "Toilet & water service", value: 1200 },
-      { label: "Electricity 400Hz (day)", value: 850 },
-    );
+  (byCode("BALTIA-JFK-GHA-023")?.target_schedule || []).forEach((entry) => {
+    const condition = String(entry.condition || "Heater/AC");
+    entries.push({ label: `Heater/AC — ${condition}`, value: Number(entry.value) || 0 });
+  });
+  const callout = byCode("BALTIA-JFK-GHA-005");
+  if (callout) {
+    entries.push({ label: "Deice minimum callout charge", value: Number((callout as any).value) || 0 });
   }
-  return entries.sort((a, b) => b.value - a.value);
+
+  return entries.filter((e) => e.value > 0).sort((a, b) => b.value - a.value);
 }
 
-function PerOccasionChargesChart({ kpis }: { kpis: ContractKPI[] }) {
-  const rows = perOccasionChargeEntries(kpis);
+function AncillaryChargesChart({ kpis }: { kpis: ContractKPI[] }) {
+  const rows = ancillaryChargeEntries(kpis);
   const max = Math.max(...rows.map((row) => row.value), 1);
-  const hasDeicing = rows.some((row) => row.label.toLowerCase().includes("de-icing"));
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-2">
         <span className="text-[11px] text-gray-400">
-          SEK per occasion, sorted by value
+          USD per occasion, sorted by value
         </span>
         <span className="text-[11px] font-semibold text-gray-900 tracking-wide">
           {rows.length} charges
@@ -4977,14 +4854,14 @@ function PerOccasionChargesChart({ kpis }: { kpis: ContractKPI[] }) {
       </div>
       {rows.length ? (
         <div className="space-y-3">
-          {rows.map((row, index) => (
+          {rows.map((row) => (
             <div key={row.label} className="group/row cursor-default">
               <div className="mb-1.5 flex justify-between gap-2 text-[11px]">
                 <span className="truncate text-gray-500 group-hover/row:text-gray-700 transition-colors">
                   {row.label}
                 </span>
                 <span className="font-semibold text-gray-900 tracking-wide tabular-nums">
-                  {row.value.toLocaleString()} SEK
+                  {row.value.toLocaleString()} USD
                 </span>
               </div>
               <div className="h-5 overflow-hidden rounded-full bg-slate-100/50">
@@ -5000,14 +4877,8 @@ function PerOccasionChargesChart({ kpis }: { kpis: ContractKPI[] }) {
         </div>
       ) : (
         <div className="rounded border border-dashed border-gray-200 p-6 text-center text-xs text-gray-400">
-          No flat per-occasion charges found in the register.
+          No ancillary per-occasion charges found in the register.
         </div>
-      )}
-      {hasDeicing && (
-        <p className="mt-3 text-[11px] leading-4 text-gray-400 italic">
-          De-icing charge is fixed + variable (fluid-dependent), not a pure flat
-          rate.
-        </p>
       )}
     </div>
   );
@@ -5996,6 +5867,7 @@ function GuidedSourcesPanel({
   onRunSourceAction,
   onTestSourceConfiguration,
   onUploadSampleFile,
+  onAllSourcesReady,
 }: {
   sourceCatalog: KPISourceCatalogItem[];
   recentProfiles: KPIIntegrationProfile[];
@@ -6032,9 +5904,12 @@ function GuidedSourcesPanel({
     config: KPISourceConfig,
     file: File,
   ) => void | Promise<void>;
+  onAllSourcesReady?: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const perSourceInputRef = useRef<HTMLInputElement | null>(null);
+  const [isBulkFetching, setIsBulkFetching] = useState(false);
+  const [bulkFetchStatus, setBulkFetchStatus] = useState("");
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
   const [uploadedFileIds, setUploadedFileIds] = useState<Set<string>>(() => {
     if (typeof window !== "undefined") {
@@ -6372,7 +6247,7 @@ function GuidedSourcesPanel({
     const catalogByType = new Map(
       sourceCatalog.map((item) => [item.source_type, item]),
     );
-    let lastCreated: KPISourceConfig | null = null;
+    const createdConfigs: KPISourceConfig[] = [];
     for (const profile of availableProfiles) {
       const catalog = catalogByType.get(profile.source_type);
       if (!catalog) continue;
@@ -6396,11 +6271,34 @@ function GuidedSourcesPanel({
         status: "mapped",
         enabled: true,
       });
-      lastCreated = configured || created;
+      createdConfigs.push(configured || created);
     }
-    if (lastCreated) {
-      onSelectSource(lastCreated.source_config_id);
-      setStep("connect");
+    if (!createdConfigs.length) return;
+    const lastCreated = createdConfigs[createdConfigs.length - 1];
+    onSelectSource(lastCreated.source_config_id);
+    setStep("connect");
+
+    // All sources connected -- now fetch every one of them and only hand
+    // control back (switching straight to Contract Breaches) once every
+    // fetch has actually landed, instead of leaving the user staring at an
+    // empty sources list while ingestion runs in the background.
+    setIsBulkFetching(true);
+    try {
+      for (let i = 0; i < createdConfigs.length; i += 1) {
+        const config = createdConfigs[i];
+        setBulkFetchStatus(
+          `Fetching ${config.display_name || `source ${i + 1}`} (${i + 1} of ${createdConfigs.length})...`,
+        );
+        try {
+          await onRunSourceAction(config, "fetch");
+        } catch {
+          // one source failing shouldn't block the rest from fetching
+        }
+      }
+      onAllSourcesReady?.();
+    } finally {
+      setIsBulkFetching(false);
+      setBulkFetchStatus("");
     }
   };
   const uploadFile = async (file: File) => {
@@ -6735,6 +6633,22 @@ function GuidedSourcesPanel({
       </div>
     </div>
   );
+
+  if (isBulkFetching) {
+    return (
+      <div className="flex min-h-[420px] flex-col items-center justify-center gap-4 rounded-xl border border-gray-200 bg-white p-16 text-center shadow-sm">
+        <Loader2 className="h-10 w-10 animate-spin text-cs-primary" />
+        <div>
+          <p className="text-sm font-semibold text-gray-800">
+            Connecting sources and fetching actuals&hellip;
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            {bulkFetchStatus || "This will just take a moment."}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -7400,7 +7314,7 @@ function FlagsPanel({
                         <p className="mt-1 text-sm leading-6 text-gray-800">
                           {breach.remediation ||
                             kpi?.remediation ||
-                            "Escalate to accountable party and request corrective action plan."}
+                            defaultRemediationText(kpi, breach)}
                         </p>
                         <p className="mt-2 text-xs text-gray-500">
                           SLA:{" "}
@@ -7745,7 +7659,7 @@ function RecoveriesPanel({
           />
           <Metric
             label="Penalty exposure"
-            value={money(exposure, "SEK")}
+            value={money(exposure, "USD")}
             detail="current open risk"
           />
         </div>
@@ -7767,7 +7681,7 @@ function RecoveriesPanel({
             const variance = breach.variance_percent
               ? `${Math.abs(toNumber(breach.variance_percent) || 0)}%`
               : breach.variance
-                ? money(Math.abs(toNumber(breach.variance) || 0), "SEK")
+                ? money(Math.abs(toNumber(breach.variance) || 0), "USD")
                 : null;
             const penalty = Math.abs(
               toNumber(breach.penalty_amount) ||
@@ -7817,7 +7731,7 @@ function RecoveriesPanel({
                     </div>
                   </button>
                   <div className="text-sm font-semibold text-gray-950">
-                    {penalty ? `-${money(penalty, "SEK")}` : "Operational only"}
+                    {penalty ? `-${money(penalty, "USD")}` : "Operational only"}
                   </div>
                   <span
                     className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(severity)}`}
@@ -7868,7 +7782,7 @@ function RecoveriesPanel({
                         value={
                           breach.remediation ||
                           kpi?.remediation ||
-                          "Escalate to accountable party and request a corrective action plan."
+                          defaultRemediationText(kpi, breach)
                         }
                       />
                       <DetailTile
@@ -7884,7 +7798,7 @@ function RecoveriesPanel({
                       <DetailTile label="Actual (ingested)" value={actual} />
                       <DetailTile
                         label="Penalty eligibility"
-                        value={penalty ? money(penalty, "SEK") : "Not eligible for penalty"}
+                        value={penalty ? money(penalty, "USD") : "Not eligible for penalty"}
                       />
                     </div>
                     <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">

@@ -17,6 +17,7 @@ from xml.etree.ElementTree import Element as XmlElement
 
 from defusedxml import ElementTree as ET
 
+from pymongo import UpdateMany
 import requests
 
 from core.database import db
@@ -970,16 +971,23 @@ class KpiSourceIngestionService:
             if row.get("kpi_id"):
                 mapped_by_row[int(row_index)].add(str(row["kpi_id"]))
         skipped_rows = {int(item["row"]) for item in skipped if item.get("row") is not None}
-        for row_index, kpi_ids in mapped_by_row.items():
-            self.raw_records.update_many(
+        now = datetime.utcnow()
+        # One bulk_write instead of one update_many PER ROW -- still N
+        # operations logically, but sent as a single network round-trip.
+        operations = [
+            UpdateMany(
                 {"run_id": run_id, "row_index": row_index},
-                {"$set": {"processing_status": "mapped", "mapped_kpi_ids": sorted(kpi_ids), "mapped_at": datetime.utcnow()}},
+                {"$set": {"processing_status": "mapped", "mapped_kpi_ids": sorted(kpi_ids), "mapped_at": now}},
             )
+            for row_index, kpi_ids in mapped_by_row.items()
+        ]
         if skipped_rows:
-            self.raw_records.update_many(
+            operations.append(UpdateMany(
                 {"run_id": run_id, "row_index": {"$in": sorted(skipped_rows)}, "processing_status": "parked"},
-                {"$set": {"processing_status": "skipped", "mapped_at": datetime.utcnow()}},
-            )
+                {"$set": {"processing_status": "skipped", "mapped_at": now}},
+            ))
+        if operations:
+            self.raw_records.bulk_write(operations, ordered=False)
 
     def ingest_webhook(
         self,
@@ -1349,6 +1357,18 @@ class KpiSourceIngestionService:
         accepted: List[Dict[str, Any]] = []
         skipped: List[Dict[str, Any]] = []
         required_fields = self._required_fields(config)
+
+        # One prefetch query for the KPI ids touched in this batch replaces
+        # a find_one() PER ROW.
+        kpi_ids_in_rows = {row.get("kpi_id") for row in rows if row.get("kpi_id")}
+        obligation_by_kpi_id: Dict[str, Dict[str, Any]] = {}
+        if kpi_ids_in_rows:
+            for doc in self.manager.kpis.find(
+                {"contract_id": config.get("contract_id"), "kpi_id": {"$in": list(kpi_ids_in_rows)}},
+                {"kpi_id": 1, "record_type": 1, "rule_type": 1, "trackability_status": 1},
+            ):
+                obligation_by_kpi_id[str(doc.get("kpi_id"))] = doc
+
         for index, row in enumerate(rows, start=1):
             reasons: List[str] = []
             raw_value = next((row.get(key) for key in ("actual_value", "value", "actual", "score") if not _is_missing_value(row.get(key))), None)
@@ -1356,10 +1376,7 @@ class KpiSourceIngestionService:
                 (row.get(key) for key in ("evidence", "evidence_artifact", "artifact", "artifact_url", "certificate", "attestation", "conforms_to", "result", "status", "present") if not _is_missing_value(row.get(key))),
                 None,
             )
-            obligation = self.manager.kpis.find_one(
-                {"contract_id": config.get("contract_id"), "kpi_id": row.get("kpi_id")},
-                {"record_type": 1, "rule_type": 1, "trackability_status": 1},
-            ) if row.get("kpi_id") else None
+            obligation = obligation_by_kpi_id.get(row.get("kpi_id")) if row.get("kpi_id") else None
             record_type = str((obligation or {}).get("record_type") or "").lower()
             rule_type = str((obligation or {}).get("rule_type") or "").lower()
             evidence_only = record_type in {"reporting_or_evidence_obligation", "reference_only", "process_only"} or rule_type in {"evidence", "qualitative"}
@@ -1376,6 +1393,7 @@ class KpiSourceIngestionService:
                 if raw_value is None and evidence_value is not None:
                     row["actual_value"] = evidence_value
                 accepted.append(row)
+        validation_bindings = config.get("kpi_bindings") if isinstance(config.get("kpi_bindings"), list) else []
         for binding in validation_bindings:
             if binding.get("enabled") is False:
                 continue
@@ -1413,6 +1431,24 @@ class KpiSourceIngestionService:
         unique: List[Dict[str, Any]] = []
         skipped: List[Dict[str, Any]] = []
         seen: set = set()
+
+        # One prefetch query for this (contract, source) replaces a
+        # find_one() PER ROW -- on a remote cluster that's the difference
+        # between one round-trip and hundreds for a large fetch.
+        existing_index: Dict[Tuple[Any, str], bool] = {}
+        try:
+            for doc in self.actuals.find(
+                {"contract_id": contract_id, "metadata.source_config_id": source_config_id},
+                {"kpi_id": 1, "metadata.source_dedupe_key": 1},
+            ):
+                dedupe_key = (doc.get("metadata") or {}).get("source_dedupe_key")
+                if dedupe_key is None:
+                    continue
+                existing_index[(doc.get("kpi_id"), dedupe_key)] = True
+                existing_index[(None, dedupe_key)] = True
+        except Exception:
+            existing_index = {}
+
         for index, row in enumerate(rows, start=1):
             source_record_id = _clean_string(row.get("source_record_id"))
             dedupe_value = source_record_id or self._fallback_source_record_id(config, row, index)
@@ -1423,17 +1459,12 @@ class KpiSourceIngestionService:
                 skipped.append({"row": index, "reason": "Duplicate row in current fetch", "data": row})
                 continue
             seen.add(seen_key)
-            try:
-                query = {
-                    "contract_id": contract_id,
-                    "metadata.source_config_id": source_config_id,
-                    "metadata.source_dedupe_key": dedupe_value,
-                }
-                if row.get("kpi_id"):
-                    query["kpi_id"] = str(row.get("kpi_id"))
-                existing = self.actuals.find_one(query)
-            except Exception:
-                existing = None
+            row_kpi_id = str(row.get("kpi_id")) if row.get("kpi_id") else None
+            existing = (
+                existing_index.get((row_kpi_id, dedupe_value))
+                if row_kpi_id
+                else existing_index.get((None, dedupe_value))
+            )
             if existing:
                 skipped.append({"row": index, "reason": "Duplicate source record already ingested", "data": row})
                 continue

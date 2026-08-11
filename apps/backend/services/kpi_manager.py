@@ -2260,6 +2260,21 @@ class ContractKPIManager:
         evaluate: bool = True,
         evaluate_latest_only: bool = False,
     ) -> Dict[str, Any]:
+        # Batched I/O throughout -- a handful of round-trips instead of one
+        # per row (~5/row before this):
+        #  - dedupe checking is identity matching -> one prefetch query
+        #    replaces up to 3 round-trips per row.
+        #  - evaluate_kpi's own kpi re-fetch is eliminated -> the already-
+        #    loaded kpi doc is passed straight into _compute_kpi_evaluation.
+        #  - actuals insert in one bulk insert_many.
+        #  - period-window evaluation (_actual_values_for_window, used by
+        #    "latest"/aggregated rule types) queries the DB at most once per
+        #    distinct (kpi_id, period) via `window_cache`, not once per row --
+        #    each row still sees exactly "actuals processed so far, in this
+        #    row's order" (matching sequential per-row semantics), it's just
+        #    tracked in memory instead of by re-querying what was already
+        #    physically written.
+        #  - breach documents insert in one bulk insert_many.
         kpis = self.list_contract_kpis(contract_id)
         kpi_lookup = self._build_kpi_lookup(kpis)
         latest_row_by_kpi: Dict[str, int] = {}
@@ -2268,11 +2283,14 @@ class ContractKPIManager:
                 kpi = self._resolve_actual_kpi(row, kpi_lookup)
                 if kpi:
                     latest_row_by_kpi[str(kpi["kpi_id"])] = row_index
+
         actuals: List[Dict[str, Any]] = []
         breaches: List[Dict[str, Any]] = []
         deferred_evaluations: List[Dict[str, Any]] = []
         skipped: List[Dict[str, Any]] = []
 
+        resolved: List[tuple] = []  # (index, row, kpi, raw_value, timestamp, metadata)
+        touched_kpi_ids: set = set()
         for index, row in enumerate(rows, start=1):
             kpi = self._resolve_actual_kpi(row, kpi_lookup)
             raw_value = next(
@@ -2286,74 +2304,178 @@ class ContractKPIManager:
                     "data": row,
                 })
                 continue
-
             timestamp = self._parse_datetime(row.get("timestamp") or row.get("date") or row.get("created_at"))
             metadata = {
                 key: value for key, value in row.items()
                 if key not in {"kpi_id", "kpi_name", "name", "metric", "value", "actual_value", "actual", "score", "unit", "timestamp", "date"}
             }
-            actual = self.record_actual(
-                kpi_id=kpi["kpi_id"],
-                contract_id=contract_id,
-                user_id=user_id,
-                value=raw_value,
-                unit=row.get("unit") or kpi.get("unit"),
-                source=row.get("source") or source,
-                metadata=metadata,
-                timestamp=timestamp,
+            resolved.append((index, row, kpi, raw_value, timestamp, metadata))
+            touched_kpi_ids.add(str(kpi["kpi_id"]))
+
+        # _build_evaluation_rule / migrate_doc are pure CPU (regex/text
+        # parsing over the kpi doc's clause text) but not free when the same
+        # KPI repeats across many rows -- compute each once per kpi_id per
+        # batch instead of twice per row (once for dedupe/window setup below,
+        # once again inside _compute_kpi_evaluation).
+        rule_cache: Dict[str, Dict[str, Any]] = {}
+        v2_cache: Dict[str, Dict[str, Any]] = {}
+
+        def _rule_for(kpi_doc: Dict[str, Any]) -> Dict[str, Any]:
+            key = str(kpi_doc["kpi_id"])
+            if key not in rule_cache:
+                rule_cache[key] = kpi_doc.get("evaluation_rule") or self._build_evaluation_rule(kpi_doc)
+            return rule_cache[key]
+
+        def _v2_for(kpi_doc: Dict[str, Any]) -> Dict[str, Any]:
+            key = str(kpi_doc["kpi_id"])
+            if key not in v2_cache:
+                v2_cache[key] = KPISchemaV1toV2Migrator.migrate_doc(kpi_doc)
+            return v2_cache[key]
+
+        # ONE query does double duty: dedupe indexing AND window_cache
+        # seeding, instead of a dedupe query plus a separate window query per
+        # distinct (kpi_id, period) -- a source touching a dozen different
+        # KPIs previously meant a dozen extra round-trips just for window
+        # seeding. Each pre-batch doc is bucketed into the same (kpi_id,
+        # period_start, period_end) key _actual_values_for_window will look
+        # up, using that KPI's own (cached) rule to place it -- matching
+        # sequential per-row semantics without any additional round-trips.
+        kpi_by_id = {str(k["kpi_id"]): k for k in kpis}
+        dedupe_index, existing_docs = self._build_existing_actual_index(contract_id, touched_kpi_ids)
+        window_buckets: Dict[tuple, List[Tuple[datetime, float]]] = {}
+        for doc in existing_docs:
+            doc_kpi = kpi_by_id.get(str(doc.get("kpi_id")))
+            if not doc_kpi:
+                continue
+            numeric = self._numeric(doc.get("value"))
+            if numeric is None:
+                continue
+            rule = _rule_for(doc_kpi)
+            doc_timestamp = doc.get("timestamp") or datetime.utcnow()
+            period_start, period_end = self._period_bounds(rule, doc_timestamp)
+            if period_start is None and period_end is None:
+                continue
+            window_buckets.setdefault((str(doc["kpi_id"]), period_start, period_end), []).append((doc_timestamp, numeric))
+        # "latest" aggregation (_aggregate_actuals) reads values[-1] -- sort
+        # by timestamp ascending, same order _query_actual_values_for_window
+        # returns, so "latest" means chronologically latest, not numerically
+        # largest.
+        window_cache: Dict[tuple, List[float]] = {
+            key: [value for _, value in sorted(items, key=lambda pair: pair[0])]
+            for key, items in window_buckets.items()
+        }
+        # Explicitly seed every (kpi_id, period) key this batch's OWN rows
+        # will need, even ones with zero pre-existing actuals (e.g. the
+        # very first ingest for a KPI) -- otherwise _actual_values_for_window
+        # treats an absent key as a cache miss and queries the DB itself,
+        # which by then already contains this batch's bulk-inserted actuals,
+        # corrupting "latest" for any row evaluated before the batch's last.
+        for index, row, kpi, raw_value, timestamp, metadata in resolved:
+            rule = _rule_for(kpi)
+            period_start, period_end = self._period_bounds(rule, timestamp or datetime.utcnow())
+            if period_start is None and period_end is None:
+                continue
+            window_cache.setdefault((str(kpi["kpi_id"]), period_start, period_end), [])
+
+        to_insert: List[Dict[str, Any]] = []
+        accepted: List[tuple] = []  # (index, row, kpi, raw_value, timestamp, actual_doc)
+        for index, row, kpi, raw_value, timestamp, metadata in resolved:
+            kpi_id = str(kpi["kpi_id"])
+            row_source = row.get("source") or source
+            existing = self._lookup_existing_actual_indexed(
+                dedupe_index, kpi_id=kpi_id, source=row_source, metadata=metadata, timestamp=timestamp,
             )
-            if actual.get("duplicate_skipped"):
+            if existing:
                 skipped.append({
                     "row": index,
                     "reason": "Duplicate actual already ingested",
                     "data": row,
-                    "actual_id": actual.get("actual_id"),
+                    "actual_id": existing.get("actual_id"),
                 })
                 continue
-            actuals.append(actual)
+            actual_id = f"actual_{hashlib.md5(f'{kpi_id}:{datetime.utcnow().isoformat()}:{index}'.encode()).hexdigest()[:14]}"
+            actual_doc = {
+                "actual_id": actual_id,
+                "kpi_id": kpi_id,
+                "contract_id": contract_id,
+                "user_id": user_id,
+                "value": raw_value,
+                "unit": row.get("unit") or kpi.get("unit"),
+                "source": row_source,
+                "metadata": metadata,
+                "timestamp": timestamp or datetime.utcnow(),
+                "created_at": datetime.utcnow(),
+            }
+            to_insert.append(actual_doc)
+            accepted.append((index, row, kpi, raw_value, timestamp, actual_doc))
+            # Make this row visible to dedupe checks for the *rest* of this
+            # same batch (mirrors the old per-row insert-then-check ordering).
+            self._index_actual_doc(dedupe_index, actual_doc)
+
+        if to_insert:
+            self.actuals.insert_many(to_insert)
+        actuals = [self._serialize(doc) for *_, doc in accepted]
+
+        breach_docs_to_insert: List[Dict[str, Any]] = []
+        for index, row, kpi, raw_value, timestamp, actual_doc in accepted:
+            kpi_id = str(kpi["kpi_id"])
             should_evaluate = evaluate and (
                 not evaluate_latest_only
-                or latest_row_by_kpi.get(str(kpi["kpi_id"])) == index
+                or latest_row_by_kpi.get(kpi_id) == index
             )
-            if should_evaluate:
-                v2_kpi = KPISchemaV1toV2Migrator.migrate_doc(kpi)
-                rule_type = v2_kpi.get("rule", {}).get("rule_type") or kpi.get("rule_type") or "threshold"
-                if rule_type == "qualitative":
+            if not should_evaluate:
+                continue
+            v2_kpi = _v2_for(kpi)
+            rule_type = v2_kpi.get("rule", {}).get("rule_type") or kpi.get("rule_type") or "threshold"
+            if rule_type == "qualitative":
+                deferred_evaluations.append({
+                    "row": index,
+                    "kpi_id": kpi.get("kpi_id"),
+                    "kpi_name": kpi.get("name"),
+                    "actual_id": actual_doc.get("actual_id"),
+                    "reason": "Qualitative KPI requires human judgment",
+                })
+            elif self._is_kpi_tracking_enabled(kpi):
+                try:
+                    breach = self._compute_kpi_evaluation(
+                        kpi=kpi,
+                        actual_value=raw_value,
+                        user_id=user_id,
+                        actual_unit=actual_doc.get("unit"),
+                        actual_id=actual_doc.get("actual_id"),
+                        source=actual_doc.get("source"),
+                        timestamp=timestamp,
+                        window_cache=window_cache,
+                        rule=_rule_for(kpi),
+                    )
+                    breaches.append(self._serialize(breach))
+                    if breach.get("is_breach") and breach.get("breach_id"):
+                        breach_docs_to_insert.append(breach)
+                except ValueError as err:
                     deferred_evaluations.append({
                         "row": index,
                         "kpi_id": kpi.get("kpi_id"),
                         "kpi_name": kpi.get("name"),
-                        "actual_id": actual.get("actual_id"),
-                        "reason": "Qualitative KPI requires human judgment",
+                        "actual_id": actual_doc.get("actual_id"),
+                        "reason": str(err),
                     })
-                elif self._is_kpi_tracking_enabled(kpi):
-                    try:
-                        breaches.append(self.evaluate_kpi(
-                            kpi_id=kpi["kpi_id"],
-                            actual_value=raw_value,
-                            user_id=user_id,
-                            contract_id=contract_id,
-                            actual_unit=actual.get("unit"),
-                            actual_id=actual.get("actual_id"),
-                            source=actual.get("source"),
-                            timestamp=timestamp,
-                        ))
-                    except ValueError as err:
-                        deferred_evaluations.append({
-                            "row": index,
-                            "kpi_id": kpi.get("kpi_id"),
-                            "kpi_name": kpi.get("name"),
-                            "actual_id": actual.get("actual_id"),
-                            "reason": str(err),
-                        })
-                else:
-                    deferred_evaluations.append({
-                        "row": index,
-                        "kpi_id": kpi.get("kpi_id"),
-                        "kpi_name": kpi.get("name"),
-                        "actual_id": actual.get("actual_id"),
-                        "reason": "KPI is not tracked",
-                    })
+            else:
+                deferred_evaluations.append({
+                    "row": index,
+                    "kpi_id": kpi.get("kpi_id"),
+                    "kpi_name": kpi.get("name"),
+                    "actual_id": actual_doc.get("actual_id"),
+                    "reason": "KPI is not tracked",
+                })
+
+        if breach_docs_to_insert:
+            self.breaches.insert_many(breach_docs_to_insert)
+            kpi_by_id = {str(k["kpi_id"]): k for k in kpis}
+            for breach in breach_docs_to_insert:
+                try:
+                    self._trigger_alerts_for_breach(breach, kpi_by_id.get(breach["kpi_id"]) or {})
+                except Exception as alert_exc:
+                    logger.warning("Failed to create KPI breach alert for %s: %s", breach.get("breach_id"), alert_exc)
 
         return {
             "contract_id": contract_id,
@@ -2363,6 +2485,62 @@ class ContractKPIManager:
             "deferred_evaluations": deferred_evaluations,
             "skipped": skipped,
         }
+
+    def _build_existing_actual_index(
+        self, contract_id: str, kpi_ids: set,
+    ) -> Tuple[Dict[str, Dict[Any, Dict[str, Any]]], List[Dict[str, Any]]]:
+        """One prefetch query doing double duty for ingest_actuals: dedupe
+        lookups (mirrors _find_existing_actual's three-tier match priority
+        as in-memory dicts) AND window_cache seeding (the returned doc list,
+        now including `value`) -- instead of a dedupe round-trip PLUS a
+        separate window round-trip per distinct (kpi_id, period)."""
+        index: Dict[str, Dict[Any, Dict[str, Any]]] = {
+            "by_config_dedupe": {}, "by_source_record": {}, "by_exact": {},
+        }
+        if not kpi_ids:
+            return index, []
+        docs = list(self.actuals.find(
+            {"contract_id": contract_id, "kpi_id": {"$in": list(kpi_ids)}},
+            {"actual_id": 1, "kpi_id": 1, "source": 1, "timestamp": 1, "metadata": 1, "value": 1},
+        ))
+        for doc in docs:
+            self._index_actual_doc(index, doc)
+        return index, docs
+
+    def _index_actual_doc(self, index: Dict[str, Dict[Any, Dict[str, Any]]], doc: Dict[str, Any]) -> None:
+        metadata = doc.get("metadata") or {}
+        kpi_id = str(doc.get("kpi_id"))
+        source = doc.get("source")
+        source_config_id = metadata.get("source_config_id")
+        source_dedupe_key = metadata.get("source_dedupe_key") or metadata.get("source_record_id") or metadata.get("record_id")
+        period = metadata.get("period")
+        if source_config_id and source_dedupe_key:
+            index["by_config_dedupe"][(kpi_id, source_config_id, str(source_dedupe_key))] = doc
+        if source_dedupe_key:
+            index["by_source_record"][(kpi_id, source, source_dedupe_key)] = doc
+        index["by_exact"][(kpi_id, source, doc.get("timestamp"), period)] = doc
+
+    def _lookup_existing_actual_indexed(
+        self,
+        index: Dict[str, Dict[Any, Dict[str, Any]]],
+        *,
+        kpi_id: str,
+        source: str,
+        metadata: Dict[str, Any],
+        timestamp: Optional[datetime],
+    ) -> Optional[Dict[str, Any]]:
+        source_config_id = metadata.get("source_config_id")
+        source_dedupe_key = metadata.get("source_dedupe_key") or metadata.get("source_record_id") or metadata.get("record_id")
+        if source_config_id and source_dedupe_key:
+            hit = index["by_config_dedupe"].get((kpi_id, source_config_id, str(source_dedupe_key)))
+            if hit:
+                return hit
+        period = metadata.get("period")
+        if source_dedupe_key:
+            hit = index["by_source_record"].get((kpi_id, source, source_dedupe_key))
+            if hit:
+                return hit
+        return index["by_exact"].get((kpi_id, source, timestamp, period))
 
     def evaluate_kpi(
         self,
@@ -2385,6 +2563,55 @@ class ContractKPIManager:
         if not self._is_kpi_tracking_enabled(kpi):
             raise ValueError("KPI is not tracked. Track it before evaluating for breaches.")
 
+        v2_kpi = KPISchemaV1toV2Migrator.migrate_doc(kpi)
+        rule_type = v2_kpi.get("rule", {}).get("rule_type") or kpi.get("rule_type") or "threshold"
+        # Requirement 2.3: Qualitative KPI — Explicit Non-Evaluation
+        if rule_type == "qualitative":
+            raise ValueError("This KPI requires human judgment and cannot be auto-evaluated")
+
+        breach = self._compute_kpi_evaluation(
+            kpi=kpi,
+            actual_value=actual_value,
+            user_id=user_id,
+            actual_unit=actual_unit,
+            actual_id=actual_id,
+            source=source,
+            timestamp=timestamp,
+        )
+        # Only genuine breaches are persisted as compliance flags. Clean evaluations
+        # are returned to the caller but never written, keeping the flag dashboard
+        # limited to real, actionable findings.
+        if breach.get("is_breach") and breach.get("breach_id"):
+            self.breaches.insert_one(breach)
+            try:
+                self._trigger_alerts_for_breach(breach, kpi)
+            except Exception as alert_exc:
+                logger.warning("Failed to create KPI breach alert for %s: %s", breach.get("breach_id"), alert_exc)
+        return self._serialize(breach)
+
+    def _compute_kpi_evaluation(
+        self,
+        *,
+        kpi: Dict[str, Any],
+        actual_value: Any,
+        user_id: str,
+        actual_unit: Optional[str] = None,
+        actual_id: Optional[str] = None,
+        source: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
+        window_cache: Optional[Dict[tuple, List[float]]] = None,
+        rule: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Computes an evaluation/breach dict for an already-loaded KPI doc,
+        without persisting it or triggering alerts -- shared by evaluate_kpi
+        (single-call, persists immediately) and ingest_actuals's bulk path
+        (persists everything in one batch at the end). Callers decide what
+        to do with the result: dependency-blocked / waiting-on-dependencies
+        results have no breach_id and are never persisted; a real evaluation
+        always has a breach_id and is persisted only when is_breach is True.
+        """
+        kpi_id = kpi["kpi_id"]
+
         # A supplier failure must not be created while an explicit client-side
         # dependency is known to be unmet.  Extraction records may carry these
         # fields after an operator configures dependency evidence; absence of a
@@ -2403,10 +2630,6 @@ class ContractKPIManager:
 
         v2_kpi = KPISchemaV1toV2Migrator.migrate_doc(kpi)
         rule_type = v2_kpi.get("rule", {}).get("rule_type") or kpi.get("rule_type") or "threshold"
-
-        # Requirement 2.3: Qualitative KPI — Explicit Non-Evaluation
-        if rule_type == "qualitative":
-            raise ValueError("This KPI requires human judgment and cannot be auto-evaluated")
 
         # Requirement 2.4: Composite Formula — Topological Dependencies & Safe AST Evaluation
         if rule_type == "composite":
@@ -2440,15 +2663,15 @@ class ContractKPIManager:
             except Exception as exc:
                 raise ValueError(f"Failed to evaluate composite formula '{formula}': {exc}") from exc
 
-        rule = kpi.get("evaluation_rule") or self._build_evaluation_rule(kpi)
-        evaluation = self._evaluate_rule(kpi, rule, actual_value, timestamp=timestamp)
+        rule = rule or kpi.get("evaluation_rule") or self._build_evaluation_rule(kpi)
+        evaluation = self._evaluate_rule(kpi, rule, actual_value, timestamp=timestamp, window_cache=window_cache)
         expected = evaluation.get("expected_value")
         actual = evaluation.get("evaluated_value")
         operator = evaluation.get("operator") or kpi.get("operator") or "specified"
         is_breach = bool(evaluation.get("is_breach"))
 
         breach_id = f"breach_{hashlib.md5(f'{kpi_id}:{actual_value}:{datetime.utcnow().isoformat()}'.encode()).hexdigest()[:14]}"
-        breach = {
+        return {
             "breach_id": breach_id,
             "kpi_id": kpi_id,
             "contract_id": kpi.get("contract_id"),
@@ -2494,16 +2717,6 @@ class ContractKPIManager:
             "breach_email_draft": None,
             "created_at": datetime.utcnow(),
         }
-        # Only genuine breaches are persisted as compliance flags. Clean evaluations
-        # are returned to the caller but never written, keeping the flag dashboard
-        # limited to real, actionable findings.
-        if is_breach:
-            self.breaches.insert_one(breach)
-            try:
-                self._trigger_alerts_for_breach(breach, kpi)
-            except Exception as alert_exc:
-                logger.warning("Failed to create KPI breach alert for %s: %s", breach_id, alert_exc)
-        return self._serialize(breach)
 
     def _normalize_source_config_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         catalog = {item["source_type"]: item for item in SOURCE_CONNECTOR_CATALOG}
@@ -2780,11 +2993,12 @@ class ContractKPIManager:
         actual_value: Any,
         *,
         timestamp: Optional[datetime] = None,
+        window_cache: Optional[Dict[tuple, List[float]]] = None,
     ) -> Dict[str, Any]:
         evaluated_at = timestamp or datetime.utcnow()
         period_start, period_end = self._period_bounds(rule, evaluated_at)
         blackout_applied = self._is_in_blackout(evaluated_at, rule.get("blackout_windows") or [])
-        actual_values = self._actual_values_for_window(kpi, actual_value, period_start, period_end)
+        actual_values = self._actual_values_for_window(kpi, actual_value, period_start, period_end, window_cache=window_cache)
         actual = self._aggregate_actuals(actual_values, rule.get("aggregation") or "latest")
         expected = self._numeric(rule.get("target"))
         threshold_min = self._numeric(rule.get("threshold_min"))
@@ -3531,10 +3745,43 @@ class ContractKPIManager:
         current_value: Any,
         period_start: Optional[datetime],
         period_end: Optional[datetime],
+        *,
+        window_cache: Optional[Dict[tuple, List[float]]] = None,
     ) -> List[float]:
         current_numeric = self._numeric(current_value)
         if not period_start and not period_end:
             return [current_numeric] if current_numeric is not None else []
+
+        if window_cache is not None:
+            # Bulk-ingest path (ingest_actuals): rows for the same KPI in the
+            # same window are evaluated many times in a row. Query the DB at
+            # most once per distinct (kpi_id, period) combination instead of
+            # once per row, and grow the cached list in-memory in processing
+            # order as each row's own value is evaluated -- giving every row
+            # the exact same "actuals inserted so far, in this order" view a
+            # sequential per-row query would have produced, without paying
+            # for a round-trip per row.
+            cache_key = (str(kpi.get("kpi_id")), period_start, period_end)
+            if cache_key not in window_cache:
+                window_cache[cache_key] = self._query_actual_values_for_window(kpi, period_start, period_end)
+            values = list(window_cache[cache_key])
+            if current_numeric is not None and current_numeric not in values:
+                values.append(current_numeric)
+            # Persist for subsequent rows of the same KPI/window in this batch.
+            window_cache[cache_key] = values
+            return values
+
+        values = self._query_actual_values_for_window(kpi, period_start, period_end)
+        if current_numeric is not None and current_numeric not in values:
+            values.append(current_numeric)
+        return values
+
+    def _query_actual_values_for_window(
+        self,
+        kpi: Dict[str, Any],
+        period_start: Optional[datetime],
+        period_end: Optional[datetime],
+    ) -> List[float]:
         query: Dict[str, Any] = {"kpi_id": kpi.get("kpi_id"), "contract_id": kpi.get("contract_id")}
         timestamp_filter: Dict[str, Any] = {}
         if period_start:
@@ -3545,14 +3792,19 @@ class ContractKPIManager:
             query["timestamp"] = timestamp_filter
         values: List[float] = []
         try:
-            for actual in self.actuals.find(query, {"value": 1}):
+            # "latest" aggregation (_aggregate_actuals) reads values[-1] --
+            # without an explicit sort, find()'s order is whatever MongoDB's
+            # storage engine happens to return, which is not guaranteed to
+            # match insertion/chronological order (unlike a simple in-memory
+            # fake, where it usually does). Sort ascending by timestamp so
+            # "latest" reliably means the most recent actual, not an
+            # arbitrary one.
+            for actual in self.actuals.find(query, {"value": 1, "timestamp": 1}).sort([("timestamp", 1)]):
                 numeric = self._numeric(actual.get("value"))
                 if numeric is not None:
                     values.append(numeric)
         except Exception:
             values = []
-        if current_numeric is not None and current_numeric not in values:
-            values.append(current_numeric)
         return values
 
     def _aggregate_actuals(self, values: List[float], aggregation: str) -> Optional[float]:

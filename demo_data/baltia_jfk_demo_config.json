@@ -214,7 +214,7 @@
     {
       "source_id": "supplier_obligations_log",
       "display_name": "Supplier Obligations Compliance Log",
-      "source_type": "scanned_images",
+      "source_type": "sap_ariba",
       "priority": "primary",
       "feeds_kpi_codes": ["BALTIA-JFK-GHA-006", "BALTIA-JFK-GHA-008", "BALTIA-JFK-GHA-009", "BALTIA-JFK-GHA-010", "BALTIA-JFK-GHA-011", "BALTIA-JFK-GHA-025", "BALTIA-JFK-GHA-026", "BALTIA-JFK-GHA-028", "BALTIA-JFK-GHA-032", "BALTIA-JFK-GHA-035", "BALTIA-JFK-GHA-036", "BALTIA-JFK-GHA-037"]
     },
