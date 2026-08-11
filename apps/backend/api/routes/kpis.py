@@ -739,12 +739,15 @@ def update_contract_kpi(
 
     contract = collection.find_one({"_id": contract_oid}, {"_id": 1, "ownerType": 1, "ownerId": 1})
     check_contract_access(contract, current_user)
-    updated = _kpi_manager().update_kpi(
-        kpi_id,
-        {key: value for key, value in request.model_dump().items() if value is not None},
-        user_id=str(current_user.id),
-        contract_id=contract_id,
-    )
+    try:
+        updated = _kpi_manager().update_kpi(
+            kpi_id,
+            {key: value for key, value in request.model_dump().items() if value is not None},
+            user_id=str(current_user.id),
+            contract_id=contract_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     if not updated:
         raise HTTPException(status_code=404, detail="KPI not found.")
     cache.delete(f"kpi:list:{contract_id}")

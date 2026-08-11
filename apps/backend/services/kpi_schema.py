@@ -625,10 +625,18 @@ class KPISchemaV1toV2Migrator:
                 "target_type": "lookup_table",
             }
         else:
+            # Catch-all for rule_type strings not in the branches above (e.g.
+            # "threshold_maximum", "threshold_minimum" -- used by several
+            # extracted KPIs but never given their own branch here). Key names
+            # must match the "range" branch's "min"/"max" convention, since
+            # that's what flatten_for_legacy_frontend() reads back below --
+            # using "value_min"/"value_max" here silently broke the read path
+            # (edits saved fine, but the field always displayed as empty and
+            # the UI fell back to the stale kpi.value).
             spec = {
                 "target": v1_doc.get("target_value") or v1_doc.get("value"),
-                "value_min": v1_doc.get("value_min"),
-                "value_max": v1_doc.get("value_max"),
+                "min": v1_doc.get("value_min"),
+                "max": v1_doc.get("value_max"),
             }
 
         rule = {

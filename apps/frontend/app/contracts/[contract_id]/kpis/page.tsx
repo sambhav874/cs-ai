@@ -1195,6 +1195,7 @@ export default function ContractKpiManagementPage() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [activePanel, setActivePanel] = useState<PanelKey>("review");
+  const [showAcceptKpisFirstModal, setShowAcceptKpisFirstModal] = useState(false);
   const [actionLogs, setActionLogs] = useState<Record<string, RecoveryReminderAction[]>>({});
   const [contract, setContract] = useState<FullContractData | null>(null);
   const [kpis, setKpis] = useState<ContractKPI[]>([]);
@@ -2628,10 +2629,18 @@ export default function ContractKpiManagementPage() {
             <button
               key={item.id}
               type="button"
-              onClick={() => setActivePanel(item.id as PanelKey)}
+              onClick={() => {
+                if (item.id === "sources" && trackedKpis.length === 0) {
+                  setShowAcceptKpisFirstModal(true);
+                  return;
+                }
+                setActivePanel(item.id as PanelKey);
+              }}
               className={`mb-1 flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors ${activePanel === item.id
                 ? "bg-cs-primary text-white"
-                : "text-gray-600 hover:bg-gray-50 hover:text-gray-950"
+                : item.id === "sources" && trackedKpis.length === 0
+                  ? "text-gray-400 hover:bg-gray-50"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-950"
                 }`}
             >
               <span className="flex min-w-0 items-center gap-2">
@@ -2646,6 +2655,51 @@ export default function ContractKpiManagementPage() {
             </button>
           ))}
         </aside>
+
+        {showAcceptKpisFirstModal && (
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setShowAcceptKpisFirstModal(false)}
+          >
+            <div
+              className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                  <ShieldCheck className="h-5 w-5 text-amber-600" />
+                </div>
+                <h3 className="text-sm font-bold text-gray-900">Accept KPIs first</h3>
+              </div>
+              <p className="mt-3 text-sm text-gray-600">
+                Actual Sources connects live data to tracked obligations. Accept
+                (or Track Recommended) at least one KPI in Review &amp; Track
+                before connecting sources — otherwise nothing will be evaluated
+                and breach flags will always show 0.
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAcceptKpisFirstModal(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    setShowAcceptKpisFirstModal(false);
+                    setActivePanel("review");
+                  }}
+                >
+                  Go to Review &amp; Track
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <section className="min-w-0">
           {isLoading || isKpiDataPending ? (
