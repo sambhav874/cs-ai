@@ -1765,7 +1765,24 @@ class ContractKPIManager:
                 spec = {"formula": clean_updates.get("formula") or merged_v2.get("formula"),
                         "ref_kpi_ids": clean_updates.get("ref_kpi_ids") or merged_v2.get("ref_kpi_ids") or []}
             elif rule_type == "threshold":
-                spec = {"target": clean_updates.get("target_value") if clean_updates.get("target_value") is not None else merged_v2.get("target_value")}
+                # Ground-truth/extracted KPIs store their number under "value"
+                # (and sometimes "value_min"), not "target_value" -- that field
+                # is almost never populated. Falling back to target_value alone
+                # made validate_rule_spec reject the update ("must contain a
+                # numeric 'target'") on every edit to a threshold-type KPI,
+                # even edits unrelated to the threshold itself.
+                target = clean_updates.get("target_value")
+                if target is None:
+                    target = merged_v2.get("target_value")
+                if target is None:
+                    target = clean_updates.get("value")
+                if target is None:
+                    target = merged_v2.get("value")
+                if target is None:
+                    target = clean_updates.get("value_min")
+                if target is None:
+                    target = merged_v2.get("value_min")
+                spec = {"target": self._numeric(target) if not isinstance(target, (int, float)) else target}
 
         contract_id_to_check = merged_v2.get("contract_id") or contract_id
         contract_kpis = list(self.kpis.find({"contract_id": contract_id_to_check})) if contract_id_to_check else []

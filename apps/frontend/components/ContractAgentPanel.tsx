@@ -450,7 +450,7 @@ function buildBaltiaSourceAnnotations(
   contractId: string | null | undefined,
   contractName: string | null | undefined,
 ): CitationAnnotation[] {
-  const filename = contractName || "baltia-jfk-gha1.pdf";
+  const filename = contractName || "BaltiaGHAContract";
   return [
     {
       type: "citation_data",

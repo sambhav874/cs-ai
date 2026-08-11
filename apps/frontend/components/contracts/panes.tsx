@@ -22,6 +22,7 @@ const DocumentEditor = dynamic(
   { ssr: false },
 );
 import KpiSourceFieldMapper from "@/components/kpis/KpiSourceFieldMapper";
+import { VarianceComparison } from "@/components/contracts/VarianceComparison";
 import { Badge } from "@/components/ui/badge";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { getDefaultKpiSourceMappings } from "@/lib/kpi-source-fields";
@@ -46,6 +47,13 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Copy,
+  LogOut,
+  Mail,
+  Bell,
+  AlertTriangle,
+  Database,
+  Lightbulb,
+  Sparkles,
 } from "lucide-react";
 
 import { useAccountContext } from '@/app/context/AccountContext';
@@ -659,6 +667,55 @@ function titleCase(value?: string | null) {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function BreachStatusBadge({ status }: { status: string }) {
+  const norm = String(status || "").toLowerCase();
+  let icon = <AlertCircle className="w-3.5 h-3.5" />;
+  let colorClass = "border-gray-400 bg-white text-gray-950";
+  let label = titleCase(status);
+
+  switch (norm) {
+    case "open":
+      icon = <AlertCircle className="w-3.5 h-3.5" />;
+      colorClass = "border-red-200 bg-red-50 text-red-700";
+      break;
+    case "in_action":
+      icon = <Clock className="w-3.5 h-3.5" />;
+      colorClass = "border-blue-300 bg-blue-50 text-blue-800";
+      label = "In Action";
+      break;
+    case "closed":
+      icon = <CheckCircle2 className="w-3.5 h-3.5" />;
+      colorClass = "border-gray-300 bg-gray-100 text-gray-700";
+      break;
+    case "escalated":
+      icon = <Mail className="w-3.5 h-3.5" />;
+      colorClass = "border-purple-200 bg-purple-50 text-purple-700";
+      break;
+    case "acknowledged":
+      icon = <CheckCircle2 className="w-3.5 h-3.5" />;
+      colorClass = "border-orange-200 bg-orange-50 text-orange-700";
+      break;
+    case "reminded":
+      icon = <Bell className="w-3.5 h-3.5" />;
+      colorClass = "border-yellow-200 bg-yellow-50 text-yellow-700";
+      break;
+    case "clear":
+      icon = <CheckCircle2 className="w-3.5 h-3.5" />;
+      colorClass = "border-emerald-200 bg-emerald-50 text-emerald-700";
+      break;
+    default:
+      icon = <AlertCircle className="w-3.5 h-3.5" />;
+      break;
+  }
+
+  return (
+    <span className={`flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold shadow-sm ${colorClass}`}>
+      {icon}
+      {label}
+    </span>
+  );
 }
 
 function statusTone(value?: string | null) {
@@ -2346,6 +2403,7 @@ function ComplianceFlagsDashboardView({
   onFlagRemediationEmail: (breach: ContractKPIBreach) => ContractKPIBreach | null | void | Promise<ContractKPIBreach | null | void>;
 }) {
   const [expandedFlagId, setExpandedFlagId] = useState<string | null>(null);
+  const [escalatingBreachId, setEscalatingBreachId] = useState<string | null>(null);
   const [isDispatching, setIsDispatching] = useState(false);
   const [dispatchSuccess, setDispatchSuccess] = useState(false);
   const [escalatedBreachIds, setEscalatedBreachIds] = useState<Set<string>>(new Set());
@@ -2353,6 +2411,10 @@ function ComplianceFlagsDashboardView({
   const kpiById = useMemo(() => new Map(kpis.map((kpi) => [kpi.kpi_id, kpi])), [kpis]);
   const orderedBreaches = useMemo(() => (
     [...breaches].sort((a, b) => {
+      const aClosed = String(a.status || "open").toLowerCase() === "closed";
+      const bClosed = String(b.status || "open").toLowerCase() === "closed";
+      if (aClosed !== bClosed) return Number(aClosed) - Number(bClosed);
+      
       const aSeverity = breachSeverity(a, kpiById.get(a.kpi_id));
       const bSeverity = breachSeverity(b, kpiById.get(b.kpi_id));
       const rank: Record<string, number> = { Critical: 5, High: 4, Medium: 3, Low: 2, OK: 1 };
@@ -2361,6 +2423,7 @@ function ComplianceFlagsDashboardView({
   ), [breaches, kpiById]);
 
   const openEscalation = async (breach: ContractKPIBreach, kpi?: ContractKPI) => {
+    setExpandedFlagId(null);
     const updated = await onFlagRemediationEmail(breach);
     const source = updated || breach;
     const recipient = source.breach_email_to || kpi?.contact_email || "";
@@ -2431,73 +2494,138 @@ function ComplianceFlagsDashboardView({
                     {exposure ? `-${dashboardMoney(exposure, extractCurrency(kpi?.consequence_unit))}` : "No penalty"}
                   </div>
                   <div>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusTone(breach.status || (breach.is_breach ? "open" : "clear"))}`}>
-                      {titleCase(breach.status || (breach.is_breach ? "open" : "clear"))}
-                    </span>
+                    <BreachStatusBadge status={breach.status || (breach.is_breach ? "open" : "clear")} />
                   </div>
                   <div>
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusTone(severity)}`}>{severity}</span>
                   </div>
                   <div className="flex justify-end">
-                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setExpandedFlagId(expanded ? null : breach.breach_id)}>
-                      <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
-                    </Button>
                   </div>
                 </div>
 
-                {expanded && (
-                  <div className="space-y-3 border-t border-gray-100 bg-muted/20 p-4 text-xs">
-                    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-                      <div className="rounded-md border bg-white p-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Metric</p>
-                        <p className="mt-1 text-sm font-semibold text-gray-950">{kpi?.name || breach.source_kpi?.name || breach.kpi_id}</p>
-                      </div>
-                      <div className="rounded-md border bg-white p-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Category</p>
-                        <p className="mt-1 text-sm font-semibold text-gray-950">{titleCase(kpi?.category || breach.source_kpi?.category || "SLA")}</p>
-                      </div>
-                      <div className="rounded-md border bg-white p-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Expected</p>
-                        <p className="mt-1 text-sm font-semibold text-gray-950">{expected}</p>
-                      </div>
-                      <div className="rounded-md border bg-white p-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-red-700">Actual</p>
-                        <p className="mt-1 text-sm font-semibold text-red-900">{actual}</p>
-                      </div>
-                    </div>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <KpiDetail label="Contract Clause" value={kpi?.structural_path || kpi?.section || breach.source_kpi?.quote || "No clause captured."} />
-                      <KpiDetail label="Data Source" value={dashboardSourceForKpi(kpi || ({ name: breach.kpi_id, kpi_id: breach.kpi_id } as ContractKPI), 0).name} />
-                    </div>
-                    <div className="rounded-md border border-red-100 bg-red-50 p-3">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-red-700">Recommended Action</p>
-                      <p className="mt-1 text-sm leading-5 text-red-900">{breach.remediation || kpi?.remediation || "Escalate to accountable party and request corrective action plan."}</p>
-                      <p className="mt-2 text-xs text-red-700">Penalty / trigger: {formatConsequence(kpi || ({ name: breach.kpi_id, kpi_id: breach.kpi_id } as ContractKPI))}</p>
-                    </div>
-                    <Textarea placeholder="Remediation Notes / CAP" className="min-h-[90px] bg-white text-sm" defaultValue={kpi?.notes || ""} />
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => toast({ title: "AI analysis", description: "The assistant can analyze this flag from the contract chat panel." })}>
-                        <Info className="h-3.5 w-3.5" />
-                        Ask AI to Analyze
-                      </Button>
-                      <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" disabled={!breach.is_breach}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Remove Flag
-                      </Button>
-                      {!escalatedBreachIds.has(breach.breach_id || "") && (
-                        <Button type="button" size="sm" className="h-8 gap-1.5 bg-red-600 text-xs text-white hover:bg-red-700" onClick={() => void openEscalation(breach, kpi)} disabled={!breach.is_breach}>
-                          <Send className="h-3.5 w-3.5" />
-                          Send Escalation Alert
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )}
+                {/* Expanded details are now in the Dialog below */}
               </div>
             );
           })}
         </div>
       )}
+
+      <Dialog open={!!expandedFlagId} onOpenChange={(open) => !open && setExpandedFlagId(null)}>
+        {(() => {
+          const breach = orderedBreaches.find(b => b.breach_id === expandedFlagId);
+          if (!breach) return null;
+          const kpi = kpiById.get(breach.kpi_id);
+          const expected = `${breach.operator || kpi?.operator || ""} ${breach.expected_value ?? kpi?.value_min ?? kpi?.value ?? "N/A"} ${kpi?.unit || breach.actual_unit || ""}`.trim();
+          const actual = `${breach.actual_value ?? "N/A"} ${breach.actual_unit || kpi?.unit || ""}`.trim();
+          
+          return (
+            <DialogContent className="max-w-[640px] max-h-[90vh] flex flex-col overflow-hidden rounded-[20px] p-0 gap-0 border border-gray-200 shadow-2xl bg-white">
+              <DialogHeader className="sr-only">
+                <DialogTitle>Breach Details</DialogTitle>
+                <DialogDescription>Details for {kpi?.name || breach.source_kpi?.name || breach.kpi_id}</DialogDescription>
+              </DialogHeader>
+
+              {/* head */}
+              <div className="flex items-start justify-between px-6 py-[22px] pb-[18px] border-b border-gray-200 bg-white shrink-0">
+                <div className="flex gap-3 items-center">
+                  <div className="w-9 h-9 rounded-[10px] bg-red-50 border border-red-200 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="w-[18px] h-[18px] text-red-600" />
+                  </div>
+                  <div className="flex flex-col justify-center">
+                    <p className="text-[11px] font-bold tracking-[0.06em] uppercase text-gray-400 mb-1 leading-none">
+                      {titleCase(kpi?.category || breach.source_kpi?.category || "SLA")}
+                    </p>
+                    <h4 className="text-[17px] font-bold text-gray-950 leading-[1.3] m-0 max-w-[420px]">
+                      {kpi?.name || breach.source_kpi?.name || breach.kpi_id}
+                    </h4>
+                  </div>
+                </div>
+              </div>
+
+              {/* body */}
+              <div className="flex-1 overflow-y-auto px-6 py-5 pb-6 bg-white">
+
+                {/* meta row */}
+                <div className="flex flex-wrap gap-5 mb-[18px]">
+                  <div className="flex flex-col gap-[5px]">
+                    <span className="text-[12px] font-semibold text-gray-500">
+                      Contract clause
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 w-fit text-[12.5px] font-semibold text-cs-primary bg-cs-primary/5 border border-cs-primary/20 px-2.5 py-[5px] rounded-full cursor-pointer hover:bg-cs-primary/10 transition-colors">
+                      <FileText className="w-[13px] h-[13px] text-cs-primary shrink-0" />
+                      {kpi?.structural_path || kpi?.section || breach.source_kpi?.quote || "Not captured"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-[5px]">
+                    <span className="text-[12px] font-semibold text-gray-500">
+                      Data source
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 w-fit text-[12.5px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 px-2.5 py-[5px] rounded-full">
+                      <Database className="w-[13px] h-[13px] text-gray-400 shrink-0" />
+                      {dashboardSourceForKpi(kpi || ({ name: breach.kpi_id, kpi_id: breach.kpi_id } as ContractKPI), 0).name}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-[5px]">
+                    <span className="text-[12px] font-semibold text-gray-500">
+                      Escalation status
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 w-fit text-[12.5px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 px-2.5 py-[5px] rounded-full">
+                      <Clock className="w-[13px] h-[13px] text-gray-400 shrink-0" />
+                      {titleCase(breach.status || "Not yet escalated")}
+                    </span>
+                  </div>
+                </div>
+
+                <VarianceComparison expected={expected} actual={actual} />
+
+                {/* action card */}
+                <div className="bg-gray-50 border border-gray-200 rounded-[14px] p-[16px_18px] mb-[20px]">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Lightbulb className="w-[15px] h-[15px] text-cs-primary shrink-0" />
+                    <span className="text-[12px] font-bold text-gray-500">
+                      Recommended action
+                    </span>
+                  </div>
+                  <p className="text-[14px] leading-[1.55] text-gray-950 m-0">
+                    {breach.remediation || kpi?.remediation || "Escalate to accountable party and request corrective action plan."}
+                  </p>
+                </div>
+
+                {/* foot */}
+                <div className="flex gap-[10px] pt-0.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="flex-[0.75] h-auto py-[11px] px-[14px] bg-white border border-transparent text-[13.5px] font-semibold text-gray-400 hover:bg-gray-100 hover:text-gray-600 rounded-[10px]"
+                    onClick={() => toast({ title: "AI analysis", description: "The assistant can analyze this flag from the contract chat panel." })}
+                  >
+                    <Sparkles className="w-[15px] h-[15px] mr-[7px]" />
+                    Ask AI
+                  </Button>
+                  
+                  {!escalatedBreachIds.has(breach.breach_id || "") && (
+                    <Button
+                      type="button"
+                      className="flex-[1.3] h-auto py-[11px] px-[14px] bg-cs-primary text-white hover:bg-cs-primary/90 border border-cs-primary text-[13.5px] font-semibold rounded-[10px] shadow-none"
+                      onClick={async () => {
+                        setEscalatingBreachId(breach.breach_id || "");
+                        await openEscalation(breach, kpi);
+                        setEscalatingBreachId(null);
+                        setExpandedFlagId(null);
+                      }}
+                      disabled={!breach.is_breach || escalatingBreachId === breach.breach_id}
+                    >
+                      {escalatingBreachId === breach.breach_id ? <Loader2 className="w-[15px] h-[15px] animate-spin mr-[7px]" /> : <Send className="w-[15px] h-[15px] mr-[7px]" />}
+                      {escalatingBreachId === breach.breach_id ? "Generating..." : "Send escalation alert"}
+                    </Button>
+                  )}
+                </div>
+
+              </div>
+            </DialogContent>
+          );
+        })()}
+      </Dialog>
 
       <Dialog open={Boolean(alertDraft)} onOpenChange={(open) => {
         if (!open) {
