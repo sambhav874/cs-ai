@@ -84,6 +84,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy application code
 COPY apps/backend/ ./
 
+# Baked in, not bind-mounted -- Coolify builds straight from this
+# Containerfile and does not apply docker-compose.yml's volumes:, so a
+# host bind mount for demo_data never reaches this container.
+COPY demo_data /demo_data
+
 # Set up entrypoint
 COPY apps/backend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
