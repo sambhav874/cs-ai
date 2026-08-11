@@ -25,8 +25,11 @@ const PDFViewerDynamic = dynamic(
 );
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   Bell,
+  Database,
+  Lightbulb,
   BarChart3,
   BookOpen,
   Building2,
@@ -49,6 +52,8 @@ import {
   Plus,
   RefreshCw,
   Send,
+  MessageSquare,
+  Image as ImageIcon,
   Settings2,
   ShieldCheck,
   Truck,
@@ -63,6 +68,7 @@ import {
   X,
   ShieldAlert,
 } from "lucide-react";
+import { VarianceComparison } from "@/components/contracts/VarianceComparison";
 import {
   Tooltip,
   TooltipContent,
@@ -542,6 +548,55 @@ const titleCase = (value?: string | null) =>
       .trim()
       .replace(/\b\w/g, (letter) => letter.toUpperCase())
     : "Not specified";
+
+function BreachStatusBadge({ status }: { status: string }) {
+  const norm = String(status || "").toLowerCase();
+  let icon = <AlertCircle className="w-3.5 h-3.5" />;
+  let colorClass = "border-gray-400 bg-white text-gray-950";
+  let label = titleCase(status);
+
+  switch (norm) {
+    case "open":
+      icon = <AlertCircle className="w-3.5 h-3.5" />;
+      colorClass = "border-red-200 bg-red-50 text-red-700";
+      break;
+    case "in_action":
+      icon = <Clock className="w-3.5 h-3.5" />;
+      colorClass = "border-blue-300 bg-blue-50 text-blue-800";
+      label = "In Action";
+      break;
+    case "closed":
+      icon = <CheckCircle2 className="w-3.5 h-3.5" />;
+      colorClass = "border-gray-300 bg-gray-100 text-gray-700";
+      break;
+    case "escalated":
+      icon = <Mail className="w-3.5 h-3.5" />;
+      colorClass = "border-purple-200 bg-purple-50 text-purple-700";
+      break;
+    case "acknowledged":
+      icon = <CheckCircle2 className="w-3.5 h-3.5" />;
+      colorClass = "border-orange-200 bg-orange-50 text-orange-700";
+      break;
+    case "reminded":
+      icon = <Bell className="w-3.5 h-3.5" />;
+      colorClass = "border-yellow-200 bg-yellow-50 text-yellow-700";
+      break;
+    case "clear":
+      icon = <CheckCircle2 className="w-3.5 h-3.5" />;
+      colorClass = "border-emerald-200 bg-emerald-50 text-emerald-700";
+      break;
+    default:
+      icon = <AlertCircle className="w-3.5 h-3.5" />;
+      break;
+  }
+
+  return (
+    <span className={`flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold shadow-sm ${colorClass}`}>
+      {icon}
+      {label}
+    </span>
+  );
+}
 
 const isKpiTracked = (kpi?: ContractKPI | null) => {
   const status = String(kpi?.tracking_status || "").toLowerCase();
@@ -6736,8 +6791,9 @@ function GuidedSourcesPanel({
           }}
         />
 
-        <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="space-y-3">
+        <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+          <aside className="flex flex-col h-full">
+            <div className="space-y-3">
             <Button
               type="button"
               className="w-full gap-2 bg-cs-primary text-white"
@@ -6754,11 +6810,27 @@ function GuidedSourcesPanel({
                 <h3 className="text-sm font-semibold">Your sources</h3>
                 <Pill tone="blue">{sourceConfigs.length}</Pill>
               </div>
-              {sourceConfigs.map((source) => (
+              {sourceConfigs.map((source) => {
+                const isSelected = selectedSource?.source_config_id === source.source_config_id;
+                
+                const getSourceIcon = (type?: string | null) => {
+                  const norm = String(type || "").toLowerCase();
+                  if (norm.includes('sap') || norm.includes('ariba') || norm.includes('db') || norm.includes('database') || norm.includes('s/4hana')) return <Database className="h-4 w-4 stroke-[1.5]" />;
+                  if (norm.includes('api') || norm.includes('rest') || norm.includes('feed')) return <FileText className="h-4 w-4 stroke-[1.5]" />;
+                  if (norm.includes('image') || norm.includes('scan')) return <ImageIcon className="h-4 w-4 stroke-[1.5]" />;
+                  if (norm.includes('cloud') || norm.includes('aws') || norm.includes('s3')) return <UploadCloud className="h-4 w-4 stroke-[1.5]" />;
+                  if (norm.includes('file') || norm.includes('csv') || norm.includes('spreadsheet')) return <BarChart3 className="h-4 w-4 stroke-[1.5]" />;
+                  return <MessageSquare className="h-4 w-4 stroke-[1.5]" />;
+                };
+                
+                return (
                 <div
                   key={source.source_config_id}
-                  className={`mb-2 flex items-center gap-2 rounded-lg border p-2 ${selectedSource?.source_config_id === source.source_config_id ? "border-cs-primary bg-cs-primary/5 shadow-sm" : "border-gray-100 hover:border-gray-200"}`}
+                  className={`mb-3 flex items-start gap-3 rounded-xl border p-3 ${isSelected ? "border-cs-primary bg-cs-primary/5" : "border-gray-200 bg-white"}`}
                 >
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${isSelected ? "border-cs-primary bg-cs-primary text-white" : "border-gray-200 bg-gray-50/50 text-gray-500"}`}>
+                    {getSourceIcon(source.source_type || source.display_name)}
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -6766,31 +6838,31 @@ function GuidedSourcesPanel({
                       setIsAddingSource(false);
                       setStep(source.last_success_at ? "ingest" : "connect");
                     }}
-                    className="min-w-0 flex-1 p-1 text-left"
+                    className="min-w-0 flex-1 p-0 text-left pt-[3px]"
                   >
-                    <span className="block truncate text-sm font-semibold text-gray-900">
+                    <span className="block line-clamp-2 text-[15px] font-semibold leading-[1.3] text-gray-900">
                       {source.display_name}
                     </span>
-                    <span className="mt-0.5 block text-[11px] text-gray-500">
+                    <span className="mt-1 block text-[13.5px] text-gray-500">
                       {sourceTypeLabel(source.source_type)} ·{" "}
                       {enabledKpiIdsForSource(source, visibleKpis).length} matched
                     </span>
                   </button>
-                  {enabledKpiIdsForSource(source, visibleKpis).length > 0 && (
-                    <Pill tone="emerald">Linked</Pill>
-                  )}
-                  <button
-                    type="button"
-                    title="Delete source"
-                    aria-label={`Delete ${source.display_name}`}
-                    disabled={isSavingSource}
-                    onClick={() => void onDeleteSource(source)}
-                    className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-red-600 disabled:opacity-50"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2 pt-2 pr-1">
+                    <span className={`h-2 w-2 rounded-full ${source.last_error ? "bg-[#d97706]" : "bg-[#10b981]"}`} />
+                    <button
+                      type="button"
+                      title="Delete source"
+                      aria-label={`Delete ${source.display_name}`}
+                      disabled={isSavingSource}
+                      onClick={() => void onDeleteSource(source)}
+                      className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-red-600 disabled:opacity-50"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
-              ))}
+              )})}
               {!sourceConfigs.length && (
                 <p className="rounded border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500">
                   No sources added yet.
@@ -6799,8 +6871,8 @@ function GuidedSourcesPanel({
             </section>
 
             {availableProfiles.length > 0 && (
-              <div className="pt-2">
-                <div className="mb-2 px-1 flex items-center justify-between">
+              <div className="pt-6 border-t border-gray-200 mt-6">
+                <div className="mb-3 px-1 flex items-center justify-between">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">
                     Recent connections
                   </h3>
@@ -6813,29 +6885,54 @@ function GuidedSourcesPanel({
                     Use all
                   </button>
                 </div>
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-2">
                   {availableProfiles.map((profile) => (
-                    <button
+                    <div
                       key={profile.profile_id}
-                      type="button"
-                      onClick={() => void useRecentProfile(profile)}
-                      disabled={isSavingSource}
-                      className="group flex items-center justify-between rounded-md px-2 py-1.5 text-left text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
+                      className="group flex items-center justify-between rounded-xl border border-gray-200 bg-white p-2.5 shadow-sm"
                     >
-                      <div className="flex flex-col min-w-0">
-                        <span className="truncate font-medium text-gray-700 group-hover:text-gray-900">
-                          {profile.display_name}
-                        </span>
-                        <span className="truncate text-[10px] text-gray-400">
-                          {sourceTypeLabel(profile.source_type)}
-                        </span>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-500">
+                          {(() => {
+                            const norm = String(profile.source_type || profile.display_name || "").toLowerCase();
+                            if (norm.includes('sap') || norm.includes('ariba') || norm.includes('db') || norm.includes('database') || norm.includes('s/4hana')) return <Database className="h-4 w-4 stroke-[1.5]" />;
+                            if (norm.includes('api') || norm.includes('rest') || norm.includes('feed')) return <FileText className="h-4 w-4 stroke-[1.5]" />;
+                            if (norm.includes('image') || norm.includes('scan')) return <ImageIcon className="h-4 w-4 stroke-[1.5]" />;
+                            if (norm.includes('cloud') || norm.includes('aws') || norm.includes('s3')) return <UploadCloud className="h-4 w-4 stroke-[1.5]" />;
+                            if (norm.includes('file') || norm.includes('csv') || norm.includes('spreadsheet')) return <BarChart3 className="h-4 w-4 stroke-[1.5]" />;
+                            return <MessageSquare className="h-4 w-4 stroke-[1.5]" />;
+                          })()}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="truncate text-sm font-semibold text-gray-900">
+                            {profile.display_name}
+                          </span>
+                          <span className="truncate text-xs text-gray-500">
+                            {sourceTypeLabel(profile.source_type)}
+                          </span>
+                        </div>
                       </div>
-                      <Plus className="ml-2 h-3.5 w-3.5 shrink-0 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100" />
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => void useRecentProfile(profile)}
+                        disabled={isSavingSource}
+                        className="ml-2 rounded-lg bg-cs-primary/10 px-3 py-1.5 text-xs font-bold text-cs-primary transition-colors hover:bg-cs-primary/20 disabled:opacity-50"
+                      >
+                        Connect
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
             )}
+            </div>
+
+            <div className="mt-auto pt-6 text-sm text-gray-500">
+              {selectedRuns.length
+                ? `${selectedRuns.length} recent run${selectedRuns.length === 1 ? "" : "s"}`
+                : "No runs yet."}{" "}
+              · {sourceResult?.raw_records_parked || 0} raw rows parked
+            </div>
           </aside>
 
           <main className="min-w-0">
@@ -6996,12 +7093,6 @@ function GuidedSourcesPanel({
           </main>
         </div>
 
-        <div className="text-xs text-gray-500">
-          {selectedRuns.length
-            ? `${selectedRuns.length} recent run${selectedRuns.length === 1 ? "" : "s"}`
-            : "No runs yet."}{" "}
-          · {sourceResult?.raw_records_parked || 0} raw rows parked
-        </div>
         {configModalSource && (
           <SourceConfigModal
             source={configModalSource}
@@ -7099,9 +7190,8 @@ function FlagsPanel({
   completedSourceCount?: number;
 }) {
   const { authenticatedFetch } = useAuth();
-  const [expandedFlagId, setExpandedFlagId] = useState<string | null>(
-    breaches.find((breach) => breach.is_breach)?.breach_id || null,
-  );
+  const [expandedFlagId, setExpandedFlagId] = useState<string | null>(null);
+  const [escalatingBreachId, setEscalatingBreachId] = useState<string | null>(null);
   const [isDispatching, setIsDispatching] = useState(false);
   const [alertDraft, setAlertDraft] = useState<{
     contractId: string;
@@ -7114,6 +7204,8 @@ function FlagsPanel({
     status?: "sent";
   } | null>(null);
   const ordered = [...breaches].sort((left, right) => {
+    const leftClosed = String(left.status || "open").toLowerCase() === "closed";
+    const rightClosed = String(right.status || "open").toLowerCase() === "closed";
     const severityRank: Record<string, number> = {
       Critical: 5,
       High: 4,
@@ -7122,6 +7214,7 @@ function FlagsPanel({
       OK: 1,
     };
     return (
+      Number(leftClosed) - Number(rightClosed) ||
       Number(right.is_breach) - Number(left.is_breach) ||
       (severityRank[severityFor(right, kpiById.get(right.kpi_id))] || 0) -
       (severityRank[severityFor(left, kpiById.get(left.kpi_id))] || 0)
@@ -7216,9 +7309,6 @@ function FlagsPanel({
             {ordered.map((breach) => {
               const kpi = kpiById.get(breach.kpi_id);
               const severity = severityFor(breach, kpi);
-              const expected = expectedFor(breach, kpi);
-              const actual =
-                `${breach.actual_value ?? "N/A"} ${breach.actual_unit || kpi?.unit || ""}`.trim();
               const expanded = expandedFlagId === breach.breach_id;
               const exposure = Math.abs(
                 toNumber(kpi?.consequence_value) ||
@@ -7260,152 +7350,31 @@ function FlagsPanel({
                     >
                       {exposure ? `-${money(exposure, extractCurrency(kpi?.consequence_unit))}` : "No penalty"}
                     </div>
-                    <span
-                      className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(breach.status || (breach.is_breach ? "open" : "clear"))}`}
-                    >
-                      {titleCase(
-                        breach.status || (breach.is_breach ? "open" : "clear"),
-                      )}
-                    </span>
+                    <BreachStatusBadge status={breach.status || (breach.is_breach ? "open" : "clear")} />
                     <span
                       className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(severity)}`}
                     >
                       {severity}
                     </span>
                     <div className="flex flex-wrap justify-start gap-1.5 lg:justify-end">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1.5 text-xs"
-                        onClick={() =>
-                          setExpandedFlagId(expanded ? null : breach.breach_id)
-                        }
-                      >
-                        Details
-                        <ChevronDown
-                          className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
-                        />
-                      </Button>
-                      {String(breach.status || "open").toLowerCase() !== "in_action" && (
+                      {String(breach.status || "open").toLowerCase() !== "in_action" && String(breach.status || "open").toLowerCase() !== "closed" && (
                         <Button
                           type="button"
                           size="sm"
                           className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
-                          onClick={() => void openEscalation(breach, kpi)}
-                          disabled={!breach.is_breach}
+                          onClick={async () => {
+                            setEscalatingBreachId(breach.breach_id || "");
+                            await openEscalation(breach, kpi);
+                            setEscalatingBreachId(null);
+                          }}
+                          disabled={!breach.is_breach || escalatingBreachId === breach.breach_id}
                         >
-                          <Mail className="h-3.5 w-3.5" />
-                          Escalate
+                          {escalatingBreachId === breach.breach_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                          {escalatingBreachId === breach.breach_id ? "Escalating..." : "Escalate"}
                         </Button>
                       )}
                     </div>
                   </div>
-
-                  {expanded && (
-                    <div className="space-y-4 border-t border-gray-100 bg-gray-50/70 p-4">
-                      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-                        <div className="rounded-lg border border-gray-300 bg-white p-3">
-                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                            Metric
-                          </p>
-                          <p className="mt-1 text-sm font-semibold text-gray-950">
-                            {kpi?.name ||
-                              breach.source_kpi?.name ||
-                              breach.kpi_id}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border border-gray-300 bg-white p-3">
-                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                            Category / Type
-                          </p>
-                          <p className="mt-1 text-sm font-semibold text-gray-950">
-                            {titleCase(
-                              kpi?.category ||
-                              breach.source_kpi?.category ||
-                              "SLA",
-                            )}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border border-gray-300 bg-white p-3">
-                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                            Expected (Contract)
-                          </p>
-                          <p className="mt-1 text-sm font-semibold text-gray-950">
-                            {expected}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border border-gray-300 bg-white p-3">
-                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                            Actual (Ingested)
-                          </p>
-                          <p className="mt-1 text-sm font-semibold text-gray-950">
-                            {actual}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <DetailTile
-                          label="Contract Clause"
-                          value={
-                            kpi?.structural_path ||
-                            kpi?.section_path ||
-                            kpi?.section ||
-                            breach.source_kpi?.quote ||
-                            "Not captured"
-                          }
-                          tone="blue"
-                        />
-                        <DetailTile
-                          label="Data Source"
-                          value={humanizeSourceLabel(breach.source)}
-                        />
-                      </div>
-                      <div className="rounded-lg border border-gray-200 bg-white p-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                          Recommended Action
-                        </p>
-                        <p className="mt-1 text-sm leading-6 text-gray-800">
-                          {breach.remediation ||
-                            kpi?.remediation ||
-                            defaultRemediationText(kpi, breach)}
-                        </p>
-                        <p className="mt-2 text-xs text-gray-500">
-                          SLA:{" "}
-                          {breach.remediation_sla ||
-                            kpi?.remediation_sla ||
-                            "Not specified"}{" "}
-                          · Trigger:{" "}
-                          {breach.penalty_triggered ||
-                            kpi?.trigger_condition ||
-                            "Not specified"}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1.5 text-xs"
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                          Ask AI to Analyze
-                        </Button>
-                        {breach.status !== "in_action" && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
-                            onClick={() => void openEscalation(breach, kpi)}
-                            disabled={!breach.is_breach}
-                          >
-                            <Send className="h-3.5 w-3.5" />
-                            Send Escalation Alert Email
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -7413,9 +7382,129 @@ function FlagsPanel({
         )}
       </section>
 
-      {alertDraft && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
+      <Dialog open={!!expandedFlagId} onOpenChange={(open) => !open && setExpandedFlagId(null)}>
+        {(() => {
+          const breach = expandedFlagId ? ordered.find(b => b.breach_id === expandedFlagId) : null;
+          if (!breach) return null;
+          const kpi = kpiById.get(breach.kpi_id);
+          const expected = expectedFor(breach, kpi);
+          const actual = `${breach.actual_value ?? "N/A"} ${breach.actual_unit || kpi?.unit || ""}`.trim();
+          
+          return (
+            <DialogContent className="max-w-[640px] max-h-[90vh] flex flex-col overflow-hidden rounded-[20px] p-0 gap-0 border border-gray-200 shadow-2xl bg-white">
+              <DialogHeader className="sr-only">
+                <DialogTitle>Breach Details</DialogTitle>
+                <DialogDescription>Details for {kpi?.name || breach.source_kpi?.name || breach.kpi_id}</DialogDescription>
+              </DialogHeader>
+
+              {/* head */}
+              <div className="flex items-start justify-between px-6 py-[22px] pb-[18px] border-b border-gray-200 bg-white shrink-0">
+                <div className="flex gap-3 items-center">
+                  <div className="w-9 h-9 rounded-[10px] bg-red-50 border border-red-200 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="w-[18px] h-[18px] text-red-600" />
+                  </div>
+                  <div className="flex flex-col justify-center">
+                    <p className="text-[11px] font-bold tracking-[0.06em] uppercase text-gray-400 mb-1 leading-none">
+                      {titleCase(kpi?.category || breach.source_kpi?.category || "SLA")}
+                    </p>
+                    <h4 className="text-[17px] font-bold text-gray-950 leading-[1.3] m-0 max-w-[420px]">
+                      {kpi?.name || breach.source_kpi?.name || breach.kpi_id}
+                    </h4>
+                  </div>
+                </div>
+              </div>
+
+              {/* body */}
+              <div className="flex-1 overflow-y-auto px-6 py-5 pb-6 bg-white">
+
+                {/* meta row */}
+                <div className="flex flex-wrap gap-5 mb-[18px]">
+                  <div className="flex flex-col gap-[5px]">
+                    <span className="text-[10.5px] font-semibold tracking-[0.04em] uppercase text-gray-400">
+                      Contract clause
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 w-fit text-[12.5px] font-semibold text-cs-primary bg-cs-primary/5 border border-cs-primary/20 px-2.5 py-[5px] rounded-full cursor-pointer hover:bg-cs-primary/10 transition-colors">
+                      <FileText className="w-[13px] h-[13px] text-cs-primary shrink-0" />
+                      {kpi?.structural_path || kpi?.section_path || kpi?.section || breach.source_kpi?.quote || "Not captured"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-[5px]">
+                    <span className="text-[10.5px] font-semibold tracking-[0.04em] uppercase text-gray-400">
+                      Data source
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 w-fit text-[12.5px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 px-2.5 py-[5px] rounded-full">
+                      <Database className="w-[13px] h-[13px] text-gray-400 shrink-0" />
+                      {humanizeSourceLabel(breach.source)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-[5px]">
+                    <span className="text-[12px] font-semibold text-gray-500">
+                      Escalation status
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 w-fit text-[12.5px] font-semibold text-gray-600 bg-gray-50 border border-gray-200 px-2.5 py-[5px] rounded-full">
+                      <Clock className="w-[13px] h-[13px] text-gray-400 shrink-0" />
+                      {titleCase(breach.status || "Not yet escalated")}
+                    </span>
+                  </div>
+                </div>
+
+                <VarianceComparison expected={expected} actual={actual} />
+
+                {/* action card */}
+                <div className="bg-gray-50 border border-gray-200 rounded-[14px] p-[16px_18px] mb-[20px]">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Lightbulb className="w-[15px] h-[15px] text-cs-primary shrink-0" />
+                    <span className="text-[12px] font-bold text-gray-500">
+                      Recommended action
+                    </span>
+                  </div>
+                  <p className="text-[14px] leading-[1.55] text-gray-950 m-0">
+                    {breach.remediation || kpi?.remediation || defaultRemediationText(kpi, breach)}
+                  </p>
+                </div>
+
+                {/* foot */}
+                <div className="flex gap-[10px] pt-0.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="flex-[0.75] h-auto py-[11px] px-[14px] bg-white border border-transparent text-[13.5px] font-semibold text-gray-400 hover:bg-gray-100 hover:text-gray-600 rounded-[10px]"
+                  >
+                    <Sparkles className="w-[15px] h-[15px] mr-[7px]" />
+                    Ask AI
+                  </Button>
+                  
+                  {breach.status !== "in_action" && String(breach.status || "open").toLowerCase() !== "closed" && (
+                    <Button
+                      type="button"
+                      className="flex-[1.3] h-auto py-[11px] px-[14px] bg-cs-primary text-white hover:bg-cs-primary/90 border border-cs-primary text-[13.5px] font-semibold rounded-[10px] shadow-none"
+                      onClick={async () => {
+                        setEscalatingBreachId(breach.breach_id || "");
+                        await openEscalation(breach, kpi);
+                        setEscalatingBreachId(null);
+                        setExpandedFlagId(null);
+                      }}
+                      disabled={!breach.is_breach || escalatingBreachId === breach.breach_id}
+                    >
+                      {escalatingBreachId === breach.breach_id ? <Loader2 className="w-[15px] h-[15px] animate-spin mr-[7px]" /> : <Send className="w-[15px] h-[15px] mr-[7px]" />}
+                      {escalatingBreachId === breach.breach_id ? "Generating..." : "Send escalation alert"}
+                    </Button>
+                  )}
+                </div>
+
+              </div>
+            </DialogContent>
+          );
+        })()}
+      </Dialog>
+
+      <Dialog open={!!alertDraft} onOpenChange={(open) => !open && setAlertDraft(null)}>
+        <DialogContent className="max-w-2xl p-0 overflow-hidden bg-white border-0 shadow-xl sm:rounded-lg">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Escalation Alert</DialogTitle>
+          </DialogHeader>
+          {alertDraft && (
+            <div className="w-full">
             {alertDraft.status === "sent" ? (
               <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
@@ -7524,8 +7613,9 @@ function FlagsPanel({
               </>
             )}
           </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -7559,11 +7649,15 @@ function RecoveriesPanel({
     };
     return breaches
       .filter((breach) => breach.is_breach)
-      .sort(
-        (left, right) =>
+      .sort((left, right) => {
+        const leftClosed = String(left.status || "open").toLowerCase() === "closed";
+        const rightClosed = String(right.status || "open").toLowerCase() === "closed";
+        return (
+          Number(leftClosed) - Number(rightClosed) ||
           (severityRank[severityFor(right, kpiById.get(right.kpi_id))] || 0) -
-          (severityRank[severityFor(left, kpiById.get(left.kpi_id))] || 0),
-      );
+          (severityRank[severityFor(left, kpiById.get(left.kpi_id))] || 0)
+        );
+      });
   }, [breaches, kpiById]);
 
   const receivedStatuses = new Set(["resolved", "recovered", "received", "recovery_received", "closed"]);
@@ -7728,34 +7822,11 @@ function RecoveriesPanel({
           {groupedRecoveries.map(({ breach, group, showGroupHeading }) => {
             const kpi = kpiById.get(breach.kpi_id);
             const severity = severityFor(breach, kpi);
-            const expanded = expandedId === breach.breach_id;
-            const expected = expectedFor(breach, kpi);
-            const actual = `${breach.actual_value ?? "N/A"} ${breach.actual_unit || kpi?.unit || ""
-              }`.trim();
-            const variance = breach.variance_percent
-              ? `${Math.abs(toNumber(breach.variance_percent) || 0)}%`
-              : breach.variance
-                ? money(Math.abs(toNumber(breach.variance) || 0), "USD")
-                : null;
             const penalty = Math.abs(
               toNumber(breach.penalty_amount) ||
               toNumber(kpi?.consequence_value) ||
               0,
             );
-            const reminders = actionLogs[breach.breach_id] || [];
-            const breachStatus = String(breach.status || "open").toLowerCase();
-            const isInAction = breachStatus === "in_action";
-            const isReceived = receivedStatuses.has(breachStatus);
-            const allFollowUps = (isInAction || isReceived) ? [
-              {
-                dispatch_id: `initial-esc-${breach.breach_id}`,
-                audience: "Client (Escalation Alert)",
-                recipient: breach.breach_email_to || kpi?.contact_email || MOCK_ACCOUNT_EMAIL,
-                sent_at: breach.updated_at || breach.timestamp || new Date().toISOString(),
-                status: "mock_dispatched"
-              },
-              ...reminders
-            ] : reminders;
             return (
               <div key={breach.breach_id} className="bg-white">
                 {showGroupHeading && (
@@ -7768,7 +7839,7 @@ function RecoveriesPanel({
                   <button
                     type="button"
                     onClick={() =>
-                      setExpandedId(expanded ? null : breach.breach_id)
+                      setExpandedId(expandedId === breach.breach_id ? null : breach.breach_id)
                     }
                     className="min-w-0 text-left"
                   >
@@ -7787,195 +7858,210 @@ function RecoveriesPanel({
                   <div className="text-sm font-semibold text-gray-950">
                     {penalty ? `-${money(penalty, "USD")}` : "Operational only"}
                   </div>
+                  <BreachStatusBadge status={breach.status || "open"} />
                   <span
                     className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(severity)}`}
                   >
                     {severity}
                   </span>
-                  <span
-                    className={`w-fit rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(breach.status || "open")}`}
-                  >
-                    {titleCase(breach.status || "open")}
-                  </span>
                   <div className="flex flex-wrap justify-start gap-1.5 lg:justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 w-36 gap-1.5 text-xs"
-                      onClick={() =>
-                        setExpandedId(expanded ? null : breach.breach_id)
-                      }
-                    >
-                      Details
-                      <ChevronDown
-                        className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""
-                          }`}
-                      />
-                    </Button>
                     {String(breach.status || "open").toLowerCase() !== "closed" && (
                       <Button
                         type="button"
-                        variant="outline"
                         size="sm"
-                        className="h-8 w-36 gap-1.5 text-xs"
+                        className="h-8 w-36 gap-1.5 text-xs rounded-md bg-cs-primary text-white hover:bg-cs-primary/90 shadow-sm"
                         onClick={() => breach.breach_id && void updateBreachStatus(breach.breach_id, "closed")}
                       >
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                        Mark completed
+                        <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                        Mark Closed
                       </Button>
                     )}
                   </div>
                 </div>
 
-                {expanded && (
-                  <div className="space-y-4 border-t border-gray-100 bg-gray-50/70 p-4">
-                    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-                      <DetailTile
-                        label="Remedy"
-                        value={
-                          breach.remediation ||
-                          kpi?.remediation ||
-                          defaultRemediationText(kpi, breach)
-                        }
-                      />
-                      <DetailTile
-                        label="SLA"
-                        value={
-                          breach.remediation_sla ||
-                          kpi?.remediation_sla ||
-                          "Not specified"
-                        }
-                        tone="blue"
-                      />
-                      <DetailTile label="Expected (contract)" value={expected} />
-                      <DetailTile label="Actual (ingested)" value={actual} />
-                      <DetailTile
-                        label="Penalty eligibility"
-                        value={penalty ? money(penalty, "USD") : "Not eligible for penalty"}
-                      />
-                    </div>
-                    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-                      <DetailTile
-                        label="Variance"
-                        value={variance || "No variance captured"}
-                      />
-                      <DetailTile
-                        label="Data source"
-                        value={humanizeSourceLabel(breach.source)}
-                      />
-                      <DetailTile
-                        label="Flagged escalation email"
-                        value={
-                          breach.breach_email_to ||
-                          kpi?.contact_email ||
-                          "No contact on file"
-                        }
-                        tone={breach.breach_email_to ? "blue" : "amber"}
-                      />
-                      <DetailTile
-                        label="Trigger"
-                        value={
-                          breach.penalty_triggered ||
-                          kpi?.trigger_condition ||
-                          "Not specified"
-                        }
-                      />
-                    </div>
-
-                    <div className="rounded-lg border border-gray-200 bg-white p-3">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                        Follow-up actions
-                      </p>
-                      {!allFollowUps.length ? (
-                        <p className="mt-2 text-xs text-gray-500">
-                          No reminders sent yet. Send one to the counterparty
-                          (client) or to your own inbox (user) below.
-                        </p>
-                      ) : (
-                        <div className="mt-2 divide-y divide-gray-100">
-                          {allFollowUps.map((reminder) => (
-                            <div
-                              key={reminder.dispatch_id}
-                              className="flex flex-wrap items-center gap-2 py-2 text-xs"
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                              <span className="font-semibold capitalize text-gray-900">
-                                {reminder.audience === "team_owner" ? "team owner" : reminder.audience}
-                              </span>
-                              <span className="text-gray-500">
-                                → {reminder.recipient}
-                              </span>
-                              <span className="text-gray-400">
-                                {formatDateTime(reminder.sent_at)}
-                              </span>
-                              <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-semibold text-gray-600">
-                                {reminder.status}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {isInAction ? (
-                        <>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
-                            onClick={() => void sendReminder(breach, "client")}
-                            disabled={isSending}
-                          >
-                            <Send className="h-3.5 w-3.5" />
-                            Remind client
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8 gap-1.5 text-xs"
-                            onClick={() => void sendReminder(breach, "team_owner")}
-                            disabled={isSending}
-                          >
-                            <RefreshCw className="h-3.5 w-3.5" />
-                            Remind team owner
-                          </Button>
-                        </>
-                      ) : isReceived ? (
-                        <p className="basis-full text-xs font-medium text-emerald-700">
-                          Recovery received. No further reminder is required.
-                        </p>
-                      ) : (
-                        <p className="basis-full text-xs text-gray-500">
-                          Reminders become available after the escalation email is dispatched.
-                        </p>
-                      )}
-                      {String(breach.status || "open").toLowerCase() !== "closed" && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1.5 text-xs"
-                          onClick={() => breach.breach_id && void updateBreachStatus(breach.breach_id, "closed")}
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                          Mark as completed
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )}
+                {/* Expanded details are now in the Dialog below */}
               </div>
             );
           })}
         </section>
       )}
 
-      {alertDraft && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl">
+      <Dialog open={!!expandedId} onOpenChange={(open) => !open && setExpandedId(null)}>
+        {(() => {
+          const breach = expandedId ? groupedRecoveries.find(g => g.breach.breach_id === expandedId)?.breach : null;
+          if (!breach) return null;
+          const kpi = kpiById.get(breach.kpi_id);
+          const expected = expectedFor(breach, kpi);
+          const actual = `${breach.actual_value ?? "N/A"} ${breach.actual_unit || kpi?.unit || ""}`.trim();
+          const variance = breach.variance_percent
+            ? `${Math.abs(toNumber(breach.variance_percent) || 0)}%`
+            : breach.variance
+              ? money(Math.abs(toNumber(breach.variance) || 0), "USD")
+              : null;
+          const penalty = Math.abs(
+            toNumber(breach.penalty_amount) ||
+            toNumber(kpi?.consequence_value) ||
+            0,
+          );
+          const reminders = actionLogs[breach.breach_id] || [];
+          const breachStatus = String(breach.status || "open").toLowerCase();
+          const isInAction = breachStatus === "in_action";
+          const isReceived = receivedStatuses.has(breachStatus);
+          const allFollowUps = (isInAction || isReceived) ? [
+            {
+              dispatch_id: `initial-esc-${breach.breach_id}`,
+              audience: "Client (Escalation Alert)",
+              recipient: breach.breach_email_to || kpi?.contact_email || MOCK_ACCOUNT_EMAIL,
+              sent_at: breach.updated_at || breach.timestamp || new Date().toISOString(),
+              status: "mock_dispatched"
+            },
+            ...reminders
+          ] : reminders;
+
+          return (
+            <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden rounded-[20px] p-0 gap-0 border border-gray-200 shadow-xl bg-white">
+              <DialogHeader className="sr-only">
+                <DialogTitle>Recovery details</DialogTitle>
+                <DialogDescription>Details for {kpi?.name || breach.source_kpi?.name || breach.kpi_id}</DialogDescription>
+              </DialogHeader>
+
+              <div className="flex items-center justify-between border-b border-gray-200 p-[22px_24px_18px] bg-white shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-green-200 bg-green-50">
+                    <Handshake className="h-[18px] w-[18px] text-green-600 stroke-2" />
+                  </div>
+                  <div>
+                    <h4 className="text-[12px] font-bold text-gray-400 mb-1 leading-none">
+                      Recovery in progress
+                    </h4>
+                    <p className="text-[17px] font-bold text-gray-950 leading-[1.3] m-0">
+                      Recovery details
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-[20px_24px_24px] bg-white">
+                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-[14px] p-[16px_20px] mb-4">
+                  <div>
+                    <div className="text-[11px] font-bold text-green-800 mb-[5px]">Penalty eligibility</div>
+                    <div className="text-[28px] font-extrabold text-green-900 tracking-[-0.01em]">{penalty ? money(penalty, "USD") : "Not eligible"}</div>
+                  </div>
+                  {variance && (
+                    <span className="text-[12px] font-semibold text-green-800 bg-white border border-green-200 px-[12px] py-[5px] rounded-full">
+                      {variance} variance
+                    </span>
+                  )}
+                </div>
+
+                <VarianceComparison expected={expected} actual={actual} />
+
+                <h5 className="text-[12px] font-bold text-gray-500 mb-2">Remedy</h5>
+                <p className="text-[14px] leading-[1.6] text-gray-950 mb-[18px]">
+                  {breach.remediation || kpi?.remediation || defaultRemediationText(kpi, breach)}
+                </p>
+
+                <div className="grid grid-cols-2 gap-x-5 gap-y-3.5 mb-5">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[12px] font-semibold text-gray-500">Data source</span>
+                    <span className="text-[13.5px] font-semibold text-gray-950">{humanizeSourceLabel(breach.source)}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[12px] font-semibold text-gray-500">Flagged escalation email</span>
+                    <span className="text-[13.5px] font-semibold text-cs-primary break-all">
+                      {breach.breach_email_to || kpi?.contact_email || "No contact on file"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[12px] font-semibold text-gray-500">SLA</span>
+                    <span className="text-[13.5px] font-medium text-gray-400">
+                      {breach.remediation_sla || kpi?.remediation_sla || "Not specified"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[12px] font-semibold text-gray-500">Trigger</span>
+                    <span className="text-[13.5px] font-medium text-gray-400">
+                      {breach.penalty_triggered || kpi?.trigger_condition || "Not specified"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 border border-gray-200 rounded-[14px] p-[14px_18px] mb-5">
+                  <div className="text-[12px] font-bold text-gray-600 mb-3">
+                    Follow-up actions
+                  </div>
+                  {!allFollowUps.length ? (
+                    <p className="text-xs text-gray-500 m-0">No actions recorded.</p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {allFollowUps.map((reminder) => (
+                        <div
+                          key={reminder.dispatch_id}
+                          className="flex items-center gap-[10px]"
+                        >
+                          <div className="w-[18px] h-[18px] text-green-600 shrink-0">
+                            <CheckCircle2 className="w-[18px] h-[18px]" />
+                          </div>
+                          <div className="flex-1 text-[13px] text-gray-950 truncate">
+                            <span className="font-semibold">{reminder.audience === "team_owner" ? "Team escalation alert" : "Client escalation alert"}</span>
+                            <span className="text-gray-400 mx-1">→</span>
+                            {reminder.recipient}
+                          </div>
+                          <span className="text-[12px] text-gray-400 whitespace-nowrap shrink-0">
+                            {formatDateTime(reminder.sent_at)}
+                          </span>
+                          <span className="text-[11.5px] font-semibold text-gray-600 bg-white border border-gray-200 px-[9px] py-[3px] rounded-full whitespace-nowrap ml-[10px] shrink-0">
+                            {reminder.status === "mock_dispatched" ? "Sent (test mode)" : titleCase(reminder.status)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-[10px] pt-[14px] border-t border-gray-200">
+                  <Button type="button" variant="outline" className="w-[38px] h-[38px] p-[10px] rounded-[9px] border-gray-200 text-gray-600 bg-white" disabled={isSending}>
+                    <MoreHorizontal className="w-[15px] h-[15px]" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-[38px] px-[16px] text-[13.5px] font-semibold gap-[7px] rounded-[9px] border-gray-200 text-gray-600 bg-white hover:bg-gray-50"
+                    onClick={() => void sendReminder(breach, "client")}
+                    disabled={isSending || !isInAction}
+                  >
+                    <Send className="w-[15px] h-[15px]" />
+                    Remind client
+                  </Button>
+                  {String(breach.status || "open").toLowerCase() !== "closed" && (
+                    <Button
+                      type="button"
+                      className="h-[38px] px-[16px] text-[13.5px] font-semibold gap-[7px] rounded-[9px] bg-cs-primary text-white border border-cs-primary hover:bg-cs-primary/90"
+                      onClick={() => {
+                        if (breach.breach_id) {
+                           void updateBreachStatus(breach.breach_id, "closed");
+                           setExpandedId(null);
+                        }
+                      }}
+                    >
+                      <CheckCircle2 className="w-[15px] h-[15px]" />
+                      Mark as closed
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </DialogContent>
+          );
+        })()}
+      </Dialog>
+
+      <Dialog open={!!alertDraft} onOpenChange={(open) => !open && setAlertDraft(null)}>
+        <DialogContent className="max-w-2xl p-0 overflow-hidden bg-white border-0 shadow-xl sm:rounded-lg">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Message Sent</DialogTitle>
+          </DialogHeader>
+          {alertDraft && (
+            <div className="w-full">
             <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
                 <CheckCircle2 className="h-8 w-8 text-emerald-600" />
@@ -7993,9 +8079,10 @@ function RecoveriesPanel({
                 Close
               </Button>
             </div>
-          </div>
-        </div>
-      )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
