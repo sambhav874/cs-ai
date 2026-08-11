@@ -26,6 +26,7 @@ from models.domain import UserInDB
 from utils.audit_logger import create_audit_log
 from utils.secure_logger import log_exception
 from services.kpi_manager import ContractKPIManager, USER_CONFIGURABLE_SOURCE_TYPES
+from services.kpi_source_ingestion import KpiSourceIngestionService
 from api.dependencies import check_contract_access, get_contract_and_verify_access, get_project_and_verify_access
 from api.routes.projects import verify_project_access, build_accessible_contract_query
 from core.cache import cache
