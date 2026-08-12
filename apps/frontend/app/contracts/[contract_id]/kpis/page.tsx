@@ -94,7 +94,15 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -3293,13 +3301,9 @@ function ReviewPanel({
     | "supplier"
     | "client"
     | "mutual"
-    | "sla"
-    | "penalty"
-    | "deadline"
-    | "tracked"
-    | "review"
-    | "approved"
   >("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterCategory, setFilterCategory] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -3397,70 +3401,47 @@ function ReviewPanel({
     return "other";
   };
 
-  const supplierCount = useMemo(
-    () => kpis.filter((kpi) => getObligationType(kpi) === "supplier").length,
-    [kpis],
-  );
-  const primaryKpiCount = useMemo(
-    () => kpis.filter((kpi) => kpi.record_role === "primary_kpi").length,
-    [kpis],
-  );
-  const clientCount = useMemo(
-    () => kpis.filter((kpi) => getObligationType(kpi) === "client").length,
-    [kpis],
-  );
-  const mutualCount = useMemo(
-    () => kpis.filter((kpi) => getObligationType(kpi) === "mutual").length,
-    [kpis],
-  );
-  const slaCount = useMemo(
-    () => kpis.filter((kpi) => getCategory(kpi) === "sla").length,
-    [kpis],
-  );
-  const penaltyCount = useMemo(
-    () => kpis.filter((kpi) => getCategory(kpi) === "penalty").length,
-    [kpis],
-  );
-  const deadlineCount = useMemo(
-    () => kpis.filter((kpi) => getCategory(kpi) === "deadline").length,
-    [kpis],
-  );
-  const trackedCount = useMemo(() => kpis.filter(isKpiTracked).length, [kpis]);
-  const reviewCount = useMemo(
-    () =>
-      kpis.filter(
-        (kpi) => kpi.status !== "approved" && kpi.status !== "ignored",
-      ).length,
-    [kpis],
-  );
-  const approvedCount = useMemo(
-    () => kpis.filter((kpi) => kpi.status === "approved").length,
-    [kpis],
-  );
+  const getRecordCategory = (kpi: ContractKPI): string => {
+    const recordType = String(kpi.record_type || "").toLowerCase();
+    switch (recordType) {
+      case "fee_schedule": return "fee_schedule";
+      case "kpi":
+      case "supporting_measurement": return "kpi";
+      case "penalty":
+      case "financial_consequence": return "penalty";
+      case "obligation":
+      case "trackable_operational_obligation": return "obligation";
+      case "liability_clause": return "liability_clause";
+      case "payment_term": return "payment_term";
+      case "remedy": return "remedy";
+      case "index_clause": return "index_clause";
+      case "reference_only":
+      case "process_only": return "reference_only";
+      default:
+        // fallback to existing category logic including deadlines
+        return getCategory(kpi);
+    }
+  };
 
-  const filteredKpis = useMemo(() => {
+  const baseFilteredKpis = useMemo(() => {
     return kpis.filter((kpi) => {
-      // 1. Tab filter
-      if (activeTab === "supplier" && getObligationType(kpi) !== "supplier")
-        return false;
-      if (activeTab === "client" && getObligationType(kpi) !== "client")
-        return false;
-      if (activeTab === "mutual" && getObligationType(kpi) !== "mutual")
-        return false;
-      if (activeTab === "sla" && getCategory(kpi) !== "sla") return false;
-      if (activeTab === "penalty" && getCategory(kpi) !== "penalty")
-        return false;
-      if (activeTab === "deadline" && getCategory(kpi) !== "deadline")
-        return false;
-      if (activeTab === "tracked" && !isKpiTracked(kpi)) return false;
+      // 1. Status filter
+      if (filterStatus === "tracked" && !isKpiTracked(kpi)) return false;
       if (
-        activeTab === "review" &&
+        filterStatus === "review" &&
         (kpi.status === "approved" || kpi.status === "ignored")
       )
         return false;
-      if (activeTab === "approved" && kpi.status !== "approved") return false;
+      if (filterStatus === "approved" && kpi.status !== "approved") return false;
 
-      // 2. Search query filter
+      // 2. Category filter
+      if (filterCategory.length > 0) {
+        if (!filterCategory.includes(getRecordCategory(kpi))) {
+          return false;
+        }
+      }
+
+      // 3. Search query filter
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const nameMatch = (kpi.name || "").toLowerCase().includes(query);
@@ -3483,7 +3464,38 @@ function ReviewPanel({
 
       return true;
     });
-  }, [kpis, activeTab, searchQuery]);
+  }, [kpis, filterStatus, filterCategory, searchQuery]);
+
+  const supplierCount = useMemo(
+    () => baseFilteredKpis.filter((kpi) => getObligationType(kpi) === "supplier").length,
+    [baseFilteredKpis],
+  );
+  const primaryKpiCount = useMemo(
+    () => baseFilteredKpis.filter((kpi) => kpi.record_role === "primary_kpi").length,
+    [baseFilteredKpis],
+  );
+  const clientCount = useMemo(
+    () => baseFilteredKpis.filter((kpi) => getObligationType(kpi) === "client").length,
+    [baseFilteredKpis],
+  );
+  const mutualCount = useMemo(
+    () => baseFilteredKpis.filter((kpi) => getObligationType(kpi) === "mutual").length,
+    [baseFilteredKpis],
+  );
+  const allCount = baseFilteredKpis.length;
+
+  const filteredKpis = useMemo(() => {
+    return baseFilteredKpis.filter((kpi) => {
+      // 1. Tab filter
+      if (activeTab === "supplier" && getObligationType(kpi) !== "supplier")
+        return false;
+      if (activeTab === "client" && getObligationType(kpi) !== "client")
+        return false;
+      if (activeTab === "mutual" && getObligationType(kpi) !== "mutual")
+        return false;
+      return true;
+    });
+  }, [baseFilteredKpis, activeTab]);
 
   const totalPages = Math.max(
     1,
@@ -3523,7 +3535,7 @@ function ReviewPanel({
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
               Showing {filteredKpis.length} of {kpis.length} extracted contract
-              records ({primaryKpiCount || slaCount} supporting measurements ·{" "}
+              records ({primaryKpiCount || 0} supporting measurements ·{" "}
               {supplierCount} Supplier · {clientCount} Client · {mutualCount}{" "}
               Mutual).
             </p>
@@ -3558,19 +3570,13 @@ function ReviewPanel({
         </div>
 
         {/* Category Tabs & Real-Time Search */}
-        <div className="flex flex-col gap-3 p-4 border-b border-border sm:flex-row sm:items-center sm:justify-between bg-background">
+        <div className="flex flex-col gap-3 p-4 border-b border-border sm:flex-row sm:items-center sm:justify-between bg-background overflow-x-auto">
           <ScrollableTabs
             tabs={[
-              { id: "all", label: `All (${kpis.length})` },
+              { id: "all", label: `All (${allCount})` },
               { id: "supplier", label: `Supplier Obligations (${supplierCount})` },
               { id: "client", label: `Client Obligations (${clientCount})` },
               { id: "mutual", label: `Mutual Obligations (${mutualCount})` },
-              { id: "sla", label: `Core SLAs (${slaCount})` },
-              { id: "penalty", label: `Penalties (${penaltyCount})` },
-              { id: "deadline", label: `Deadlines (${deadlineCount})` },
-              { id: "tracked", label: `Tracked (${trackedCount})` },
-              { id: "review", label: `To Review (${reviewCount})` },
-              { id: "approved", label: `Approved (${approvedCount})` },
             ]}
             activeTab={activeTab}
             onTabChange={(id) => {
@@ -3579,7 +3585,88 @@ function ReviewPanel({
             }}
           />
 
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex items-center gap-3 w-full sm:w-auto shrink-0">
+            <Select
+              value={filterStatus}
+              onValueChange={(val) => {
+                setFilterStatus(val);
+                setPagination((p) => ({ ...p, currentPage: 1 }));
+              }}
+            >
+              <SelectTrigger className="w-[130px] h-8 text-xs font-semibold border-border bg-[#FFFFFF]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="tracked">Tracked</SelectItem>
+                <SelectItem value="review">To Review</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-[170px] h-8 text-xs font-semibold border-border bg-[#FFFFFF] justify-between px-3"
+                >
+                  <span className="truncate">
+                    {filterCategory.length === 0
+                      ? "All Categories"
+                      : `${filterCategory.length} Selected`}
+                  </span>
+                  <ChevronDown className="h-4 w-4 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[170px]">
+                {[
+                  { value: "fee_schedule", label: "Fee Schedule" },
+                  { value: "kpi", label: "KPI" },
+                  { value: "obligation", label: "Obligation" },
+                  { value: "penalty", label: "Penalty" },
+                  { value: "liability_clause", label: "Liability Clause" },
+                  { value: "payment_term", label: "Payment Term" },
+                  { value: "remedy", label: "Remedy" },
+                  { value: "index_clause", label: "Index Clause" },
+                  { value: "deadline", label: "Deadline" },
+                  { value: "reference_only", label: "Reference Only" },
+                ].map((option) => (
+                  <DropdownMenuCheckboxItem
+                    key={option.value}
+                    checked={filterCategory.includes(option.value)}
+                    onSelect={(e) => e.preventDefault()}
+                    onCheckedChange={(checked) => {
+                      setFilterCategory((prev) => {
+                        if (checked) {
+                          return [...prev, option.value];
+                        }
+                        return prev.filter((v) => v !== option.value);
+                      });
+                      setPagination((p) => ({ ...p, currentPage: 1 }));
+                    }}
+                  >
+                    {option.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {(filterStatus !== "all" || filterCategory.length > 0 || searchQuery !== "" || activeTab !== "all") && (
+              <Button
+                variant="ghost"
+                className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setFilterStatus("all");
+                  setFilterCategory([]);
+                  setSearchQuery("");
+                  setActiveTab("all");
+                  setPagination((p) => ({ ...p, currentPage: 1 }));
+                }}
+              >
+                Clear all
+              </Button>
+            )}
+
             <div className="relative flex-1 sm:min-w-[220px]">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-700" />
               <input
