@@ -86,6 +86,204 @@ BREACHED_KPI_CODES = set(CONFIG["breached_kpi_codes"])
 SOURCE_DEFS: List[Dict[str, Any]] = CONFIG["sources"]
 BREACH_SUMMARY: List[Dict[str, Any]] = CONFIG["breach_summary"]
 
+# Human-reviewed breach remediation emails for this demo's 9 curated breach
+# occurrences, keyed by the evidence record's own record_id (stable across
+# reseeds -- unlike breach_id, which is a fresh md5 hash every time the demo
+# data is re-ingested). ContractKPIManager._compose_breach_email checks this
+# map first for Baltia/Swissport breaches and, if a record_id matches, uses
+# this text verbatim instead of recomputing a draft -- so what shipped after
+# review is exactly what a user sees, run after run.
+CURATED_BREACH_EMAIL_DRAFTS: Dict[str, str] = {
+    "STAFF-20260723": (
+        "Subject: Staffing Shortfall — Passenger Service Staffing/Manning Commitment, "
+        "2026-07-23 [Supplier Breach] (Ref: STAFF-20260723 / OPS-TKT-4523)\n\n"
+        "Hello,\n\n"
+        "We've identified a staffing shortfall under Baltia Airlines / Swissport USA JFK "
+        "Ground Handling Agreement that requires correction.\n\n"
+        "On 2026-07-23, the recorded result for \"Passenger Service Staffing/Manning "
+        "Commitment\" was 6 Check-in/Gate, 2 Arrivals staff, against the contract "
+        "requirement of at least 8 Check-in/Gate, 3 Arrivals staff under Annex B P1.2 "
+        "(\"Passenger Service Pricing is based upon the following mutually agreed "
+        "manning\"). Check-in/Gate and Arrivals positions below the Annex B P1.2 mutually "
+        "agreed manning table.\n\n"
+        "This is not an isolated incident — the same \"Passenger Service Staffing/Manning "
+        "Commitment\" issue also occurred on 2026-08-01, indicating a systemic issue on "
+        "Swissport USA, Inc.'s side rather than a one-off error.\n\n"
+        "We ask that you review STAFF-20260723 / OPS-TKT-4523, confirm the finding, and "
+        "review the discrepancy and correct the invoice. Please respond with a corrective "
+        "action plan within 7 days.\n\n"
+        "Please confirm once reviewed.\n\n"
+        "Regards,\nContract Compliance Team"
+    ),
+    "STAFF-20260801": (
+        "Subject: Staffing Shortfall — Passenger Service Staffing/Manning Commitment, "
+        "2026-08-01 [Supplier Breach] (Ref: STAFF-20260801 / OPS-TKT-4549)\n\n"
+        "Hello,\n\n"
+        "We've identified a staffing shortfall under Baltia Airlines / Swissport USA JFK "
+        "Ground Handling Agreement that requires correction.\n\n"
+        "On 2026-08-01, the recorded result for \"Passenger Service Staffing/Manning "
+        "Commitment\" was 7 Check-in/Gate, 2 Arrivals staff, against the contract "
+        "requirement of at least 8 Check-in/Gate, 3 Arrivals staff under Annex B P1.2 "
+        "(\"Passenger Service Pricing is based upon the following mutually agreed "
+        "manning\"). Second consecutive shortfall on Check-in/Gate and Arrivals "
+        "positions -- same pattern as 2026-07-23.\n\n"
+        "This is not an isolated incident — the same \"Passenger Service Staffing/Manning "
+        "Commitment\" issue also occurred on 2026-07-23, indicating a systemic issue on "
+        "Swissport USA, Inc.'s side rather than a one-off error.\n\n"
+        "We ask that you review STAFF-20260801 / OPS-TKT-4549, confirm the finding, and "
+        "review the discrepancy and correct the invoice. Please respond with a corrective "
+        "action plan within 7 days.\n\n"
+        "Please confirm once reviewed.\n\n"
+        "Regards,\nContract Compliance Team"
+    ),
+    "RAMPRET-20260726": (
+        "Subject: Billing Overcharge — Ramp Return With Load Change - Technical-Landing "
+        "Rate Applies, Flight BQ100, 2026-07-26 [Supplier Breach] "
+        "(Ref: RAMPRET-20260726 / OPS-TKT-4531)\n\n"
+        "Hello,\n\n"
+        "We've identified a billing overcharge under Baltia Airlines / Swissport USA JFK "
+        "Ground Handling Agreement that requires correction.\n\n"
+        "On 2026-07-26, flight BQ100 at John F. Kennedy International Airport (JFK), the "
+        "recorded result for \"Ramp Return With Load Change - Technical-Landing Rate "
+        "Applies\" was 4,165 USD, against the contract requirement of exactly 2,082.50 USD "
+        "under Annex B P1.2.4 (\"will be charged as for handling in case of technical "
+        "landing\"). Billed full standard turnaround rate instead of the Annex B P1.2.4 "
+        "technical-landing rate (50%).\n\n"
+        "This is not an isolated incident — the same \"Ramp Return With Load Change - "
+        "Technical-Landing Rate Applies\" issue also occurred on 2026-08-02, indicating a "
+        "systemic issue on Swissport USA, Inc.'s side rather than a one-off error.\n\n"
+        "Recoverable overcharge amount: USD 2,082.50.\n\n"
+        "We ask that you review RAMPRET-20260726 / OPS-TKT-4531, confirm the finding, and "
+        "review the discrepancy and correct the invoice. Please respond with a corrective "
+        "action plan within 7 days.\n\n"
+        "Please confirm once reviewed.\n\n"
+        "Regards,\nContract Compliance Team"
+    ),
+    "RAMPRET-20260802": (
+        "Subject: Billing Overcharge — Ramp Return With Load Change - Technical-Landing "
+        "Rate Applies, Flight BQ100, 2026-08-02 [Supplier Breach] "
+        "(Ref: RAMPRET-20260802 / OPS-TKT-4552)\n\n"
+        "Hello,\n\n"
+        "We've identified a billing overcharge under Baltia Airlines / Swissport USA JFK "
+        "Ground Handling Agreement that requires correction.\n\n"
+        "On 2026-08-02, flight BQ100 at John F. Kennedy International Airport (JFK), the "
+        "recorded result for \"Ramp Return With Load Change - Technical-Landing Rate "
+        "Applies\" was 4,165 USD, against the contract requirement of exactly 2,082.50 USD "
+        "under Annex B P1.2.4 (\"will be charged as for handling in case of technical "
+        "landing\"). Same overcharge pattern recurs -- full standard rate billed instead "
+        "of the Annex B P1.2.4 technical-landing rate (50%).\n\n"
+        "This is not an isolated incident — the same \"Ramp Return With Load Change - "
+        "Technical-Landing Rate Applies\" issue also occurred on 2026-07-26, indicating a "
+        "systemic issue on Swissport USA, Inc.'s side rather than a one-off error.\n\n"
+        "Recoverable overcharge amount: USD 2,082.50.\n\n"
+        "We ask that you review RAMPRET-20260802 / OPS-TKT-4552, confirm the finding, and "
+        "review the discrepancy and correct the invoice. Please respond with a corrective "
+        "action plan within 7 days.\n\n"
+        "Please confirm once reviewed.\n\n"
+        "Regards,\nContract Compliance Team"
+    ),
+    "HOLIDAY-20260525": (
+        "Subject: Billing Overcharge — No Night/Sunday/Holiday Surcharge, 2026-05-25 "
+        "[Supplier Breach] (Ref: HOLIDAY-20260525 / OPS-TKT-4372)\n\n"
+        "Hello,\n\n"
+        "We've identified a billing overcharge under Baltia Airlines / Swissport USA JFK "
+        "Ground Handling Agreement that requires correction.\n\n"
+        "On 2026-05-25, the recorded result for \"No Night/Sunday/Holiday Surcharge\" was "
+        "180 USD, against the contract requirement of exactly 0 USD under Annex B P1.2.5 "
+        "(\"No extra charges will be made for providing the services at night\"). Annex B "
+        "P1.2.5 prohibits extra charges for services on legal holidays.\n\n"
+        "This is not an isolated incident — the same \"No Night/Sunday/Holiday Surcharge\" "
+        "issue also occurred on 2026-06-19, 2026-07-04, indicating a systemic issue on "
+        "Swissport USA, Inc.'s side rather than a one-off error.\n\n"
+        "Recoverable overcharge amount: USD 180.\n\n"
+        "We ask that you review HOLIDAY-20260525 / OPS-TKT-4372, confirm the finding, and "
+        "review the discrepancy and correct the invoice. Please respond with a corrective "
+        "action plan within 7 days.\n\n"
+        "Please confirm once reviewed.\n\n"
+        "Regards,\nContract Compliance Team"
+    ),
+    "HOLIDAY-20260619": (
+        "Subject: Billing Overcharge — No Night/Sunday/Holiday Surcharge, 2026-06-19 "
+        "[Supplier Breach] (Ref: HOLIDAY-20260619 / OPS-TKT-4415)\n\n"
+        "Hello,\n\n"
+        "We've identified a billing overcharge under Baltia Airlines / Swissport USA JFK "
+        "Ground Handling Agreement that requires correction.\n\n"
+        "On 2026-06-19, the recorded result for \"No Night/Sunday/Holiday Surcharge\" was "
+        "180 USD, against the contract requirement of exactly 0 USD under Annex B P1.2.5 "
+        "(\"No extra charges will be made for providing the services at night\"). Annex B "
+        "P1.2.5 prohibits extra charges for services on legal holidays.\n\n"
+        "This is not an isolated incident — the same \"No Night/Sunday/Holiday Surcharge\" "
+        "issue also occurred on 2026-05-25, 2026-07-04, indicating a systemic issue on "
+        "Swissport USA, Inc.'s side rather than a one-off error.\n\n"
+        "Recoverable overcharge amount: USD 180.\n\n"
+        "We ask that you review HOLIDAY-20260619 / OPS-TKT-4415, confirm the finding, and "
+        "review the discrepancy and correct the invoice. Please respond with a corrective "
+        "action plan within 7 days.\n\n"
+        "Please confirm once reviewed.\n\n"
+        "Regards,\nContract Compliance Team"
+    ),
+    "HOLIDAY-20260704": (
+        "Subject: Billing Overcharge — No Night/Sunday/Holiday Surcharge, 2026-07-04 "
+        "[Supplier Breach] (Ref: HOLIDAY-20260704 / OPS-TKT-4458)\n\n"
+        "Hello,\n\n"
+        "We've identified a billing overcharge under Baltia Airlines / Swissport USA JFK "
+        "Ground Handling Agreement that requires correction.\n\n"
+        "On 2026-07-04, the recorded result for \"No Night/Sunday/Holiday Surcharge\" was "
+        "180 USD, against the contract requirement of exactly 0 USD under Annex B P1.2.5 "
+        "(\"No extra charges will be made for providing the services at night\"). Third "
+        "consecutive legal-holiday surcharge violation this year -- same billing-system "
+        "defect as 2026-05-25 and 2026-06-19. Annex B P1.2.5 prohibits extra charges for "
+        "services on legal holidays.\n\n"
+        "This is not an isolated incident — the same \"No Night/Sunday/Holiday Surcharge\" "
+        "issue also occurred on 2026-05-25, 2026-06-19, indicating a systemic issue on "
+        "Swissport USA, Inc.'s side rather than a one-off error.\n\n"
+        "Recoverable overcharge amount: USD 180.\n\n"
+        "We ask that you review HOLIDAY-20260704 / OPS-TKT-4458, confirm the finding, and "
+        "review the discrepancy and correct the invoice. Please respond with a corrective "
+        "action plan within 7 days.\n\n"
+        "Please confirm once reviewed.\n\n"
+        "Regards,\nContract Compliance Team"
+    ),
+    "CPI-20250516-AUDIT": (
+        "Subject: Rate Escalation Overcharge — Annual CPI Rate Escalation (Minimum 3%), "
+        "2026-07-28 [Supplier Breach] (Ref: CPI-20250516-AUDIT / OPS-TKT-4200)\n\n"
+        "Hello,\n\n"
+        "We've identified a rate escalation overcharge under Baltia Airlines / Swissport "
+        "USA JFK Ground Handling Agreement that requires correction.\n\n"
+        "On 2026-07-28, the recorded result for \"Annual CPI Rate Escalation (Minimum 3%)\" "
+        "was 4.50 %, against the contract requirement of at least 3 % under Annex B P10.3 "
+        "(\"will be subject to an increase each anniversary date of the contract\"). "
+        "Swissport applied a 4.5% escalation to the full Annex B turnaround rate card at "
+        "the 2025-05-16 anniversary against a contracted floor of 3.0% (actual CPI 2.9%) "
+        "-- a 1.5-point overcharge across 254 turnarounds ($1,057,910 base billed) for the "
+        "12 months through 2026-05-15.\n\n"
+        "Recoverable overcharge amount: USD 15,868.65.\n\n"
+        "We ask that you review CPI-20250516-AUDIT / OPS-TKT-4200, confirm the finding, "
+        "and review the discrepancy and correct the invoice. Please respond with a "
+        "corrective action plan within 7 days.\n\n"
+        "Please confirm once reviewed.\n\n"
+        "Regards,\nContract Compliance Team"
+    ),
+    "OPS-20260714": (
+        "Subject: Schedule / SLA Deviation — On-Schedule Handling Window (+/-60 minutes), "
+        "Flight BQ100, 2026-07-14 [Customer Breach] (Ref: OPS-20260714)\n\n"
+        "Hello,\n\n"
+        "We've identified a schedule / SLA deviation under Baltia Airlines / Swissport USA "
+        "JFK Ground Handling Agreement that requires correction.\n\n"
+        "On 2026-07-14, flight BQ100 at John F. Kennedy International Airport (JFK), the "
+        "recorded result for \"On-Schedule Handling Window (+/-60 minutes)\" was 105 "
+        "minutes, against the contract requirement of no more than 60 minutes under Annex "
+        "B P1.2.1 (\"flights operating within sixty (60) minutes of scheduled arrival or "
+        "departure\"). Inbound mechanical delay; Handling Company did not apply "
+        "off-schedule extra-services billing under Annex B Paragraph 2.\n\n"
+        "We ask that you review OPS-20260714, confirm the finding, and review the "
+        "discrepancy and correct the invoice. Please respond with a corrective action "
+        "plan within 7 days.\n\n"
+        "Please confirm once reviewed.\n\n"
+        "Regards,\nContract Compliance Team"
+    ),
+}
+
 # KPI-006's manning table covers 5 positions; the generic threshold engine
 # compares one number to one target. Check-in/Gate is the largest position
 # and the one the mock roster checks flag short, so it's tracked as the
@@ -479,6 +677,9 @@ class BaltiaJfkDemoBuilder:
                 "section": kpi.get("section"),
                 "page_start": kpi.get("page_start"),
                 "contract_name": kpi.get("contract_name"),
+                "party": kpi.get("party"),
+                "party_role": kpi.get("party_role"),
+                "beneficiary": kpi.get("beneficiary"),
             },
             "send_remediation_email": False,
             "breach_email_draft": None,

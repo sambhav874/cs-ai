@@ -1087,12 +1087,12 @@ def flag_breach_remediation_email(
     breach_id: str,
     current_user: UserInDB = Depends(get_current_active_user),
 ) -> Dict[str, Any]:
-    """Flag a breach for remediation, rendering and returning the breach email draft.
+    """Flag a breach for remediation, returning the breach email draft.
 
-    The breach_email_draft field is ONLY populated when this endpoint is called \u2014
-    it is never pre-generated during evaluation. The response includes the fully
-    rendered email (with all placeholders substituted) that the user can review,
-    edit, and send.
+    The draft is composed at breach-evaluation time already; this endpoint marks
+    send_remediation_email=True and returns the (already-rendered) draft the user
+    can review, edit, and send -- it only (re)composes the draft itself if an
+    older breach record predates that.
     """
     try:
         contract_oid = ObjectId(contract_id)
@@ -1103,6 +1103,38 @@ def flag_breach_remediation_email(
     check_contract_access(contract, current_user)
     try:
         result = _kpi_manager().flag_breach_remediation_email(
+            breach_id,
+            user_id=str(current_user.id),
+            contract_id=contract_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return result
+
+
+@kpis_router.post("/contracts/{contract_id}/kpis/breaches/{breach_id}/notify-team")
+def notify_team_for_breach(
+    contract_id: str,
+    breach_id: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Push an internal notification (in-app + email, per matching alert rules)
+    for a breach, separate from the external counterparty escalation email.
+
+    Intended for customer-side breaches (the org's own obligation, e.g. a
+    schedule-adherence miss) where escalating to the counterparty makes no
+    sense -- and available for supplier-side breaches too, as a second action
+    alongside the escalation email.
+    """
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+
+    contract = collection.find_one({"_id": contract_oid}, {"_id": 1, "ownerType": 1, "ownerId": 1})
+    check_contract_access(contract, current_user)
+    try:
+        result = _kpi_manager().notify_team_for_breach(
             breach_id,
             user_id=str(current_user.id),
             contract_id=contract_id,
