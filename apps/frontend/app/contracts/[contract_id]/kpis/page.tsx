@@ -7489,7 +7489,7 @@ function FlagsPanel({
                   }
                   className="bg-white"
                 >
-                  <div className="grid gap-3 p-4 lg:grid-cols-[minmax(280px,1fr)_150px_130px_130px_170px] lg:items-center">
+                  <div className="grid gap-3 p-4 lg:grid-cols-[minmax(280px,1fr)_150px_130px_130px_230px] lg:items-center">
                     <button
                       type="button"
                       onClick={() =>
@@ -7540,7 +7540,7 @@ function FlagsPanel({
                             <Button
                               type="button"
                               size="sm"
-                              className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
+                              className="h-8 w-[110px] justify-center gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
                               onClick={async () => {
                                 setEscalatingBreachId(breach.breach_id || "");
                                 await openEscalation(breach, kpi);
@@ -7556,7 +7556,7 @@ function FlagsPanel({
                             type="button"
                             size="sm"
                             variant="outline"
-                            className="h-8 gap-1.5 text-xs disabled:opacity-60"
+                            className="h-8 w-[110px] justify-center gap-1.5 text-xs disabled:opacity-60"
                             onClick={() => handleNotifyTeam(breach, kpi)}
                             disabled={
                               !breach.is_breach ||
@@ -8317,9 +8317,42 @@ function RecoveriesPanel({
                 </div>
 
                 <div className="flex justify-end gap-[10px] pt-[14px] border-t border-gray-200">
-                  <Button type="button" variant="outline" className="w-[38px] h-[38px] p-[10px] rounded-[9px] border-gray-200 text-gray-600 bg-white" disabled={isSending}>
-                    <MoreHorizontal className="w-[15px] h-[15px]" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-[38px] h-[38px] p-[10px] rounded-[9px] border-gray-200 text-gray-600 bg-white"
+                        disabled={isSending}
+                        aria-label="More recovery actions"
+                      >
+                        <MoreHorizontal className="w-[15px] h-[15px]" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44">
+                      <DropdownMenuItem
+                        disabled={
+                          !breach.is_breach ||
+                          notifyingTeamBreachId === breach.breach_id ||
+                          !!breach.team_notified_at
+                        }
+                        onClick={() => void handleNotifyTeam(breach, kpi)}
+                      >
+                        {notifyingTeamBreachId === breach.breach_id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : breach.team_notified_at ? (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        ) : (
+                          <Bell className="h-4 w-4" />
+                        )}
+                        {notifyingTeamBreachId === breach.breach_id
+                          ? "Notifying..."
+                          : breach.team_notified_at
+                            ? "Team notified"
+                            : "Notify team"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   {isSupplierBreach && (
                     <Button
                       type="button"
@@ -8332,30 +8365,6 @@ function RecoveriesPanel({
                       Remind client
                     </Button>
                   )}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-[38px] px-[16px] text-[13.5px] font-semibold gap-[7px] rounded-[9px] border-gray-200 text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-60"
-                    onClick={() => handleNotifyTeam(breach, kpi)}
-                    disabled={
-                      !breach.is_breach ||
-                      notifyingTeamBreachId === breach.breach_id ||
-                      !!breach.team_notified_at
-                    }
-                  >
-                    {notifyingTeamBreachId === breach.breach_id ? (
-                      <Loader2 className="w-[15px] h-[15px] animate-spin" />
-                    ) : breach.team_notified_at ? (
-                      <CheckCircle2 className="w-[15px] h-[15px] text-emerald-600" />
-                    ) : (
-                      <Bell className="w-[15px] h-[15px]" />
-                    )}
-                    {notifyingTeamBreachId === breach.breach_id
-                      ? "Notifying..."
-                      : breach.team_notified_at
-                        ? "Team notified"
-                        : "Remind team"}
-                  </Button>
                   {String(breach.status || "open").toLowerCase() !== "closed" && (
                     <Button
                       type="button"
