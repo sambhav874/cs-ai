@@ -354,6 +354,8 @@ interface ContractKPIBreach {
     confidence?: string;
     matched_party?: string;
   } | null;
+  team_notified_at?: string | null;
+  team_notified_by?: string | null;
   penalty_amount?: number | null;
   penalty_triggered?: string | null;
   variance?: number | null;
@@ -372,6 +374,9 @@ interface ContractKPIBreach {
     contract_name?: string;
     category?: string;
     section?: string;
+    party?: string;
+    party_role?: string;
+    beneficiary?: string;
   };
   created_at?: string;
   updated_at?: string;
@@ -2361,6 +2366,33 @@ export default function ContractKpiManagementPage() {
     return updated;
   };
 
+  const notifyTeamForBreach = async (breach: ContractKPIBreach) => {
+    if (!apiUrl || !breach.breach_id) return null;
+    const result = await authenticatedFetch(
+      `${apiUrl}/contracts/${contractId}/kpis/breaches/${encodeURIComponent(breach.breach_id)}/notify-team`,
+      {
+        method: "POST",
+      },
+    );
+    if (result.error) {
+      toast({
+        title: "Could not notify team",
+        description: result.error,
+        variant: "destructive",
+      });
+      return null;
+    }
+    const updated = result.data as ContractKPIBreach;
+    setBreaches((current) =>
+      current.map((item) =>
+        item.breach_id === updated.breach_id ? updated : item,
+      ),
+    );
+    // Confirmation is shown as a modal (FlagsPanel's notifyConfirmName dialog),
+    // not a toast, per the "must show a modal saying team is notified" ask.
+    return updated;
+  };
+
   const certifyKpi = async (
     kpi: ContractKPI,
     governanceStatus: "reviewed" | "certified" | "deprecated",
@@ -2854,7 +2886,7 @@ export default function ContractKpiManagementPage() {
               onAllSourcesReady={() => setActivePanel("flags")}
             />
           ) : activePanel === "recoveries" ? (
-            <RecoveriesPanel breaches={visibleBreaches} kpiById={kpiById} actionLogs={actionLogs} setActionLogs={setActionLogs} updateBreachStatus={updateBreachStatus} />
+            <RecoveriesPanel breaches={visibleBreaches} kpiById={kpiById} actionLogs={actionLogs} setActionLogs={setActionLogs} updateBreachStatus={updateBreachStatus} onNotifyTeam={notifyTeamForBreach} />
           ) : activePanel === "flags" ? (
             <FlagsPanel
               breaches={visibleBreaches}
@@ -2862,6 +2894,7 @@ export default function ContractKpiManagementPage() {
               flagsReady={airportDemoFlagsReady}
               completedSourceCount={airportDemoCompletedSourceCount}
               onFlagRemediationEmail={flagRemediationEmail}
+              onNotifyTeam={notifyTeamForBreach}
               onBreachStatusChange={(breachId, status) =>
                 setBreaches((current) =>
                   current.map((breach) =>
@@ -7193,6 +7226,7 @@ function FlagsPanel({
   breaches,
   kpiById,
   onFlagRemediationEmail,
+  onNotifyTeam,
   onBreachStatusChange,
   flagsReady = true,
   completedSourceCount = 0,
@@ -7202,6 +7236,9 @@ function FlagsPanel({
   onFlagRemediationEmail: (
     breach: ContractKPIBreach,
   ) => Promise<ContractKPIBreach | null>;
+  onNotifyTeam: (
+    breach: ContractKPIBreach,
+  ) => Promise<ContractKPIBreach | null>;
   onBreachStatusChange: (breachId: string, status: string) => void;
   flagsReady?: boolean;
   completedSourceCount?: number;
@@ -7209,6 +7246,8 @@ function FlagsPanel({
   const { authenticatedFetch } = useAuth();
   const [expandedFlagId, setExpandedFlagId] = useState<string | null>(null);
   const [escalatingBreachId, setEscalatingBreachId] = useState<string | null>(null);
+  const [notifyingTeamBreachId, setNotifyingTeamBreachId] = useState<string | null>(null);
+  const [notifyConfirmName, setNotifyConfirmName] = useState<string | null>(null);
   const [isDispatching, setIsDispatching] = useState(false);
   const [alertDraft, setAlertDraft] = useState<{
     contractId: string;
@@ -7243,15 +7282,37 @@ function FlagsPanel({
   ) => {
     const updated = await onFlagRemediationEmail(breach);
     const source = updated || breach;
+    const draftText = source.breach_email_draft || buildEscalationDraft(source, kpi);
+    // The draft itself carries its own "Subject: ..." first line -- read that
+    // instead of building a second, independent subject string that can (and
+    // did) drift out of sync with the actual draft body. Once read, strip it
+    // (plus the blank line after it) from the body so it isn't shown twice --
+    // once in the dedicated Subject field, once again inside the textarea.
+    const subjectMatch = draftText.match(/^Subject:\s*(.*)$/m);
+    const subject =
+      subjectMatch?.[1]?.trim() ||
+      `Action needed: ${kpi?.name || source.source_kpi?.name || source.kpi_id} did not meet the contract requirement`;
+    const body = subjectMatch
+      ? draftText.slice(subjectMatch.index! + subjectMatch[0].length).replace(/^\n+/, "")
+      : draftText;
     setAlertDraft({
       contractId: kpi?.contract_id || source.contract_id || "",
       kpiId: source.kpi_id || kpi?.kpi_id || "",
       breachId: source.breach_id,
       to: source.breach_email_to || kpi?.contact_email || "",
-      subject: `Action needed: ${kpi?.name || source.source_kpi?.name || source.kpi_id} did not meet the contract requirement`,
-      body: source.breach_email_draft || buildEscalationDraft(source, kpi),
+      subject,
+      body,
       recipientSource: source.breach_email_recipient_source,
     });
+  };
+
+  const handleNotifyTeam = async (breach: ContractKPIBreach, kpi?: ContractKPI) => {
+    setNotifyingTeamBreachId(breach.breach_id || "");
+    const updated = await onNotifyTeam(breach);
+    setNotifyingTeamBreachId(null);
+    if (updated) {
+      setNotifyConfirmName(kpi?.name || breach.source_kpi?.name || breach.kpi_id || "this breach");
+    }
   };
 
   return (
@@ -7332,6 +7393,8 @@ function FlagsPanel({
                 toNumber(breach.penalty_amount) ||
                 0,
               );
+              const partyRole = (kpi?.party_role || breach.source_kpi?.party_role || "").toLowerCase();
+              const isSupplierBreach = partyRole === "supplier";
               return (
                 <div
                   key={
@@ -7356,6 +7419,16 @@ function FlagsPanel({
                             breach.source_kpi?.name ||
                             breach.kpi_id}
                         </p>
+                        {isSupplierBreach && (
+                          <span className="w-fit shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                            Supplier
+                          </span>
+                        )}
+                        {(partyRole === "client" || partyRole === "customer") && (
+                          <span className="w-fit shrink-0 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                            Customer
+                          </span>
+                        )}
                       </div>
                     </button>
                     <div
@@ -7375,20 +7448,49 @@ function FlagsPanel({
                     </span>
                     <div className="flex flex-wrap justify-start gap-1.5 lg:justify-end">
                       {String(breach.status || "open").toLowerCase() !== "in_action" && String(breach.status || "open").toLowerCase() !== "closed" && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
-                          onClick={async () => {
-                            setEscalatingBreachId(breach.breach_id || "");
-                            await openEscalation(breach, kpi);
-                            setEscalatingBreachId(null);
-                          }}
-                          disabled={!breach.is_breach || escalatingBreachId === breach.breach_id}
-                        >
-                          {escalatingBreachId === breach.breach_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
-                          {escalatingBreachId === breach.breach_id ? "Escalating..." : "Escalate"}
-                        </Button>
+                        <>
+                          {isSupplierBreach && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 gap-1.5 bg-cs-primary text-xs text-white hover:bg-cs-primary/90"
+                              onClick={async () => {
+                                setEscalatingBreachId(breach.breach_id || "");
+                                await openEscalation(breach, kpi);
+                                setEscalatingBreachId(null);
+                              }}
+                              disabled={!breach.is_breach || escalatingBreachId === breach.breach_id}
+                            >
+                              {escalatingBreachId === breach.breach_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                              {escalatingBreachId === breach.breach_id ? "Escalating..." : "Escalate"}
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 gap-1.5 text-xs disabled:opacity-60"
+                            onClick={() => handleNotifyTeam(breach, kpi)}
+                            disabled={
+                              !breach.is_breach ||
+                              notifyingTeamBreachId === breach.breach_id ||
+                              !!breach.team_notified_at
+                            }
+                          >
+                            {notifyingTeamBreachId === breach.breach_id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : breach.team_notified_at ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                            ) : (
+                              <Bell className="h-3.5 w-3.5" />
+                            )}
+                            {notifyingTeamBreachId === breach.breach_id
+                              ? "Notifying..."
+                              : breach.team_notified_at
+                                ? "Team notified"
+                                : "Notify team"}
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -7406,7 +7508,9 @@ function FlagsPanel({
           const kpi = kpiById.get(breach.kpi_id);
           const expected = expectedFor(breach, kpi);
           const actual = `${breach.actual_value ?? "N/A"} ${breach.actual_unit || kpi?.unit || ""}`.trim();
-          
+          const partyRole = (kpi?.party_role || breach.source_kpi?.party_role || "").toLowerCase();
+          const isSupplierBreach = partyRole === "supplier";
+
           return (
             <DialogContent className="max-w-[640px] max-h-[90vh] flex flex-col overflow-hidden rounded-[20px] p-0 gap-0 border border-gray-200 shadow-2xl bg-white">
               <DialogHeader className="sr-only">
@@ -7492,20 +7596,52 @@ function FlagsPanel({
                   </Button>
                   
                   {breach.status !== "in_action" && String(breach.status || "open").toLowerCase() !== "closed" && (
-                    <Button
-                      type="button"
-                      className="flex-[1.3] h-auto py-[11px] px-[14px] bg-cs-primary text-white hover:bg-cs-primary/90 border border-cs-primary text-[13.5px] font-semibold rounded-[10px] shadow-none"
-                      onClick={async () => {
-                        setEscalatingBreachId(breach.breach_id || "");
-                        await openEscalation(breach, kpi);
-                        setEscalatingBreachId(null);
-                        setExpandedFlagId(null);
-                      }}
-                      disabled={!breach.is_breach || escalatingBreachId === breach.breach_id}
-                    >
-                      {escalatingBreachId === breach.breach_id ? <Loader2 className="w-[15px] h-[15px] animate-spin mr-[7px]" /> : <Send className="w-[15px] h-[15px] mr-[7px]" />}
-                      {escalatingBreachId === breach.breach_id ? "Generating..." : "Send escalation alert"}
-                    </Button>
+                    <>
+                      {isSupplierBreach && (
+                        <Button
+                          type="button"
+                          className="flex-[1.3] h-auto py-[11px] px-[14px] bg-cs-primary text-white hover:bg-cs-primary/90 border border-cs-primary text-[13.5px] font-semibold rounded-[10px] shadow-none"
+                          onClick={async () => {
+                            setEscalatingBreachId(breach.breach_id || "");
+                            await openEscalation(breach, kpi);
+                            setEscalatingBreachId(null);
+                            setExpandedFlagId(null);
+                          }}
+                          disabled={!breach.is_breach || escalatingBreachId === breach.breach_id}
+                        >
+                          {escalatingBreachId === breach.breach_id ? <Loader2 className="w-[15px] h-[15px] animate-spin mr-[7px]" /> : <Send className="w-[15px] h-[15px] mr-[7px]" />}
+                          {escalatingBreachId === breach.breach_id ? "Generating..." : "Send escalation alert"}
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant={isSupplierBreach ? "outline" : "default"}
+                        className={
+                          isSupplierBreach
+                            ? "flex-[1.3] h-auto py-[11px] px-[14px] border border-gray-300 text-[13.5px] font-semibold text-gray-700 hover:bg-gray-50 rounded-[10px] shadow-none disabled:opacity-60"
+                            : "flex-[1.3] h-auto py-[11px] px-[14px] bg-cs-primary text-white hover:bg-cs-primary/90 border border-cs-primary text-[13.5px] font-semibold rounded-[10px] shadow-none disabled:opacity-60"
+                        }
+                        onClick={() => handleNotifyTeam(breach, kpi)}
+                        disabled={
+                          !breach.is_breach ||
+                          notifyingTeamBreachId === breach.breach_id ||
+                          !!breach.team_notified_at
+                        }
+                      >
+                        {notifyingTeamBreachId === breach.breach_id ? (
+                          <Loader2 className="w-[15px] h-[15px] animate-spin mr-[7px]" />
+                        ) : breach.team_notified_at ? (
+                          <CheckCircle2 className="w-[15px] h-[15px] mr-[7px]" />
+                        ) : (
+                          <Bell className="w-[15px] h-[15px] mr-[7px]" />
+                        )}
+                        {notifyingTeamBreachId === breach.breach_id
+                          ? "Notifying..."
+                          : breach.team_notified_at
+                            ? "Team notified"
+                            : "Notify team"}
+                      </Button>
+                    </>
                   )}
                 </div>
 
@@ -7633,6 +7769,32 @@ function FlagsPanel({
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!notifyConfirmName} onOpenChange={(open) => !open && setNotifyConfirmName(null)}>
+        <DialogContent className="max-w-sm p-0 overflow-hidden bg-white border-0 shadow-xl sm:rounded-lg">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Team notified</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-3 px-6 py-8 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 border border-emerald-200">
+              <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-[15px] font-bold text-gray-950">Team notified</p>
+              <p className="mt-1.5 text-[13px] text-gray-500">
+                An internal alert was sent to your team for &ldquo;{notifyConfirmName}&rdquo;.
+              </p>
+            </div>
+            <Button
+              type="button"
+              className="mt-2 w-full bg-cs-primary text-white hover:bg-cs-primary/90"
+              onClick={() => setNotifyConfirmName(null)}
+            >
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -7645,16 +7807,29 @@ function RecoveriesPanel({
   actionLogs,
   setActionLogs,
   updateBreachStatus,
+  onNotifyTeam,
 }: {
   breaches: ContractKPIBreach[];
   kpiById: Map<string, ContractKPI>;
   actionLogs: Record<string, RecoveryReminderAction[]>;
   setActionLogs: React.Dispatch<React.SetStateAction<Record<string, RecoveryReminderAction[]>>>;
   updateBreachStatus: (breachId: string, status: string) => Promise<any>;
+  onNotifyTeam: (breach: ContractKPIBreach) => Promise<ContractKPIBreach | null>;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [alertDraft, setAlertDraft] = useState<{ status?: "sent" } | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [notifyingTeamBreachId, setNotifyingTeamBreachId] = useState<string | null>(null);
+  const [notifyConfirmName, setNotifyConfirmName] = useState<string | null>(null);
+
+  const handleNotifyTeam = async (breach: ContractKPIBreach, kpi?: ContractKPI) => {
+    setNotifyingTeamBreachId(breach.breach_id || "");
+    const updated = await onNotifyTeam(breach);
+    setNotifyingTeamBreachId(null);
+    if (updated) {
+      setNotifyConfirmName(kpi?.name || breach.source_kpi?.name || breach.kpi_id || "this breach");
+    }
+  };
 
   const recoveries = useMemo(() => {
     const severityRank: Record<string, number> = {
@@ -7844,8 +8019,14 @@ function RecoveriesPanel({
               toNumber(kpi?.consequence_value) ||
               0,
             );
+            const partyRole = (kpi?.party_role || breach.source_kpi?.party_role || "").toLowerCase();
+            const isSupplierBreach = partyRole === "supplier";
+            const isCustomerBreach = partyRole === "client" || partyRole === "customer";
             return (
-              <div key={breach.breach_id} className="bg-white">
+              <div
+                key={breach.breach_id}
+                className={isCustomerBreach ? "bg-sky-50/40 border-l-2 border-l-sky-300" : "bg-white"}
+              >
                 {showGroupHeading && (
                   <div className="border-y border-gray-100 bg-gray-50 px-4 py-3 first:border-t-0">
                     <p className="text-xs font-bold uppercase tracking-wide text-gray-700">{group.label}</p>
@@ -7870,6 +8051,16 @@ function RecoveriesPanel({
                       <p className="truncate text-sm font-semibold text-gray-950">
                         {kpi?.name || breach.source_kpi?.name}
                       </p>
+                      {isSupplierBreach && (
+                        <span className="w-fit shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                          Supplier
+                        </span>
+                      )}
+                      {isCustomerBreach && (
+                        <span className="w-fit shrink-0 rounded-full border border-sky-200 bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                          Customer
+                        </span>
+                      )}
                     </div>
                   </button>
                   <div className="text-sm font-semibold text-gray-950">
@@ -7910,6 +8101,8 @@ function RecoveriesPanel({
           const kpi = kpiById.get(breach.kpi_id);
           const expected = expectedFor(breach, kpi);
           const actual = `${breach.actual_value ?? "N/A"} ${breach.actual_unit || kpi?.unit || ""}`.trim();
+          const partyRole = (kpi?.party_role || breach.source_kpi?.party_role || "").toLowerCase();
+          const isSupplierBreach = partyRole === "supplier";
           const variance = breach.variance_percent
             ? `${Math.abs(toNumber(breach.variance_percent) || 0)}%`
             : breach.variance
@@ -8040,15 +8233,41 @@ function RecoveriesPanel({
                   <Button type="button" variant="outline" className="w-[38px] h-[38px] p-[10px] rounded-[9px] border-gray-200 text-gray-600 bg-white" disabled={isSending}>
                     <MoreHorizontal className="w-[15px] h-[15px]" />
                   </Button>
+                  {isSupplierBreach && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-[38px] px-[16px] text-[13.5px] font-semibold gap-[7px] rounded-[9px] border-gray-200 text-gray-600 bg-white hover:bg-gray-50"
+                      onClick={() => void sendReminder(breach, "client")}
+                      disabled={isSending || !isInAction}
+                    >
+                      <Send className="w-[15px] h-[15px]" />
+                      Remind client
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-[38px] px-[16px] text-[13.5px] font-semibold gap-[7px] rounded-[9px] border-gray-200 text-gray-600 bg-white hover:bg-gray-50"
-                    onClick={() => void sendReminder(breach, "client")}
-                    disabled={isSending || !isInAction}
+                    className="h-[38px] px-[16px] text-[13.5px] font-semibold gap-[7px] rounded-[9px] border-gray-200 text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-60"
+                    onClick={() => handleNotifyTeam(breach, kpi)}
+                    disabled={
+                      !breach.is_breach ||
+                      notifyingTeamBreachId === breach.breach_id ||
+                      !!breach.team_notified_at
+                    }
                   >
-                    <Send className="w-[15px] h-[15px]" />
-                    Remind client
+                    {notifyingTeamBreachId === breach.breach_id ? (
+                      <Loader2 className="w-[15px] h-[15px] animate-spin" />
+                    ) : breach.team_notified_at ? (
+                      <CheckCircle2 className="w-[15px] h-[15px] text-emerald-600" />
+                    ) : (
+                      <Bell className="w-[15px] h-[15px]" />
+                    )}
+                    {notifyingTeamBreachId === breach.breach_id
+                      ? "Notifying..."
+                      : breach.team_notified_at
+                        ? "Team notified"
+                        : "Remind team"}
                   </Button>
                   {String(breach.status || "open").toLowerCase() !== "closed" && (
                     <Button
@@ -8098,6 +8317,32 @@ function RecoveriesPanel({
             </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!notifyConfirmName} onOpenChange={(open) => !open && setNotifyConfirmName(null)}>
+        <DialogContent className="max-w-sm p-0 overflow-hidden bg-white border-0 shadow-xl sm:rounded-lg">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Team notified</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-3 px-6 py-8 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 border border-emerald-200">
+              <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-[15px] font-bold text-gray-950">Team notified</p>
+              <p className="mt-1.5 text-[13px] text-gray-500">
+                An internal alert was sent to your team for &ldquo;{notifyConfirmName}&rdquo;.
+              </p>
+            </div>
+            <Button
+              type="button"
+              className="mt-2 w-full bg-cs-primary text-white hover:bg-cs-primary/90"
+              onClick={() => setNotifyConfirmName(null)}
+            >
+              Done
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

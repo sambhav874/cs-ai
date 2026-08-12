@@ -15,6 +15,7 @@ from bson import ObjectId
 from core.config import settings
 from core.database import collection, db
 from services.contract_agent.rag import DocumentSegmenter, TextSegment
+from services.contract_agent.rag.llm_client import ProviderLLMClient
 from utils.text_cleanup import clean_text_encoding
 from utils.encryption import encrypt_value, decrypt_value
 
@@ -1316,6 +1317,8 @@ class ContractKPIManager:
         numeric_amount = self._numeric(amount)
         if numeric_amount is None:
             return "not defined in the agreement"
+        if numeric_amount == 0:
+            return "no monetary penalty identified for this occurrence"
 
         kpi = kpi or {}
         currency = (
@@ -1331,7 +1334,7 @@ class ContractKPIManager:
             )
             currency = currency_match.group(1) if currency_match else None
 
-        amount_text = f"{numeric_amount:,.0f}"
+        amount_text = f"{numeric_amount:,.0f}" if float(numeric_amount).is_integer() else f"{numeric_amount:,.2f}"
         return f"{currency} {amount_text}" if currency else amount_text
 
     def flag_breach_remediation_email(
@@ -1341,9 +1344,9 @@ class ContractKPIManager:
         user_id: str,
         contract_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Set send_remediation_email=True on a breach and render the breach email draft.
-
-        The draft is only materialized here, on explicit user request — never on evaluation.
+        """Set send_remediation_email=True on a breach, reusing the email draft
+        that was already composed at breach-creation time when available (falls
+        back to composing it now for older breach records that predate that step).
         Returns the updated breach document including the rendered email draft.
         """
         query: Dict[str, Any] = {"breach_id": breach_id}
@@ -1355,6 +1358,169 @@ class ContractKPIManager:
         if not breach.get("is_breach"):
             raise ValueError("Cannot flag a remediation email for a non-breach evaluation record.")
 
+        if breach.get("breach_email_draft"):
+            email_draft = breach["breach_email_draft"]
+            recipient_email = breach.get("breach_email_to")
+            recipient_source = breach.get("breach_email_recipient_source")
+        else:
+            kpi = self.kpis.find_one({"kpi_id": breach["kpi_id"]})
+            email_draft, recipient_email, recipient_source = self._compose_breach_email(
+                breach, kpi, contract_id=contract_id,
+            )
+
+        self.breaches.update_one(
+            {"breach_id": breach_id},
+            {
+                "$set": {
+                    "send_remediation_email": True,
+                    "breach_email_draft": email_draft,
+                    "breach_email_to": recipient_email,
+                    "breach_email_recipient_source": recipient_source,
+                    "email_flagged_by": user_id,
+                    "email_flagged_at": datetime.utcnow(),
+                }
+            },
+        )
+        updated = self.breaches.find_one({"breach_id": breach_id})
+        return self._serialize(updated)
+
+    def notify_team_for_breach(
+        self,
+        breach_id: str,
+        *,
+        user_id: str,
+        contract_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Push an internal team notification for a breach via the existing
+        alert-rule infrastructure (in-app + email, per matching alert rules) --
+        distinct from the external counterparty escalation email. Uses its own
+        alert_key so it always fires a fresh notification on each click, rather
+        than deduping against the automatic breach_created alert from evaluation.
+        """
+        query: Dict[str, Any] = {"breach_id": breach_id}
+        if contract_id:
+            query["contract_id"] = contract_id
+        breach = self.breaches.find_one(query)
+        if not breach:
+            raise ValueError(f"Breach {breach_id!r} not found.")
+        if not breach.get("is_breach"):
+            raise ValueError("Cannot notify the team for a non-breach evaluation record.")
+
+        kpi = self.kpis.find_one({"kpi_id": breach["kpi_id"]}) or {}
+        self._create_alert(
+            event_type="breach_created",
+            project_id=str(breach.get("project_id") or kpi.get("project_id") or ""),
+            contract_id=str(breach.get("contract_id") or kpi.get("contract_id") or ""),
+            kpi_id=str(breach.get("kpi_id") or kpi.get("kpi_id") or ""),
+            breach_id=str(breach.get("breach_id") or ""),
+            severity=str(breach.get("severity") or "Medium"),
+            title=f"Team notified: {kpi.get('name') or breach.get('kpi_id')}",
+            message=self._breach_alert_message(breach, kpi),
+            alert_key=f"team_notified:{breach_id}:{datetime.utcnow().isoformat()}",
+            metadata={
+                "threshold": breach.get("threshold_value"),
+                "actual": breach.get("actual_value"),
+                "operator": breach.get("operator"),
+                "owner": kpi.get("business_owner") or kpi.get("responsible_party") or kpi.get("party"),
+                "remediation": breach.get("remediation") or kpi.get("remediation"),
+                "source_clause": self._kpi_lineage(kpi),
+            },
+        )
+        self.breaches.update_one(
+            {"breach_id": breach_id},
+            {
+                "$set": {
+                    "team_notified_at": datetime.utcnow(),
+                    "team_notified_by": user_id,
+                }
+            },
+        )
+        updated = self.breaches.find_one({"breach_id": breach_id})
+        return self._serialize(updated)
+
+    def _is_simulated_demo_breach(self, breach: Dict[str, Any], kpi: Optional[Dict[str, Any]]) -> bool:
+        """Demo contracts (e.g. the Baltia/Swissport JFK demo) must never place a
+        real LLM call for their canned breach data -- the draft is generated
+        deterministically from the same facts instead."""
+        from services.baltia_jfk_demo import is_baltia_jfk_demo
+
+        contract_name = (
+            (breach.get("source_kpi") or {}).get("contract_name")
+            or (kpi.get("contract_name") if kpi else None)
+        )
+        return is_baltia_jfk_demo(contract_name=contract_name)
+
+    _CURRENCY_CODES = {"USD", "EUR", "GBP", "SEK", "NOK", "DKK", "CHF", "CAD", "AUD", "JPY", "CNY", "INR"}
+
+    def _classify_breach(self, breach: Dict[str, Any], kpi: Optional[Dict[str, Any]]) -> Tuple[str, bool]:
+        """Categorize the breach from its own unit/rule-type/record-type facts
+        instead of labeling every email the same generic "Compliance Issue".
+        Returns (category_label, has_dollar_impact) -- has_dollar_impact only
+        controls label wording; whether a $ figure is *shown* at all is
+        decided separately, from whether penalty_amount is actually set."""
+        unit = str(breach.get("actual_unit") or (kpi.get("unit") if kpi else "") or "").strip()
+        unit_upper = unit.upper()
+        kpi_type = str(
+            (kpi.get("kpi_type") if kpi else "") or (kpi.get("rule_type") if kpi else "") or ""
+        ).lower()
+        record_type = str((kpi.get("record_type") if kpi else "") or "").lower()
+
+        if record_type == "liability_clause":
+            return "Liability Cap Breach", True
+        if "index" in kpi_type or "escalation" in kpi_type:
+            return "Rate Escalation Overcharge", True
+        # Fee-schedule clauses are billing-related regardless of how the metric's
+        # unit happens to be recorded (flat USD, "% of standard rate", etc.) --
+        # the unit alone isn't a reliable signal for these.
+        if record_type == "fee_schedule" or "charge" in kpi_type or "rate" in kpi_type:
+            return "Billing Overcharge", True
+        if unit_upper in self._CURRENCY_CODES:
+            return "Billing Overcharge", True
+        if "staff" in unit.lower():
+            return "Staffing Shortfall", False
+        if unit.lower() in {"minutes", "min", "hours", "hr"}:
+            return "Schedule / SLA Deviation", False
+        if unit_upper == "%":
+            return "Threshold Breach", False
+        return "Contract Requirement Breach", False
+
+    def _sibling_breach_dates(
+        self,
+        kpi_id: Optional[str],
+        contract_id: Optional[str],
+        exclude_breach_id: Optional[str],
+    ) -> List[str]:
+        """Other persisted breaches for the same KPI, so a breach email can say
+        'this recurred on ...' with real dates instead of asserting a pattern
+        that isn't backed by the data."""
+        if not kpi_id:
+            return []
+        query: Dict[str, Any] = {"kpi_id": kpi_id, "is_breach": True}
+        if contract_id:
+            query["contract_id"] = contract_id
+        dates: List[str] = []
+        for sibling in self.breaches.find(query).sort([("period_end", 1), ("timestamp", 1)]):
+            if sibling.get("breach_id") == exclude_breach_id:
+                continue
+            period = sibling.get("period_end") or sibling.get("timestamp")
+            date_text = period.strftime("%Y-%m-%d") if hasattr(period, "strftime") else (str(period) if period else None)
+            if date_text:
+                dates.append(date_text)
+        return dates
+
+    def _compose_breach_email(
+        self,
+        breach: Dict[str, Any],
+        kpi: Optional[Dict[str, Any]],
+        *,
+        contract_id: Optional[str] = None,
+    ) -> Tuple[str, Optional[str], Optional[str]]:
+        """Build the breach remediation email: a real, non-templated draft written
+        by the LLM from the breach's own facts (what happened, on which date, what
+        remedy is owed), falling back to an explicit KPI-configured template or a
+        deterministic fallback if the KPI has no template and the LLM call fails.
+        Returns (email_draft, recipient_email, recipient_source).
+        """
         # Fetch related actual telemetry document if available to enrich breach details
         actual_doc = None
         if breach.get("actual_id"):
@@ -1362,12 +1528,56 @@ class ContractKPIManager:
         if not actual_doc and breach.get("kpi_id"):
             actual_doc = self.actuals.find_one({"kpi_id": breach["kpi_id"]}, sort=[("timestamp", -1)])
 
-        flight_num = (actual_doc or {}).get("flight_number") or breach.get("flight_number")
-        airport_code = (actual_doc or {}).get("airport_iata_code") or breach.get("airport_iata_code")
-        airport_name = (actual_doc or {}).get("airport_name") or breach.get("airport_name")
+        # ingest_actuals stores every source field beyond the standard ones
+        # (value/unit/timestamp/etc.) inside actual_doc["metadata"], and most
+        # of those keys are further prefixed "source_field_<original name>"
+        # (see kpi_source_ingestion.py's _normalize_source_record) -- ticket
+        # numbers, notes, flight numbers etc. are NOT top-level actual_doc
+        # keys. record_id specifically maps to metadata.source_record_id
+        # (that one mapping is unprefixed). Fall back to legacy top-level
+        # keys too, for any actual doc written by an older/different path.
+        actual_metadata = (actual_doc or {}).get("metadata") or {}
+
+        def _evidence_field(*names: str) -> Any:
+            for name in names:
+                value = actual_metadata.get(f"source_field_{name}")
+                if value is not None:
+                    return value
+                value = actual_metadata.get(name)
+                if value is not None:
+                    return value
+                value = (actual_doc or {}).get(name)
+                if value is not None:
+                    return value
+            return None
+
+        evidence_record_id = actual_metadata.get("source_record_id") or _evidence_field("record_id")
+        evidence_ticket_id = _evidence_field("ticket_id")
+        evidence_invoice_id = _evidence_field("invoice_id")
+        evidence_note = _evidence_field("note")
+        evidence_occasion = _evidence_field("occasion")
+        evidence_incident_summary = _evidence_field("incident_summary")
+        evidence_flight_num = _evidence_field("flight_number")
+        evidence_airport_code = _evidence_field("airport_iata_code")
+        evidence_airport_name = _evidence_field("airport_name")
+
+        if self._is_simulated_demo_breach(breach, kpi):
+            if evidence_record_id:
+                from services.baltia_jfk_demo import CURATED_BREACH_EMAIL_DRAFTS
+
+                curated = CURATED_BREACH_EMAIL_DRAFTS.get(evidence_record_id)
+                if curated:
+                    recipient_email, recipient_source = self._resolve_breach_email_recipient(breach, kpi)
+                    return curated, recipient_email, recipient_source
+
+        flight_num = evidence_flight_num or breach.get("flight_number")
+        airport_code = evidence_airport_code or breach.get("airport_iata_code")
+        airport_name = evidence_airport_name or breach.get("airport_name")
         station_text = f"{airport_name} ({airport_code})" if (airport_name and airport_code) else (airport_code or "N/A")
 
-        kpi = self.kpis.find_one({"kpi_id": breach["kpi_id"]})
+        if not evidence_record_id:
+            evidence_record_id = (actual_doc or {}).get("actual_id")
+
         template = (kpi.get("breach_email_template") if kpi else None) or ""
         # Older KPI records contain legacy template placeholders. Sanitize and upgrade.
         if "{{source}}" not in template:
@@ -1423,13 +1633,31 @@ class ContractKPIManager:
             "=": "exactly",
             "==": "exactly",
         }.get(str(operator).lower(), str(operator))
-        contract_name = (breach.get("source_kpi") or {}).get("contract_name") or "Contract"
+        contract_name = (breach.get("source_kpi") or {}).get("contract_name") or "the contract"
+        # A raw source filename ("BaltiaGHAContract.pdf") is not a presentable
+        # contract name in a business email -- strip the extension and phrase it
+        # as a reference to "the agreement" instead of asserting it as the title.
+        if re.search(r"\.(pdf|docx?|xlsx?|csv|txt)$", contract_name, re.IGNORECASE):
+            stripped_name = re.sub(r"\.(pdf|docx?|xlsx?|csv|txt)$", "", contract_name, flags=re.IGNORECASE)
+            contract_name = f"the agreement ({stripped_name})"
         kpi_name = (breach.get("source_kpi") or {}).get("name") or (kpi.get("name") if kpi else "") or "KPI"
         section = (breach.get("source_kpi") or {}).get("section") or (kpi.get("section") if kpi else "") or ""
         clause = (breach.get("source_kpi") or {}).get("quote") or (kpi.get("quote") if kpi else "") or ""
         source_label = self._human_source_label(
             breach.get("source") or (kpi.get("source_requirements", {}).get("source_type") if kpi else ""),
             contract_id=breach.get("contract_id") or contract_id,
+        )
+        responsible_party = (
+            (breach.get("source_kpi") or {}).get("party")
+            or (kpi.get("party") if kpi else None)
+            or "the responsible party"
+        )
+        party_role = (
+            (breach.get("source_kpi") or {}).get("party_role")
+            or (kpi.get("party_role") if kpi else None)
+        )
+        party_role_label = {"supplier": "Supplier Breach", "client": "Customer Breach"}.get(
+            str(party_role or "").lower()
         )
         remediation = breach.get("remediation") or (kpi.get("remediation") if kpi else None) or "Review the discrepancy and correct the invoice."
         remediation_sla = breach.get("remediation_sla") or (kpi.get("remediation_sla") if kpi else None) or "7 days"
@@ -1448,49 +1676,175 @@ class ContractKPIManager:
             .replace("{{contract_name}}", contract_name)
             .replace("{{source}}", source_label)
         )
-        if not email_draft.strip():
-            flight_line = f"- Flight Number: {flight_num}\n" if flight_num else ""
-            station_line = f"- Station / Location: {station_text}\n" if station_text != "N/A" else ""
-            clause_block = f'\nContract reference: {section}\n"{clause}"\n' if section or clause else ""
-            email_draft = (
-                f"Subject: Action needed: {kpi_name} did not meet the contract requirement\n\n"
-                f"Hello,\n\n"
-                f"We found a compliance issue under {contract_name}. Please review the details below.\n\n"
-                f"What happened\n"
-                f"- Requirement: {kpi_name}\n"
-                f"- Contract expectation: {operator_label} {expected_text}{unit_suffix}\n"
-                f"- Reported result: {actual_val_text}{unit_suffix}\n"
-                f"- Difference from expectation: {variance_text}\n"
-                f"{flight_line}"
-                f"{station_line}"
-                f"- Reporting period: {period_text}\n"
-                f"- Data source: {source_label}\n"
-                f"- Severity: {severity}\n\n"
-                f"Why this matters\n"
-                f"- Estimated financial impact: {penalty_text}\n\n"
-                f"What needs to happen\n"
-                f"{remediation}\n"
-                f"Please investigate the cause and send a corrective action plan within {remediation_sla}.\n"
-                f"{clause_block}"
-                f"\nPlease confirm once the issue has been reviewed.\n\n"
-                f"Regards,\nContract Compliance Team"
+        flight_line = f"- Flight Number: {flight_num}\n" if flight_num else ""
+        station_line = f"- Station / Location: {station_text}\n" if station_text != "N/A" else ""
+        clause_block = f'\nContract reference: {section}\n"{clause}"\n' if section or clause else ""
+        deterministic_fallback = (
+            f"Subject: Action needed: {kpi_name} did not meet the contract requirement\n\n"
+            f"Hello,\n\n"
+            f"We found a compliance issue under {contract_name}. Please review the details below.\n\n"
+            f"What happened\n"
+            f"- Requirement: {kpi_name}\n"
+            f"- Contract expectation: {operator_label} {expected_text}{unit_suffix}\n"
+            f"- Reported result: {actual_val_text}{unit_suffix}\n"
+            f"- Difference from expectation: {variance_text}\n"
+            f"{flight_line}"
+            f"{station_line}"
+            f"- Reporting period: {period_text}\n"
+            f"- Data source: {source_label}\n"
+            f"- Severity: {severity}\n\n"
+            f"Why this matters\n"
+            f"- Estimated financial impact: {penalty_text}\n\n"
+            f"What needs to happen\n"
+            f"{remediation}\n"
+            f"Please investigate the cause and send a corrective action plan within {remediation_sla}.\n"
+            f"{clause_block}"
+            f"\nPlease confirm once the issue has been reviewed.\n\n"
+            f"Regards,\nContract Compliance Team"
+        )
+
+        if not email_draft.strip() and self._is_simulated_demo_breach(breach, kpi):
+            # Demo data (e.g. Baltia/Swissport JFK) is simulated end-to-end --
+            # no real LLM call, but still a per-breach draft built from this
+            # breach's own facts and evidence references, not a shared template.
+            # Only cite references a recipient can actually act on -- a raw
+            # internal id like "actual_34bde68123117b" tells them nothing, so
+            # it's dropped rather than surfaced as if it were a ticket number.
+            def _is_internal_id(value: Any) -> bool:
+                return bool(re.match(r"^(actual|breach|kpi)_[0-9a-f]{10,}$", str(value or ""), re.IGNORECASE))
+
+            ref_parts = []
+            if evidence_record_id and not _is_internal_id(evidence_record_id):
+                ref_parts.append(evidence_record_id)
+            if evidence_ticket_id:
+                ref_parts.append(evidence_ticket_id)
+            if evidence_invoice_id:
+                ref_parts.append(evidence_invoice_id)
+            ref_line = " / ".join(ref_parts)
+
+            # "Why" — weave whatever the evidence record actually says (analyst
+            # note, or occasion/incident summary for record types that carry
+            # those instead) into prose rather than dumping raw field labels.
+            why_bits = [b for b in (evidence_note, evidence_incident_summary) if b]
+            if not why_bits and evidence_occasion:
+                why_bits.append(
+                    f"the service was performed on {evidence_occasion}, which falls under the "
+                    f"no-surcharge clause cited above"
+                )
+            why_sentence = f" {why_bits[0]}" if why_bits else ""
+
+            # Recurrence — only assert a pattern when other breaches on this same
+            # KPI actually exist in the data.
+            recurring_dates = self._sibling_breach_dates(
+                breach.get("kpi_id"), breach.get("contract_id") or contract_id, breach.get("breach_id"),
+            )
+            recurrence_paragraph = ""
+            if recurring_dates:
+                dates_text = ", ".join(recurring_dates)
+                recurrence_paragraph = (
+                    f"\n\nThis is not an isolated incident — the same \"{kpi_name}\" issue also "
+                    f"occurred on {dates_text}, indicating a systemic issue on {responsible_party}'s "
+                    f"side rather than a one-off error."
+                )
+
+            action_line = (
+                f"We ask that you review {ref_line}" if ref_line else "We ask that you review this finding"
             )
 
-        self.breaches.update_one(
-            {"breach_id": breach_id},
-            {
-                "$set": {
-                    "send_remediation_email": True,
-                    "breach_email_draft": email_draft,
-                    "breach_email_to": recipient_email,
-                    "breach_email_recipient_source": recipient_source,
-                    "email_flagged_by": user_id,
-                    "email_flagged_at": datetime.utcnow(),
-                }
-            },
-        )
-        updated = self.breaches.find_one({"breach_id": breach_id})
-        return self._serialize(updated)
+            category_label, has_dollar_impact = self._classify_breach(breach, kpi)
+            category_lower = category_label.lower()
+            article = "an" if category_lower[0] in "aeiou" else "a"
+
+            # The fee schedule underlying this demo contract is entirely USD
+            # (Annex B rates), so a detected-but-unlabeled dollar amount is
+            # given that currency rather than being printed as a bare number.
+            demo_penalty_text = penalty_text
+            if re.fullmatch(r"[\d,]+(\.\d+)?", penalty_text):
+                demo_penalty_text = f"USD {penalty_text}"
+
+            # Show the financial-impact line whenever a real penalty_amount is
+            # recorded on the breach -- independent of category, so a real
+            # dollar figure is never dropped just because the KPI's unit/type
+            # didn't fit one of the billing-shaped categories above. Only
+            # phrasing (not visibility) is category-driven.
+            has_real_penalty = self._numeric(breach.get("penalty_amount")) is not None
+            impact_paragraph = ""
+            if has_real_penalty:
+                impact_label = (
+                    "Recoverable overcharge amount"
+                    if category_label in ("Billing Overcharge", "Rate Escalation Overcharge", "Liability Cap Breach")
+                    else "Estimated financial exposure"
+                )
+                impact_paragraph = f"{impact_label}: {demo_penalty_text}.\n\n"
+
+            email_draft = (
+                f"Subject: {category_label} — {kpi_name}"
+                + (f", Flight {flight_num}" if flight_num else "")
+                + f", {period_text}"
+                + (f" [{party_role_label}]" if party_role_label else "")
+                + (f" (Ref: {ref_line})" if ref_line else "") + "\n\n"
+                f"Hello,\n\n"
+                f"We've identified {article} {category_lower} under {contract_name} that requires "
+                f"correction.\n\n"
+                f"On {period_text}"
+                + (f", flight {flight_num}" if flight_num else "")
+                + (f" at {station_text}" if station_text != "N/A" else "")
+                + f", the recorded result for \"{kpi_name}\" was {actual_val_text}{unit_suffix}, "
+                f"against the contract requirement of {operator_label} {expected_text}{unit_suffix} "
+                f"under {section or 'the applicable clause'}"
+                + (f' ("{clause}")' if clause else "") + f".{why_sentence}"
+                + recurrence_paragraph + "\n\n"
+                + impact_paragraph
+                + f"{action_line}, confirm the finding, and {remediation[0].lower()}{remediation[1:]} "
+                f"Please respond with a corrective action plan within {remediation_sla}.\n\n"
+                f"Please confirm once reviewed.\n\n"
+                f"Regards,\nContract Compliance Team"
+            )
+        elif not email_draft.strip():
+            # No KPI-configured template — write a real draft with the LLM instead
+            # of templating, so it reads as an explanation of this specific breach
+            # rather than filled-in blanks.
+            prompt = (
+                "Write a professional business email flagging a contract compliance breach "
+                "to the counterparty responsible for it. Use the facts below only — do not "
+                "invent details, and do not invent any reference number not given below. "
+                "Start with 'Subject: ' on the first line, then the email body. "
+                "Structure it in prose (not just bullet fragments) that clearly explains what "
+                "happened, on what date, under which contract clause, and exactly what remedy "
+                "is owed and by when. Cite the evidence record/ticket/invoice reference so the "
+                "recipient can pull up the exact record. If an analyst note is given, weave its "
+                "substance into the explanation rather than quoting it verbatim. Keep it firm "
+                "but professional, under 250 words.\n\n"
+                f"Contract: {contract_name}\n"
+                f"Requirement breached: {kpi_name}\n"
+                f"Contract clause: {section or 'N/A'} — \"{clause or 'N/A'}\"\n"
+                f"Contract requirement: {operator_label} {expected_text}{unit_suffix}\n"
+                f"Actual reported result: {actual_val_text}{unit_suffix}\n"
+                f"Variance from requirement: {variance_text}\n"
+                f"Date / reporting period of the breach: {period_text}\n"
+                + (f"Flight number: {flight_num}\n" if flight_num else "")
+                + (f"Station / location: {station_text}\n" if station_text != "N/A" else "")
+                + f"Data source for this finding: {source_label}\n"
+                + (f"Evidence record ID: {evidence_record_id}\n" if evidence_record_id else "")
+                + (f"Ticket ID: {evidence_ticket_id}\n" if evidence_ticket_id else "")
+                + (f"Invoice ID: {evidence_invoice_id}\n" if evidence_invoice_id else "")
+                + (f"Analyst note on this evidence record: {evidence_note}\n" if evidence_note else "")
+                + f"Severity: {severity}\n"
+                f"Estimated financial impact / recoverable amount: {penalty_text}\n"
+                f"Required remedy: {remediation}\n"
+                f"Remedy deadline (SLA): {remediation_sla}\n"
+            )
+            try:
+                ai_draft = ProviderLLMClient(self).query_plain_markdown(prompt)
+            except Exception as exc:
+                logger.warning("AI breach email generation failed for %s: %s", breach.get("breach_id"), exc)
+                ai_draft = ""
+            if ai_draft and "No indexed documents are available" not in ai_draft:
+                email_draft = ai_draft
+            else:
+                email_draft = deterministic_fallback
+
+        return email_draft, recipient_email, recipient_source
 
     def list_recoveries(self, *, contract_id: str, limit: int = 100) -> Dict[str, Any]:
         """Recovery view over open breach flags: remedy, SLA, penalty and the
@@ -2490,9 +2844,22 @@ class ContractKPIManager:
             kpi_by_id = {str(k["kpi_id"]): k for k in kpis}
             alert_rule_doc_cache: Dict[tuple, List[Dict[str, Any]]] = {}
             for breach in breach_docs_to_insert:
+                kpi_doc = kpi_by_id.get(breach["kpi_id"]) or {}
+                try:
+                    email_draft, recipient_email, recipient_source = self._compose_breach_email(breach, kpi_doc)
+                    self.breaches.update_one(
+                        {"breach_id": breach["breach_id"]},
+                        {"$set": {
+                            "breach_email_draft": email_draft,
+                            "breach_email_to": recipient_email,
+                            "breach_email_recipient_source": recipient_source,
+                        }},
+                    )
+                except Exception as draft_exc:
+                    logger.warning("Failed to compose breach email draft for %s: %s", breach.get("breach_id"), draft_exc)
                 try:
                     self._trigger_alerts_for_breach(
-                        breach, kpi_by_id.get(breach["kpi_id"]) or {}, rule_doc_cache=alert_rule_doc_cache,
+                        breach, kpi_doc, rule_doc_cache=alert_rule_doc_cache,
                     )
                 except Exception as alert_exc:
                     logger.warning("Failed to create KPI breach alert for %s: %s", breach.get("breach_id"), alert_exc)
@@ -2603,6 +2970,21 @@ class ContractKPIManager:
         # limited to real, actionable findings.
         if breach.get("is_breach") and breach.get("breach_id"):
             self.breaches.insert_one(breach)
+            try:
+                email_draft, recipient_email, recipient_source = self._compose_breach_email(breach, kpi)
+                breach["breach_email_draft"] = email_draft
+                breach["breach_email_to"] = recipient_email
+                breach["breach_email_recipient_source"] = recipient_source
+                self.breaches.update_one(
+                    {"breach_id": breach["breach_id"]},
+                    {"$set": {
+                        "breach_email_draft": email_draft,
+                        "breach_email_to": recipient_email,
+                        "breach_email_recipient_source": recipient_source,
+                    }},
+                )
+            except Exception as draft_exc:
+                logger.warning("Failed to compose breach email draft for %s: %s", breach.get("breach_id"), draft_exc)
             try:
                 self._trigger_alerts_for_breach(breach, kpi)
             except Exception as alert_exc:
@@ -2731,6 +3113,9 @@ class ContractKPIManager:
                 "section": kpi.get("section"),
                 "page_start": kpi.get("page_start"),
                 "contract_name": kpi.get("contract_name"),
+                "party": kpi.get("party"),
+                "party_role": normalize_party_role(kpi.get("party_role")),
+                "beneficiary": kpi.get("beneficiary"),
             },
             # Email draft is NOT generated here — only on explicit user request.
             "send_remediation_email": False,
