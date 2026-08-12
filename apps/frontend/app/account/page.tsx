@@ -7,7 +7,7 @@ import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
-import { User, Crown, Loader2, AlertCircle, SettingsIcon, Users as TeamIcon } from 'lucide-react';
+import { User, Crown, Loader2, AlertCircle, MessageSquare, SettingsIcon, Users as TeamIcon } from 'lucide-react';
 // Assuming Loader is a custom component you have. If not, replace Loader with Loader2 from lucide-react.
 // For example, if you don't have a custom Loader:
 // import { Loader2 as Loader } from 'lucide-react'; 
@@ -374,6 +374,21 @@ export default function AccountPage() {
                          <CardContent><p>Could not load detailed account information at this time. Please ensure you have selected an account context.</p></CardContent>
                     </Card>
                 )}
+
+                <Card className="mt-6 rounded-md border-gray-200 shadow-none">
+                    <CardHeader className="flex flex-row items-center gap-3 space-y-0">
+                        <MessageSquare className="h-5 w-5 text-gray-700" />
+                        <div>
+                            <CardTitle>Support</CardTitle>
+                            <CardDescription>Send feedback, report a bug, or ask a workflow question.</CardDescription>
+                        </div>
+                    </CardHeader>
+                    <CardFooter className="border-t border-gray-200 bg-gray-50/50 p-4">
+                        <Link href="/support">
+                            <Button variant="outline" size="sm">Contact Support</Button>
+                        </Link>
+                    </CardFooter>
+                </Card>
             </main>
         </div>
     );

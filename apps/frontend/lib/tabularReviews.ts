@@ -202,7 +202,10 @@ export async function listProjects(
   const params = new URLSearchParams();
   if (contextId) params.set("context_id", contextId);
   const suffix = params.toString() ? `?${params.toString()}` : "";
-  return assertOk<ProjectSummary[]>(await fetcher(`${apiUrl}/projects/${suffix}`));
+  const data = assertOk<ProjectSummary[] | { items?: ProjectSummary[] }>(
+    await fetcher(`${apiUrl}/projects/${suffix}`),
+  );
+  return Array.isArray(data) ? data : data?.items ?? [];
 }
 
 export async function listDocuments(

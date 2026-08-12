@@ -10,7 +10,6 @@ import {
   FolderOpen,
   HistoryIcon,
   LayoutGrid,
-  MessageSquare,
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
@@ -181,7 +180,6 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
     { href: "/playbooks", label: "Playbooks", icon: BookOpen },
     ...(isTestUser ? [{ href: "/evaluations", label: "Evaluations", icon: HistoryIcon }] : []),
     { href: "/integrations", label: "Integrations", icon: Plug },
-    { href: "/support", label: "Support", icon: MessageSquare },
   ]
 
   const isSettingsActive = pathname === "/account"
