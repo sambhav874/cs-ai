@@ -1387,7 +1387,11 @@ export default function ContractKpiManagementPage() {
   const exposure = activeBreaches.reduce(
     (total, breach) =>
       total +
-      Math.abs(toNumber(kpiById.get(breach.kpi_id)?.consequence_value) || 0),
+      Math.abs(
+        toNumber(breach.penalty_amount) ||
+        toNumber(kpiById.get(breach.kpi_id)?.consequence_value) ||
+        0,
+      ),
     0,
   );
   const contractCurrency = useMemo(() => {
@@ -2642,32 +2646,32 @@ export default function ContractKpiManagementPage() {
 
           <div className="mt-5 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
             <Metric
-              label="Compliance"
+              label="SLA Compliance"
               value={`${complianceRate}%`}
-              detail={`${Math.max(trackedKpis.length - activeBreaches.length, 0)} clear`}
+              detail={`${Math.max(trackedKpis.length - activeBreaches.length, 0)} within SLA`}
             />
             <Metric
-              label="Register"
+              label="Obligation Register"
               value={`${kpis.length}`}
-              detail={`${summary?.total || kpis.length} extracted records`}
+              detail={`${summary?.total || kpis.length} obligations`}
             />
             <Metric
-              label="Tracking"
+              label="KPIs Tracked"
               value={`${trackedKpis.length}/${kpis.length || 0}`}
               detail={`${deferredCount} deferred`}
             />
             <Metric
-              label="Flags"
+              label="Breaches"
               value={`${activeBreaches.length}`}
-              detail={`${visibleBreaches.length} evaluations`}
+              detail={`${visibleBreaches.length} evaluated`}
             />
             <Metric
-              label="Exposure"
+              label="Penalty Exposure"
               value={money(exposure, contractCurrency)}
-              detail="current open risk"
+              detail="open penalty risk"
             />
             <Metric
-              label="Intelligence"
+              label="Risk Alerts"
               value={`${openAlertCount}`}
               detail={`${certifiedMetricCount} certified`}
             />
