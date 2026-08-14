@@ -54,6 +54,51 @@ def _clean_text(value: Any, limit: int = 2000) -> str:
     return text[:limit]
 
 
+def _project_memory_namespace(project_id: str) -> str:
+    return f"project-memory-{project_id}"
+
+
+def _build_markdown_section(record: Dict[str, Any], annotations: List[Dict[str, Any]]) -> str:
+    """Render one document's overview as a markdown section — the unit that
+    gets appended to the project's running markdown journal and embedded into
+    its vector namespace. Evidence lines reuse the citation annotations already
+    produced by the RAG call in generate_document_overview, not a fresh
+    retrieval pass."""
+    uploaded = record.get("uploaded_at")
+    uploaded_str = uploaded.strftime("%Y-%m-%d") if isinstance(uploaded, datetime) else str(uploaded or "")
+    parties = ", ".join(record.get("parties") or []) or "—"
+    topics = ", ".join(record.get("key_topics") or []) or "—"
+    related = record.get("related_documents") or []
+    relates_to = "; ".join(f"{r.get('relation_type')} {r.get('filename')}" for r in related) or "(none)"
+
+    lines = [
+        f"## {record.get('filename')} — {record.get('doc_type', 'other')}",
+        f"**Uploaded:** {uploaded_str}  |  **Effective date:** {record.get('effective_date') or '—'}  |  **Parties:** {parties}",
+        "",
+        record.get("purpose_summary") or "",
+        "",
+        f"**Key topics:** {topics}",
+        f"**Relates to:** {relates_to}",
+    ]
+
+    evidence_lines = []
+    for item in annotations[:8]:
+        if not isinstance(item, dict):
+            continue
+        quote = _clean_text(item.get("quote") or item.get("text") or "", 240)
+        if not quote:
+            continue
+        page = item.get("page")
+        page_note = f" (p.{page})" if page else ""
+        evidence_lines.append(f'- "{quote}"{page_note}')
+    if evidence_lines:
+        lines.append("")
+        lines.append("**Evidence:**")
+        lines.extend(evidence_lines)
+
+    return "\n".join(lines).strip()
+
+
 def _extract_balanced_json_object(text: str) -> Optional[str]:
     """Find the first top-level {...} object by brace counting, respecting
     string literals — safer than a greedy regex when the text has trailing
@@ -225,6 +270,34 @@ class ProjectMemoryManager:
                 "rag_confidence": result.confidence,
                 "status": "success",
             })
+
+            # Markdown synthesis + vectorization: reuse the evidence chunks the
+            # RAG call above already retrieved (citation_details["annotations"])
+            # instead of re-retrieving. The markdown section is embedded into a
+            # per-project vector namespace so project history stays queryable
+            # (semantic top-k) instead of being dumped as one growing text blob
+            # that silently truncates as the project accumulates documents —
+            # see build_project_context_for_agent's MAX_CONTEXT_CHARS cap.
+            markdown_section = _build_markdown_section(record, citation_details.get("annotations", []))
+            record["markdown"] = markdown_section
+            try:
+                self._embed_markdown_section(
+                    project_id=project_id,
+                    contract_id=contract_id,
+                    contract_name=contract_name,
+                    markdown_section=markdown_section,
+                    doc_type=record.get("doc_type"),
+                    uploaded_at=now,
+                    rag_system=rag_system,
+                )
+                record["memory_namespace"] = _project_memory_namespace(project_id)
+                record["vectorized"] = True
+            except Exception as embed_exc:
+                # Structured overview above still succeeded — only the
+                # semantic-search layer is degraded. The static
+                # build_project_context_for_agent fallback still works.
+                record["vectorized"] = False
+                record["vector_error"] = str(embed_exc)[:500]
         except Exception as exc:
             record["error"] = str(exc)[:500]
 
@@ -234,6 +307,92 @@ class ProjectMemoryManager:
             upsert=True,
         )
         return record
+
+    def _embed_markdown_section(
+        self,
+        *,
+        project_id: str,
+        contract_id: str,
+        contract_name: str,
+        markdown_section: str,
+        doc_type: Optional[str],
+        uploaded_at: datetime,
+        rag_system: Any,
+    ) -> None:
+        """Append this document's markdown overview into the shared per-project
+        vector namespace. Uses create_vector_store(replace_existing=False)
+        directly — embed_contract_text() skips embedding entirely when its
+        namespace already has vectors, which would silently no-op every
+        ingestion after the project's first document."""
+        from langchain_core.documents import Document
+
+        doc = Document(
+            page_content=markdown_section,
+            metadata={
+                "contract_id": contract_id,
+                "filename": contract_name,
+                "doc_type": doc_type or "other",
+                "uploaded_at": uploaded_at.isoformat(),
+            },
+        )
+        rag_system.vector_manager.create_vector_store(
+            documents=[doc],
+            contract_name=f"Project memory — {project_id}",
+            namespace=_project_memory_namespace(project_id),
+            contract_id=contract_id,
+            project_id=project_id,
+            replace_existing=False,
+        )
+
+    def search_project_memory(
+        self,
+        project_id: str,
+        query: str,
+        *,
+        top_k: int = 6,
+        rag_system: Optional[Any] = None,
+    ) -> Optional[str]:
+        """Semantic top-k search over the project's vectorized document
+        overviews. Returns None (caller should fall back to
+        build_project_context_for_agent) if no vector data exists yet — e.g.
+        documents ingested before this feature, or the vector backend being
+        unavailable."""
+        try:
+            if rag_system is None:
+                from services.contract_agent.rag.facade import ContractRAGSystem
+                rag_system = ContractRAGSystem()
+            store = rag_system.vector_manager.load_existing_vector_store(_project_memory_namespace(project_id))
+            if store is None:
+                return None
+            hits = store.similarity_search(query or "project document history", k=top_k)
+            if not hits:
+                return None
+        except Exception:
+            return None
+
+        lines = [
+            "Project document history below (semantically matched to your question) is for "
+            "context only — not citation evidence. Cite specific clauses only from "
+            "search_evidence/read_document results.",
+        ]
+        for hit in hits:
+            meta = getattr(hit, "metadata", None) or {}
+            filename = meta.get("filename") or "Unknown document"
+            uploaded = str(meta.get("uploaded_at") or "")[:10]
+            lines.append(f"\n[{uploaded}] {filename} ({meta.get('doc_type', 'other')}):\n{_clean_text(getattr(hit, 'page_content', ''), 900)}")
+        return "\n".join(lines)[:MAX_CONTEXT_CHARS]
+
+    def build_project_markdown(self, project_id: str) -> str:
+        """The full appended project journal — every document's markdown
+        overview, chronological, human-readable. Source text for the vector
+        namespace above (each section is embedded as it's appended)."""
+        docs = list(
+            self.memories.find(
+                {"project_id": project_id, "status": "success"}, {"_id": 0, "markdown": 1, "uploaded_at": 1}
+            ).sort("uploaded_at", 1)
+        )
+        sections = [doc.get("markdown", "").strip() for doc in docs if doc.get("markdown")]
+        return "\n\n---\n\n".join(sections)
 
     def build_project_timeline(self, project_id: str) -> List[Dict[str, Any]]:
         """Chronological, grouped view: schedules/annexes/amendments nest under

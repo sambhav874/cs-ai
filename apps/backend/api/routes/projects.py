@@ -362,10 +362,14 @@ def get_project_timeline(project_id: str, current_user: UserInDB = Depends(get_c
 
     manager = ProjectMemoryManager(db)
     timeline = manager.build_project_timeline(project_id)
+    # markdown/citation_refs are the vectorization source text and raw evidence
+    # payload — not needed by the timeline UI, drop them to keep the response lean.
     for entry in timeline:
         entry.pop("citation_refs", None)
+        entry.pop("markdown", None)
         for child in entry.get("related_uploads") or []:
             child.pop("citation_refs", None)
+            child.pop("markdown", None)
     return {"project_id": project_id, "timeline": timeline}
 
 

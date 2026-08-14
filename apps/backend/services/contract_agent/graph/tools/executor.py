@@ -1210,7 +1210,14 @@ def _get_project_timeline(state: AgentRunState) -> Dict[str, Any]:
         from services.project_memory import ProjectMemoryManager
 
         manager = ProjectMemoryManager(core_db)
-        context_text = manager.build_project_context_for_agent(project_id, state.message or "")
+        # Semantic search over the project's vectorized document overviews
+        # first — scales with project size instead of the static dump's fixed
+        # character cap. Falls back to the full chronological text block for
+        # projects with no vector data yet (documents ingested before this
+        # feature, or embedding failed at ingestion time).
+        context_text = manager.search_project_memory(project_id, state.message or "")
+        if not context_text:
+            context_text = manager.build_project_context_for_agent(project_id, state.message or "")
         return {
             "summary": "Retrieved chronological project document history.",
             "snippet": context_text,
