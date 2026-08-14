@@ -118,6 +118,8 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
         expression = str(tool.args.get("expression") or "")
         context = str(tool.args.get("context") or tool.args.get("text") or "")
         return _calculate_from_evidence(expression, context)
+    if tool.name == "get_project_timeline":
+        return _get_project_timeline(state)
     return {"summary": f"Read-only tool {tool.name} completed."}
 
 
@@ -1195,6 +1197,26 @@ def _resolve_contract_ids_for_kpi(tool: ToolCallRecord, state: AgentRunState) ->
     )
 
     return primary_id, all_scoped_ids
+
+
+def _get_project_timeline(state: AgentRunState) -> Dict[str, Any]:
+    """Fetch the chronological project document history from project memory."""
+    project_id = state.context.project_id
+    if not project_id:
+        return {"summary": "No project is in scope for this conversation.", "snippet": ""}
+
+    try:
+        from core.database import db as core_db
+        from services.project_memory import ProjectMemoryManager
+
+        manager = ProjectMemoryManager(core_db)
+        context_text = manager.build_project_context_for_agent(project_id, state.message or "")
+        return {
+            "summary": "Retrieved chronological project document history.",
+            "snippet": context_text,
+        }
+    except Exception as exc:
+        return {"summary": f"Project timeline lookup failed: {str(exc)[:300]}", "snippet": ""}
 
 
 def _get_kpi_context(

@@ -78,6 +78,7 @@ def build_adaptive_system_prompt(
 - search_evidence is your primary tool — returns full clause text with citations.
   - Default top_k is 12, but you can increase top_k (e.g., to 15 or 20) when searching dense documents, query clause banks, or when you need more context/candidates.
 - get_kpi_context returns STRUCTURED KPI register entries (actuals, thresholds, breach flags). For KPI/SLA tasks, call get_kpi_context FIRST, then search_evidence for clause text. Never skip get_kpi_context on KPI extraction requests.
+- get_project_timeline returns the chronological project history — which documents were uploaded when and how they relate (e.g. "this schedule was uploaded a month after its main contract"). Use it for questions about project history, what else exists in this project, upload order, or how a document relates to others. It is context, not contract evidence — still cite clause text from search_evidence/read_document when quoting language.
 - use read_document for broad excerpts, outline_document for structure, find_in_document for specific phrases.
 - For whole-contract summaries, overviews, "what is in this contract?", or questions that require coverage across the document,
   call outline_document first and then read_document with include_full=true. Do not rely on search_evidence alone for these tasks;

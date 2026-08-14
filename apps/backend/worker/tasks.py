@@ -554,7 +554,28 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                     }
                 }
             )
-            
+
+            # Project memory: one RAG-grounded call over the document that just
+            # finished embedding, answering a fixed checklist (doc type, parties,
+            # dates, purpose, relation to earlier project documents) so the
+            # project has a chronological, cross-document narrative for both the
+            # agent and anyone reading the project later. Uses the RAG evidence
+            # pipeline already built above, not a raw full-text LLM dump, so cost
+            # stays bounded even on very large contracts. Never fails ingestion.
+            try:
+                from services.project_memory import ProjectMemoryManager
+                ProjectMemoryManager(db).generate_document_overview(
+                    contract_id=contract_id,
+                    project_id=project_id_str,
+                    contract_name=sanitized_filename,
+                    contract_text=index_content,
+                    ai_provider="groq",
+                    user_id=user_id,
+                    rag_system=rag_system,
+                )
+            except Exception as memory_exc:
+                log_exception(logger, f"Project memory overview failed for contract {contract_id}", memory_exc)
+
             job_manager.update_job_status(
                 job_id=job_id,
                 status="COMPLETED",

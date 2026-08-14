@@ -350,6 +350,23 @@ def delete_project(project_id: str, current_user: UserInDB = Depends(get_current
     return {"message": "Project deleted", "movedContractsTo": str(fallback["_id"])}
 
 
+@router.get("/{project_id}/timeline")
+def get_project_timeline(project_id: str, current_user: UserInDB = Depends(get_current_active_user)):
+    """Chronological, grouped document history for the project: what was
+    uploaded when, what it's about, and how documents relate to each other
+    (e.g. a schedule/annex/amendment nested under its main contract)."""
+    verify_project_access(project_id, current_user)
+
+    from core.database import db
+    from services.project_memory import ProjectMemoryManager
+
+    manager = ProjectMemoryManager(db)
+    timeline = manager.build_project_timeline(project_id)
+    for entry in timeline:
+        entry.pop("citation_refs", None)
+    return {"project_id": project_id, "timeline": timeline}
+
+
 @router.get("/{project_id}/stats", response_model=Dict[str, int])
 def get_project_stats(project_id: str, current_user: UserInDB = Depends(get_current_active_user)):
     project = verify_project_access(project_id, current_user)

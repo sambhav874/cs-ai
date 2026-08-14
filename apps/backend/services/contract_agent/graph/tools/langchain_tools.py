@@ -56,6 +56,10 @@ class FindInDocumentInput(BaseModel):
     query: str = Field(default="", description="Alias for term.")
 
 
+class ProjectTimelineInput(BaseModel):
+    project_id: str = Field(default="", description="Project ID to retrieve document history for. Leave blank to use the current authorized project scope.")
+
+
 class KPIInput(BaseModel):
     contract_id: str = Field(default="", description="Contract ID owning KPI/SLA records. Leave blank for current contract or document.")
     metric_name: str = Field(default="", description="Optional KPI/SLA metric name to filter by.")
@@ -273,6 +277,12 @@ def build_langchain_tools(
             payload["query"] = query
         return run_read_tool("find_in_document", {"document_id": payload.get("document_id", ""), "term": payload.get("term", ""), "query": payload.get("query") or payload.get("term", "")})
 
+    @tool("get_project_timeline", args_schema=ProjectTimelineInput)
+    def get_project_timeline(project_id: str = "") -> Dict[str, Any]:
+        """Retrieve the chronological project document history: what was uploaded when, what each document is about, and how documents relate (e.g. a schedule uploaded after its main contract). READ-ONLY."""
+        # Always use the authorized scoped project_id, never a model-supplied value.
+        return run_read_tool("get_project_timeline", {"project_id": state.context.project_id or ""})
+
     @tool("get_kpi_context", args_schema=KPIInput)
     def get_kpi_context(contract_id: str = "", metric_name: str = "", query: str = "") -> Dict[str, Any]:
         """Retrieve KPI/SLA targets, actuals, breach state, and operational context relevant to the user query. READ-ONLY."""
@@ -343,6 +353,7 @@ def build_langchain_tools(
         outline_document,
         search_evidence,
         find_in_document,
+        get_project_timeline,
         get_kpi_context,
         extract_kpis,
         calculate_from_evidence,
