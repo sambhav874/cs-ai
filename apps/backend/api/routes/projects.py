@@ -364,6 +364,8 @@ def get_project_timeline(project_id: str, current_user: UserInDB = Depends(get_c
     timeline = manager.build_project_timeline(project_id)
     for entry in timeline:
         entry.pop("citation_refs", None)
+        for child in entry.get("related_uploads") or []:
+            child.pop("citation_refs", None)
     return {"project_id": project_id, "timeline": timeline}
 
 

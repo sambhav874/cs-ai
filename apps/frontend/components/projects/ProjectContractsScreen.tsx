@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, FolderOpen, RefreshCw, Search, X, UploadCloud } from "lucide-react";
+import { ChevronDown, FolderOpen, History, RefreshCw, Search, X, UploadCloud } from "lucide-react";
 import { useBreadcrumbs } from "@/app/context/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,7 @@ import type {
 } from "@/components/dashboard/types";
 import { cx, formatDate, isActiveJobStatus, completedStatusForJob } from "@/components/dashboard/utils";
 import { ContractExplorer } from "@/components/dashboard/ContractExplorer";
+import { ProjectTimeline } from "./ProjectTimeline";
 
 interface ProjectContractsScreenProps {
   projectId: string;
@@ -77,6 +78,7 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
   });
   const [useLocalMarker, setUseLocalMarker] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"contracts" | "timeline">("contracts");
   
   useEffect(() => {
     if (searchParams?.get("upload") === "1" || searchParams?.get("upload") === "true") {
@@ -545,8 +547,24 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
       
       <div className="flex h-10 items-center border-b border-border px-6 md:px-8 shrink-0">
         <div className="flex flex-1 items-center gap-5 h-full">
-          <button className="text-xs transition-colors h-full px-1 border-b-2 font-bold text-foreground border-[#015CA9]">
+          <button
+            onClick={() => setActiveTab("contracts")}
+            className={cx(
+              "text-xs transition-colors h-full px-1 border-b-2 font-bold",
+              activeTab === "contracts" ? "text-foreground border-[#015CA9]" : "text-muted-foreground border-transparent hover:text-foreground",
+            )}
+          >
             Contracts
+          </button>
+          <button
+            onClick={() => setActiveTab("timeline")}
+            className={cx(
+              "flex items-center gap-1.5 text-xs transition-colors h-full px-1 border-b-2 font-bold",
+              activeTab === "timeline" ? "text-foreground border-[#015CA9]" : "text-muted-foreground border-transparent hover:text-foreground",
+            )}
+          >
+            <History className="h-3.5 w-3.5" />
+            Timeline
           </button>
         </div>
         {project && (
@@ -554,6 +572,11 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
         )}
       </div>
 
+      {activeTab === "timeline" ? (
+        <div className="p-6 md:p-8 flex-1 overflow-y-auto">
+          <ProjectTimeline projectId={projectId} />
+        </div>
+      ) : (
       <div className="p-6 md:p-8 flex flex-col gap-8 flex-1 overflow-y-auto">
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden animate-slide-up">
           <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between bg-muted/50">
@@ -681,6 +704,7 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
         )}
         </div>
       </div>
+      )}
 
       {isUploadModalOpen && (
         <FileUploadModal
