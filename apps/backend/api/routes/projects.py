@@ -391,8 +391,8 @@ def update_project_timeline_entry(
     """Manually correct one document's project-memory overview — e.g. fixing a
     doc_type or relation the RAG extraction missed or got wrong (thin-evidence
     documents can come back empty/misclassified). Re-synthesizes the markdown
-    memory section and re-embeds it so agent retrieval stays in sync with what
-    the UI shows."""
+    memory section and re-syncs it into the project scratchpad so agent
+    retrieval stays in sync with what the UI shows."""
     verify_project_access(project_id, current_user)
 
     from core.database import db
@@ -430,9 +430,15 @@ def update_project_memory_scratchpad(
     request: ProjectScratchpadUpdate,
     current_user: UserInDB = Depends(get_current_active_user),
 ):
-    """Freeform full-text overwrite of the project's memory scratchpad. Once
-    edited manually, auto-sync from document ingestion stops touching it —
-    the human's text becomes the source of truth."""
+    """Freeform full-text overwrite of the project's memory scratchpad.
+
+    Manual edits and auto-sync coexist; a manual edit does not stop auto-sync.
+    Ingesting or correcting a document still rewrites that document's own
+    `<!-- pm:section:{contract_id} -->` block, and leaves every other byte —
+    including human prose — untouched. `edited_manually` is a UI badge only;
+    nothing reads it. Note that a rewrite which drops a section's markers means
+    the next event for that document appends a fresh copy instead of replacing
+    in place."""
     verify_project_access(project_id, current_user)
 
     from core.database import db

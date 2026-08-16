@@ -11,10 +11,13 @@ its schedule uploaded July 2026, and other related docs uploaded August 2026).
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -68,9 +71,6 @@ def _clean_text(value: Any, limit: int = 2000) -> str:
     text = _strip_citation_markers(text).strip()
     return text[:limit]
 
-
-def _project_memory_namespace(project_id: str) -> str:
-    return f"project-memory-{project_id}"
 
 
 def _build_markdown_section(record: Dict[str, Any]) -> str:
@@ -176,6 +176,13 @@ class ProjectMemoryManager:
     Lives in the same `contract_agent_db` database as `AgentMemoryManager`
     (see services/agent_memory.py), following the same construction pattern:
     pass the core `db` handle in, and this derives the agent DB from its client.
+
+    Purely Mongo — nothing here is embedded. The scratchpad used to be written
+    into a `project-memory-{id}` vector namespace, but it was stored as a single
+    document smaller than the splitter's chunk size, so retrieval could only
+    ever return the one chunk it had just written. Reading the scratchpad
+    directly is the same answer without the round trip. Vectors belong on units
+    that actually need ranking between them.
     """
 
     def __init__(self, mongo_db):
@@ -315,20 +322,16 @@ class ProjectMemoryManager:
                 upsert=True,
             )
             try:
-                self._sync_scratchpad(project_id, contract_id, markdown_section, rag_system)
-                record["memory_namespace"] = _project_memory_namespace(project_id)
-                record["vectorized"] = True
-            except Exception as embed_exc:
-                # Structured overview above still succeeded — only the
-                # semantic-search layer is degraded. The static
-                # build_project_context_for_agent fallback still works.
-                record["vectorized"] = False
-                record["vector_error"] = str(embed_exc)[:500]
-            self.memories.update_one(
-                {"project_id": project_id, "contract_id": contract_id},
-                {"$set": {"vectorized": record["vectorized"], "vector_error": record.get("vector_error"),
-                          "memory_namespace": record.get("memory_namespace")}},
-            )
+                self._sync_scratchpad(project_id, contract_id, markdown_section)
+            except Exception as sync_exc:
+                # The structured overview above is already persisted; only the
+                # rendered scratchpad is behind. It re-syncs on this document's
+                # next ingest or manual edit, and the agent reads the same
+                # records through build_project_context_for_agent meanwhile.
+                logger.warning(
+                    "Scratchpad sync failed for project %s document %s: %s",
+                    project_id, contract_id, sync_exc,
+                )
             return record
         except Exception as exc:
             record["error"] = str(exc)[:500]
@@ -351,7 +354,7 @@ class ProjectMemoryManager:
         """Apply a manual correction to a document's overview — e.g. fixing a
         doc_type or a relation that the RAG extraction missed on a thin-evidence
         document (see generate_document_overview's failure path above). Re-builds
-        the markdown section from the corrected fields and re-embeds it so
+        the markdown section from the corrected fields and re-syncs it so
         search_project_memory stays consistent with what the UI shows. Editing
         always leaves the record status="success" — a human correction is not a
         failure state."""
@@ -408,18 +411,11 @@ class ProjectMemoryManager:
         # Re-sync just this doc's marked section in the scratchpad — leaves
         # every other section (auto or manually edited) untouched.
         try:
-            if rag_system is None:
-                from services.contract_agent.rag.facade import ContractRAGSystem
-                rag_system = ContractRAGSystem()
-            self._sync_scratchpad(project_id, contract_id, markdown_section, rag_system)
-            existing["memory_namespace"] = _project_memory_namespace(project_id)
-            existing["vectorized"] = True
-        except Exception as embed_exc:
-            existing["vectorized"] = False
-            existing["vector_error"] = str(embed_exc)[:500]
-            self.memories.update_one(
-                {"project_id": project_id, "contract_id": contract_id},
-                {"$set": {"vectorized": False, "vector_error": existing["vector_error"]}},
+            self._sync_scratchpad(project_id, contract_id, markdown_section)
+        except Exception as sync_exc:
+            logger.warning(
+                "Scratchpad sync failed for project %s document %s: %s",
+                project_id, contract_id, sync_exc,
             )
         return existing
 
@@ -445,7 +441,12 @@ class ProjectMemoryManager:
         update their own marked sections on top of whatever's here. Note: a
         full rewrite that drops the `<!-- pm:section:... -->` markers means
         the next event for an already-mentioned document won't find its old
-        section and will append a fresh copy instead of replacing in place."""
+        section and will append a fresh copy instead of replacing in place.
+
+        `rag_system` is accepted and ignored — the scratchpad is no longer
+        embedded (see the class docstring). Kept so existing callers and tests
+        don't have to change in the same commit.
+        """
         now = _now()
         self.scratchpads.update_one(
             {"project_id": project_id},
@@ -455,24 +456,15 @@ class ProjectMemoryManager:
             },
             upsert=True,
         )
-        vectorized = True
-        try:
-            if rag_system is None:
-                from services.contract_agent.rag.facade import ContractRAGSystem
-                rag_system = ContractRAGSystem()
-            self._reembed_scratchpad(project_id=project_id, content=content, rag_system=rag_system)
-        except Exception:
-            vectorized = False
         return {
             "project_id": project_id,
             "content": content,
             "updated_at": now,
             "edited_manually": True,
-            "vectorized": vectorized,
         }
 
     def _sync_scratchpad(
-        self, project_id: str, contract_id: str, markdown_section: str, rag_system: Optional[Any] = None
+        self, project_id: str, contract_id: str, markdown_section: str
     ) -> None:
         """Event-driven append/update: touches ONLY this document's marked
         section of the single project scratchpad — appended if this is the
@@ -506,37 +498,6 @@ class ProjectMemoryManager:
             },
             upsert=True,
         )
-        if rag_system is None:
-            from services.contract_agent.rag.facade import ContractRAGSystem
-            rag_system = ContractRAGSystem()
-        self._reembed_scratchpad(project_id=project_id, content=content, rag_system=rag_system)
-
-    def _reembed_scratchpad(self, *, project_id: str, content: str, rag_system: Any) -> None:
-        """The scratchpad is the ONLY thing in this project's vector
-        namespace now (no more per-document fragments), so a full replace on
-        every change is correct and simple — no scoped per-contract deletes
-        needed."""
-        from langchain_core.documents import Document
-
-        namespace = _project_memory_namespace(project_id)
-        if not content.strip():
-            mongo_collection = getattr(rag_system.vector_manager, "mongo_collection", None)
-            if mongo_collection is not None:
-                mongo_collection.delete_many({"namespace": namespace})
-            return
-
-        doc = Document(
-            page_content=content,
-            metadata={"project_id": project_id, "kind": "project_scratchpad"},
-        )
-        rag_system.vector_manager.create_vector_store(
-            documents=[doc],
-            contract_name=f"Project memory — {project_id}",
-            namespace=namespace,
-            project_id=project_id,
-            replace_existing=True,
-        )
-
     def search_project_memory(
         self,
         project_id: str,
@@ -550,15 +511,16 @@ class ProjectMemoryManager:
         has no scratchpad yet.
 
         This used to run a top-k vector search over the project's namespace, but
-        that could only ever lose information here: _reembed_scratchpad stores
-        the entire scratchpad as ONE document, and the splitter's chunk_size is
-        larger than a typical scratchpad, so the "search" retrieved a single
-        chunk containing exactly the text below — after a round trip through the
-        embedding API, and through a store bound to the whole vector collection
-        rather than to this project. Past the chunk size it got worse, not
-        better: RecursiveCharacterTextSplitter cuts on character boundaries, not
-        on the `pm:section` markers, so top-k would hand the agent half of one
-        document's overview and none of another's.
+        that could only ever lose information here: the scratchpad was embedded
+        as ONE document, and the splitter's chunk_size is larger than a typical
+        scratchpad, so the "search" retrieved a single chunk containing exactly
+        the text below — after a round trip through the embedding API, and
+        through a store bound to the whole vector collection rather than to this
+        project. Past the chunk size it got worse, not better:
+        RecursiveCharacterTextSplitter cuts on character boundaries, not on the
+        `pm:section` markers, so top-k would hand the agent half of one
+        document's overview and none of another's. The embedding write was
+        removed along with it.
 
         `query` and `top_k` are kept for call compatibility and are unused —
         there is nothing to rank when the whole memory is one document.
