@@ -41,8 +41,8 @@ interface TimelineDoc {
 
 interface ProjectTimelineProps {
   projectId: string;
-  /** Called after a card edit saves — the edit also updates that document's
-   * section in the project memory scratchpad, so the parent can refetch it. */
+  /** Called after a card edit saves — the edit re-renders that document's
+   * memory concept, so the parent can refetch the memory panel. */
   onMemoryChanged?: () => void;
 }
 

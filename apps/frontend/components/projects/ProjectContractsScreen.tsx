@@ -37,7 +37,7 @@ import type {
 import { cx, formatDate, isActiveJobStatus, completedStatusForJob } from "@/components/dashboard/utils";
 import { ContractExplorer } from "@/components/dashboard/ContractExplorer";
 import { ProjectTimeline } from "./ProjectTimeline";
-import { ProjectMemoryScratchpad } from "./ProjectMemoryScratchpad";
+import { ProjectMemoryPanel } from "./ProjectMemoryPanel";
 
 interface ProjectContractsScreenProps {
   projectId: string;
@@ -576,7 +576,7 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
 
       {activeTab === "timeline" ? (
         <div className="p-6 md:p-8 flex-1 overflow-y-auto flex flex-col gap-6">
-          <ProjectMemoryScratchpad projectId={projectId} refreshSignal={memoryRefreshKey} />
+          <ProjectMemoryPanel projectId={projectId} refreshSignal={memoryRefreshKey} />
           <ProjectTimeline projectId={projectId} onMemoryChanged={() => setMemoryRefreshKey((k) => k + 1)} />
         </div>
       ) : (
