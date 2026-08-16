@@ -475,10 +475,11 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
             vector_namespace = f"contract-{contract_id}"
             contract_record = collection.find_one(
                 {"_id": contract_oid},
-                {"projectId": 1}
+                {"projectId": 1, "uploaded_at": 1}
             ) or {}
             project_id = contract_record.get("projectId")
             project_id_str = str(project_id) if project_id else None
+            contract_uploaded_at = contract_record.get("uploaded_at")
             try:
                 rag_system = ContractRAGSystem(ai_provider="groq")
                 embedding_metadata = rag_system.embed_contract_text(
@@ -572,6 +573,7 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                     ai_provider="groq",
                     user_id=user_id,
                     rag_system=rag_system,
+                    uploaded_at=contract_uploaded_at,
                 )
             except Exception as memory_exc:
                 log_exception(logger, f"Project memory overview failed for contract {contract_id}", memory_exc)

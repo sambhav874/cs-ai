@@ -7,7 +7,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 
 from core.database import collection, projects_collection, teams_collection
 from core.security import get_current_active_user
-from models.domain import ProjectCreate, ProjectInDB, ProjectUpdate, UserInDB, PaginatedProjects, ProjectLightInDB
+from models.domain import (
+    ProjectCreate,
+    ProjectInDB,
+    ProjectUpdate,
+    UserInDB,
+    PaginatedProjects,
+    ProjectLightInDB,
+    ProjectMemoryOverviewUpdate,
+    ProjectScratchpadUpdate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -362,15 +371,74 @@ def get_project_timeline(project_id: str, current_user: UserInDB = Depends(get_c
 
     manager = ProjectMemoryManager(db)
     timeline = manager.build_project_timeline(project_id)
-    # markdown/citation_refs are the vectorization source text and raw evidence
-    # payload — not needed by the timeline UI, drop them to keep the response lean.
+    # markdown is an internal input to the single project scratchpad (see GET
+    # /{project_id}/memory) — not needed by the timeline UI's per-document
+    # cards, drop it to keep the response lean.
     for entry in timeline:
-        entry.pop("citation_refs", None)
         entry.pop("markdown", None)
         for child in entry.get("related_uploads") or []:
-            child.pop("citation_refs", None)
             child.pop("markdown", None)
     return {"project_id": project_id, "timeline": timeline}
+
+
+@router.patch("/{project_id}/timeline/{contract_id}")
+def update_project_timeline_entry(
+    project_id: str,
+    contract_id: str,
+    request: ProjectMemoryOverviewUpdate,
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    """Manually correct one document's project-memory overview — e.g. fixing a
+    doc_type or relation the RAG extraction missed or got wrong (thin-evidence
+    documents can come back empty/misclassified). Re-synthesizes the markdown
+    memory section and re-embeds it so agent retrieval stays in sync with what
+    the UI shows."""
+    verify_project_access(project_id, current_user)
+
+    from core.database import db
+    from services.project_memory import ProjectMemoryManager
+
+    updates = request.model_dump(exclude_unset=True)
+    if "related_documents" in updates and updates["related_documents"] is not None:
+        updates["related_documents"] = [dict(item) for item in updates["related_documents"]]
+
+    manager = ProjectMemoryManager(db)
+    updated = manager.update_document_overview(project_id=project_id, contract_id=contract_id, updates=updates)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Project memory entry not found.")
+
+    return updated
+
+
+@router.get("/{project_id}/memory")
+def get_project_memory_scratchpad(project_id: str, current_user: UserInDB = Depends(get_current_active_user)):
+    """The single running project-memory document — one growing markdown
+    journal built from every ingested document's overview, chronological,
+    human-readable. This is what a new team member (or the agent) reads to
+    understand the whole project's history in one place."""
+    verify_project_access(project_id, current_user)
+
+    from core.database import db
+    from services.project_memory import ProjectMemoryManager
+
+    return ProjectMemoryManager(db).get_scratchpad(project_id)
+
+
+@router.put("/{project_id}/memory")
+def update_project_memory_scratchpad(
+    project_id: str,
+    request: ProjectScratchpadUpdate,
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    """Freeform full-text overwrite of the project's memory scratchpad. Once
+    edited manually, auto-sync from document ingestion stops touching it —
+    the human's text becomes the source of truth."""
+    verify_project_access(project_id, current_user)
+
+    from core.database import db
+    from services.project_memory import ProjectMemoryManager
+
+    return ProjectMemoryManager(db).update_scratchpad(project_id, request.content)
 
 
 @router.get("/{project_id}/stats", response_model=Dict[str, int])

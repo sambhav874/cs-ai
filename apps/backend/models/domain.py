@@ -222,6 +222,26 @@ class ProjectUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
 
 
+class ProjectMemoryRelatedDocumentUpdate(BaseModel):
+    contract_id: Optional[str] = None
+    filename: Optional[str] = None
+    relation_type: Optional[str] = Field(None, max_length=40)
+    evidence_quote: Optional[str] = Field(None, max_length=300)
+
+
+class ProjectMemoryOverviewUpdate(BaseModel):
+    doc_type: Optional[str] = Field(None, max_length=40)
+    parties: Optional[List[str]] = None
+    effective_date: Optional[str] = Field(None, max_length=60)
+    purpose_summary: Optional[str] = Field(None, max_length=600)
+    key_topics: Optional[List[str]] = None
+    related_documents: Optional[List[ProjectMemoryRelatedDocumentUpdate]] = None
+
+
+class ProjectScratchpadUpdate(BaseModel):
+    content: str = Field(..., max_length=200_000)
+
+
 class ProjectLightInDB(BaseModel):
     id: str = Field(alias="_id")
     name: str

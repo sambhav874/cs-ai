@@ -37,6 +37,7 @@ import type {
 import { cx, formatDate, isActiveJobStatus, completedStatusForJob } from "@/components/dashboard/utils";
 import { ContractExplorer } from "@/components/dashboard/ContractExplorer";
 import { ProjectTimeline } from "./ProjectTimeline";
+import { ProjectMemoryScratchpad } from "./ProjectMemoryScratchpad";
 
 interface ProjectContractsScreenProps {
   projectId: string;
@@ -79,6 +80,7 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
   const [useLocalMarker, setUseLocalMarker] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"contracts" | "timeline">("contracts");
+  const [memoryRefreshKey, setMemoryRefreshKey] = useState(0);
   
   useEffect(() => {
     if (searchParams?.get("upload") === "1" || searchParams?.get("upload") === "true") {
@@ -573,8 +575,9 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
       </div>
 
       {activeTab === "timeline" ? (
-        <div className="p-6 md:p-8 flex-1 overflow-y-auto">
-          <ProjectTimeline projectId={projectId} />
+        <div className="p-6 md:p-8 flex-1 overflow-y-auto flex flex-col gap-6">
+          <ProjectMemoryScratchpad projectId={projectId} refreshSignal={memoryRefreshKey} />
+          <ProjectTimeline projectId={projectId} onMemoryChanged={() => setMemoryRefreshKey((k) => k + 1)} />
         </div>
       ) : (
       <div className="p-6 md:p-8 flex flex-col gap-8 flex-1 overflow-y-auto">
