@@ -555,10 +555,23 @@ class ProjectMemoryManager:
             if rag_system is None:
                 from services.contract_agent.rag.facade import ContractRAGSystem
                 rag_system = ContractRAGSystem()
-            store = rag_system.vector_manager.load_existing_vector_store(_project_memory_namespace(project_id))
+            from services.contract_agent.rag.vector_store import namespace_search_kwargs
+
+            namespace = _project_memory_namespace(project_id)
+            store = rag_system.vector_manager.load_existing_vector_store(namespace)
             if store is None:
                 return None
-            hits = store.similarity_search(query or "project document history", k=top_k)
+            # The store returned by load_existing_vector_store is bound to the
+            # whole vector collection, not to this namespace — the namespace
+            # only gates the existence check and the store cache. Without an
+            # explicit per-query filter this searches every project's memory
+            # and happily returns another project's documents as if they were
+            # this one's. Every other retrieval path filters the same way.
+            hits = store.as_retriever(
+                search_kwargs=namespace_search_kwargs(
+                    rag_system.vector_manager, namespace=namespace, k=top_k
+                )
+            ).invoke(query or "project document history")
             if not hits:
                 return None
         except Exception:
@@ -572,8 +585,14 @@ class ProjectMemoryManager:
         # Chunks are slices of the single project scratchpad (see
         # _reembed_scratchpad), not per-document fragments, so there's no
         # per-hit filename/doc_type metadata to show — just the matched text.
+        # _reembed_scratchpad stores the scratchpad as ONE document, so this is
+        # normally a single hit carrying every document's section. Truncating it
+        # at a fixed per-hit cap cut the project history off after the first
+        # document or two; budget the whole context allowance across whatever
+        # hits came back instead.
+        per_hit = max(900, MAX_CONTEXT_CHARS // max(len(hits), 1))
         for hit in hits:
-            lines.append(f"\n{_clean_text(getattr(hit, 'page_content', ''), 900)}")
+            lines.append(f"\n{_clean_text(getattr(hit, 'page_content', ''), per_hit)}")
         return "\n".join(lines)[:MAX_CONTEXT_CHARS]
 
     def build_project_timeline(self, project_id: str) -> List[Dict[str, Any]]:
