@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 import pinecone
 from pinecone import ServerlessSpec
@@ -122,25 +122,70 @@ _MAX_CACHED_SEGMENTS = 64
 _segment_cache: OrderedDict[str, Tuple[List[Dict[str, Any]], int]] = OrderedDict()
 
 
+class EmbeddingsBundle(NamedTuple):
+    """An embeddings client plus the metadata callers record alongside vectors.
+
+    Backend, model, and dimension travel together because a vector is only
+    meaningful next to the model that produced it — a namespace embedded with
+    one backend can't be searched with another.
+    """
+
+    embeddings: Any
+    backend: str
+    model: str
+    dimension: int
+
+
+def build_embeddings(
+    *, voyageai_api_key: Optional[str] = None, hf_token: Optional[str] = None
+) -> EmbeddingsBundle:
+    """The single place an embeddings provider is chosen.
+
+    VoyageAI is the production backend; HuggingFace is the local-dev fallback.
+    Keys default to server config but can be overridden per instance, which is
+    why they're parameters rather than reads.
+    """
+    voyage_key = voyageai_api_key if voyageai_api_key is not None else settings.voyageai_api_key
+
+    if voyage_key:
+        dimension = getattr(settings, "voyageai_embedding_dimension", 1024)
+        return EmbeddingsBundle(
+            embeddings=VoyageAIEmbeddings(
+                model=settings.voyageai_model_name,
+                voyage_api_key=voyage_key,
+                output_dimension=dimension,
+            ),
+            backend="voyageai",
+            model=settings.voyageai_model_name,
+            dimension=dimension,
+        )
+
+    if settings.embeddings_model_name:
+        from langchain_huggingface import HuggingFaceEmbeddings
+
+        token = hf_token if hf_token is not None else getattr(settings, "huggingface_token", None)
+        return EmbeddingsBundle(
+            embeddings=HuggingFaceEmbeddings(
+                model_name=settings.embeddings_model_name,
+                model_kwargs={"token": token},
+            ),
+            backend="huggingface",
+            model=settings.embeddings_model_name,
+            dimension=embedding_dimension("huggingface"),
+        )
+
+    raise RuntimeError(
+        "No embeddings provider configured. "
+        "Set VOYAGEAI_API_KEY for production or EMBEDDINGS_MODEL_NAME for local dev."
+    )
+
+
 def get_singleton_embeddings() -> Any:
     global _global_embeddings, _global_embedding_backend
     if _global_embeddings is None:
-        if settings.voyageai_api_key:
-            _global_embeddings = VoyageAIEmbeddings(
-                model=settings.voyageai_model_name,
-                voyage_api_key=settings.voyageai_api_key,
-                output_dimension=getattr(settings, "voyageai_embedding_dimension", 1024),
-            )
-            _global_embedding_backend = "voyageai"
-        elif settings.embeddings_model_name:
-            from langchain_huggingface import HuggingFaceEmbeddings
-            _global_embeddings = HuggingFaceEmbeddings(
-                model_name=settings.embeddings_model_name,
-                model_kwargs={'token': getattr(settings, "huggingface_token", None)},
-            )
-            _global_embedding_backend = "huggingface"
-        else:
-            raise RuntimeError("No embeddings provider configured")
+        bundle = build_embeddings()
+        _global_embeddings = bundle.embeddings
+        _global_embedding_backend = bundle.backend
     return _global_embeddings
 
 
@@ -363,56 +408,35 @@ class VectorStoreManager:
             self._initialize_pinecone()
 
     def _initialize_embeddings(self):
+        """Populate this instance's embeddings from the shared build_embeddings
+        seam — provider selection lives there, not here."""
         logger.info("Initializing embeddings...")
 
-        if self.voyageai_api_key:
-            try:
-                logger.info(
-                    f"Initializing VoyageAI embeddings with model: {settings.voyageai_model_name}"
-                )
-                # Single shared raw client — reused everywhere in this instance
-                self._vo_client = voyageai.Client(api_key=self.voyageai_api_key)
-                self.embeddings = VoyageAIEmbeddings(
-                    model=settings.voyageai_model_name,
-                    voyage_api_key=self.voyageai_api_key,
-                    output_dimension=getattr(settings, "voyageai_embedding_dimension", 1024),
-                )
-                self.embedding_backend = "voyageai"
-                self.embedding_model = settings.voyageai_model_name
-                self.embedding_dimension = getattr(settings, "voyageai_embedding_dimension", 1024)
-                logger.info(
-                    "VoyageAI embeddings initialized: model=%s dim=%s",
-                    self.embedding_model,
-                    self.embedding_dimension,
-                )
-                return
-            except Exception as e:
-                logger.error(f"Failed to initialize VoyageAI embeddings: {e}")
-                raise RuntimeError(
-                    "VoyageAI embeddings are required but failed to initialize. "
-                    "Set VOYAGEAI_API_KEY or configure a local embeddings model."
-                ) from e
+        try:
+            bundle = build_embeddings(
+                voyageai_api_key=self.voyageai_api_key, hf_token=self.hf_token
+            )
+        except RuntimeError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to initialize embeddings: {e}")
+            raise RuntimeError("Could not initialize any embeddings provider") from e
 
-        if settings.embeddings_model_name:
-            try:
-                logger.info(f"Loading HuggingFace embeddings: {settings.embeddings_model_name}")
-                from langchain_huggingface import HuggingFaceEmbeddings
-                self.embeddings = HuggingFaceEmbeddings(
-                    model_name=settings.embeddings_model_name,
-                    model_kwargs={'token': self.hf_token}
-                )
-                self.embedding_backend = "huggingface"
-                self.embedding_model = settings.embeddings_model_name
-                self.embedding_dimension = embedding_dimension("huggingface")
-                logger.info("HuggingFace embeddings initialized (dev/fallback only)")
-                return
-            except Exception as e:
-                logger.error(f"Failed to initialize HuggingFace embeddings: {e}")
-                raise RuntimeError("Could not initialize any embeddings provider") from e
+        self.embeddings = bundle.embeddings
+        self.embedding_backend = bundle.backend
+        self.embedding_model = bundle.model
+        self.embedding_dimension = bundle.dimension
 
-        raise RuntimeError(
-            "No embeddings provider configured. "
-            "Set VOYAGEAI_API_KEY for production or EMBEDDINGS_MODEL_NAME for local dev."
+        if bundle.backend == "voyageai":
+            # Single shared raw client — reused everywhere in this instance for
+            # the calls that need the SDK directly rather than via LangChain.
+            self._vo_client = voyageai.Client(api_key=self.voyageai_api_key)
+
+        logger.info(
+            "Embeddings initialized: backend=%s model=%s dim=%s",
+            self.embedding_backend,
+            self.embedding_model,
+            self.embedding_dimension,
         )
 
     def _initialize_mongodb_vector_search(self):
