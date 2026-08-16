@@ -351,6 +351,52 @@ def test_migration_is_idempotent(manager):
     assert manager.get_notes(PROJECT_A)["content"] == first == manual
 
 
+# ---------------------------------------------------------------- lifecycle ---
+
+def test_transfer_moves_memory_with_its_contracts(manager):
+    """Audit gap 2. Deleting a project reassigns its contracts to the fallback
+    project; leaving their memory behind orphans it under a dead project_id and
+    makes the fallback report every inherited document as having no overview."""
+    _add_memory(manager, PROJECT_A, "c1", "01_MSA.pdf")
+    _add_memory(manager, PROJECT_A, "c2", "02_SOW.pdf")
+
+    result = manager.transfer_project_memory(PROJECT_A, PROJECT_B)
+
+    assert result["memories_moved"] == 2
+    assert manager.memories.count_documents({"project_id": PROJECT_A}) == 0
+    assert manager.memories.count_documents({"project_id": PROJECT_B}) == 2
+
+
+def test_transfer_carries_notes_without_overwriting_the_destination(manager):
+    manager.update_notes(PROJECT_A, "Notes from the deleted project.")
+    manager.update_notes(PROJECT_B, "Notes that already existed.")
+
+    manager.transfer_project_memory(PROJECT_A, PROJECT_B)
+    content = manager.get_notes(PROJECT_B)["content"]
+
+    assert "Notes that already existed." in content
+    assert "Notes from the deleted project." in content
+    assert manager.get_notes(PROJECT_A)["content"] == ""
+
+
+def test_transfer_does_not_duplicate_a_document_already_known(manager):
+    _add_memory(manager, PROJECT_A, "c1", "01_MSA.pdf", purpose_summary="from source")
+    _add_memory(manager, PROJECT_B, "c1", "01_MSA.pdf", purpose_summary="from destination")
+
+    manager.transfer_project_memory(PROJECT_A, PROJECT_B)
+    records = list(manager.memories.find({"contract_id": "c1"}))
+
+    assert len(records) == 1
+    assert records[0]["purpose_summary"] == "from destination"
+
+
+def test_transfer_is_a_no_op_onto_itself(manager):
+    _add_memory(manager, PROJECT_A, "c1", "01_MSA.pdf")
+
+    assert manager.transfer_project_memory(PROJECT_A, PROJECT_A)["memories_moved"] == 0
+    assert manager.memories.count_documents({"project_id": PROJECT_A}) == 1
+
+
 # --------------------------------------------------------------------- misc ---
 
 def test_project_memory_writes_no_vectors(manager):

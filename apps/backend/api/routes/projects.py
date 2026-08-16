@@ -355,8 +355,30 @@ def delete_project(project_id: str, current_user: UserInDB = Depends(get_current
         raise HTTPException(status_code=400, detail="The default project cannot be deleted.")
 
     collection.update_many({"projectId": project["_id"]}, {"$set": {"projectId": fallback["_id"]}})
+
+    # The contracts move rather than being deleted, so their memory has to move
+    # with them. Left behind it would sit under a project_id that no longer
+    # exists, while the fallback project reported every document it just
+    # inherited as having no overview.
+    from core.database import db as core_db
+    from services.project_memory import ProjectMemoryManager
+
+    memory_result = {"memories_moved": 0, "notes_appended": False}
+    try:
+        memory_result = ProjectMemoryManager(core_db).transfer_project_memory(
+            str(project["_id"]), str(fallback["_id"])
+        )
+    except Exception as exc:
+        # Losing the project row matters more than moving its memory; an
+        # orphaned overview is recoverable, a half-deleted project is not.
+        logger.warning("Could not move project memory for %s: %s", project["_id"], exc)
+
     projects_collection.delete_one({"_id": project["_id"]})
-    return {"message": "Project deleted", "movedContractsTo": str(fallback["_id"])}
+    return {
+        "message": "Project deleted",
+        "movedContractsTo": str(fallback["_id"]),
+        "memoriesMoved": memory_result["memories_moved"],
+    }
 
 
 @router.get("/{project_id}/timeline")

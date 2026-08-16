@@ -555,6 +555,52 @@ class ProjectMemoryManager:
             )
         return render_concept(record)
 
+    def transfer_project_memory(self, from_project_id: str, to_project_id: str) -> Dict[str, Any]:
+        """Move a project's memory to another project, for when its documents
+        move there.
+
+        Deleting a project reassigns its contracts to the fallback project
+        rather than deleting them. Without this, their overviews stay behind
+        under a project_id that no longer exists: the fallback project shows
+        every reassigned document as "no overview yet" while the real work sits
+        orphaned and unreachable.
+
+        Notes are appended rather than overwritten — the destination may have
+        its own, and prose typed by a person is not ours to discard. A record
+        already present at the destination wins, since it describes the
+        document in the project it now actually lives in.
+        """
+        if not from_project_id or not to_project_id or from_project_id == to_project_id:
+            return {"memories_moved": 0, "notes_appended": False}
+
+        existing_ids = {
+            str(record.get("contract_id"))
+            for record in self.memories.find({"project_id": to_project_id}, {"contract_id": 1})
+        }
+        moved = 0
+        for record in list(self.memories.find({"project_id": from_project_id})):
+            if str(record.get("contract_id")) in existing_ids:
+                self.memories.delete_one({"_id": record["_id"]})
+                continue
+            self.memories.update_one(
+                {"_id": record["_id"]}, {"$set": {"project_id": to_project_id}}
+            )
+            moved += 1
+
+        source_notes = (self.get_notes(from_project_id).get("content") or "").strip()
+        notes_appended = False
+        if source_notes:
+            target_notes = (self.get_notes(to_project_id).get("content") or "").strip()
+            carried = f"## Notes carried over from a deleted project\n\n{source_notes}"
+            self.update_notes(
+                to_project_id,
+                f"{target_notes}\n\n---\n\n{carried}" if target_notes else carried,
+            )
+            notes_appended = True
+
+        self.scratchpads.delete_one({"project_id": from_project_id})
+        return {"memories_moved": moved, "notes_appended": notes_appended}
+
     def migrate_scratchpads_to_notes(self, *, dry_run: bool = True) -> List[Dict[str, Any]]:
         """Reduce every legacy scratchpad to the human prose it contains.
 

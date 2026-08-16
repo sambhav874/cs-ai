@@ -81,10 +81,13 @@ missing from the first draft of this plan.
    indefinitely. The reassigned contracts also arrive in the fallback project
    with no memory there.
 
-3. **`replicate_document` never generates an overview.** It writes a document
-   into a target project, but `generate_document_overview` is only ever called
-   from the ingest task, so replicated documents never enter that project's
-   memory or index.
+3. ~~**`replicate_document` never generates an overview.**~~ **Withdrawn — this
+   was wrong.** `replicate_document` writes to `agent_documents` in the agent
+   DB: generated DOCX drafts, not ingested contracts. Project memory covers
+   contracts, so a replicated draft correctly has no overview and correctly
+   does not appear in the index. The gap was inferred from the tool's
+   description ("Replicate a document to another project") without checking
+   where it writes.
 
 4. **`PUT /{project_id}/memory`'s docstring is false.** It claims auto-sync
    stops once a human edits. `edited_manually` is written and never read;
@@ -104,7 +107,7 @@ endpoint, so document deletion cannot orphan memory today.
 |---|---|
 | Index from `contracts`, failures rendered explicitly | 1 |
 | Deletion/reassignment cleanup | 1 |
-| Overview on replicate | 1 |
+| ~~Overview on replicate~~ | withdrawn, not a real gap |
 | Docstring + manual-edit semantics | 0 |
 | Tests | every phase |
 
