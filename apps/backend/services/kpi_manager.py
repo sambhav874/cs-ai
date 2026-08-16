@@ -5068,82 +5068,59 @@ class ContractKPIManager:
     ) -> Dict[str, Any]:
         """Send a structured JSON request to the chosen LLM provider.
 
+        Routed through the shared model factory rather than each provider's
+        REST endpoint, so this picks up provider-alias normalization, the
+        account's configured model, and usage accounting — and gains Claude,
+        which the hand-rolled ladder never had a branch for.
+
         Args:
             prompt: The full user-turn prompt.
-            provider: One of 'groq', 'openai', 'gemini'.
+            provider: A provider name the factory understands.
             max_tokens_override: When set, overrides the default max_tokens cap.
                 Use this for small, bounded responses (e.g. the consolidation
                 dedup pass) to prevent the model from padding/truncating output.
         """
         try:
-            if provider == "groq":
-                # Default to 20 000 for full extraction; caller may supply a
-                # tighter cap for short-response calls to avoid truncation.
-                groq_max_tokens = min(max_tokens_override if max_tokens_override else 8192, 8192)
-                response = self.http_session.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers=self.groq_headers,
-                    json={
-                        "model": getattr(settings, "model_name"),
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0,
-                        "top_p": 1,
-                        "response_format": {"type": "json_object"},
-                        "max_tokens": groq_max_tokens,
-                    },
-                    timeout=getattr(settings, "api_timeout", 20),
-                )
-                response.raise_for_status()
-                content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-                return self._parse_json_object(content)
+            from langchain_core.messages import HumanMessage
 
-            if provider == "openai":
-                openai_max_tokens = max_tokens_override if max_tokens_override else max(
-                    4096, min(getattr(settings, "max_tokens", 4096), 8192)
-                )
-                response = self.http_session.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers=self.openai_headers,
-                    json={
-                        "model": getattr(settings, "openai_model_name", None) or "gpt-4-turbo-preview",
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0,
-                        "top_p": 1,
-                        "response_format": {"type": "json_object"},
-                        "max_tokens": openai_max_tokens,
-                    },
-                    timeout=getattr(settings, "api_timeout", 30),
-                )
-                response.raise_for_status()
-                content = response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-                return self._parse_json_object(content)
+            from services.contract_agent.graph.model_factory import build_chat_model
 
-            if provider == "gemini":
-                model = getattr(settings, "gemini_model_name", None) or "gemini-2.0-flash"
-                gen_config: Dict[str, Any] = {
-                    "temperature": 0,
-                    "topP": 1,
-                    "responseMimeType": "application/json",
-                }
-                if max_tokens_override:
-                    gen_config["maxOutputTokens"] = max_tokens_override
-                response = self.http_session.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.gemini_api_key}",
-                    headers=self.gemini_headers,
-                    json={
-                        "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": gen_config,
-                    },
-                    timeout=getattr(settings, "api_timeout", 30),
+            llm = build_chat_model(
+                provider=provider,
+                purpose="classify",
+                temperature=0,
+                max_tokens=self._kpi_max_tokens(provider, max_tokens_override),
+                optional=True,
+            )
+            if llm is None:
+                raise RuntimeError(f"No API key configured for provider '{provider}'")
+
+            result = llm.invoke([HumanMessage(content=prompt)])
+            content = getattr(result, "content", "") or ""
+            if isinstance(content, list):
+                # Anthropic and Gemini may return a list of content blocks.
+                content = " ".join(
+                    block.get("text", "") if isinstance(block, dict) else str(block)
+                    for block in content
                 )
-                response.raise_for_status()
-                payload = response.json()
-                parts = payload.get("candidates", [{}])[0].get("content", {}).get("parts") or []
-                content = parts[0].get("text", "") if parts else ""
-                return self._parse_json_object(content)
+            return self._parse_json_object(str(content))
         except Exception as exc:
             logger.warning("Hybrid KPI LLM extraction failed with provider %s: %s", provider, exc)
         return {}
+
+    @staticmethod
+    def _kpi_max_tokens(provider: str, override: Optional[int]) -> int:
+        """Per-provider output cap, preserving the limits the raw HTTP calls used.
+
+        These differ by provider because the extraction prompt returns a full
+        KPI object on some models and a short dedup verdict on others; an
+        override from the caller always wins.
+        """
+        if provider == "groq":
+            return min(override or 8192, 8192)
+        if provider == "openai":
+            return override or max(4096, min(getattr(settings, "max_tokens", 4096) or 4096, 8192))
+        return override or max(int(getattr(settings, "max_tokens", 4096) or 4096), 1024)
 
     def _parse_json_object(self, content: str) -> Dict[str, Any]:
         cleaned = clean_text_encoding(content or "").strip()
