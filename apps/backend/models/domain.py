@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, BeforeValidator
-from typing import Optional, List, Literal, Annotated
+from typing import Optional, List, Literal, Annotated, Dict
 from datetime import datetime
 from bson import ObjectId
 from decimal import Decimal
@@ -220,6 +220,18 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=120)
     description: Optional[str] = Field(None, max_length=500)
+
+
+class ModelSettingsUpdate(BaseModel):
+    """Team model settings. Deliberately has no API-key field — keys stay in
+    server config and are never accepted from a client."""
+
+    provider: Optional[str] = Field(None, max_length=40)
+    # provider id -> model name, e.g. {"claude": "claude-opus-5"}
+    models: Optional[Dict[str, str]] = None
+    temperature: Optional[float] = Field(None, ge=0.0, le=1.0)
+    max_tokens: Optional[int] = Field(None, ge=256, le=128000)
+    reasoning_effort: Optional[str] = Field(None, max_length=20)
 
 
 class ProjectMemoryRelatedDocumentUpdate(BaseModel):

@@ -86,9 +86,14 @@ def build_chat_model(
     """
     profile = _PURPOSES.get(purpose) or _PURPOSES["chat"]
 
+    # Team model settings published at the request boundary, if any. Explicit
+    # arguments still win — a call site that names a provider means it.
+    overrides = _active_settings()
+
     resolved_provider = _normalize_provider_name(
         provider
         or (state.ai_provider if state is not None else None)
+        or overrides.get("provider")
         or getattr(settings, "ai_provider", None)
         or "groq"
     ) or "groq"
@@ -100,12 +105,26 @@ def build_chat_model(
         # Fall through — the provider SDK raises its own (clearer) auth error.
 
     resolved_temperature = _first_not_none(
-        temperature, profile["temperature"], getattr(settings, "temperature", 0.1), 0.1
+        temperature,
+        profile["temperature"],
+        overrides.get("temperature"),
+        getattr(settings, "temperature", 0.1),
+        0.1,
     )
     resolved_max_tokens = int(
-        _first_not_none(max_tokens, profile["max_tokens"], getattr(settings, "max_tokens", 2048), 2048)
+        _first_not_none(
+            max_tokens,
+            profile["max_tokens"],
+            overrides.get("max_tokens"),
+            getattr(settings, "max_tokens", 2048),
+            2048,
+        )
     )
-    model_name = _resolve_model_name(resolved_provider, lightweight=profile["lightweight"])
+    model_name = _resolve_model_name(
+        resolved_provider,
+        lightweight=profile["lightweight"],
+        overrides=overrides,
+    )
 
     message = state.message if state is not None else ""
     common = dict(
@@ -139,17 +158,21 @@ def _build_claude(
     """Build ChatAnthropic with streaming, stream_usage, and thinking.
 
     Thinking / effort behaviour (from Anthropic docs):
+    • Opus 5 / Sonnet 5 / Opus 4.8 / 4.7 / Fable 5 → adaptive thinking + effort,
+      and NO temperature: these models reject the sampling parameters and
+      thinking.budget_tokens with a 400 rather than ignoring them.
     • Claude 3.x (e.g. claude-3-7-sonnet) → thinking={"type":"enabled","budget_tokens":N}
       temperature MUST be 1.0 when thinking is enabled.
     • Claude Opus 4.6 / 4.5 → effort via output_config (max/high/medium/low).
-    • Claude Opus 4.7+       → effort="xhigh" in output_config; budget_tokens removed.
     We detect the model family from the name and route accordingly.
     """
     from langchain_anthropic import ChatAnthropic
 
     thinking_enabled: bool = reasoning and bool(getattr(settings, "claude_thinking_enabled", True))
     thinking_budget: int = int(getattr(settings, "claude_thinking_budget", 5000) or 5000)
-    effort_level: str = str(getattr(settings, "claude_effort_level", "medium") or "medium")
+    effort_level: str = str(
+        _effort_override() or getattr(settings, "claude_effort_level", "medium") or "medium"
+    )
 
     model_family = _claude_model_family(model_name)
 
@@ -163,7 +186,13 @@ def _build_claude(
     if streaming:
         kwargs["streaming"] = True
 
-    if thinking_enabled:
+    if model_family == "modern":
+        # Sampling parameters and budget_tokens are rejected outright on these
+        # models, so temperature is omitted whether or not thinking is on.
+        kwargs["thinking"] = {"type": "adaptive"} if thinking_enabled else {"type": "disabled"}
+        resolved = effort_level if effort_level in {"low", "medium", "high", "xhigh", "max"} else "high"
+        kwargs["output_config"] = {"effort": resolved}
+    elif thinking_enabled:
         if model_family == "claude3":
             # temperature must be 1.0 when thinking is on (Anthropic requirement)
             kwargs["temperature"] = 1.0
@@ -175,11 +204,6 @@ def _build_claude(
                 resolved = "high"
             kwargs["temperature"] = temperature
             kwargs["output_config"] = {"effort": resolved}
-        elif model_family == "opus47":
-            # Opus 4.7+ uses adaptive thinking + xhigh effort
-            kwargs["temperature"] = temperature
-            kwargs["thinking"] = {"type": "adaptive"}
-            kwargs["output_config"] = {"effort": "xhigh"}
         else:
             # Unknown / future model — use effort-style as safe default
             kwargs["temperature"] = temperature
@@ -319,12 +343,40 @@ def _api_key_for(provider: str) -> Optional[str]:
     return (getattr(settings, "groq_api_key", "") or "").strip() or None
 
 
-def _resolve_model_name(provider: str, *, lightweight: bool = False) -> str:
+def _effort_override() -> Optional[str]:
+    """The team's reasoning-effort choice, or None. "auto" means "don't
+    override" — it is the catalog's way of spelling "use the server default"."""
+    value = str(_active_settings().get("reasoning_effort") or "").strip().lower()
+    return value or None if value and value != "auto" else None
+
+
+def _active_settings() -> Dict[str, Any]:
+    """Team settings for this request, or {} — imported lazily so the factory
+    stays importable in contexts that don't carry the settings service."""
+    try:
+        from services.model_settings import active_model_settings
+
+        return active_model_settings() or {}
+    except Exception:
+        return {}
+
+
+def _resolve_model_name(
+    provider: str, *, lightweight: bool = False, overrides: Optional[Dict[str, Any]] = None
+) -> str:
     """Pick the model name for a provider. Defaults live here only — the
     duplicate ladders used to disagree (claude-sonnet-4-6 here vs
-    claude-haiku-4-5 in two others)."""
+    claude-haiku-4-5 in two others).
+
+    A team's chosen model applies to the full-size purposes only: "light" is a
+    deliberately cheap pre-processing call, and honouring a frontier-model
+    choice there would silently multiply its cost.
+    """
     if lightweight:
         return _LIGHTWEIGHT_MODELS.get(provider, _LIGHTWEIGHT_MODELS["groq"])
+    chosen = (overrides or {}).get("models", {}).get(provider)
+    if chosen:
+        return str(chosen)
     if provider == "openai":
         return getattr(settings, "openai_model_name", None) or "gpt-4o-mini"
     if provider == "claude":
@@ -341,11 +393,13 @@ def _resolve_model_name(provider: str, *, lightweight: bool = False) -> str:
 def _claude_model_family(model_name: str) -> str:
     """Detect Claude generation/variant from model name string.
 
-    Returns one of: "claude3", "opus45", "opus46", "opus47", "unknown".
+    Returns one of: "modern", "claude3", "opus45", "opus46", "unknown".
+    "modern" covers the models that reject sampling parameters — see
+    _claude_rejects_sampling_params.
     """
     name = model_name.lower()
-    if "opus-4-7" in name or "opus-4.7" in name:
-        return "opus47"
+    if _claude_rejects_sampling_params(name):
+        return "modern"
     if "opus-4-6" in name or "opus-4.6" in name or "opus-4-20" in name:
         return "opus46"
     if "opus-4-5" in name or "opus-4.5" in name:
@@ -353,6 +407,21 @@ def _claude_model_family(model_name: str) -> str:
     if re.search(r"claude[-_]3", name):
         return "claude3"
     return "unknown"
+
+
+# Opus 5 / Sonnet 5 / Opus 4.7 / Opus 4.8 / Fable 5 / Mythos 5 removed the
+# sampling parameters and the fixed thinking budget: sending `temperature`,
+# `top_p`, `top_k` or `thinking.budget_tokens` to one of them is a 400, not a
+# silently ignored field. Depth is set with output_config.effort instead, and
+# thinking is `{"type": "adaptive"}`. Matching is anchored on the version
+# segment so "claude-opus-5" and "claude-opus-4-5" don't collide.
+_CLAUDE_NO_SAMPLING_RE = re.compile(
+    r"(opus[-_.]?5|sonnet[-_.]?5|opus[-_.]?4[-_.]?(?:7|8)|fable[-_.]?5|mythos[-_.]?5)"
+)
+
+
+def _claude_rejects_sampling_params(model_name: str) -> bool:
+    return bool(_CLAUDE_NO_SAMPLING_RE.search(str(model_name or "").lower()))
 
 
 def _gemini_generation(model_name: str) -> str:
@@ -384,7 +453,7 @@ def _groq_reasoning_effort(
         return None
 
     configured = str(
-        getattr(settings, "groq_reasoning_effort", "auto") or ""
+        _effort_override() or getattr(settings, "groq_reasoning_effort", "auto") or ""
     ).strip().lower()
 
     if configured in {"", "none", "off", "disabled", "false"}:
@@ -409,7 +478,7 @@ def _openai_reasoning_effort(
         return None
 
     configured = str(
-        getattr(settings, "openai_reasoning_effort", "auto") or ""
+        _effort_override() or getattr(settings, "openai_reasoning_effort", "auto") or ""
     ).strip().lower()
 
     if configured in {"", "none", "off", "disabled", "false"}:

@@ -52,11 +52,15 @@ from utils.text_cleanup import get_formatted_citations
 
 from services.contract_agent.graph.tools.executor import execute_mongo_read_tool
 from services.contract_agent.rag.facade import ContractRAGSystem
+from api.routes.model_settings import apply_team_model_settings
 from utils.secure_logger import log_exception
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+# Publishes the caller's team model settings for the duration of each request,
+# so build_chat_model picks them up without every agent code path having to
+# thread a team id down into the RAG stack.
+router = APIRouter(dependencies=[Depends(apply_team_model_settings)])
 
 
 class GlobalAgentQueryRequest(BaseModel):
