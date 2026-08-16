@@ -224,9 +224,27 @@ becomes the `notes.md` editor.
    conversation, which degrades retrieval.
 3. Retention on events — window, or forever?
 
-## Sequencing
+## Status
 
-Phases 0 and 1 are safe and independently shippable. Phase 2 is where the design
-earns its keep. Phases 3–5 can follow at whatever pace.
+All phases implemented.
 
-Nothing here is started.
+| Phase | Commit |
+|---|---|
+| 0 — remove dead vector path | `f5a8327` |
+| 1a — concept layer + index | `72981f0` |
+| 1b — notes split, on-demand concepts | `54c7cec` |
+| 1c — deletion lifecycle | `3eead99` |
+| 2, 3, 4 — facts, events, tools | `6eb25c8` |
+| 5 — memory panel UI | `080084a` |
+
+Decisions taken: `remember_fact` is approval-gated; facts are recorded only on
+explicit user request; events are kept forever and rendered as a window.
+
+Phase 3 remains partly provisional by design — the event store and its
+rendering exist, and emitters are wired for overview generation, amendment
+detection and fact writes. KPI emitters land with the KPI tracking work, since
+its shape should follow what that actually emits.
+
+Left deliberately undone: the two stale `project-memory-*` vectors from before
+Phase 0 are still in `contract_vectors`. Unreachable by any code path; deleting
+them is an irreversible write that nothing depends on.
