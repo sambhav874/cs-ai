@@ -17,7 +17,6 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 
-MAX_CONTEXT_CHARS = 3500
 
 PROJECT_OVERVIEW_QUESTIONS = """
 Answer the following about THIS document only, using evidence you retrieve from it.
@@ -546,54 +545,39 @@ class ProjectMemoryManager:
         top_k: int = 6,
         rag_system: Optional[Any] = None,
     ) -> Optional[str]:
-        """Semantic top-k search over the project's vectorized document
-        overviews. Returns None (caller should fall back to
-        build_project_context_for_agent) if no vector data exists yet — e.g.
-        documents ingested before this feature, or the vector backend being
-        unavailable."""
-        try:
-            if rag_system is None:
-                from services.contract_agent.rag.facade import ContractRAGSystem
-                rag_system = ContractRAGSystem()
-            from services.contract_agent.rag.vector_store import namespace_search_kwargs
+        """The project's memory scratchpad, whole and untruncated. Returns None
+        (caller falls back to build_project_context_for_agent) when the project
+        has no scratchpad yet.
 
-            namespace = _project_memory_namespace(project_id)
-            store = rag_system.vector_manager.load_existing_vector_store(namespace)
-            if store is None:
-                return None
-            # The store returned by load_existing_vector_store is bound to the
-            # whole vector collection, not to this namespace — the namespace
-            # only gates the existence check and the store cache. Without an
-            # explicit per-query filter this searches every project's memory
-            # and happily returns another project's documents as if they were
-            # this one's. Every other retrieval path filters the same way.
-            hits = store.as_retriever(
-                search_kwargs=namespace_search_kwargs(
-                    rag_system.vector_manager, namespace=namespace, k=top_k
-                )
-            ).invoke(query or "project document history")
-            if not hits:
-                return None
-        except Exception:
+        This used to run a top-k vector search over the project's namespace, but
+        that could only ever lose information here: _reembed_scratchpad stores
+        the entire scratchpad as ONE document, and the splitter's chunk_size is
+        larger than a typical scratchpad, so the "search" retrieved a single
+        chunk containing exactly the text below — after a round trip through the
+        embedding API, and through a store bound to the whole vector collection
+        rather than to this project. Past the chunk size it got worse, not
+        better: RecursiveCharacterTextSplitter cuts on character boundaries, not
+        on the `pm:section` markers, so top-k would hand the agent half of one
+        document's overview and none of another's.
+
+        `query` and `top_k` are kept for call compatibility and are unused —
+        there is nothing to rank when the whole memory is one document.
+        """
+        doc = self.scratchpads.find_one({"project_id": project_id}, {"_id": 0, "content": 1})
+        content = (doc or {}).get("content") or ""
+        if not content.strip():
             return None
 
-        lines = [
-            "Project memory below (semantically matched to your question) is for "
-            "context only — not citation evidence. Cite specific clauses only from "
-            "search_evidence/read_document results.",
-        ]
-        # Chunks are slices of the single project scratchpad (see
-        # _reembed_scratchpad), not per-document fragments, so there's no
-        # per-hit filename/doc_type metadata to show — just the matched text.
-        # _reembed_scratchpad stores the scratchpad as ONE document, so this is
-        # normally a single hit carrying every document's section. Truncating it
-        # at a fixed per-hit cap cut the project history off after the first
-        # document or two; budget the whole context allowance across whatever
-        # hits came back instead.
-        per_hit = max(900, MAX_CONTEXT_CHARS // max(len(hits), 1))
-        for hit in hits:
-            lines.append(f"\n{_clean_text(getattr(hit, 'page_content', ''), per_hit)}")
-        return "\n".join(lines)[:MAX_CONTEXT_CHARS]
+        # Deliberately uncapped. This is the project's own curated memory — a
+        # few KB of metadata summaries, not document text — and cutting it at a
+        # fixed character budget silently drops whichever documents sort last,
+        # which is exactly how the agent came to answer "what relates to this
+        # contract?" while missing half the project.
+        return (
+            "Project memory below is for context only — not citation evidence. "
+            "Cite specific clauses only from search_evidence/read_document results.\n\n"
+            f"{content.strip()}"
+        )
 
     def build_project_timeline(self, project_id: str) -> List[Dict[str, Any]]:
         """Chronological, grouped view: schedules/annexes/amendments nest under
@@ -650,4 +634,7 @@ class ProjectMemoryManager:
                 f"{doc.get('purpose_summary', '')}{relation_note}"
             )
         parts.append("Chronological project timeline:\n" + "\n".join(lines))
-        return "\n\n".join(parts)[:MAX_CONTEXT_CHARS]
+        # Uncapped for the same reason as search_project_memory: truncating a
+        # chronological list drops the most recent documents, so the agent
+        # confidently answers about a project it has only partly been shown.
+        return "\n\n".join(parts)
