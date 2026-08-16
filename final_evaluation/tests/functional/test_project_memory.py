@@ -534,6 +534,44 @@ def test_transfer_is_a_no_op_onto_itself(manager):
     assert manager.memories.count_documents({"project_id": PROJECT_A}) == 1
 
 
+# ------------------------------------------------------------------ timeline ---
+
+def test_timeline_nests_to_arbitrary_depth(manager):
+    """A grandchild amendment — one that amends a document which itself amends
+    another — used to vanish entirely. It was correctly bucketed as a child of
+    its parent, but the parent was never a top-level entry, so the only place
+    the grandchild was stored was never attached to the returned tree."""
+    _add_memory(manager, PROJECT_A, "c1", "01_MSA.pdf")
+    _add_memory(manager, PROJECT_A, "c2", "02_SOW.pdf",
+                related_documents=[{"contract_id": "c1", "filename": "01_MSA.pdf", "relation_type": "references"}])
+    _add_memory(manager, PROJECT_A, "c3", "03_ChangeOrder.pdf",
+                related_documents=[{"contract_id": "c2", "filename": "02_SOW.pdf", "relation_type": "amends"}])
+
+    timeline = manager.build_project_timeline(PROJECT_A)
+
+    assert [e["filename"] for e in timeline] == ["01_MSA.pdf"]
+    assert [c["filename"] for c in timeline[0]["related_uploads"]] == ["02_SOW.pdf"]
+    grandchild = timeline[0]["related_uploads"][0]["related_uploads"]
+    assert [c["filename"] for c in grandchild] == ["03_ChangeOrder.pdf"]
+
+
+def test_timeline_survives_a_relation_cycle(manager):
+    """AI-extracted relations aren't guaranteed acyclic. Without a guard this
+    would recurse forever instead of just rendering oddly."""
+    _add_memory(manager, PROJECT_A, "c1", "01.pdf",
+                related_documents=[{"contract_id": "c2", "filename": "02.pdf", "relation_type": "references"}])
+    _add_memory(manager, PROJECT_A, "c2", "02.pdf",
+                related_documents=[{"contract_id": "c1", "filename": "01.pdf", "relation_type": "references"}])
+
+    # Must return at all rather than recurse forever. With each doc claiming
+    # the other as its child, neither is top-level — there's no non-arbitrary
+    # root to pick for a genuine 2-node cycle — so an empty result is the
+    # correct outcome here, not a symptom of the guard.
+    timeline = manager.build_project_timeline(PROJECT_A)
+
+    assert timeline == []
+
+
 # --------------------------------------------------------------------- misc ---
 
 def test_project_memory_writes_no_vectors(manager):

@@ -939,7 +939,14 @@ class ProjectMemoryManager:
     def build_project_timeline(self, project_id: str) -> List[Dict[str, Any]]:
         """Chronological, grouped view: schedules/annexes/amendments nest under
         the parent document they explicitly reference, instead of appearing as
-        flat unrelated rows."""
+        flat unrelated rows.
+
+        Nests to arbitrary depth, not just one level. An amendment that amends
+        another amendment (04 amends 02, 02 amends 01) previously vanished
+        entirely: it was correctly bucketed as a child of 02, but 02 itself was
+        never a top-level entry, so 02's own related_uploads — the only place
+        04 was stored — was never attached to anything in the returned tree.
+        """
         docs = list(self.memories.find({"project_id": project_id}, {"_id": 0}).sort("uploaded_at", 1))
         by_contract_id = {doc.get("contract_id"): doc for doc in docs}
         children_of: Dict[str, List[Dict[str, Any]]] = {}
@@ -953,14 +960,23 @@ class ProjectMemoryManager:
                     claimed_as_child.add(doc.get("contract_id"))
                     break
 
-        top_level: List[Dict[str, Any]] = []
-        for doc in docs:
-            if doc.get("contract_id") in claimed_as_child:
-                continue
+        def attach(doc: Dict[str, Any], ancestors: frozenset) -> Dict[str, Any]:
             entry = dict(doc)
-            entry["related_uploads"] = children_of.get(doc.get("contract_id"), [])
-            top_level.append(entry)
-        return top_level
+            contract_id = doc.get("contract_id")
+            # AI-extracted relations aren't guaranteed acyclic; without this a
+            # cycle would recurse forever instead of just rendering oddly.
+            entry["related_uploads"] = [
+                attach(child, ancestors | {contract_id})
+                for child in children_of.get(contract_id, [])
+                if child.get("contract_id") not in ancestors
+            ]
+            return entry
+
+        return [
+            attach(doc, frozenset())
+            for doc in docs
+            if doc.get("contract_id") not in claimed_as_child
+        ]
 
     def build_project_context_for_agent(self, project_id: str, question: str = "") -> str:
         """Compact chronological narrative injected as agent context — mirrors
