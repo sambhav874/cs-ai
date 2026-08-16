@@ -235,6 +235,8 @@ class ProjectMemoryManager:
         agent_db = mongo_db.client["contract_agent_db"]
         self.memories = agent_db["project_memories"]
         self.scratchpads = agent_db["project_scratchpads"]
+        self.facts = agent_db["project_facts"]
+        self.events = agent_db["project_events"]
         # The index is built from the contracts collection, not from memory —
         # see render_index for why.
         self.contracts = mongo_db["contracts"]
@@ -434,6 +436,40 @@ class ProjectMemoryManager:
                 {"$set": record},
                 upsert=True,
             )
+
+            self._safe_event(
+                project_id=project_id,
+                event_type="overview_generated",
+                contract_id=contract_id,
+                summary=f"Overview generated for {contract_name} ({record['doc_type']}).",
+            )
+
+            # An amendment is the moment a previously true fact can quietly
+            # become false, so facts drawn from the amended document are
+            # flagged for review rather than left to be restated confidently.
+            for relation in related_documents:
+                if str(relation.get("relation_type") or "").lower() != "amends":
+                    continue
+                try:
+                    flagged = self.flag_facts_for_amended_document(
+                        project_id, str(relation.get("contract_id"))
+                    )
+                except Exception as flag_exc:
+                    logger.warning(
+                        "Could not flag facts for amended document %s: %s",
+                        relation.get("contract_id"), flag_exc,
+                    )
+                    continue
+                self._safe_event(
+                    project_id=project_id,
+                    event_type="document_amended",
+                    contract_id=str(relation.get("contract_id")),
+                    summary=(
+                        f"{contract_name} amends {relation.get('filename')}"
+                        + (f"; {flagged} fact(s) flagged for review" if flagged else "")
+                    ),
+                    severity="warning" if flagged else "info",
+                )
             return record
         except Exception as exc:
             record["error"] = str(exc)[:500]
@@ -555,6 +591,222 @@ class ProjectMemoryManager:
             )
         return render_concept(record)
 
+    # ---------------------------------------------------------------- events ---
+
+    def record_event(
+        self,
+        *,
+        project_id: str,
+        event_type: str,
+        contract_id: Optional[str] = None,
+        summary: str = "",
+        severity: str = "info",
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Append one notable thing that happened in this project.
+
+        Append-only by design and never edited: this is the record of what the
+        system did and when, which for contract tracking is potentially what
+        you would point at in a dispute. A correction is a later event, not a
+        rewrite of an earlier one — the same principle audit_logs already
+        follows.
+
+        Notable events only. Raw KPI measurements stay in the KPI collections;
+        a poll every few minutes is thousands of rows a month per contract and
+        belongs nowhere near agent context.
+        """
+        event = {
+            "event_id": uuid4().hex,
+            "project_id": project_id,
+            "event_type": _clean_text(event_type, 60) or "unknown",
+            "contract_id": contract_id,
+            "summary": _clean_text(summary, 300),
+            "severity": severity if severity in {"info", "warning", "critical"} else "info",
+            "payload": payload or {},
+            "ts": _now(),
+        }
+        self.events.insert_one(dict(event))
+        event.pop("_id", None)
+        return event
+
+    def _safe_event(self, **kwargs: Any) -> None:
+        """Recording an event must never be the reason a real operation fails —
+        the ingest path that emits most of these is explicitly best-effort."""
+        try:
+            self.record_event(**kwargs)
+        except Exception as exc:
+            logger.warning("Could not record project event: %s", exc)
+
+    def list_events(self, project_id: str, *, limit: int = 50) -> List[Dict[str, Any]]:
+        """Most recent first. Events are kept forever, but only a window is
+        ever rendered — the history is for auditing, not for filling context.
+
+        Sorted by _id as well as ts, because several events routinely land in
+        the same request: ingesting an amendment writes an overview_generated
+        and a document_amended within the same millisecond, and ordering by
+        timestamp alone left their order down to however the driver returned
+        them. ObjectId is monotonic, so it breaks the tie by insertion order.
+        """
+        events = list(
+            self.events.find({"project_id": project_id})
+            .sort([("ts", -1), ("_id", -1)])
+            .limit(max(1, limit))
+        )
+        # _id is needed for the sort but is an ObjectId, which does not survive
+        # JSON serialisation on the way out of the route.
+        for event in events:
+            event.pop("_id", None)
+        return events
+
+    def render_events(self, project_id: str, *, limit: int = 20) -> str:
+        events = self.list_events(project_id, limit=limit)
+        if not events:
+            return "No events recorded for this project yet."
+
+        lines = []
+        for event in events:
+            ts = event.get("ts")
+            ts_str = ts.strftime("%Y-%m-%d %H:%M") if isinstance(ts, datetime) else ""
+            marker = "" if event.get("severity") == "info" else f" [{event.get('severity')}]"
+            lines.append(
+                f"- {ts_str}{marker} · {event.get('event_type')} · {event.get('summary')}"
+            )
+        return f"Recent project events (most recent first, {len(events)} shown):\n" + "\n".join(lines)
+
+    # ----------------------------------------------------------------- facts ---
+
+    def remember_fact(
+        self,
+        *,
+        project_id: str,
+        text: str,
+        sources: Optional[List[Dict[str, Any]]] = None,
+        tags: Optional[List[str]] = None,
+        origin: str = "contract",
+    ) -> Dict[str, Any]:
+        """Record one durable fact about the project.
+
+        Provenance is required, not optional: a fact drawn from a contract must
+        carry the contract it came from and the quote that supports it, so the
+        agent can re-read the source before relying on it. A fact the user
+        simply stated has no quote to verify against and is marked
+        `origin="user"` so it is never presented with the authority of an
+        extracted one.
+
+        One document per fact rather than an array on the project: writes stay
+        atomic under concurrent agent turns, there is no 16MB ceiling, and
+        superseded/needs_review state is indexable.
+        """
+        cleaned = _clean_text(text, 1000)
+        if not cleaned:
+            raise ValueError("A fact needs text.")
+
+        resolved_origin = origin if origin in {"contract", "user"} else "contract"
+        resolved_sources = []
+        for source in sources or []:
+            if not isinstance(source, dict):
+                continue
+            contract_id = str(source.get("contract_id") or "").strip()
+            if not contract_id:
+                continue
+            resolved_sources.append({
+                "contract_id": contract_id,
+                "quote": _clean_text(source.get("quote"), 500),
+            })
+
+        if resolved_origin == "contract" and not resolved_sources:
+            raise ValueError(
+                "A fact extracted from a contract needs at least one source "
+                "(contract_id and supporting quote). Use origin='user' for "
+                "something the user told you."
+            )
+
+        record = {
+            "fact_id": uuid4().hex,
+            "project_id": project_id,
+            "text": cleaned,
+            "sources": resolved_sources,
+            "tags": [_clean_text(tag, 40) for tag in (tags or []) if str(tag).strip()][:8],
+            "origin": resolved_origin,
+            "learned_at": _now(),
+            "superseded_by": None,
+            "needs_review": False,
+        }
+        self.facts.insert_one(dict(record))
+        record.pop("_id", None)
+        self._safe_event(
+            project_id=project_id,
+            event_type="fact_recorded",
+            contract_id=(resolved_sources[0]["contract_id"] if resolved_sources else None),
+            summary=f"Fact recorded ({resolved_origin}): {cleaned[:120]}",
+        )
+        return record
+
+    def list_facts(self, project_id: str, *, include_superseded: bool = False) -> List[Dict[str, Any]]:
+        query: Dict[str, Any] = {"project_id": project_id}
+        if not include_superseded:
+            query["superseded_by"] = None
+        return list(self.facts.find(query, {"_id": 0}).sort("learned_at", 1))
+
+    def supersede_fact(self, project_id: str, fact_id: str, superseded_by: str) -> bool:
+        """Facts are never edited in place — a correction is a new fact that
+        points back at the one it replaces, so the history of what was believed
+        when stays intact."""
+        result = self.facts.update_one(
+            {"project_id": project_id, "fact_id": fact_id},
+            {"$set": {"superseded_by": superseded_by, "needs_review": False}},
+        )
+        return result.modified_count > 0
+
+    def flag_facts_for_amended_document(self, project_id: str, contract_id: str) -> int:
+        """Mark every fact drawn from a document as needing review once that
+        document has been amended.
+
+        A stale contract term stated confidently is worse than no memory at
+        all, and amendment is exactly when a previously true fact silently
+        becomes false. The relation is already tracked on the overviews, so
+        this is the point where that knowledge is worth acting on.
+        """
+        result = self.facts.update_many(
+            {
+                "project_id": project_id,
+                "superseded_by": None,
+                "sources.contract_id": contract_id,
+            },
+            {"$set": {"needs_review": True}},
+        )
+        return result.modified_count
+
+    def render_facts(self, project_id: str) -> str:
+        """All of the project's live facts, one delimited block each.
+
+        One file, many blocks: the file is the storage unit a person reads,
+        the block is the unit retrieval selects. Keeping those distinct is what
+        stopped the old scratchpad from being splittable on anything better
+        than a character count.
+        """
+        facts = self.list_facts(project_id)
+        if not facts:
+            return "No facts recorded for this project yet."
+
+        blocks = []
+        for fact in facts:
+            learned = fact.get("learned_at")
+            learned_str = learned.strftime("%Y-%m-%d") if isinstance(learned, datetime) else ""
+            sources = "; ".join(
+                f"{s.get('contract_id')}" + (f" — “{s.get('quote')}”" if s.get("quote") else "")
+                for s in fact.get("sources") or []
+            ) or ("stated by the team" if fact.get("origin") == "user" else "unknown")
+            flags = " **[needs review — a source document was amended]**" if fact.get("needs_review") else ""
+            tags = ", ".join(fact.get("tags") or []) or "—"
+            blocks.append(
+                f"## {fact.get('text')}{flags}\n"
+                f"- origin: {fact.get('origin')} · recorded: {learned_str} · tags: {tags}\n"
+                f"- source: {sources}\n"
+                f"- fact_id: {fact.get('fact_id')}"
+            )
+        return "Facts recorded for this project:\n\n" + "\n\n".join(blocks)
+
     def transfer_project_memory(self, from_project_id: str, to_project_id: str) -> Dict[str, Any]:
         """Move a project's memory to another project, for when its documents
         move there.
@@ -586,6 +838,17 @@ class ProjectMemoryManager:
                 {"_id": record["_id"]}, {"$set": {"project_id": to_project_id}}
             )
             moved += 1
+
+        # Facts are about the project's documents, which have moved, so they
+        # move too. No dedup: a fact is free text, not keyed by contract.
+        self.facts.update_many(
+            {"project_id": from_project_id}, {"$set": {"project_id": to_project_id}}
+        )
+        # Events move rather than being deleted — the history of what happened
+        # to these documents survives the project row that framed it.
+        self.events.update_many(
+            {"project_id": from_project_id}, {"$set": {"project_id": to_project_id}}
+        )
 
         source_notes = (self.get_notes(from_project_id).get("content") or "").strip()
         notes_appended = False
@@ -660,6 +923,12 @@ class ProjectMemoryManager:
             "Cite specific clauses only from search_evidence/read_document results.",
             self.render_index(project_id),
         ]
+
+        # Facts are recorded only on explicit request, so the set stays small
+        # and curated — worth sending in full rather than ranking a subset.
+        facts = self.list_facts(project_id)
+        if facts:
+            parts.append(self.render_facts(project_id))
 
         notes = (self.get_notes(project_id).get("content") or "").strip()
         if notes:

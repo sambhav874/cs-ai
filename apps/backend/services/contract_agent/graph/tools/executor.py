@@ -120,6 +120,10 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
         return _calculate_from_evidence(expression, context)
     if tool.name == "get_project_timeline":
         return _get_project_timeline(state)
+    if tool.name == "read_project_concept":
+        return _read_project_concept(state, str(tool.args.get("document_id") or ""))
+    if tool.name == "read_project_events":
+        return _read_project_events(state, tool.args.get("limit"))
     return {"summary": f"Read-only tool {tool.name} completed."}
 
 
@@ -1222,6 +1226,52 @@ def _get_project_timeline(state: AgentRunState) -> Dict[str, Any]:
         }
     except Exception as exc:
         return {"summary": f"Project timeline lookup failed: {str(exc)[:300]}", "snippet": ""}
+
+
+def _read_project_concept(state: AgentRunState, document_id: str) -> Dict[str, Any]:
+    """Fetch one document's full project-memory overview by id."""
+    project_id = state.context.project_id
+    if not project_id:
+        return {"summary": "No project is in scope for this conversation.", "snippet": ""}
+    if not document_id:
+        return {"summary": "A document_id from the project index is required.", "snippet": ""}
+
+    try:
+        from core.database import db as core_db
+        from services.project_memory import ProjectMemoryManager
+
+        # project_id comes from the authorized scope, never from the model, so
+        # a document id belonging to another project simply finds nothing.
+        concept = ProjectMemoryManager(core_db).read_concept(project_id, document_id)
+        if not concept:
+            return {
+                "summary": f"No project-memory overview for document {document_id} in this project.",
+                "snippet": "",
+            }
+        return {"summary": f"Retrieved project-memory overview for {document_id}.", "snippet": concept}
+    except Exception as exc:
+        return {"summary": f"Project concept lookup failed: {str(exc)[:300]}", "snippet": ""}
+
+
+def _read_project_events(state: AgentRunState, limit: Any = None) -> Dict[str, Any]:
+    """Fetch the recent project event log."""
+    project_id = state.context.project_id
+    if not project_id:
+        return {"summary": "No project is in scope for this conversation.", "snippet": ""}
+
+    try:
+        from core.database import db as core_db
+        from services.project_memory import ProjectMemoryManager
+
+        try:
+            resolved_limit = max(1, min(int(limit or 20), 100))
+        except (TypeError, ValueError):
+            resolved_limit = 20
+
+        rendered = ProjectMemoryManager(core_db).render_events(project_id, limit=resolved_limit)
+        return {"summary": "Retrieved recent project events.", "snippet": rendered}
+    except Exception as exc:
+        return {"summary": f"Project event lookup failed: {str(exc)[:300]}", "snippet": ""}
 
 
 def _get_kpi_context(

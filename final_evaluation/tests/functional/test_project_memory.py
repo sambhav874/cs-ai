@@ -351,6 +351,143 @@ def test_migration_is_idempotent(manager):
     assert manager.get_notes(PROJECT_A)["content"] == first == manual
 
 
+# --------------------------------------------------------------------- facts ---
+
+def test_a_contract_fact_must_carry_its_source(manager):
+    """Provenance is the difference between a fact the agent can re-verify and
+    one it can only restate. Extracted facts must be traceable."""
+    with pytest.raises(ValueError, match="needs at least one source"):
+        manager.remember_fact(project_id=PROJECT_A, text="Liability caps at 12 months' fees.")
+
+
+def test_a_user_stated_fact_needs_no_source_but_is_marked_as_such(manager):
+    fact = manager.remember_fact(
+        project_id=PROJECT_A, text="Renewal is being negotiated verbally.", origin="user"
+    )
+
+    assert fact["origin"] == "user"
+    assert fact["sources"] == []
+    assert "stated by the team" in manager.render_facts(PROJECT_A)
+
+
+def test_a_fact_needs_text(manager):
+    with pytest.raises(ValueError, match="needs text"):
+        manager.remember_fact(project_id=PROJECT_A, text="   ", origin="user")
+
+
+def test_facts_are_scoped_to_their_project(manager):
+    manager.remember_fact(project_id=PROJECT_A, text="Fact about A.", origin="user")
+    manager.remember_fact(project_id=PROJECT_B, text="Fact about B.", origin="user")
+
+    assert "Fact about B." not in manager.render_facts(PROJECT_A)
+    assert "Fact about A." not in manager.render_facts(PROJECT_B)
+    assert "Fact about B." not in manager.build_memory_context(PROJECT_A)
+
+
+def test_amending_a_document_flags_facts_drawn_from_it(manager):
+    """An amendment is exactly when a previously true fact becomes false. A
+    stale contract term stated confidently is worse than no memory."""
+    manager.remember_fact(
+        project_id=PROJECT_A,
+        text="Fixed fee is USD 250,000.",
+        sources=[{"contract_id": "sow-1", "quote": "the fixed fee shall be USD 250,000"}],
+    )
+    manager.remember_fact(
+        project_id=PROJECT_A,
+        text="Governing law is Delaware.",
+        sources=[{"contract_id": "msa-1", "quote": "governed by the laws of Delaware"}],
+    )
+
+    flagged = manager.flag_facts_for_amended_document(PROJECT_A, "sow-1")
+
+    assert flagged == 1
+    facts = {f["text"]: f for f in manager.list_facts(PROJECT_A)}
+    assert facts["Fixed fee is USD 250,000."]["needs_review"] is True
+    assert facts["Governing law is Delaware."]["needs_review"] is False
+    assert "needs review" in manager.render_facts(PROJECT_A)
+
+
+def test_superseded_facts_leave_the_live_set_but_not_the_record(manager):
+    fact = manager.remember_fact(project_id=PROJECT_A, text="Old rate is 5%.", origin="user")
+
+    assert manager.supersede_fact(PROJECT_A, fact["fact_id"], "new-fact-id") is True
+
+    assert manager.list_facts(PROJECT_A) == []
+    assert len(manager.list_facts(PROJECT_A, include_superseded=True)) == 1
+    assert "Old rate is 5%." not in manager.build_memory_context(PROJECT_A)
+
+
+def test_superseding_an_unknown_fact_reports_failure(manager):
+    assert manager.supersede_fact(PROJECT_A, "nope", "x") is False
+
+
+def test_facts_appear_in_the_up_front_context(manager):
+    manager.remember_fact(project_id=PROJECT_A, text="Vendor is the incumbent.", origin="user")
+
+    assert "Vendor is the incumbent." in manager.build_memory_context(PROJECT_A)
+
+
+def test_facts_move_with_their_project(manager):
+    manager.remember_fact(project_id=PROJECT_A, text="Carried fact.", origin="user")
+
+    manager.transfer_project_memory(PROJECT_A, PROJECT_B)
+
+    assert manager.list_facts(PROJECT_A) == []
+    assert len(manager.list_facts(PROJECT_B)) == 1
+
+
+# -------------------------------------------------------------------- events ---
+
+def test_events_are_scoped_and_most_recent_first(manager):
+    manager.record_event(project_id=PROJECT_A, event_type="a1", summary="First in A.")
+    manager.record_event(project_id=PROJECT_A, event_type="a2", summary="Second in A.")
+    manager.record_event(project_id=PROJECT_B, event_type="b1", summary="Only in B.")
+
+    events = manager.list_events(PROJECT_A)
+
+    assert [e["event_type"] for e in events] == ["a2", "a1"]
+    assert "Only in B." not in manager.render_events(PROJECT_A)
+
+
+def test_recording_a_fact_emits_an_event(manager):
+    manager.remember_fact(project_id=PROJECT_A, text="Something durable.", origin="user")
+
+    assert [e["event_type"] for e in manager.list_events(PROJECT_A)] == ["fact_recorded"]
+
+
+def test_events_are_windowed_for_rendering_but_kept_in_full(manager):
+    for i in range(60):
+        manager.record_event(project_id=PROJECT_A, event_type="tick", summary=f"Event {i}.")
+
+    assert len(manager.list_events(PROJECT_A, limit=500)) == 60
+    assert manager.render_events(PROJECT_A, limit=20).count("\n- ") == 20
+
+
+def test_event_severity_is_constrained(manager):
+    ok = manager.record_event(project_id=PROJECT_A, event_type="x", severity="critical")
+    junk = manager.record_event(project_id=PROJECT_A, event_type="x", severity="catastrophic")
+
+    assert ok["severity"] == "critical"
+    assert junk["severity"] == "info"
+
+
+def test_events_move_with_their_project(manager):
+    manager.record_event(project_id=PROJECT_A, event_type="x", summary="Carried event.")
+
+    manager.transfer_project_memory(PROJECT_A, PROJECT_B)
+
+    assert manager.list_events(PROJECT_A) == []
+    assert len(manager.list_events(PROJECT_B)) == 1
+
+
+def test_events_stay_out_of_the_up_front_context(manager):
+    """Events are for auditing. Sending them every turn would crowd out the
+    index and facts, which is what the agent actually reasons from."""
+    manager.record_event(project_id=PROJECT_A, event_type="x", summary="Distinctive event text.")
+
+    assert "Distinctive event text." not in manager.build_memory_context(PROJECT_A)
+
+
 # ---------------------------------------------------------------- lifecycle ---
 
 def test_transfer_moves_memory_with_its_contracts(manager):

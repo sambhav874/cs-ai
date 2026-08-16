@@ -25,6 +25,8 @@ READ_ONLY_TOOLS = {
     "list_documents",
     "outline_document",
     "read_document",
+    "read_project_concept",
+    "read_project_events",
     "search_evidence",
 }
 
@@ -32,6 +34,7 @@ APPROVAL_REQUIRED_TOOLS = {
     "create_tabular_review",
     "extract_kpis",
     "generate_tabular_review",
+    "remember_fact",
     "replicate_document",
     "suggest_tabular_review",
 }
@@ -56,7 +59,9 @@ def tool_specs() -> Dict[str, ToolSpec]:
         "fetch_documents": "Fetch scoped indexed document metadata by IDs.",
         "find_in_document": "Locate an exact phrase, clause reference, or keyword inside one scoped document.",
         "get_kpi_context": "Retrieve KPI/SLA targets, actuals, breach state, and operational context matching the user query.",
-        "get_project_timeline": "Retrieve the chronological project history — what documents were uploaded when, what each is about, and how they relate to each other (e.g. a schedule or amendment to an earlier contract).",
+        "get_project_timeline": "Retrieve project memory: the complete list of documents in this project with how they relate to each other, plus any recorded facts and team notes. Use this before assuming what a project does or does not contain.",
+        "read_project_concept": "Read one document's full project-memory overview by its document id, as listed in the project index. Use when the index line is not enough detail.",
+        "read_project_events": "Read the recent history of what has happened in this project — documents ingested, amendments detected, facts recorded.",
         "list_documents": "List scoped indexed documents available to this agent run.",
         "outline_document": "Read a document outline or high-level structure.",
         "read_document": "Read a focused excerpt, or the full indexed document when include_full is enabled for whole-contract summaries.",
@@ -66,6 +71,7 @@ def tool_specs() -> Dict[str, ToolSpec]:
         "generate_tabular_review": "Generate tabular review cells only after human approval.",
         "replicate_document": "Replicate a document to another project only after human approval.",
         "suggest_tabular_review": "Suggest an editable tabular review column configuration for human approval.",
+        "remember_fact": "Record a durable fact about this project in memory, only after human approval. Use only when the user explicitly asks for something to be remembered — not to log the conversation. A fact taken from a contract must carry the document id and the quote supporting it.",
     }
     specs: Dict[str, ToolSpec] = {}
     for name in sorted(READ_ONLY_TOOLS):

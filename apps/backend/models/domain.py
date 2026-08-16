@@ -254,6 +254,21 @@ class ProjectScratchpadUpdate(BaseModel):
     content: str = Field(..., max_length=200_000)
 
 
+class ProjectFactSource(BaseModel):
+    contract_id: str = Field(..., max_length=64)
+    quote: Optional[str] = Field(None, max_length=500)
+
+
+class ProjectFactCreate(BaseModel):
+    text: str = Field(..., max_length=1000)
+    # Required for origin="contract" — a fact drawn from a document has to
+    # carry the document and quote it came from, so it can be re-verified
+    # before it is relied on. Facts the user simply stated use origin="user".
+    sources: Optional[List[ProjectFactSource]] = None
+    tags: Optional[List[str]] = None
+    origin: Optional[str] = Field(None, max_length=20)
+
+
 class ProjectLightInDB(BaseModel):
     id: str = Field(alias="_id")
     name: str

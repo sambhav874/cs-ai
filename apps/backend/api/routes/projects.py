@@ -15,6 +15,7 @@ from models.domain import (
     PaginatedProjects,
     ProjectLightInDB,
     ProjectMemoryOverviewUpdate,
+    ProjectFactCreate,
     ProjectScratchpadUpdate,
 )
 
@@ -445,6 +446,90 @@ def get_project_memory_notes(project_id: str, current_user: UserInDB = Depends(g
     from services.project_memory import ProjectMemoryManager
 
     return ProjectMemoryManager(db).get_notes(project_id)
+
+
+@router.get("/{project_id}/memory/facts")
+def list_project_facts(
+    project_id: str,
+    include_superseded: bool = False,
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    """Durable facts recorded about this project."""
+    verify_project_access(project_id, current_user)
+
+    from core.database import db
+    from services.project_memory import ProjectMemoryManager
+
+    manager = ProjectMemoryManager(db)
+    return {
+        "project_id": project_id,
+        "facts": manager.list_facts(project_id, include_superseded=include_superseded),
+    }
+
+
+@router.post("/{project_id}/memory/facts")
+def create_project_fact(
+    project_id: str,
+    request: ProjectFactCreate,
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    """Record a fact. A fact drawn from a contract must carry its source;
+    something the user stated is recorded with origin="user" instead, so it is
+    never presented with the authority of an extracted one."""
+    verify_project_access(project_id, current_user)
+
+    from core.database import db
+    from services.project_memory import ProjectMemoryManager
+
+    try:
+        return ProjectMemoryManager(db).remember_fact(
+            project_id=project_id,
+            text=request.text,
+            sources=[source.model_dump() for source in (request.sources or [])],
+            tags=request.tags,
+            origin=request.origin or "contract",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.delete("/{project_id}/memory/facts/{fact_id}")
+def supersede_project_fact(
+    project_id: str,
+    fact_id: str,
+    replaced_by: str = "",
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    """Retire a fact. Facts are never edited in place — a correction is a new
+    fact pointing back at the one it replaces, so the record of what was
+    believed when stays intact."""
+    verify_project_access(project_id, current_user)
+
+    from core.database import db
+    from services.project_memory import ProjectMemoryManager
+
+    if not ProjectMemoryManager(db).supersede_fact(project_id, fact_id, replaced_by or "retired"):
+        raise HTTPException(status_code=404, detail="Fact not found.")
+    return {"fact_id": fact_id, "superseded_by": replaced_by or "retired"}
+
+
+@router.get("/{project_id}/memory/events")
+def list_project_events(
+    project_id: str,
+    limit: int = 50,
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    """Append-only history of what happened in this project. Read-only by
+    design — a correction is a later event, not a rewrite of an earlier one."""
+    verify_project_access(project_id, current_user)
+
+    from core.database import db
+    from services.project_memory import ProjectMemoryManager
+
+    return {
+        "project_id": project_id,
+        "events": ProjectMemoryManager(db).list_events(project_id, limit=min(limit, 500)),
+    }
 
 
 @router.get("/{project_id}/memory/index")

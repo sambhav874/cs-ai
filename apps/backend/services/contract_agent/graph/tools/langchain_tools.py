@@ -60,6 +60,22 @@ class ProjectTimelineInput(BaseModel):
     project_id: str = Field(default="", description="Project ID to retrieve document history for. Leave blank to use the current authorized project scope.")
 
 
+class ProjectConceptInput(BaseModel):
+    document_id: str = Field(default="", description="Document id to read the project-memory overview for, exactly as it appears in the project index.")
+
+
+class ProjectEventsInput(BaseModel):
+    limit: int = Field(default=20, description="How many recent events to return.")
+
+
+class RememberFactInput(BaseModel):
+    text: str = Field(default="", description="The fact to remember, stated plainly and self-contained.")
+    contract_id: str = Field(default="", description="Document id the fact was taken from. Required unless the user simply told you the fact.")
+    quote: str = Field(default="", description="The exact wording from that document supporting the fact, so it can be re-verified later.")
+    tags: str = Field(default="", description="Optional comma-separated topic tags.")
+    origin: str = Field(default="contract", description="'contract' when taken from a document, 'user' when the user stated it.")
+
+
 class KPIInput(BaseModel):
     contract_id: str = Field(default="", description="Contract ID owning KPI/SLA records. Leave blank for current contract or document.")
     metric_name: str = Field(default="", description="Optional KPI/SLA metric name to filter by.")
@@ -279,9 +295,37 @@ def build_langchain_tools(
 
     @tool("get_project_timeline", args_schema=ProjectTimelineInput)
     def get_project_timeline(project_id: str = "") -> Dict[str, Any]:
-        """Retrieve the chronological project document history: what was uploaded when, what each document is about, and how documents relate (e.g. a schedule uploaded after its main contract). READ-ONLY."""
+        """Retrieve project memory: the complete list of documents in this project and how they relate to each other, plus any recorded facts and team notes. Consult this before stating what a project does or does not contain. READ-ONLY."""
         # Always use the authorized scoped project_id, never a model-supplied value.
         return run_read_tool("get_project_timeline", {"project_id": state.context.project_id or ""})
+
+    @tool("read_project_concept", args_schema=ProjectConceptInput)
+    def read_project_concept(document_id: str = "") -> Dict[str, Any]:
+        """Read one document's full project-memory overview by its id, as listed in the project index. Use when the index line lacks the detail you need. READ-ONLY."""
+        payload = _payload_from_react_value(document_id, "document_id")
+        return run_read_tool("read_project_concept", {"document_id": payload.get("document_id", "")})
+
+    @tool("read_project_events", args_schema=ProjectEventsInput)
+    def read_project_events(limit: int = 20) -> Dict[str, Any]:
+        """Read the recent history of this project: documents ingested, amendments detected, facts recorded. READ-ONLY."""
+        return run_read_tool("read_project_events", {"limit": limit})
+
+    @tool("remember_fact", args_schema=RememberFactInput)
+    def remember_fact(
+        text: str = "",
+        contract_id: str = "",
+        quote: str = "",
+        tags: str = "",
+        origin: str = "contract",
+    ) -> Dict[str, Any]:
+        """Record a durable fact about this project. Use ONLY when the user explicitly asks for something to be remembered — never to log the conversation. A fact taken from a document must include its document id and the exact supporting quote. Requires human approval before writing."""
+        return run_approval_tool("remember_fact", {
+            "text": text,
+            "contract_id": contract_id,
+            "quote": quote,
+            "tags": tags,
+            "origin": origin,
+        })
 
     @tool("get_kpi_context", args_schema=KPIInput)
     def get_kpi_context(contract_id: str = "", metric_name: str = "", query: str = "") -> Dict[str, Any]:
@@ -354,6 +398,9 @@ def build_langchain_tools(
         search_evidence,
         find_in_document,
         get_project_timeline,
+        read_project_concept,
+        read_project_events,
+        remember_fact,
         get_kpi_context,
         extract_kpis,
         calculate_from_evidence,

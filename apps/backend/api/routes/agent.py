@@ -312,6 +312,8 @@ def approve_workflow(
         return _approve_tabular_workflow(state, request_data, current_user)
     if state.approval_request.action == "extract_kpis":
         return _approve_kpi_extraction_workflow(state, current_user)
+    if state.approval_request.action == "remember_fact":
+        return _approve_remember_fact_workflow(state, current_user)
     if state.approval_request.action in {
         "create_editable_copy",
         "duplicate_document_copy",
@@ -471,6 +473,66 @@ def _approve_kpi_extraction_workflow(state: AgentRunState, current_user: UserInD
         run_id=result.get("run_id"),
         kpi_count=kpi_count,
         new_or_updated_count=updated_count,
+    )
+    _store().save(state)
+    return DeepContractAgentRunner(store=_store()).response_from_state(state)
+
+
+def _approve_remember_fact_workflow(state: AgentRunState, current_user: UserInDB) -> AgentResponse:
+    """Write one approved fact into project memory.
+
+    Gated because a fact persists and shapes every later answer in the project,
+    unlike a retrieval mistake that lasts one turn. project_id comes from the
+    authorized run scope, never from the tool payload.
+    """
+    if not state.approval_request:
+        raise HTTPException(status_code=400, detail="Workflow is not waiting for approval.")
+
+    payload = state.approval_request.payload or {}
+    project_id = str(state.context.project_id or "")
+    if not project_id:
+        raise HTTPException(status_code=400, detail="No project is in scope for this conversation.")
+
+    origin = str(payload.get("origin") or "contract").strip().lower()
+    contract_id = str(payload.get("contract_id") or "").strip()
+    quote = str(payload.get("quote") or "").strip()
+    sources = [{"contract_id": contract_id, "quote": quote}] if contract_id else []
+    tags = [tag.strip() for tag in str(payload.get("tags") or "").split(",") if tag.strip()]
+
+    from core.database import db as core_db
+    from services.project_memory import ProjectMemoryManager
+
+    try:
+        fact = ProjectMemoryManager(core_db).remember_fact(
+            project_id=project_id,
+            text=str(payload.get("text") or ""),
+            sources=sources,
+            tags=tags,
+            origin=origin,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    state.status = AgentStatus.COMPLETED
+    state.approval_request = None
+    state.answer = f"Approved. I've recorded that in this project's memory: {fact['text']}"
+    state.reason = "Human approved writing a fact to project memory."
+    state.artifacts = [{
+        "artifact_id": fact["fact_id"],
+        "artifact_kind": "project_fact",
+        "type": "project_fact",
+        "filename": "Fact recorded",
+        "project_id": project_id,
+        "text": fact["text"],
+        "origin": fact["origin"],
+        "sources": fact["sources"],
+        "tags": fact["tags"],
+    }]
+    state.add_trace(
+        "approval_executed",
+        action="remember_fact",
+        fact_id=fact["fact_id"],
+        origin=fact["origin"],
     )
     _store().save(state)
     return DeepContractAgentRunner(store=_store()).response_from_state(state)

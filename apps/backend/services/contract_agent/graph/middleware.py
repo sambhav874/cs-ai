@@ -32,6 +32,7 @@ def middleware_descriptors() -> List[MiddlewareDescriptor]:
             "create_tabular_review",
             "generate_tabular_review",
             "extract_kpis",
+            "remember_fact",
             "replicate_document",
         ]}, runtime="local"),
         MiddlewareDescriptor("ModelRetryMiddleware", True, {"max_retries": 2}, runtime="langchain"),

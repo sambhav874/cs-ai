@@ -117,6 +117,7 @@ class ApprovalRequest(BaseModel):
         "generate_tabular_review",
         "duplicate_document_copy",
         "extract_kpis",
+        "remember_fact",
         "replicate_document",
     ]
     title: str
