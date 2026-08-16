@@ -1,7 +1,12 @@
-"""Model factory — builds a LangChain chat model from the configured provider.
+"""Model factory — the single place a LangChain chat model gets built.
 
-Extracted from react_runtime.py so providers can be added / removed / tuned
-in a single place without touching the runtime loop.
+Every LLM call in the agent stack goes through `build_chat_model`. Before this
+was consolidated there were four near-identical provider ladders (here, in
+rag/llm_client.py, rag/query_decomposer.py and rag/evidence_service.py) that
+had already drifted apart: only this one normalized provider aliases, so an
+`ai_provider="anthropic"` silently fell through to Groq in one of them and
+returned None in the others; Claude's default model differed between them; and
+only this one set stream_usage, so token accounting missed every RAG-path call.
 
 Features enabled per provider
 ──────────────────────────────
@@ -11,6 +16,17 @@ Features enabled per provider
              for o-series models
 • Gemini   – streaming, thinking_budget / thinking_level (model-aware), include_thoughts
 • Groq     – streaming, reasoning_effort + reasoning_format (gpt-oss models only)
+
+Purposes
+────────
+`purpose` picks the size/latency profile, replacing the per-call-site tables
+that used to live in the duplicate ladders:
+
+• "chat"     – full model, streaming, thinking/reasoning enabled. Agent loop.
+• "classify" – full model, 512 output tokens, deterministic, no thinking.
+               Short structured judgements (query analysis).
+• "light"    – the provider's smallest model, 256 output tokens, deterministic.
+               Cheap pre-processing (query decomposition).
 """
 
 from __future__ import annotations
@@ -24,33 +40,102 @@ from .state import AgentRunState
 
 
 # ---------------------------------------------------------------------------
+# Purpose / model tables
+# ---------------------------------------------------------------------------
+
+# The smallest usable model per provider, for pre-processing calls where a
+# frontier model is pure waste.
+_LIGHTWEIGHT_MODELS: Dict[str, str] = {
+    "groq": "llama-3.2-1b-preview",
+    "gemini": "gemini-2.0-flash-lite",
+    "claude": "claude-haiku-4-5",
+    "openai": "gpt-4o-mini",
+}
+
+# max_tokens / temperature of None mean "inherit from settings".
+_PURPOSES: Dict[str, Dict[str, Any]] = {
+    "chat": {"max_tokens": None, "temperature": None, "reasoning": True, "streaming": True, "lightweight": False},
+    "classify": {"max_tokens": 512, "temperature": 0.0, "reasoning": False, "streaming": False, "lightweight": False},
+    "light": {"max_tokens": 256, "temperature": 0.0, "reasoning": False, "streaming": False, "lightweight": True},
+}
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def build_chat_model(state: AgentRunState, *, task_type: str = "default") -> Any:
-    """Build a LangChain chat model based on the configured provider."""
-    provider = _normalize_provider_name(
-        state.ai_provider or getattr(settings, "ai_provider", None) or "groq"
+def build_chat_model(
+    state: Optional[AgentRunState] = None,
+    *,
+    provider: Optional[str] = None,
+    purpose: str = "chat",
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    task_type: str = "default",
+    optional: bool = False,
+) -> Any:
+    """Build a LangChain chat model.
+
+    `provider` wins over `state.ai_provider` wins over the configured default.
+    Aliases are normalized here and nowhere else ("anthropic" → claude,
+    "google"/"genai" → gemini, "gpt" → openai).
+
+    `optional=True` returns None instead of raising when the chosen provider
+    has no API key configured — for callers that degrade to a heuristic rather
+    than fail (query decomposition, query analysis).
+    """
+    profile = _PURPOSES.get(purpose) or _PURPOSES["chat"]
+
+    resolved_provider = _normalize_provider_name(
+        provider
+        or (state.ai_provider if state is not None else None)
+        or getattr(settings, "ai_provider", None)
+        or "groq"
+    ) or "groq"
+
+    api_key = _api_key_for(resolved_provider)
+    if not api_key:
+        if optional:
+            return None
+        # Fall through — the provider SDK raises its own (clearer) auth error.
+
+    resolved_temperature = _first_not_none(
+        temperature, profile["temperature"], getattr(settings, "temperature", 0.1), 0.1
     )
-    temperature = float(getattr(settings, "temperature", 0.1) or 0.1)
-    max_tokens = int(getattr(settings, "max_tokens", 2048) or 2048)
+    resolved_max_tokens = int(
+        _first_not_none(max_tokens, profile["max_tokens"], getattr(settings, "max_tokens", 2048), 2048)
+    )
+    model_name = _resolve_model_name(resolved_provider, lightweight=profile["lightweight"])
 
-    if provider == "gemini":
-        return _build_gemini(temperature, max_tokens)
-    if provider == "openai":
-        return _build_openai(state, temperature, max_tokens, task_type)
-    if provider == "claude":
-        return _build_claude(temperature, max_tokens)
+    message = state.message if state is not None else ""
+    common = dict(
+        model_name=model_name,
+        api_key=api_key,
+        temperature=float(resolved_temperature),
+        max_tokens=resolved_max_tokens,
+        streaming=bool(profile["streaming"]),
+        reasoning=bool(profile["reasoning"]),
+        message=message or "",
+        task_type=task_type,
+    )
 
-    # Default: Groq
-    return _build_groq(state, temperature, max_tokens, task_type)
+    if resolved_provider == "gemini":
+        return _build_gemini(**common)
+    if resolved_provider == "openai":
+        return _build_openai(**common)
+    if resolved_provider == "claude":
+        return _build_claude(**common)
+    return _build_groq(**common)
 
 
 # ---------------------------------------------------------------------------
 # Provider builders
 # ---------------------------------------------------------------------------
 
-def _build_claude(temperature: float, max_tokens: int) -> Any:
+def _build_claude(
+    *, model_name: str, api_key: Optional[str], temperature: float, max_tokens: int,
+    streaming: bool, reasoning: bool, message: str, task_type: str,
+) -> Any:
     """Build ChatAnthropic with streaming, stream_usage, and thinking.
 
     Thinking / effort behaviour (from Anthropic docs):
@@ -62,13 +147,7 @@ def _build_claude(temperature: float, max_tokens: int) -> Any:
     """
     from langchain_anthropic import ChatAnthropic
 
-    model_name: str = (
-        getattr(settings, "anthropic_model_name", None)
-        or getattr(settings, "claude_model_name", None)
-        or "claude-sonnet-4-6"
-    )
-
-    thinking_enabled: bool = bool(getattr(settings, "claude_thinking_enabled", True))
+    thinking_enabled: bool = reasoning and bool(getattr(settings, "claude_thinking_enabled", True))
     thinking_budget: int = int(getattr(settings, "claude_thinking_budget", 5000) or 5000)
     effort_level: str = str(getattr(settings, "claude_effort_level", "medium") or "medium")
 
@@ -76,11 +155,13 @@ def _build_claude(temperature: float, max_tokens: int) -> Any:
 
     kwargs: Dict[str, Any] = dict(
         model=model_name,
-        api_key=getattr(settings, "anthropic_api_key", None),
+        api_key=api_key,
         max_tokens=max_tokens,
         # Token-level usage included in streaming chunks
         stream_usage=True,
     )
+    if streaming:
+        kwargs["streaming"] = True
 
     if thinking_enabled:
         if model_family == "claude3":
@@ -89,7 +170,6 @@ def _build_claude(temperature: float, max_tokens: int) -> Any:
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
         elif model_family in {"opus46", "opus45"}:
             # Effort API — Opus 4.6 supports "max"; 4.5 supports up to "high"
-            max_effort = "max" if model_family == "opus46" else "high"
             resolved = effort_level if effort_level in {"low", "medium", "high", "max"} else "medium"
             if resolved == "max" and model_family != "opus46":
                 resolved = "high"
@@ -111,32 +191,35 @@ def _build_claude(temperature: float, max_tokens: int) -> Any:
 
 
 def _build_openai(
-    state: AgentRunState, temperature: float, max_tokens: int, task_type: str
+    *, model_name: str, api_key: Optional[str], temperature: float, max_tokens: int,
+    streaming: bool, reasoning: bool, message: str, task_type: str,
 ) -> Any:
     """Build ChatOpenAI with streaming, stream_usage, and reasoning_effort for o-series."""
     from langchain_openai import ChatOpenAI
 
-    model_name: str = getattr(settings, "openai_model_name", None) or "gpt-4o-mini"
-
     kwargs: Dict[str, Any] = dict(
         model=model_name,
-        api_key=getattr(settings, "openai_api_key", None),
+        api_key=api_key or "",
         temperature=temperature,
         max_tokens=max_tokens,
         # Enable token-level streaming + per-chunk usage metadata
-        streaming=True,
+        streaming=streaming,
         stream_usage=True,
     )
 
     # reasoning_effort is only valid for o-series models (o1, o3, o4-mini, …)
-    reasoning_effort = _openai_reasoning_effort(state.message, task_type=task_type, model_name=model_name)
-    if reasoning_effort:
-        kwargs["reasoning_effort"] = reasoning_effort
+    if reasoning:
+        reasoning_effort = _openai_reasoning_effort(message, task_type=task_type, model_name=model_name)
+        if reasoning_effort:
+            kwargs["reasoning_effort"] = reasoning_effort
 
     return ChatOpenAI(**kwargs)
 
 
-def _build_gemini(temperature: float, max_tokens: int) -> Any:
+def _build_gemini(
+    *, model_name: str, api_key: Optional[str], temperature: float, max_tokens: int,
+    streaming: bool, reasoning: bool, message: str, task_type: str,
+) -> Any:
     """Build ChatGoogleGenerativeAI with streaming and thinking config.
 
     Thinking behaviour (from Google / LangChain docs):
@@ -146,19 +229,18 @@ def _build_gemini(temperature: float, max_tokens: int) -> Any:
     """
     from langchain_google_genai import ChatGoogleGenerativeAI
 
-    model_name: str = getattr(settings, "gemini_model_name", None) or "gemini-2.0-flash"
-    thinking_enabled: bool = bool(getattr(settings, "gemini_thinking_enabled", True))
+    thinking_enabled: bool = reasoning and bool(getattr(settings, "gemini_thinking_enabled", True))
     thinking_budget: int = int(getattr(settings, "gemini_thinking_budget", 1024) or 1024)
     thinking_level: str = str(getattr(settings, "gemini_thinking_level", "medium") or "medium")
     include_thoughts: bool = bool(getattr(settings, "gemini_include_thoughts", False))
 
     kwargs: Dict[str, Any] = dict(
         model=model_name,
-        google_api_key=getattr(settings, "gemini_api_key", None),
+        google_api_key=api_key or "",
         temperature=temperature,
         max_output_tokens=max_tokens,
         # Token-level streaming
-        streaming=True,
+        streaming=streaming,
     )
 
     if thinking_enabled:
@@ -176,29 +258,27 @@ def _build_gemini(temperature: float, max_tokens: int) -> Any:
 
 
 def _build_groq(
-    state: AgentRunState, temperature: float, max_tokens: int, task_type: str
+    *, model_name: str, api_key: Optional[str], temperature: float, max_tokens: int,
+    streaming: bool, reasoning: bool, message: str, task_type: str,
 ) -> Any:
     """Build ChatGroq with streaming and conditional reasoning for gpt-oss models."""
     from langchain_groq import ChatGroq
 
-    model_name: str = getattr(settings, "model_name", None) or "llama-3.3-70b-versatile"
     is_reasoning_model = "gpt-oss" in str(model_name).lower()
 
     kwargs: Dict[str, Any] = dict(
         model=model_name,
-        groq_api_key=getattr(settings, "groq_api_key", None),
+        groq_api_key=api_key,
         temperature=temperature,
         max_tokens=max_tokens,
         # Token-level streaming
-        streaming=True,
+        streaming=streaming,
     )
 
-    if is_reasoning_model:
+    if reasoning and is_reasoning_model:
         # reasoning_format and reasoning_effort only apply to gpt-oss variants
         kwargs["reasoning_format"] = "parsed"
-        reasoning_effort = _groq_reasoning_effort(
-            state.message, task_type=task_type, model_name=model_name
-        )
+        reasoning_effort = _groq_reasoning_effort(message, task_type=task_type, model_name=model_name)
         if reasoning_effort:
             kwargs["reasoning_effort"] = reasoning_effort
 
@@ -208,6 +288,13 @@ def _build_groq(
 # ---------------------------------------------------------------------------
 # Provider / model detection helpers
 # ---------------------------------------------------------------------------
+
+def _first_not_none(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
 
 def _normalize_provider_name(provider: Any) -> str:
     value = str(provider or "").strip().lower().replace("-", "_")
@@ -220,6 +307,35 @@ def _normalize_provider_name(provider: Any) -> str:
     if value in {"anthropic", "claude"}:
         return "claude"
     return value
+
+
+def _api_key_for(provider: str) -> Optional[str]:
+    if provider == "openai":
+        return (getattr(settings, "openai_api_key", "") or "").strip() or None
+    if provider == "claude":
+        return (getattr(settings, "anthropic_api_key", "") or "").strip() or None
+    if provider == "gemini":
+        return (getattr(settings, "gemini_api_key", "") or "").strip() or None
+    return (getattr(settings, "groq_api_key", "") or "").strip() or None
+
+
+def _resolve_model_name(provider: str, *, lightweight: bool = False) -> str:
+    """Pick the model name for a provider. Defaults live here only — the
+    duplicate ladders used to disagree (claude-sonnet-4-6 here vs
+    claude-haiku-4-5 in two others)."""
+    if lightweight:
+        return _LIGHTWEIGHT_MODELS.get(provider, _LIGHTWEIGHT_MODELS["groq"])
+    if provider == "openai":
+        return getattr(settings, "openai_model_name", None) or "gpt-4o-mini"
+    if provider == "claude":
+        return (
+            getattr(settings, "anthropic_model_name", None)
+            or getattr(settings, "claude_model_name", None)
+            or "claude-sonnet-4-6"
+        )
+    if provider == "gemini":
+        return getattr(settings, "gemini_model_name", None) or "gemini-2.0-flash"
+    return getattr(settings, "model_name", None) or "llama-3.3-70b-versatile"
 
 
 def _claude_model_family(model_name: str) -> str:

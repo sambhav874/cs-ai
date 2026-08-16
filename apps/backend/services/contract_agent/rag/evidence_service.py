@@ -178,50 +178,20 @@ class SemanticQueryAnalyzer:
         )
 
     def _build_llm(self) -> Optional[object]:
-        """Build a LangChain chat model using the same model configured for generation."""
+        """Build a chat model for short structured query analysis.
+
+        Delegates to the shared factory (purpose="classify" carries the
+        512-token cap and deterministic temperature). `optional=True` keeps
+        this call site's contract of returning None when the provider has no
+        key, so analysis degrades to the heuristic path. Imported lazily to
+        avoid a graph↔rag import cycle.
+        """
         try:
-            if self.provider == "groq":
-                if not getattr(settings, "groq_api_key", None):
-                    return None
-                from langchain_groq import ChatGroq  # type: ignore[import]
-                return ChatGroq(
-                    model=settings.model_name,
-                    api_key=settings.groq_api_key,
-                    temperature=0.0,
-                    max_tokens=512,
-                )
-            if self.provider == "openai":
-                if not getattr(settings, "openai_api_key", None):
-                    return None
-                from langchain_openai import ChatOpenAI  # type: ignore[import]
-                return ChatOpenAI(
-                    model=getattr(settings, "openai_model_name", None) or "gpt-4o-mini",
-                    api_key=settings.openai_api_key or "",
-                    temperature=0.0,
-                    max_tokens=512,
-                )
-            if self.provider == "claude":
-                if not getattr(settings, "anthropic_api_key", None):
-                    return None
-                from langchain_anthropic import ChatAnthropic  # type: ignore[import]
-                return ChatAnthropic(
-                    model=getattr(settings, "anthropic_model_name", None) or "claude-haiku-4-5",
-                    api_key=getattr(settings, "anthropic_api_key", "") or "",
-                    temperature=0.0,
-                    max_tokens=512,
-                )
-            if self.provider == "gemini":
-                if not getattr(settings, "gemini_api_key", None):
-                    return None
-                from langchain_google_genai import ChatGoogleGenerativeAI  # type: ignore[import]
-                return ChatGoogleGenerativeAI(
-                    model=getattr(settings, "gemini_model_name", None) or "gemini-2.0-flash",
-                    google_api_key=getattr(settings, "gemini_api_key", "") or "",
-                    temperature=0.0,
-                )
+            from services.contract_agent.graph.model_factory import build_chat_model
+
+            return build_chat_model(provider=self.provider, purpose="classify", optional=True)
         except Exception:
             return None
-        return None
 
 # ---------------------------------------------------------------------------
 # TTL retrieval cache — avoids re-running the full hybrid pipeline for

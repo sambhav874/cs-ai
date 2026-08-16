@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -25,15 +25,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["decompose_query", "is_complex_query"]
 
-# ---------------------------------------------------------------------------
-# Provider → lightweight model mapping
-# ---------------------------------------------------------------------------
-_LIGHTWEIGHT_MODELS: Dict[str, str] = {
-    "groq": "llama-3.2-1b-preview",
-    "gemini": "gemini-2.0-flash-lite",
-    "claude": "claude-haiku-4-5",
-    "openai": "gpt-4o-mini",
-}
+# Provider → lightweight model mapping now lives in the shared model factory
+# (purpose="light"), so every call site picks the same small model.
 
 # Thresholds for when decomposition is worth the extra LLM call
 _MIN_COMPLEX_WORDS = 12
@@ -92,62 +85,21 @@ def is_complex_query(query: str) -> bool:
 
 
 def _build_lightweight_llm(provider: str) -> Optional[object]:
-    """Build a LangChain chat model using the lightweight variant for the provider."""
-    provider = (provider or "groq").lower()
-    model_name = _LIGHTWEIGHT_MODELS.get(provider, "llama-3.2-1b-preview")
+    """Build the provider's smallest chat model for decomposition.
 
+    Delegates to the shared factory (purpose="light" carries the small-model
+    table and the 256-token cap). `optional=True` preserves this call site's
+    contract of returning None — not raising — when the provider has no key,
+    so decomposition falls back to the heuristic path. Imported lazily to
+    avoid a graph↔rag import cycle.
+    """
     try:
-        if provider == "groq":
-            if not settings.groq_api_key:
-                return None
-            from langchain_groq import ChatGroq  # type: ignore[import]
+        from services.contract_agent.graph.model_factory import build_chat_model
 
-            return ChatGroq(
-                model=model_name,
-                api_key=settings.groq_api_key,
-                temperature=0.0,
-                max_tokens=256,
-            )
-
-        if provider == "openai":
-            if not settings.openai_api_key:
-                return None
-            from langchain_openai import ChatOpenAI  # type: ignore[import]
-
-            return ChatOpenAI(
-                model=model_name,
-                api_key=settings.openai_api_key or "",
-                temperature=0.0,
-                max_tokens=256,
-            )
-
-        if provider == "claude":
-            if not getattr(settings, "anthropic_api_key", None):
-                return None
-            from langchain_anthropic import ChatAnthropic  # type: ignore[import]
-
-            return ChatAnthropic(
-                model=model_name,
-                api_key=getattr(settings, "anthropic_api_key", "") or "",
-                temperature=0.0,
-                max_tokens=256,
-            )
-
-        if provider == "gemini":
-            if not getattr(settings, "gemini_api_key", None):
-                return None
-            from langchain_google_genai import ChatGoogleGenerativeAI  # type: ignore[import]
-
-            return ChatGoogleGenerativeAI(
-                model=model_name,
-                google_api_key=getattr(settings, "gemini_api_key", "") or "",
-                temperature=0.0,
-            )
-
+        return build_chat_model(provider=provider, purpose="light", optional=True)
     except Exception as exc:
         logger.debug("Could not build lightweight LLM for %s: %s", provider, exc)
-
-    return None
+        return None
 
 
 # ---------------------------------------------------------------------------

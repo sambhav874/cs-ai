@@ -85,56 +85,15 @@ class FinalAnswerResponse(BaseModel):
 
 
 def _build_chat_model(provider: str, *, temperature: float = 0.0) -> Any:
-    """Return a LangChain chat model for the given provider."""
-    provider = (provider or "groq").lower()
+    """Return a LangChain chat model for the given provider.
 
-    if provider == "groq":
-        from langchain_groq import ChatGroq  # type: ignore[import]
+    Thin shim over the shared factory — imported lazily because
+    services.contract_agent.graph pulls in the runner, which reaches back into
+    this package.
+    """
+    from services.contract_agent.graph.model_factory import build_chat_model
 
-        return ChatGroq(
-            model=settings.model_name,
-            api_key=settings.groq_api_key,
-            temperature=temperature,
-            max_tokens=getattr(settings, "max_tokens", 2048),
-        )
-
-    if provider == "openai":
-        from langchain_openai import ChatOpenAI  # type: ignore[import]
-
-        return ChatOpenAI(
-            model=getattr(settings, "openai_model_name", None) or "gpt-4o-mini",
-            api_key=settings.openai_api_key or "",
-            temperature=temperature,
-        )
-
-    if provider == "claude":
-        from langchain_anthropic import ChatAnthropic  # type: ignore[import]
-
-        return ChatAnthropic(
-            model=getattr(settings, "anthropic_model_name", None) or "claude-haiku-4-5",
-            api_key=getattr(settings, "anthropic_api_key", "") or "",
-            temperature=temperature,
-            max_tokens=getattr(settings, "max_tokens", 4096),
-        )
-
-    if provider == "gemini":
-        from langchain_google_genai import ChatGoogleGenerativeAI  # type: ignore[import]
-
-        return ChatGoogleGenerativeAI(
-            model=getattr(settings, "gemini_model_name", None) or "gemini-2.0-flash",
-            google_api_key=getattr(settings, "gemini_api_key", "") or "",
-            temperature=temperature,
-        )
-
-    # Fallback to Groq
-    from langchain_groq import ChatGroq  # type: ignore[import]
-
-    return ChatGroq(
-        model=settings.model_name,
-        api_key=settings.groq_api_key,
-        temperature=temperature,
-        max_tokens=getattr(settings, "max_tokens", 2048),
-    )
+    return build_chat_model(provider=provider, purpose="chat", temperature=temperature)
 
 
 # ---------------------------------------------------------------------------
