@@ -134,41 +134,26 @@ def render_concept(record: Dict[str, Any]) -> str:
     return f"{front}\n\n" + "\n".join(body).strip()
 
 
-def _build_markdown_section(record: Dict[str, Any]) -> str:
-    """Render one document's overview as a markdown section — the unit that
-    gets appended to the project's running markdown journal and embedded into
-    its vector namespace. Metadata only (dates, parties, summary, topics,
-    relations, confidence) — deliberately no quoted evidence/citations, since
-    this is a project-history journal, not a cited answer."""
-    uploaded = record.get("uploaded_at")
-    uploaded_str = uploaded.strftime("%Y-%m-%d") if isinstance(uploaded, datetime) else str(uploaded or "")
-    parties = ", ".join(record.get("parties") or []) or "—"
-    topics = ", ".join(record.get("key_topics") or []) or "—"
-    related = record.get("related_documents") or []
-    relates_to = "; ".join(f"{r.get('relation_type')} {r.get('filename')}" for r in related) or "(none)"
-    confidence = record.get("rag_confidence")
-
-    lines = [
-        f"## {record.get('filename')} — {record.get('doc_type', 'other')}",
-        f"**Uploaded:** {uploaded_str}  |  **Effective date:** {record.get('effective_date') or '—'}  |  **Parties:** {parties}",
-        "",
-        record.get("purpose_summary") or "",
-        "",
-        f"**Key topics:** {topics}",
-        f"**Relates to:** {relates_to}",
-    ]
-    if confidence:
-        lines.append(f"**Confidence:** {confidence}")
-
-    return "\n".join(lines).strip()
+_SECTION_MARKER_RE = re.compile(
+    r"<!-- pm:section:([0-9a-zA-Z]+) -->.*?<!-- /pm:section:\1 -->", re.DOTALL
+)
+_BARE_SEPARATOR_RE = re.compile(r"^\s*---\s*$", re.M)
 
 
-def _wrap_scratchpad_section(contract_id: str, markdown_section: str) -> str:
-    """Wrap one document's markdown section with an HTML-comment marker pair
-    so _sync_scratchpad can find-and-replace just this section later —
-    comments are invisible when rendered but greppable in the raw text,
-    letting per-document auto-sync coexist with manual edits elsewhere."""
-    return f"<!-- pm:section:{contract_id} -->\n{markdown_section}\n<!-- /pm:section:{contract_id} -->"
+def split_scratchpad(content: str) -> Dict[str, Any]:
+    """Separate a legacy glued scratchpad into the part that is regenerable and
+    the part that is not.
+
+    Everything inside a `pm:section` marker pair was rendered from a memory
+    record and can be rebuilt at any time. Everything outside was typed by a
+    human and exists nowhere else — no record, no contract field, no backup.
+    That asymmetry is the whole risk of this migration, so the split is a
+    named, tested function rather than an inline regex at the call site.
+    """
+    sections = [match.group(1) for match in _SECTION_MARKER_RE.finditer(content or "")]
+    remainder = _SECTION_MARKER_RE.sub("", content or "")
+    remainder = _BARE_SEPARATOR_RE.sub("", remainder).strip()
+    return {"notes": remainder, "section_contract_ids": sections}
 
 
 def _extract_balanced_json_object(text: str) -> Optional[str]:
@@ -439,27 +424,16 @@ class ProjectMemoryManager:
                 "status": "success",
             })
 
-            # This document's metadata section gets folded into the single
-            # project-wide scratchpad below — see _sync_scratchpad.
-            markdown_section = _build_markdown_section(record)
-            record["markdown"] = markdown_section
+            # The rendered concept is stored alongside the typed fields rather
+            # than glued into a project-wide blob: it is fetched per document,
+            # on demand, by contract_id.
+            record["markdown"] = render_concept(record)
 
             self.memories.update_one(
                 {"project_id": project_id, "contract_id": contract_id},
                 {"$set": record},
                 upsert=True,
             )
-            try:
-                self._sync_scratchpad(project_id, contract_id, markdown_section)
-            except Exception as sync_exc:
-                # The structured overview above is already persisted; only the
-                # rendered scratchpad is behind. It re-syncs on this document's
-                # next ingest or manual edit, and the agent reads the same
-                # records through build_project_context_for_agent meanwhile.
-                logger.warning(
-                    "Scratchpad sync failed for project %s document %s: %s",
-                    project_id, contract_id, sync_exc,
-                )
             return record
         except Exception as exc:
             record["error"] = str(exc)[:500]
@@ -527,54 +501,28 @@ class ProjectMemoryManager:
         existing.pop("error", None)
         existing.pop("raw_answer_snippet", None)
 
-        markdown_section = _build_markdown_section(existing)
-        existing["markdown"] = markdown_section
+        existing["markdown"] = render_concept(existing)
 
         self.memories.update_one(
             {"project_id": project_id, "contract_id": contract_id},
             {"$set": existing},
             upsert=False,
         )
-
-        # Re-sync just this doc's marked section in the scratchpad — leaves
-        # every other section (auto or manually edited) untouched.
-        try:
-            self._sync_scratchpad(project_id, contract_id, markdown_section)
-        except Exception as sync_exc:
-            logger.warning(
-                "Scratchpad sync failed for project %s document %s: %s",
-                project_id, contract_id, sync_exc,
-            )
         return existing
 
-    def get_scratchpad(self, project_id: str) -> Dict[str, Any]:
-        """The single running project-memory document — one growing markdown
-        journal for the whole project, not a per-document fragment. Each
-        document's section auto-appends/updates in place as it's ingested or
-        corrected (see _sync_scratchpad); a human can also edit the whole
-        thing directly (see update_scratchpad) — the two coexist, since
-        auto-sync only ever touches its own marked sections and never
-        overwrites the rest of the text."""
+    def get_notes(self, project_id: str) -> Dict[str, Any]:
+        """The project's human-written notes. Prose only — document overviews
+        are concepts now, rendered from their records on demand, so nothing
+        auto-writes into this and a human's text is never interleaved with
+        generated sections."""
         doc = self.scratchpads.find_one({"project_id": project_id}, {"_id": 0})
         if not doc:
             return {"project_id": project_id, "content": "", "updated_at": None, "edited_manually": False}
         return doc
 
-    def update_scratchpad(
-        self, project_id: str, content: str, rag_system: Optional[Any] = None
-    ) -> Dict[str, Any]:
-        """Freeform full-text overwrite of the project's single memory
-        scratchpad. Marks edited_manually=True — purely informational (shown
-        as a badge in the UI) — future document events still auto-append or
-        update their own marked sections on top of whatever's here. Note: a
-        full rewrite that drops the `<!-- pm:section:... -->` markers means
-        the next event for an already-mentioned document won't find its old
-        section and will append a fresh copy instead of replacing in place.
-
-        `rag_system` is accepted and ignored — the scratchpad is no longer
-        embedded (see the class docstring). Kept so existing callers and tests
-        don't have to change in the same commit.
-        """
+    def update_notes(self, project_id: str, content: str) -> Dict[str, Any]:
+        """Overwrite the project's notes. Nothing else writes here, so there is
+        no merge to do and no auto-sync to coexist with."""
         now = _now()
         self.scratchpads.update_one(
             {"project_id": project_id},
@@ -591,83 +539,87 @@ class ProjectMemoryManager:
             "edited_manually": True,
         }
 
-    def _sync_scratchpad(
-        self, project_id: str, contract_id: str, markdown_section: str
-    ) -> None:
-        """Event-driven append/update: touches ONLY this document's marked
-        section of the single project scratchpad — appended if this is the
-        first time this document has synced, replaced in place (by its
-        `<!-- pm:section:{contract_id} -->` marker) if it already exists.
-        Everything else in the scratchpad — including any manual prose a
-        human has added elsewhere — is left byte-for-byte untouched, so
-        manual edits and auto-sync on new/edited documents coexist instead of
-        one disabling the other."""
-        existing = self.scratchpads.find_one({"project_id": project_id}, {"_id": 0}) or {}
-        content = existing.get("content", "")
-        wrapped = _wrap_scratchpad_section(contract_id, markdown_section)
-
-        marker_re = re.compile(
-            rf"<!-- pm:section:{re.escape(contract_id)} -->.*?<!-- /pm:section:{re.escape(contract_id)} -->",
-            re.DOTALL,
+    def read_concept(self, project_id: str, contract_id: str) -> Optional[str]:
+        """One document's full overview, fetched by id. Re-renders from the
+        typed fields rather than trusting the stored `markdown`, so a record
+        written before the concept format still comes back in it."""
+        record = self.memories.find_one(
+            {"project_id": project_id, "contract_id": contract_id}, {"_id": 0}
         )
-        if marker_re.search(content):
-            content = marker_re.sub(lambda _match: wrapped, content, count=1)
-        elif content.strip():
-            content = content.rstrip() + "\n\n---\n\n" + wrapped
-        else:
-            content = wrapped
-
-        now = _now()
-        self.scratchpads.update_one(
-            {"project_id": project_id},
-            {
-                "$set": {"content": content, "updated_at": now},
-                "$setOnInsert": {"project_id": project_id, "created_at": now, "edited_manually": False},
-            },
-            upsert=True,
-        )
-    def search_project_memory(
-        self,
-        project_id: str,
-        query: str,
-        *,
-        top_k: int = 6,
-        rag_system: Optional[Any] = None,
-    ) -> Optional[str]:
-        """The project's memory scratchpad, whole and untruncated. Returns None
-        (caller falls back to build_project_context_for_agent) when the project
-        has no scratchpad yet.
-
-        This used to run a top-k vector search over the project's namespace, but
-        that could only ever lose information here: the scratchpad was embedded
-        as ONE document, and the splitter's chunk_size is larger than a typical
-        scratchpad, so the "search" retrieved a single chunk containing exactly
-        the text below — after a round trip through the embedding API, and
-        through a store bound to the whole vector collection rather than to this
-        project. Past the chunk size it got worse, not better:
-        RecursiveCharacterTextSplitter cuts on character boundaries, not on the
-        `pm:section` markers, so top-k would hand the agent half of one
-        document's overview and none of another's. The embedding write was
-        removed along with it.
-
-        `query` and `top_k` are kept for call compatibility and are unused —
-        there is nothing to rank when the whole memory is one document.
-        """
-        doc = self.scratchpads.find_one({"project_id": project_id}, {"_id": 0, "content": 1})
-        content = (doc or {}).get("content") or ""
-        if not content.strip():
+        if not record:
             return None
+        if record.get("status") != "success":
+            return (
+                f"No usable overview for this document (status: "
+                f"{record.get('status') or 'unknown'}). Read the document itself instead."
+            )
+        return render_concept(record)
 
-        # Deliberately uncapped. This is the project's own curated memory — a
-        # few KB of metadata summaries, not document text — and cutting it at a
-        # fixed character budget silently drops whichever documents sort last,
-        # which is exactly how the agent came to answer "what relates to this
-        # contract?" while missing half the project.
-        return (
+    def migrate_scratchpads_to_notes(self, *, dry_run: bool = True) -> List[Dict[str, Any]]:
+        """Reduce every legacy scratchpad to the human prose it contains.
+
+        Defaults to dry_run because the generated sections are recoverable and
+        the prose is not: if the split is wrong, a real run destroys the only
+        copy. Returns per-project detail either way so a caller can inspect
+        exactly what would be kept before committing to it.
+        """
+        results: List[Dict[str, Any]] = []
+        for doc in self.scratchpads.find({}):
+            project_id = doc.get("project_id")
+            content = doc.get("content") or ""
+            split = split_scratchpad(content)
+            notes = split["notes"]
+
+            known_ids = {
+                str(record.get("contract_id"))
+                for record in self.memories.find({"project_id": project_id}, {"contract_id": 1})
+            }
+            # A marked section whose record is gone is NOT regenerable, so it
+            # is kept as prose rather than dropped on the assumption it can be
+            # rebuilt.
+            orphaned = [cid for cid in split["section_contract_ids"] if cid not in known_ids]
+            if orphaned:
+                for match in _SECTION_MARKER_RE.finditer(content):
+                    if match.group(1) in orphaned:
+                        notes = (notes + "\n\n" + match.group(0)).strip()
+
+            results.append({
+                "project_id": project_id,
+                "before_chars": len(content),
+                "after_chars": len(notes),
+                "sections_dropped": len(split["section_contract_ids"]) - len(orphaned),
+                "orphaned_sections_kept": orphaned,
+                "notes_preview": notes[:200],
+            })
+
+            if not dry_run:
+                self.scratchpads.update_one(
+                    {"project_id": project_id},
+                    {"$set": {"content": notes, "migrated_at": _now()}},
+                )
+        return results
+
+    def build_memory_context(self, project_id: str) -> Optional[str]:
+        """What the agent gets up front: the complete document index, plus any
+        human notes. Uncapped, because both are small and truncating either one
+        silently drops documents.
+
+        Deliberately excludes the per-document overviews. They used to all be
+        concatenated into one blob and sent every turn; now the index carries
+        enough to answer "what is in this project and how do these relate",
+        and the agent pulls a full concept by id when it needs the detail.
+        """
+        parts = [
             "Project memory below is for context only — not citation evidence. "
-            "Cite specific clauses only from search_evidence/read_document results.\n\n"
-            f"{content.strip()}"
-        )
+            "Cite specific clauses only from search_evidence/read_document results.",
+            self.render_index(project_id),
+        ]
+
+        notes = (self.get_notes(project_id).get("content") or "").strip()
+        if notes:
+            parts.append(f"Notes written by the team:\n{notes}")
+
+        return "\n\n".join(parts)
 
     def build_project_timeline(self, project_id: str) -> List[Dict[str, Any]]:
         """Chronological, grouped view: schedules/annexes/amendments nest under

@@ -21,7 +21,11 @@ APP_BACKEND_ROOT = os.path.abspath(os.path.join(conftest_dir, "../../../apps/bac
 if APP_BACKEND_ROOT not in sys.path:
     sys.path.insert(0, APP_BACKEND_ROOT)
 
-from services.project_memory import ProjectMemoryManager, render_concept  # noqa: E402
+from services.project_memory import (  # noqa: E402
+    ProjectMemoryManager,
+    render_concept,
+    split_scratchpad,
+)
 
 PROJECT_A = "6a7f8420355760378cc4db77"
 PROJECT_B = "6a7f6729c16d4a678241ecde"
@@ -65,93 +69,49 @@ def _section(contract_id: str, filename: str, body: str = "") -> str:
     )
 
 
-def test_search_returns_only_the_requested_projects_memory(manager):
-    """The bug: a store bound to the whole vector collection, queried without a
-    namespace filter, returned every project's memory to every project."""
-    manager.update_scratchpad(PROJECT_A, _section("c1", "01_MSA_Solstice_Cobalt.pdf"))
-    manager.update_scratchpad(PROJECT_B, _section("c2", "02_AnnexA_Services.pdf"))
+# ---------------------------------------------------------------- scoping ---
 
-    context_a = manager.search_project_memory(PROJECT_A, "which documents relate?")
-    context_b = manager.search_project_memory(PROJECT_B, "which documents relate?")
+def test_memory_context_is_scoped_to_one_project(manager):
+    """The original bug: a vector store bound to the whole collection, queried
+    without a namespace filter, returned every project's memory to every
+    project — so the agent named another project's documents as this one's."""
+    a = _add_contract(manager, PROJECT_A, "01_MSA_Solstice_Cobalt.pdf")
+    _add_memory(manager, PROJECT_A, a, "01_MSA_Solstice_Cobalt.pdf")
+    b = _add_contract(manager, PROJECT_B, "02_AnnexA_Services.pdf")
+    _add_memory(manager, PROJECT_B, b, "02_AnnexA_Services.pdf")
+    manager.update_notes(PROJECT_A, "Notes for A.")
+    manager.update_notes(PROJECT_B, "Notes for B.")
+
+    context_a = manager.build_memory_context(PROJECT_A)
+    context_b = manager.build_memory_context(PROJECT_B)
 
     assert "01_MSA_Solstice_Cobalt.pdf" in context_a
     assert "02_AnnexA_Services.pdf" not in context_a
+    assert "Notes for B." not in context_a
     assert "02_AnnexA_Services.pdf" in context_b
     assert "01_MSA_Solstice_Cobalt.pdf" not in context_b
+    assert "Notes for A." not in context_b
 
 
-def test_search_returns_none_when_project_has_no_scratchpad(manager):
-    assert manager.search_project_memory(PROJECT_A, "anything") is None
+def test_index_is_scoped_to_one_project(manager):
+    a = _add_contract(manager, PROJECT_A, "01_A.pdf")
+    _add_memory(manager, PROJECT_A, a, "01_A.pdf")
+    b = _add_contract(manager, PROJECT_B, "01_B.pdf")
+    _add_memory(manager, PROJECT_B, b, "01_B.pdf")
+
+    assert "01_B.pdf" not in manager.render_index(PROJECT_A)
+    assert "01_A.pdf" not in manager.render_index(PROJECT_B)
 
 
-def test_search_returns_none_for_a_whitespace_only_scratchpad(manager):
-    manager.update_scratchpad(PROJECT_A, "   \n\n  ")
-    assert manager.search_project_memory(PROJECT_A, "anything") is None
+def test_read_concept_will_not_cross_projects(manager):
+    a = _add_contract(manager, PROJECT_A, "01_A.pdf")
+    _add_memory(manager, PROJECT_A, a, "01_A.pdf")
+
+    assert manager.read_concept(PROJECT_A, a) is not None
+    assert manager.read_concept(PROJECT_B, a) is None
 
 
-def test_whole_scratchpad_is_returned_untruncated(manager):
-    """The old fixed 3500-char cap silently dropped whichever documents sorted
-    last — the reason the agent missed half its own project."""
-    sections = [
-        _section(f"c{i}", f"{i:02d}_Document.pdf", "Purpose summary. " * 40)
-        for i in range(1, 26)
-    ]
-    scratchpad = "\n\n---\n\n".join(sections)
-    assert len(scratchpad) > 3500, "fixture must exceed the old cap to be meaningful"
-
-    manager.update_scratchpad(PROJECT_A, scratchpad)
-    context = manager.search_project_memory(PROJECT_A, "summarise the project")
-
-    assert scratchpad.strip() in context
-    for i in range(1, 26):
-        assert f"{i:02d}_Document.pdf" in context
-
-
-def test_context_for_agent_lists_every_successful_document(manager):
-    """The chronological fallback is also uncapped; truncating it would drop the
-    most recently uploaded documents."""
-    for i in range(1, 31):
-        manager.memories.insert_one({
-            "project_id": PROJECT_A,
-            "contract_id": f"c{i}",
-            "filename": f"{i:02d}_Document.pdf",
-            "doc_type": "sow",
-            "purpose_summary": "Purpose summary. " * 20,
-            "status": "success",
-            "uploaded_at": f"2026-08-{i:02d}",
-        })
-
-    context = manager.build_project_context_for_agent(PROJECT_A)
-
-    for i in range(1, 31):
-        assert f"{i:02d}_Document.pdf" in context
-
-
-def test_sync_preserves_human_prose_outside_the_markers(manager):
-    """Manual prose lives only in the scratchpad text and is not derivable from
-    the per-document records. Phase 1 of the OKF restructure has to migrate it,
-    so this invariant is what guards against losing it."""
-    manual = "Renewal is being negotiated verbally; nothing signed yet."
-    manager.update_scratchpad(
-        PROJECT_A, _section("c1", "01_MSA.pdf", "old body") + "\n\n---\n\n" + manual
-    )
-
-    manager._sync_scratchpad(PROJECT_A, "c1", "## 01_MSA.pdf — sow\nnew body")
-    content = manager.get_scratchpad(PROJECT_A)["content"]
-
-    assert manual in content
-    assert "new body" in content
-    assert "old body" not in content
-
-
-def test_sync_appends_a_document_that_has_no_section_yet(manager):
-    manager.update_scratchpad(PROJECT_A, _section("c1", "01_MSA.pdf"))
-    manager._sync_scratchpad(PROJECT_A, "c2", "## 02_SOW.pdf — sow")
-
-    content = manager.get_scratchpad(PROJECT_A)["content"]
-    assert "01_MSA.pdf" in content
-    assert "02_SOW.pdf" in content
-
+# ------------------------------------------------------------ completeness ---
 
 def test_index_lists_a_document_that_has_no_overview_yet(manager):
     """Audit gap 1. Overview generation is best-effort and never fails ingest,
@@ -202,20 +162,79 @@ def test_index_covers_every_document_and_never_truncates(manager):
         assert f"{i:02d}_Document.pdf" in index
 
 
-def test_index_is_scoped_to_one_project(manager):
-    a = _add_contract(manager, PROJECT_A, "01_A.pdf")
-    _add_memory(manager, PROJECT_A, a, "01_A.pdf")
-    b = _add_contract(manager, PROJECT_B, "01_B.pdf")
-    _add_memory(manager, PROJECT_B, b, "01_B.pdf")
+def test_context_for_agent_lists_every_successful_document(manager):
+    """The chronological fallback is also uncapped; truncating it would drop the
+    most recently uploaded documents."""
+    for i in range(1, 31):
+        _add_memory(manager, PROJECT_A, f"c{i}", f"{i:02d}_Document.pdf",
+                    purpose_summary="Purpose summary. " * 20)
 
-    assert "01_B.pdf" not in manager.render_index(PROJECT_A)
-    assert "01_A.pdf" not in manager.render_index(PROJECT_B)
+    context = manager.build_project_context_for_agent(PROJECT_A)
+
+    for i in range(1, 31):
+        assert f"{i:02d}_Document.pdf" in context
+
+
+def test_notes_are_not_truncated(manager):
+    """The old fixed 3500-char cap silently dropped whatever sorted last."""
+    notes = "Negotiation history. " * 400
+    assert len(notes) > 3500
+
+    manager.update_notes(PROJECT_A, notes)
+    context = manager.build_memory_context(PROJECT_A)
+
+    assert notes.strip() in context
 
 
 def test_index_handles_an_unusable_project_id(manager):
     assert manager.render_index("not-an-objectid") == "No project in scope."
     assert manager.render_index("") == "No project in scope."
 
+
+def test_memory_context_holds_up_with_no_documents_and_no_notes(manager):
+    context = manager.build_memory_context(PROJECT_A)
+
+    assert "no documents yet" in context
+    assert "Notes written by the team" not in context
+
+
+def test_memory_context_omits_the_notes_section_when_notes_are_blank(manager):
+    manager.update_notes(PROJECT_A, "   \n\n  ")
+
+    assert "Notes written by the team" not in manager.build_memory_context(PROJECT_A)
+
+
+# ------------------------------------------------------- on-demand concepts ---
+
+def test_memory_context_excludes_per_document_overviews(manager):
+    """Overviews used to be concatenated into every turn's context. The index
+    carries what is needed to navigate; detail is fetched by id."""
+    contract_id = _add_contract(manager, PROJECT_A, "01_MSA.pdf")
+    _add_memory(manager, PROJECT_A, contract_id, "01_MSA.pdf",
+                purpose_summary="Distinctive summary sentence.")
+
+    context = manager.build_memory_context(PROJECT_A)
+
+    assert "01_MSA.pdf" in context
+    assert "Distinctive summary sentence." not in context
+    assert "Distinctive summary sentence." in manager.read_concept(PROJECT_A, contract_id)
+
+
+def test_read_concept_explains_itself_when_the_overview_is_unusable(manager):
+    contract_id = _add_contract(manager, PROJECT_A, "01_Thin.pdf")
+    _add_memory(manager, PROJECT_A, contract_id, "01_Thin.pdf", status="failed")
+
+    result = manager.read_concept(PROJECT_A, contract_id)
+
+    assert "No usable overview" in result
+    assert "failed" in result
+
+
+def test_read_concept_returns_none_for_an_unknown_document(manager):
+    assert manager.read_concept(PROJECT_A, "nope") is None
+
+
+# ------------------------------------------------------------- concept format ---
 
 def test_concept_frontmatter_is_parseable_and_carries_project_scope(manager):
     record = _add_memory(
@@ -259,16 +278,87 @@ def test_concept_omits_empty_fields(manager):
     assert "tags" not in parsed
 
 
+# ----------------------------------------------------------------- migration ---
+
+def test_split_keeps_human_prose_and_drops_generated_sections():
+    """The asymmetry this migration turns on: generated sections can be rebuilt
+    from records, typed prose exists nowhere else."""
+    manual = "Deal team: FRA-based, effective 1 June 2026. Incumbent is AeroGround."
+    content = _section("c1", "01_MSA.pdf", "generated body") + "\n\n---\n\n" + manual
+
+    split = split_scratchpad(content)
+
+    assert split["notes"] == manual
+    assert split["section_contract_ids"] == ["c1"]
+    assert "generated body" not in split["notes"]
+
+
+def test_split_of_a_scratchpad_with_no_prose_yields_nothing_to_keep():
+    content = _section("c1", "01_MSA.pdf") + "\n\n---\n\n" + _section("c2", "02_SOW.pdf")
+
+    split = split_scratchpad(content)
+
+    assert split["notes"] == ""
+    assert split["section_contract_ids"] == ["c1", "c2"]
+
+
+def test_migration_dry_run_changes_nothing(manager):
+    manual = "Renewal negotiated verbally."
+    manager.update_notes(PROJECT_A, _section("c1", "01_MSA.pdf") + "\n\n---\n\n" + manual)
+    _add_memory(manager, PROJECT_A, "c1", "01_MSA.pdf")
+    before = manager.get_notes(PROJECT_A)["content"]
+
+    results = manager.migrate_scratchpads_to_notes(dry_run=True)
+
+    assert manager.get_notes(PROJECT_A)["content"] == before
+    assert results[0]["sections_dropped"] == 1
+    assert manual in results[0]["notes_preview"]
+
+
+def test_migration_preserves_human_prose(manager):
+    manual = "Deal team: FRA-based, effective 1 June 2026."
+    manager.update_notes(PROJECT_A, _section("c1", "01_MSA.pdf", "generated") + "\n\n---\n\n" + manual)
+    _add_memory(manager, PROJECT_A, "c1", "01_MSA.pdf")
+
+    manager.migrate_scratchpads_to_notes(dry_run=False)
+    content = manager.get_notes(PROJECT_A)["content"]
+
+    assert content == manual
+    assert "generated" not in content
+    assert "pm:section" not in content
+
+
+def test_migration_keeps_a_section_whose_record_is_missing(manager):
+    """Dropping a generated section is only safe because it can be rebuilt. If
+    the record is gone it cannot be, so the section is kept as prose instead."""
+    manager.update_notes(PROJECT_A, _section("orphan", "99_Ghost.pdf", "irreplaceable"))
+
+    manager.migrate_scratchpads_to_notes(dry_run=False)
+    content = manager.get_notes(PROJECT_A)["content"]
+
+    assert "irreplaceable" in content
+
+
+def test_migration_is_idempotent(manager):
+    manual = "Notes that must survive twice."
+    manager.update_notes(PROJECT_A, _section("c1", "01_MSA.pdf") + "\n\n---\n\n" + manual)
+    _add_memory(manager, PROJECT_A, "c1", "01_MSA.pdf")
+
+    manager.migrate_scratchpads_to_notes(dry_run=False)
+    first = manager.get_notes(PROJECT_A)["content"]
+    manager.migrate_scratchpads_to_notes(dry_run=False)
+
+    assert manager.get_notes(PROJECT_A)["content"] == first == manual
+
+
+# --------------------------------------------------------------------- misc ---
+
 def test_project_memory_writes_no_vectors(manager):
     """Phase 0 removed the embedding write: the scratchpad was stored as a
     single document smaller than the splitter's chunk size, so retrieval could
     only ever return the one chunk it had just written."""
     assert not hasattr(manager, "_reembed_scratchpad")
 
-    result = manager.update_scratchpad(PROJECT_A, _section("c1", "01_MSA.pdf"))
+    result = manager.update_notes(PROJECT_A, "Some notes.")
     assert "vectorized" not in result
     assert "vector_error" not in result
-
-    # No rag_system argument, and no vector backend reachable from mongomock —
-    # this raising would mean an embedding call crept back in.
-    manager._sync_scratchpad(PROJECT_A, "c1", "## 01_MSA.pdf — sow")

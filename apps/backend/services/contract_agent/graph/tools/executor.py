@@ -1210,11 +1210,10 @@ def _get_project_timeline(state: AgentRunState) -> Dict[str, Any]:
         from services.project_memory import ProjectMemoryManager
 
         manager = ProjectMemoryManager(core_db)
-        # The project's memory scratchpad, whole. Falls back to a chronological
-        # block rebuilt from the per-document records for projects that have no
-        # scratchpad yet (ingested before this feature, or overview generation
-        # failed — it is best-effort and never fails ingestion).
-        context_text = manager.search_project_memory(project_id, state.message or "")
+        # The complete document index plus any human notes. Per-document
+        # overviews are deliberately not included — the agent fetches one by id
+        # with read_concept when it needs the detail.
+        context_text = manager.build_memory_context(project_id)
         if not context_text:
             context_text = manager.build_project_context_for_agent(project_id, state.message or "")
         return {

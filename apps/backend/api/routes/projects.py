@@ -411,40 +411,46 @@ def update_project_timeline_entry(
 
 
 @router.get("/{project_id}/memory")
-def get_project_memory_scratchpad(project_id: str, current_user: UserInDB = Depends(get_current_active_user)):
-    """The single running project-memory document — one growing markdown
-    journal built from every ingested document's overview, chronological,
-    human-readable. This is what a new team member (or the agent) reads to
-    understand the whole project's history in one place."""
+def get_project_memory_notes(project_id: str, current_user: UserInDB = Depends(get_current_active_user)):
+    """The project's human-written notes.
+
+    Document overviews used to be glued into this same text; they are separate
+    concepts now, rendered per document from their records, so this holds only
+    what a person typed."""
     verify_project_access(project_id, current_user)
 
     from core.database import db
     from services.project_memory import ProjectMemoryManager
 
-    return ProjectMemoryManager(db).get_scratchpad(project_id)
+    return ProjectMemoryManager(db).get_notes(project_id)
+
+
+@router.get("/{project_id}/memory/index")
+def get_project_memory_index(project_id: str, current_user: UserInDB = Depends(get_current_active_user)):
+    """Every document in the project, one line each — the same complete index
+    the agent is given up front."""
+    verify_project_access(project_id, current_user)
+
+    from core.database import db
+    from services.project_memory import ProjectMemoryManager
+
+    return {"project_id": project_id, "index": ProjectMemoryManager(db).render_index(project_id)}
 
 
 @router.put("/{project_id}/memory")
-def update_project_memory_scratchpad(
+def update_project_memory_notes(
     project_id: str,
     request: ProjectScratchpadUpdate,
     current_user: UserInDB = Depends(get_current_active_user),
 ):
-    """Freeform full-text overwrite of the project's memory scratchpad.
-
-    Manual edits and auto-sync coexist; a manual edit does not stop auto-sync.
-    Ingesting or correcting a document still rewrites that document's own
-    `<!-- pm:section:{contract_id} -->` block, and leaves every other byte —
-    including human prose — untouched. `edited_manually` is a UI badge only;
-    nothing reads it. Note that a rewrite which drops a section's markers means
-    the next event for that document appends a fresh copy instead of replacing
-    in place."""
+    """Overwrite the project's notes. Nothing auto-writes here any more, so a
+    human's text is never interleaved with generated document sections."""
     verify_project_access(project_id, current_user)
 
     from core.database import db
     from services.project_memory import ProjectMemoryManager
 
-    return ProjectMemoryManager(db).update_scratchpad(project_id, request.content)
+    return ProjectMemoryManager(db).update_notes(project_id, request.content)
 
 
 @router.get("/{project_id}/stats", response_model=Dict[str, int])
