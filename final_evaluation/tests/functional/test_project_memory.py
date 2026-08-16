@@ -9,16 +9,19 @@ Backed by mongomock so these are deterministic and never touch a real database.
 
 import os
 import sys
+from datetime import datetime
 
 import mongomock
 import pytest
+import yaml
+from bson import ObjectId
 
 conftest_dir = os.path.dirname(os.path.abspath(__file__))
 APP_BACKEND_ROOT = os.path.abspath(os.path.join(conftest_dir, "../../../apps/backend"))
 if APP_BACKEND_ROOT not in sys.path:
     sys.path.insert(0, APP_BACKEND_ROOT)
 
-from services.project_memory import ProjectMemoryManager  # noqa: E402
+from services.project_memory import ProjectMemoryManager, render_concept  # noqa: E402
 
 PROJECT_A = "6a7f8420355760378cc4db77"
 PROJECT_B = "6a7f6729c16d4a678241ecde"
@@ -28,6 +31,30 @@ PROJECT_B = "6a7f6729c16d4a678241ecde"
 def manager():
     client = mongomock.MongoClient()
     return ProjectMemoryManager(client["contract_core_db"])
+
+
+def _add_contract(manager, project_id, name, *, status="Ingested"):
+    return str(manager.contracts.insert_one({
+        "projectId": ObjectId(project_id),
+        "contract_name": name,
+        "status": status,
+        "uploaded_at": datetime(2026, 8, 14),
+    }).inserted_id)
+
+
+def _add_memory(manager, project_id, contract_id, name, *, status="success", **extra):
+    doc = {
+        "project_id": project_id,
+        "contract_id": contract_id,
+        "filename": name,
+        "doc_type": "sow",
+        "purpose_summary": "Purpose.",
+        "status": status,
+        "uploaded_at": datetime(2026, 8, 14),
+    }
+    doc.update(extra)
+    manager.memories.insert_one(doc)
+    return doc
 
 
 def _section(contract_id: str, filename: str, body: str = "") -> str:
@@ -124,6 +151,112 @@ def test_sync_appends_a_document_that_has_no_section_yet(manager):
     content = manager.get_scratchpad(PROJECT_A)["content"]
     assert "01_MSA.pdf" in content
     assert "02_SOW.pdf" in content
+
+
+def test_index_lists_a_document_that_has_no_overview_yet(manager):
+    """Audit gap 1. Overview generation is best-effort and never fails ingest,
+    so a document can sit in a project with no memory record. Every other reader
+    filters on status=success; an index built that way would hide it, and the
+    agent would answer about a partial project believing it was whole."""
+    ingested = _add_contract(manager, PROJECT_A, "01_MSA.pdf")
+    _add_memory(manager, PROJECT_A, ingested, "01_MSA.pdf")
+    _add_contract(manager, PROJECT_A, "02_Pending.pdf", status="Indexing")
+
+    index = manager.render_index(PROJECT_A)
+
+    assert "01_MSA.pdf" in index
+    assert "02_Pending.pdf" in index
+    assert "no overview yet" in index
+    assert "Indexing" in index
+
+
+def test_index_lists_a_document_whose_overview_failed(manager):
+    contract_id = _add_contract(manager, PROJECT_A, "01_Thin.pdf")
+    _add_memory(manager, PROJECT_A, contract_id, "01_Thin.pdf", status="failed")
+
+    index = manager.render_index(PROJECT_A)
+
+    assert "01_Thin.pdf" in index
+    assert "overview unavailable" in index
+
+
+def test_index_flags_memory_whose_contract_left_the_project(manager):
+    """Audit gap 2: deleting a project reassigns its contracts to the fallback
+    project but leaves their memory behind under the dead project_id."""
+    _add_memory(manager, PROJECT_A, "gone-contract", "03_Moved.pdf")
+
+    index = manager.render_index(PROJECT_A)
+
+    assert "03_Moved.pdf" in index
+    assert "no longer in this project" in index
+
+
+def test_index_covers_every_document_and_never_truncates(manager):
+    for i in range(1, 41):
+        contract_id = _add_contract(manager, PROJECT_A, f"{i:02d}_Document.pdf")
+        _add_memory(manager, PROJECT_A, contract_id, f"{i:02d}_Document.pdf")
+
+    index = manager.render_index(PROJECT_A)
+
+    for i in range(1, 41):
+        assert f"{i:02d}_Document.pdf" in index
+
+
+def test_index_is_scoped_to_one_project(manager):
+    a = _add_contract(manager, PROJECT_A, "01_A.pdf")
+    _add_memory(manager, PROJECT_A, a, "01_A.pdf")
+    b = _add_contract(manager, PROJECT_B, "01_B.pdf")
+    _add_memory(manager, PROJECT_B, b, "01_B.pdf")
+
+    assert "01_B.pdf" not in manager.render_index(PROJECT_A)
+    assert "01_A.pdf" not in manager.render_index(PROJECT_B)
+
+
+def test_index_handles_an_unusable_project_id(manager):
+    assert manager.render_index("not-an-objectid") == "No project in scope."
+    assert manager.render_index("") == "No project in scope."
+
+
+def test_concept_frontmatter_is_parseable_and_carries_project_scope(manager):
+    record = _add_memory(
+        manager, PROJECT_A, "c1", "01_MSA.pdf",
+        key_topics=["term", "payment"],
+        related_documents=[{"filename": "02_SOW.pdf", "relation_type": "amends"}],
+    )
+
+    _, front, body = render_concept(record).split("---", 2)
+    parsed = yaml.safe_load(front)
+
+    assert parsed["type"] == "contract-document"
+    assert parsed["project_id"] == PROJECT_A
+    assert parsed["source_contract_id"] == "c1"
+    assert parsed["tags"] == ["term", "payment"]
+    assert parsed["links"] == ["amends:02_SOW.pdf"]
+    assert "01_MSA.pdf" in body
+
+
+def test_concept_frontmatter_survives_values_that_would_break_yaml(manager):
+    """These fields are model output — colons, quotes and newlines in a party
+    name or filename are routine and must not produce invalid YAML."""
+    record = _add_memory(
+        manager, PROJECT_A, "c1", 'Mid: "Contract" v2\nrev.pdf',
+        parties=['Acme: Holdings "International"'],
+        key_topics=["fees: rebates", "term\nlength"],
+    )
+
+    parsed = yaml.safe_load(render_concept(record).split("---", 2)[1])
+
+    assert parsed["title"] == 'Mid: "Contract" v2\nrev.pdf'
+    assert parsed["tags"] == ["fees: rebates", "term\nlength"]
+
+
+def test_concept_omits_empty_fields(manager):
+    record = _add_memory(manager, PROJECT_A, "c1", "01_MSA.pdf", effective_date=None, key_topics=[])
+
+    parsed = yaml.safe_load(render_concept(record).split("---", 2)[1])
+
+    assert "effective_date" not in parsed
+    assert "tags" not in parsed
 
 
 def test_project_memory_writes_no_vectors(manager):

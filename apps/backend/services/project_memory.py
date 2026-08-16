@@ -17,6 +17,9 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+import yaml
+from bson import ObjectId
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,6 +74,64 @@ def _clean_text(value: Any, limit: int = 2000) -> str:
     text = _strip_citation_markers(text).strip()
     return text[:limit]
 
+
+
+CONCEPT_TYPE_DOCUMENT = "contract-document"
+
+
+def _frontmatter(fields: Dict[str, Any]) -> str:
+    """Emit OKF-style YAML frontmatter, dropping empty values so a sparse
+    record doesn't render a wall of nulls. Uses safe_dump rather than hand
+    formatting because these values are model output — filenames, party names
+    and summaries routinely contain colons, quotes and newlines that would
+    otherwise produce invalid YAML."""
+    present = {k: v for k, v in fields.items() if v not in (None, "", [], {})}
+    body = yaml.safe_dump(present, sort_keys=False, allow_unicode=True, default_flow_style=False)
+    return f"---\n{body}---"
+
+
+def render_concept(record: Dict[str, Any]) -> str:
+    """One document's overview as a standalone OKF concept: YAML frontmatter
+    carrying the queryable fields, markdown body carrying the prose.
+
+    `project_id` lives in the frontmatter deliberately. Scoping memory to its
+    own project used to be per-call-site discipline, and the one call site that
+    forgot leaked every project's documents into every other project's answers.
+    A field on the concept itself is a filter that cannot be forgotten.
+    """
+    uploaded = record.get("uploaded_at")
+    uploaded_iso = uploaded.isoformat() if isinstance(uploaded, datetime) else (str(uploaded or "") or None)
+    related = record.get("related_documents") or []
+
+    front = _frontmatter({
+        "type": CONCEPT_TYPE_DOCUMENT,
+        "title": record.get("filename"),
+        "project_id": record.get("project_id"),
+        "source_contract_id": record.get("contract_id"),
+        "doc_type": record.get("doc_type") or "other",
+        "effective_date": record.get("effective_date"),
+        "timestamp": uploaded_iso,
+        "tags": list(record.get("key_topics") or []),
+        "links": [
+            f"{r.get('relation_type')}:{r.get('filename')}"
+            for r in related
+            if r.get("filename")
+        ],
+        "confidence": record.get("rag_confidence"),
+    })
+
+    parties = ", ".join(record.get("parties") or []) or "—"
+    relates_to = "; ".join(f"{r.get('relation_type')} {r.get('filename')}" for r in related) or "(none)"
+    body = [
+        f"# {record.get('filename')}",
+        "",
+        f"**Parties:** {parties}",
+        "",
+        record.get("purpose_summary") or "",
+        "",
+        f"**Relates to:** {relates_to}",
+    ]
+    return f"{front}\n\n" + "\n".join(body).strip()
 
 
 def _build_markdown_section(record: Dict[str, Any]) -> str:
@@ -189,6 +250,73 @@ class ProjectMemoryManager:
         agent_db = mongo_db.client["contract_agent_db"]
         self.memories = agent_db["project_memories"]
         self.scratchpads = agent_db["project_scratchpads"]
+        # The index is built from the contracts collection, not from memory —
+        # see render_index for why.
+        self.contracts = mongo_db["contracts"]
+
+    def render_index(self, project_id: str) -> str:
+        """Every document in the project, one line each. Complete by
+        construction and never ranked or truncated.
+
+        Enumerates `contracts`, not `project_memories`. Overview generation is
+        best-effort at ingest and explicitly never fails ingestion, so a
+        document can sit in a project with no memory record at all — and every
+        other reader here filters on `status: "success"`. Building the index
+        from memory would inherit that hole and quietly present a partial
+        project as the whole one, which is the failure this index exists to
+        prevent. A document without a usable overview gets a row saying so.
+        """
+        if not project_id or not ObjectId.is_valid(project_id):
+            return "No project in scope."
+
+        contracts = list(
+            self.contracts.find(
+                {"projectId": ObjectId(project_id)},
+                {"contract_name": 1, "status": 1, "uploaded_at": 1},
+            ).sort("uploaded_at", 1)
+        )
+        memories = {
+            str(m.get("contract_id")): m
+            for m in self.memories.find({"project_id": project_id})
+        }
+
+        lines: List[str] = []
+        for contract in contracts:
+            contract_id = str(contract["_id"])
+            record = memories.get(contract_id)
+            name = contract.get("contract_name") or (record or {}).get("filename") or "(unnamed)"
+            uploaded = contract.get("uploaded_at")
+            uploaded_str = uploaded.strftime("%Y-%m-%d") if isinstance(uploaded, datetime) else ""
+
+            if record and record.get("status") == "success":
+                related = record.get("related_documents") or []
+                relates = ", ".join(
+                    f"{r.get('relation_type')} {r.get('filename')}" for r in related
+                ) or "none"
+                detail = f"{record.get('doc_type') or 'other'} · relates to: {relates}"
+            elif record:
+                detail = f"overview unavailable ({record.get('status') or 'unknown'})"
+            else:
+                detail = f"no overview yet (ingest status: {contract.get('status') or 'unknown'})"
+
+            lines.append(f"- {name} · {uploaded_str} · {detail} · id: {contract_id}")
+
+        # Memory records whose contract is gone from the project. Currently
+        # reachable via project deletion, which reassigns contracts to the
+        # fallback project without moving or removing their memory.
+        orphans = [
+            record for contract_id, record in memories.items()
+            if contract_id not in {str(c["_id"]) for c in contracts}
+        ]
+        for record in orphans:
+            lines.append(
+                f"- {record.get('filename')} · no longer in this project "
+                f"· id: {record.get('contract_id')}"
+            )
+
+        if not lines:
+            return "This project has no documents yet."
+        return "Documents in this project (complete list):\n" + "\n".join(lines)
 
     def _existing_light_docs(self, project_id: str) -> List[Dict[str, Any]]:
         if not project_id:
