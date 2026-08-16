@@ -4,7 +4,6 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-import requests
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -959,89 +958,44 @@ def _raise_tabular_model_unavailable() -> None:
 
 
 def _post_tabular_prompt(provider: str, system_prompt: str, user_prompt: str) -> str:
-    if provider == "groq":
-        response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {_provider_key('groq')}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": settings.model_name,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0,
-                "response_format": {"type": "json_object"},
-                "max_tokens": min(int(settings.max_tokens or 1200), 1600),
-            },
-            timeout=settings.api_timeout,
-        )
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+    """Run one tabular-extraction prompt on `provider` and return its raw text.
 
-    if provider == "gemini":
-        model = getattr(settings, "gemini_model_name", None) or "gemini-2.0-flash"
-        response = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={_provider_key('gemini')}",
-            headers={"Content-Type": "application/json"},
-            json={
-                "contents": [{"parts": [{"text": f"{system_prompt}\n\n{user_prompt}"}]}],
-                "generationConfig": {
-                    "temperature": 0,
-                    "topP": 1.0,
-                    "responseMimeType": "application/json",
-                },
-            },
-            timeout=settings.api_timeout,
-        )
-        response.raise_for_status()
-        return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+    Goes through the shared model factory instead of posting to each provider's
+    REST endpoint directly. The four hand-rolled branches this replaced each
+    hardcoded an endpoint URL, an auth header shape, and a different response
+    path to dig the text out of — and the Claude branch always sent a
+    temperature, which the current Claude models reject outright.
 
-    if provider == "claude":
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": _provider_key("claude"),
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": getattr(settings, "anthropic_model_name", None) or getattr(settings, "claude_model_name", None) or "claude-3-5-haiku-20241022",
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": user_prompt}],
-                "temperature": 0,
-                "max_tokens": min(int(settings.max_tokens or 1200), 1600),
-            },
-            timeout=settings.api_timeout,
-        )
-        response.raise_for_status()
-        return response.json()["content"][0]["text"]
+    Returns the model's text unparsed: callers own the JSON parsing and their
+    own repair paths, so this stays a transport swap and nothing downstream
+    changes.
+    """
+    from langchain_core.messages import HumanMessage, SystemMessage
 
-    if provider == "openai":
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {_provider_key('openai')}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": settings.openai_model_name or "gpt-4-turbo-preview",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0,
-                "response_format": {"type": "json_object"},
-                "max_tokens": min(int(settings.max_tokens or 1200), 1600),
-            },
-            timeout=settings.api_timeout,
-        )
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+    from services.contract_agent.graph.model_factory import build_chat_model
 
-    raise ValueError(f"Unsupported tabular provider: {provider}")
+    llm = build_chat_model(
+        provider=provider,
+        purpose="classify",
+        temperature=0,
+        # Preserves the original per-call cap. The "classify" purpose's own 512
+        # is too tight for a populated table row.
+        max_tokens=min(int(settings.max_tokens or 1200), 1600),
+        optional=True,
+    )
+    if llm is None:
+        raise ValueError(f"No API key configured for tabular provider: {provider}")
+
+    result = llm.invoke(
+        [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+    )
+    text = getattr(result, "content", "") or ""
+    if isinstance(text, list):
+        # Anthropic and Gemini can return a list of content blocks.
+        text = " ".join(
+            block.get("text", "") if isinstance(block, dict) else str(block) for block in text
+        )
+    return str(text)
 
 
 def _call_tabular_model_for_cell(
@@ -1085,14 +1039,21 @@ def _call_tabular_model_for_cell(
                         )
             _mark_provider_success(provider_state, provider)
             return generated
-        except requests.exceptions.HTTPError as exc:
-            status_code = exc.response.status_code if exc.response is not None else "HTTP"
-            errors.append(f"{provider}: {status_code}")
-            logger.warning("Tabular provider %s failed with HTTP %s; trying fallback.", provider, status_code)
-            _mark_provider_failed(provider_state, provider)
         except Exception as exc:
-            errors.append(f"{provider}: {exc}")
-            logger.warning("Tabular provider %s failed; trying fallback: %s", provider, exc)
+            # Provider SDK errors (via the model factory) carry a status_code;
+            # they replaced the requests.HTTPError this used to branch on, so
+            # the code is read off the exception rather than a response object.
+            status_code = getattr(exc, "status_code", None) or getattr(
+                getattr(exc, "response", None), "status_code", None
+            )
+            if status_code:
+                errors.append(f"{provider}: {status_code}")
+                logger.warning(
+                    "Tabular provider %s failed with HTTP %s; trying fallback.", provider, status_code
+                )
+            else:
+                errors.append(f"{provider}: {exc}")
+                logger.warning("Tabular provider %s failed; trying fallback: %s", provider, exc)
             _mark_provider_failed(provider_state, provider)
 
     raise TabularProviderError("No tabular review provider succeeded. " + "; ".join(errors))
