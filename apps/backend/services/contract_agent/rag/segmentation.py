@@ -731,7 +731,17 @@ class DocumentSegmenter:
             if merged:
                 previous = merged.pop()
                 combined = self._combine_meso_segments(previous, segment, full_text, page_spans)
-                merged.append(combined or previous)
+                if combined:
+                    merged.append(combined)
+                else:
+                    self.logger.warning(
+                        "Preserving meso segments after merge failure: %s-%s and %s-%s",
+                        previous.char_start,
+                        previous.char_end,
+                        segment.char_start,
+                        segment.char_end,
+                    )
+                    merged.extend([previous, segment])
             else:
                 merged.append(segment)
             index += 1

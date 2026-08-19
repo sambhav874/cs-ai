@@ -312,7 +312,7 @@ def segments_to_index_documents(
     documents: List[Document] = []
     for segment in segments:
         segment_text = clean_text_encoding(segment.text)
-        if segment.type == "sentence" or len(segment_text.strip()) < 40:
+        if segment.type == "sentence":
             continue
         documents.append(
             Document(
@@ -390,6 +390,7 @@ class VectorStoreManager:
         self.current_vector_backend = None
         self.current_namespace = None
         self.current_vector_count = 0
+        self.existing_chunk_schema_version: Optional[int] = None
 
         self.embedding_model = None
         self.embedding_dimension = None
@@ -543,10 +544,18 @@ class VectorStoreManager:
         if not namespace:
             return None
 
+        self.existing_chunk_schema_version = None
         cached = get_cached_vector_store(namespace)
         if cached is not None:
             self.current_namespace = namespace
             self.current_vector_backend = "mongodb"
+            if self.mongo_collection is not None:
+                sample = self.mongo_collection.find_one(
+                    {"namespace": namespace},
+                    {"chunk_schema_version": 1},
+                )
+                if sample:
+                    self.existing_chunk_schema_version = sample.get("chunk_schema_version")
             return cached
 
         if self.use_mongodb_vector:
@@ -555,9 +564,14 @@ class VectorStoreManager:
                     # Validate embedding dimension match before loading
                     sample = self.mongo_collection.find_one(
                         {"namespace": namespace},
-                        {"_embedding_dimension": 1, "_embedding_model": 1},
+                        {
+                            "_embedding_dimension": 1,
+                            "_embedding_model": 1,
+                            "chunk_schema_version": 1,
+                        },
                     )
                     if sample:
+                        self.existing_chunk_schema_version = sample.get("chunk_schema_version")
                         stored_dim = sample.get("_embedding_dimension")
                         stored_model = sample.get("_embedding_model")
                         current_dim = self.embedding_dimension or embedding_dimension(self.embedding_backend)
@@ -752,14 +766,21 @@ class VectorStoreManager:
     ) -> Dict[str, Any]:
         namespace = namespace or default_vector_namespace(contract_name, contract_id)
         
-        # Check if the vector store already exists for this namespace (do not reembed)
+        schema_version = getattr(settings, "chunk_schema_version", 2)
+
+        # Existing vectors are reusable only when their character offsets were
+        # produced from the current indexed-content schema.
         existing_store = self.load_existing_vector_store(namespace)
-        if existing_store is not None:
-            logger.info(f"Skipping embedding for contract {contract_name} in namespace {namespace} as it is already indexed.")
-            schema_version = getattr(settings, "chunk_schema_version", 2)
+        if existing_store is not None and self.existing_chunk_schema_version == schema_version:
+            logger.info(
+                "Skipping embedding for contract %s in namespace %s: schema version %s is current.",
+                contract_name,
+                namespace,
+                schema_version,
+            )
             cached_segs = get_cached_segments(contract_id, schema_version)
             segment_count = len(cached_segs) if cached_segs else 0
-            
+
             return {
                 "namespace": self.current_namespace,
                 "backend": self.current_vector_backend,
@@ -773,11 +794,20 @@ class VectorStoreManager:
                 "embedding_dimension": self.embedding_dimension or embedding_dimension(self.embedding_backend),
             }
 
+        if existing_store is not None:
+            logger.info(
+                "Re-indexing contract %s in namespace %s because stored schema version %s differs from current version %s.",
+                contract_name,
+                namespace,
+                self.existing_chunk_schema_version,
+                schema_version,
+            )
+            invalidate_vector_store(namespace)
+            replace_existing = True
+
         clean_content, segments = self.segmenter.segment_text_with_page_markers(contract_text)
         if not clean_content.strip():
             raise ValueError("No extracted contract text available to embed.")
-
-        schema_version = getattr(settings, "chunk_schema_version", 2)
 
         # Check if we should use Voyage auto-chunking
         is_voyage_autochunk = (

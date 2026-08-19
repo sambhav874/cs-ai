@@ -717,22 +717,20 @@ def _liteparse_page_text(page: Any) -> str:
             return _normalize_markdown_tables(md)
         text = page.get("text") or ""
         if text:
-            return _normalize_aligned_tables(text)
-        text_items = page.get("textItems") or []
+            return text
+        text_items = page.get("text_items") or []
         if isinstance(text_items, list):
-            raw = "\n".join(
+            return "\n".join(
                 item.get("text", "").strip()
                 for item in text_items
                 if isinstance(item, dict) and item.get("text")
             )
-            return _normalize_aligned_tables(raw)
         return ""
 
     md = getattr(page, "markdown", "") or ""
     if md:
         return _normalize_markdown_tables(md)
-    text = getattr(page, "text", "") or ""
-    return _normalize_aligned_tables(text)
+    return getattr(page, "text", "") or ""
 
 
 def _normalize_markdown_tables(text: str) -> str:
@@ -749,58 +747,6 @@ def _normalize_markdown_tables(text: str) -> str:
             result.append("| " + " | ".join(cells) + " |")
         else:
             result.append(line)
-    return "\n".join(result)
-
-
-def _looks_tabular(line: str) -> bool:
-    """Detect if a line looks like part of an aligned-column table."""
-    return bool(re.search(r"\S\s{3,}\S", line))
-
-
-def _tabular_to_pipe(block: List[str]) -> str:
-    """Convert aligned-text table block to pipe-formatted markdown."""
-    if len(block) < 2:
-        return "\n".join(block)
-    # Split each line by whitespace columns
-    rows = []
-    max_cols = 0
-    for line in block:
-        cols = re.split(r"\s{2,}", line.strip())
-        rows.append([col.strip() for col in cols])
-        max_cols = max(max_cols, len(cols))
-    # Pad rows to uniform column count
-    for row in rows:
-        while len(row) < max_cols:
-            row.append("")
-    # Render as pipe table
-    result = []
-    for i, row in enumerate(rows):
-        result.append("| " + " | ".join(row) + " |")
-        if i == 0:
-            result.append("|" + "|".join(" --- " for _ in range(max_cols)) + "|")
-    return "\n".join(result)
-
-
-def _normalize_aligned_tables(text: str) -> str:
-    """Detect and convert aligned-column table blocks to markdown pipe format."""
-    lines = text.split("\n")
-    result = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if _looks_tabular(line) and i + 1 < len(lines) and (
-            _looks_tabular(lines[i + 1]) or re.match(r"^\s*[-=]+\s*$", lines[i + 1])
-        ):
-            table_block = [line]
-            i += 1
-            while i < len(lines) and (_looks_tabular(lines[i]) or not lines[i].strip()):
-                if lines[i].strip():
-                    table_block.append(lines[i])
-                i += 1
-            result.append(_tabular_to_pipe(table_block))
-        else:
-            result.append(line)
-            i += 1
     return "\n".join(result)
 
 def _liteparse_page_number(page: Any, fallback: int) -> int:
