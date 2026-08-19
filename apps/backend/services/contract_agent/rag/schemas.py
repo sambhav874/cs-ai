@@ -27,6 +27,7 @@ class TextSegment(BaseModel):
 
     id: str
     text: str
+    display_text: Optional[str] = None
     type: str
     start_index: int
     end_index: int

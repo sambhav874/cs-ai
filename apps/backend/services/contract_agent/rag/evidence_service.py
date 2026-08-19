@@ -633,6 +633,7 @@ class EvidenceRetrievalService:
 
         projection = {
             "text": 1,
+            "display_text": 1,
             "page_content": 1,
             "content": 1,
             "contract_name": 1,
@@ -713,7 +714,12 @@ class EvidenceRetrievalService:
                     continue
                 for rank, doc in enumerate(docs or []):
                     metadata = dict(getattr(doc, "metadata", None) or {})
-                    metadata["text"] = getattr(doc, "page_content", "") or metadata.get("text") or metadata.get("content")
+                    metadata["text"] = (
+                        metadata.get("display_text")
+                        or metadata.get("text")
+                        or getattr(doc, "page_content", "")
+                        or metadata.get("content")
+                    )
                     hit = self._hit_from_vector_chunk(
                         metadata,
                         document_by_id={str(document.get("_id")): document},
@@ -898,7 +904,13 @@ class EvidenceRetrievalService:
         section_ref: Optional[str],
         requires_read: bool,
     ) -> Optional[EvidenceHit]:
-        text = str(metadata_value(raw, "text") or metadata_value(raw, "page_content") or metadata_value(raw, "content") or "").strip()
+        text = str(
+            metadata_value(raw, "display_text")
+            or metadata_value(raw, "text")
+            or metadata_value(raw, "page_content")
+            or metadata_value(raw, "content")
+            or ""
+        ).strip()
         if not text:
             return None
         doc_id = str(metadata_value(raw, "document_id") or metadata_value(raw, "contract_id") or "")

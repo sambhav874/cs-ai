@@ -287,6 +287,32 @@ def prepare_segments_for_document(
     return prepared_segments
 
 
+def _linearize_table_for_embedding(markdown_table: str) -> str:
+    """Convert markdown table rows to labelled text so semantic retrieval sees cell meaning."""
+    lines = [line for line in (markdown_table or "").splitlines() if line.strip()]
+    if len(lines) < 2:
+        return markdown_table
+    header = [cell.strip() for cell in lines[0].strip().strip("|").split("|")]
+    rows = lines[2:] if len(lines) > 2 else []
+    linearized_rows: List[str] = []
+    for row in rows:
+        values = [cell.strip() for cell in row.strip().strip("|").split("|")]
+        pairs = [
+            f"{header[index] or f'Column {index + 1}'}: {value}"
+            for index, value in enumerate(values)
+        ]
+        if pairs:
+            linearized_rows.append("; ".join(pairs))
+    return ". ".join(linearized_rows) or markdown_table
+
+
+def _batched(items: List[Any], n: int = 256) -> List[List[Any]]:
+    """Return bounded batches so a single vector-write failure does not abort all writes."""
+    if n <= 0:
+        raise ValueError("Batch size must be positive")
+    return [items[index:index + n] for index in range(0, len(items), n)]
+
+
 def embedding_text_for_segment(segment: TextSegment, segment_text: str) -> str:
     context_parts = [
         f"Document: {segment.contract_name}" if segment.contract_name else "",
@@ -297,7 +323,8 @@ def embedding_text_for_segment(segment: TextSegment, segment_text: str) -> str:
         f"Cross references: {', '.join(segment.cross_refs[:5])}" if segment.cross_refs else "",
     ]
     context = " | ".join(part for part in context_parts if part)
-    return f"{context}\n{segment_text}" if context else segment_text
+    content = _linearize_table_for_embedding(segment_text) if segment.type == "table" else segment_text
+    return f"{context}\n{content}" if context else content
 
 
 def segments_to_index_documents(
@@ -325,6 +352,7 @@ def segments_to_index_documents(
                     "project_id": project_id,
                     "user_id": user_id,
                     "segment_id": segment.id,
+                    "display_text": segment_text,
                     "segment_type": segment.type,
                     "chunk_schema_version": segment.chunk_schema_version,
                     "chunk_level": segment.chunk_level or segment.type,
@@ -396,6 +424,7 @@ class VectorStoreManager:
         self.embedding_dimension = None
 
         self.segmenter = DocumentSegmenter()
+        self.last_embedded_segments: List[TextSegment] = []
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
@@ -668,8 +697,21 @@ class VectorStoreManager:
                         embedding=self.embeddings,
                         index_name=settings.mongodb_vector_index_name
                     )
-                    vector_store.add_documents(texts)
-                    self.current_vector_count = len(texts)
+                    successful_documents = 0
+                    for batch_index, batch in enumerate(_batched(texts), 1):
+                        try:
+                            vector_store.add_documents(batch)
+                            successful_documents += len(batch)
+                        except Exception as batch_error:
+                            logger.error(
+                                "MongoDB vector batch %d failed for namespace %s; continuing with remaining batches: %s",
+                                batch_index,
+                                namespace,
+                                batch_error,
+                            )
+                    if successful_documents == 0:
+                        raise RuntimeError(f"All MongoDB vector batches failed for namespace {namespace}")
+                    self.current_vector_count = successful_documents
 
                     try:
                         vector_store.create_vector_search_index(
@@ -779,7 +821,11 @@ class VectorStoreManager:
                 schema_version,
             )
             cached_segs = get_cached_segments(contract_id, schema_version)
-            segment_count = len(cached_segs) if cached_segs else 0
+            self.last_embedded_segments = [
+                TextSegment.model_validate(segment)
+                for segment in (cached_segs or [])
+            ]
+            segment_count = len(self.last_embedded_segments)
 
             return {
                 "namespace": self.current_namespace,
@@ -806,6 +852,7 @@ class VectorStoreManager:
             replace_existing = True
 
         clean_content, segments = self.segmenter.segment_text_with_page_markers(contract_text)
+        self.last_embedded_segments = list(segments)
         if not clean_content.strip():
             raise ValueError("No extracted contract text available to embed.")
 
@@ -963,6 +1010,7 @@ class VectorStoreManager:
                             "project_id": project_id,
                             "user_id": user_id,
                             "segment_id": seg.id,
+                            "display_text": chunk_text,
                             "segment_type": seg.type,
                             "chunk_schema_version": seg.chunk_schema_version,
                             "chunk_level": seg.chunk_level,
@@ -977,6 +1025,7 @@ class VectorStoreManager:
                     )
                 )
 
+            self.last_embedded_segments = list(voyage_segments)
             chunk_count = len(index_documents)
             segment_count = len(voyage_segments)
 
@@ -1012,6 +1061,7 @@ class VectorStoreManager:
                 contract_name=contract_name,
                 token_counter=self.segmenter._estimated_tokens,
             )
+            self.last_embedded_segments = list(segments)
             index_documents = segments_to_index_documents(
                 segments,
                 contract_name=contract_name,

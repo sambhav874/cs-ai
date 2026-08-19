@@ -1016,6 +1016,13 @@ def _process_with_liteparse(temp_pdf_path: Path, file_name: str, contract_id: st
             last_error = exc
             if not ocr_enabled:
                 continue
+            if best_markdown.strip():
+                logger.warning(
+                    "LiteParse OCR retry failed for %s; retaining usable native markdown: %s",
+                    contract_id,
+                    exc,
+                )
+                break
             raise _liteparse_runtime_error(exc) from exc
 
     if not best_markdown.strip():

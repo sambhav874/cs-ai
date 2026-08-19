@@ -194,7 +194,7 @@ class ContractRAGSystem:
             replace_existing=replace_existing,
             require_mongodb=require_mongodb,
         )
-        self.document_segments[contract_name] = self.vector_manager.segmenter.segment_text_with_page_markers(contract_text)[1]
+        self.document_segments[contract_name] = list(self.vector_manager.last_embedded_segments)
         return result
 
     def create_vector_store(

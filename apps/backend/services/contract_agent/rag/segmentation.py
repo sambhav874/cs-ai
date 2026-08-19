@@ -458,12 +458,13 @@ class DocumentSegmenter:
         table_cols: Optional[int] = None,
         table_part_index: Optional[int] = None,
         table_part_count: Optional[int] = None,
+        allow_short: bool = False,
     ) -> Optional[TextSegment]:
         cleaned = clean_text_encoding(text or "").strip()
         if not preserve_whitespace:
             cleaned = re.sub(r"[ \t\f\v]+", " ", cleaned)
             cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
-        min_length = 1 if segment_type == "table" else (30 if segment_type == "micro" else 60)
+        min_length = 1 if allow_short or segment_type == "table" else (30 if segment_type == "micro" else 60)
         if len(cleaned) < min_length:
             return None
 
@@ -633,11 +634,20 @@ class DocumentSegmenter:
                     len(parts),
                 )
                 header_lines = lines[:2]
-                consumed_rows = [line for part in parts[:39] for line in part.splitlines()[2:] if line.strip().startswith("|")]
-                remaining_rows = [line for line in lines[2:] if line not in consumed_rows]
+                consumed_row_count = sum(
+                    1
+                    for part in parts[:39]
+                    for line in part.splitlines()[2:]
+                    if line.strip().startswith("|")
+                )
+                remaining_rows = lines[2 + consumed_row_count:]
                 parts = [*parts[:39], "\n".join([*header_lines, *remaining_rows])]
 
-            section_tags = sorted(set([*(section.get("tags") or []), "table"]))
+            section_tags = sorted(set([
+                *(section.get("tags") or []),
+                *self._assign_section_tags(section.get("path", ""), body.replace("|", " ")),
+                "table",
+            ]))
             parent_segment: Optional[TextSegment] = None
             if len(parts) > 1:
                 summary_lines = lines[: min(len(lines), 7)]
@@ -908,6 +918,62 @@ class DocumentSegmenter:
                     micros.append(segment)
         return micros
 
+    def _micro_segments_for_table(
+        self,
+        table_segment: TextSegment,
+        full_text: str,
+        page_spans: List[Tuple[Optional[int], int, int]],
+    ) -> List[TextSegment]:
+        """Extract capped value micros from labelled table rows without indexing numeric-only grids."""
+        if table_segment.char_start is None or table_segment.char_end is None:
+            return []
+        raw_table = full_text[table_segment.char_start:table_segment.char_end]
+        lines = [line for line in raw_table.splitlines() if line.strip()]
+        if len(lines) < 3:
+            return []
+        header = lines[0]
+        micros: List[TextSegment] = []
+        search_cursor = table_segment.char_start
+        seen_rows: set[Tuple[int, int]] = set()
+        for row in lines[2:]:
+            cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
+            label = cells[0] if cells else ""
+            if not re.search(r"[A-Za-z]", label) or not re.search(r"[A-Za-z0-9]", label):
+                continue
+            row_start = full_text.find(row, search_cursor)
+            if row_start < table_segment.char_start:
+                row_start = table_segment.char_start
+            row_end = min(table_segment.char_end, row_start + len(row))
+            search_cursor = max(search_cursor, row_end)
+            if (row_start, row_end) in seen_rows:
+                continue
+            seen_rows.add((row_start, row_end))
+            matched_types: List[str] = []
+            for pattern, value_type in self.VALUE_PATTERNS:
+                if pattern.search(row):
+                    matched_types.append(value_type)
+            if not matched_types:
+                continue
+            micro_text = f"{header}\n{row}"
+            for value_type in matched_types:
+                if len(micros) >= 50:
+                    logger.warning("Capped table micros at 50 for segment %s", table_segment.id)
+                    return micros
+                segment = self._make_legal_segment(
+                    text=micro_text,
+                    segment_type="micro",
+                    start_index=row_start,
+                    end_index=row_end,
+                    page_spans=page_spans,
+                    section_path=table_segment.section_path or "Document",
+                    section_tags=sorted(set([*(table_segment.section_tags or []), value_type, "table"])),
+                    parent_id=table_segment.id,
+                    value_types=[value_type],
+                )
+                if segment:
+                    micros.append(segment)
+        return micros
+
     def _combine_meso_segments(
         self,
         first: TextSegment,
@@ -1106,14 +1172,98 @@ class DocumentSegmenter:
             ))
 
         meso_segments = self._merge_tiny_meso_segments(meso_segments, full_text, page_spans)
-        segments: List[TextSegment] = [*macro_segments, *table_segments, *meso_segments]
+        table_micros: List[TextSegment] = []
+        for table_segment in table_segments:
+            if table_segment.table_part_count and table_segment.table_part_index is None:
+                continue
+            micros = self._micro_segments_for_table(table_segment, full_text, page_spans)
+            if micros:
+                table_segment.child_chunk_ids.extend([micro.id for micro in micros])
+                table_micros.extend(micros)
+
+        segments: List[TextSegment] = [*macro_segments, *table_segments, *meso_segments, *table_micros]
         for meso_segment in meso_segments:
             micros = self._micro_segments_for_meso(meso_segment, full_text, page_spans)
             if micros:
                 meso_segment.child_chunk_ids.extend([micro.id for micro in micros])
                 segments.extend(micros)
 
+        self._audit_span_coverage(full_text, segments, page_spans)
         return segments
+
+    def _audit_span_coverage(
+        self,
+        full_text: str,
+        segments: List[TextSegment],
+        page_spans: List[Tuple[Optional[int], int, int]],
+    ) -> List[Tuple[int, int]]:
+        """Repair uncovered text spans and return the repaired intervals."""
+        covered = sorted(
+            (segment.char_start, segment.char_end)
+            for segment in segments
+            if segment.char_start is not None
+            and segment.char_end is not None
+            and segment.char_end > segment.char_start
+            and segment.type in {"meso", "table"}
+        )
+        merged: List[Tuple[int, int]] = []
+        for start, end in covered:
+            if merged and start <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+
+        gaps: List[Tuple[int, int]] = []
+        cursor = 0
+        for start, end in merged:
+            if start > cursor:
+                gaps.append((cursor, start))
+            cursor = max(cursor, end)
+        if cursor < len(full_text):
+            gaps.append((cursor, len(full_text)))
+
+        repaired: List[Tuple[int, int]] = []
+        for gap_start, gap_end in gaps:
+            gap_text = full_text[gap_start:gap_end]
+            if not gap_text.strip():
+                preceding = [segment for segment in segments if segment.char_end == gap_start]
+                following = [segment for segment in segments if segment.char_start == gap_end]
+                if preceding:
+                    preceding[-1].char_end = gap_end
+                elif following:
+                    following[0].char_start = gap_start
+                repaired.append((gap_start, gap_end))
+                continue
+            excerpt = gap_text[:120].replace("\n", " ")
+            if gap_end - gap_start > 40:
+                logger.warning(
+                    "Legal chunk coverage gap %d-%d (%d chars): %s",
+                    gap_start,
+                    gap_end,
+                    gap_end - gap_start,
+                    excerpt,
+                )
+            section_path = "Document"
+            section_tags: List[str] = []
+            preceding = [segment for segment in segments if segment.char_end is not None and segment.char_end <= gap_start]
+            if preceding:
+                nearest = max(preceding, key=lambda segment: segment.char_end or 0)
+                section_path = nearest.section_path or section_path
+                section_tags = nearest.section_tags or section_tags
+            repair = self._make_legal_segment(
+                text=full_text[gap_start:gap_end],
+                segment_type="meso",
+                start_index=gap_start,
+                end_index=gap_end,
+                page_spans=page_spans,
+                section_path=section_path,
+                section_tags=section_tags,
+                allow_short=True,
+            )
+            if repair:
+                segments.append(repair)
+                repaired.append((gap_start, gap_end))
+        return repaired
 
     def _fallback_meso_segments(
         self,
