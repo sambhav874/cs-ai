@@ -918,3 +918,88 @@ def test_vector_prep_helpers_keep_segment_metadata_and_namespace_stable():
     assert docs[0].metadata["segment_id"] == "contract-1:seg-1"
     assert docs[0].metadata["chunk_schema_version"] == prepared[0].chunk_schema_version
     assert "Section: Section 4 Payment" in docs[0].page_content
+
+
+def test_stream_agent_gate_forwards_memory_context(monkeypatch):
+    """The stream gate must place conversation memory on the run state.
+
+    Regression guard for the gap where every stream route built a memory context
+    and then dropped it, leaving the agent stateless across turns.
+    """
+    from api.routes import agent as agent_routes
+    from services.contract_agent.graph.state import (
+        AgentContext,
+        AgentResponse,
+        AgentStatus,
+    )
+
+    captured = {}
+
+    class FakeRunner:
+        def __init__(self, **_):
+            pass
+
+        def run(self, state, on_event=None, cancel_check=None):
+            captured["state"] = state
+            return AgentResponse(
+                answer="ok",
+                confidence="high",
+                workflow_id=state.workflow_id,
+                workflow_status=AgentStatus.COMPLETED,
+            )
+
+    monkeypatch.setattr(agent_routes, "DeepContractAgentRunner", FakeRunner)
+    monkeypatch.setattr(agent_routes, "_agent_run_store", lambda: None)
+
+    agent_routes._run_stream_agent_gate(
+        user_id="user-1",
+        message="list them",
+        context=AgentContext(contract_id="contract-1"),
+        ai_provider=None,
+        memory_context="Recent turns:\n- user: what are the SLAs?\n- assistant: hot meal response, 98% monthly.",
+    )
+
+    assert "what are the SLAs?" in captured["state"].memory_context
+
+
+def test_build_user_message_includes_memory_context():
+    from services.contract_agent.graph.react_runtime import ContractReActRuntime
+    from services.contract_agent.graph.state import AgentContext, AgentRunState
+
+    state = AgentRunState(
+        user_id="user-1",
+        message="list them",
+        context=AgentContext(contract_id="contract-1"),
+        memory_context="Recent turns:\n- user: what are the SLAs?",
+    )
+    message = ContractReActRuntime()._build_user_message(state)
+
+    assert "what are the SLAs?" in message
+    assert "No prior conversation memory" not in message
+
+
+def test_agent_debug_trace_writes_no_files(monkeypatch, tmp_path, caplog):
+    """Prompt bodies carry contract text; they must never land on disk."""
+    import logging as _logging
+
+    from langchain_core.messages import HumanMessage
+    from services.contract_agent.graph import react_runtime
+
+    monkeypatch.delenv("AGENT_TRACE_BODIES", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    with caplog.at_level(_logging.DEBUG, logger=react_runtime.__name__):
+        react_runtime._log_agent_turn(
+            "workflow-1",
+            1,
+            [HumanMessage(content="CONFIDENTIAL CONTRACT TEXT")],
+            response_text="answer",
+            tool_names=["search_evidence"],
+        )
+        react_runtime._log_final_answer("workflow-1", "final answer", [{"ref": 1}])
+
+    assert list(tmp_path.iterdir()) == []
+    logged = caplog.text
+    assert "CONFIDENTIAL CONTRACT TEXT" not in logged
+    assert "search_evidence" in logged
+    assert "prompt_chars=26" in logged

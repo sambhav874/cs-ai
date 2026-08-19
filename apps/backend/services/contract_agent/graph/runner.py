@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any, Callable, Dict, Optional
 
+from services.contract_agent import citations
 from utils.text_cleanup import get_formatted_citations
 
 
@@ -47,7 +47,12 @@ class DeepContractAgentRunner:
         self.max_iterations = max_iterations
         self.middleware = ActiveMiddlewareEngine()
 
-    def run(self, state: AgentRunState, on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None) -> AgentResponse:
+    def run(
+        self,
+        state: AgentRunState,
+        on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+    ) -> AgentResponse:
         state.status = AgentStatus.RUNNING
         state.add_trace("input_guard", message_length=len(state.message))
         state = self.middleware.input_guard(state)
@@ -60,7 +65,10 @@ class DeepContractAgentRunner:
                 model=self.model,
                 max_iterations=self.max_iterations,
             )
-            state = runtime.run(state, checkpoint_config=self.checkpoint_config(state), on_event=on_event)
+            state = runtime.run(
+                state, checkpoint_config=self.checkpoint_config(state),
+                on_event=on_event, cancel_check=cancel_check,
+            )
             state = self.middleware.tool_guard(state)
             if state.status == AgentStatus.WAITING_APPROVAL:
                 state = self.middleware.approval_guard(state)
@@ -88,12 +96,8 @@ class DeepContractAgentRunner:
 
     def response_from_state(self, state: AgentRunState) -> AgentResponse:
         requires_approval = state.status == AgentStatus.WAITING_APPROVAL
-        if state.answer:
-            state.answer = re.sub(
-                r"【(\d+(?:\s*,\s*\d+)*)(?:†[^】\n]*)?】",
-                lambda m: f"[{m.group(1)}]",
-                state.answer
-            )
+        # Idempotent, and the regex itself lives only in citations.py.
+        state.answer = citations.normalize_markers(state.answer)
         if not state.citation_details:
             state.citation_details = {}
 
@@ -133,6 +137,7 @@ class DeepContractAgentRunner:
             tools=[tool.model_dump(mode="json") for tool in state.tools],
             agent_trace=[trace.model_dump(mode="json") for trace in state.traces],
             token_usage=state.token_usage,
+            model_calls=state.model_calls,
             cost_usd=state.cost.cost_usd,
             created_review_id=state.created_review_id,
         )
@@ -149,11 +154,7 @@ class DeepContractAgentRunner:
     def _persist(self, state: AgentRunState) -> None:
         state.add_trace("persist_run", persisted=bool(self.store))
         state.add_trace("final_response", status=state.status.value)
-        if state.answer:
-            state.answer = re.sub(
-                r"【(\d+(?:\s*,\s*\d+)*)(?:†[^】\n]*)?】",
-                lambda m: f"[{m.group(1)}]",
-                state.answer
-            )
+        # Idempotent, and the regex itself lives only in citations.py.
+        state.answer = citations.normalize_markers(state.answer)
         if self.store:
             self.store.save(state)

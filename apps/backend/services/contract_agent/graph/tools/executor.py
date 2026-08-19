@@ -165,13 +165,17 @@ def _load_scoped_documents(collection: Any, state: AgentRunState) -> List[Dict[s
 
 def _restrict_documents(documents: List[Dict[str, Any]], tool: ToolCallRecord, state: AgentRunState) -> List[Dict[str, Any]]:
     requested = set(_coerce_list(tool.args.get("document_ids")))
-    requested_id = str(tool.args.get("document_id") or "")
-    if requested_id:
-        requested.add(requested_id)
+    for key in ("document_id", "contract_id"):
+        requested_id = str(tool.args.get(key) or "").strip()
+        if requested_id:
+            requested.add(requested_id)
     if not requested:
         return documents
 
-    # Map doc-i labels to actual document IDs using state
+    # Resolve the model's friendly labels, but authorize against the route-built
+    # scope. Filtering an unauthorized ID to an empty result would turn a denied
+    # read into a harmless-looking no-match and make callers disagree about the
+    # boundary.
     doc_index = {}
     attached = state.context.attached_documents or []
     for i, doc in enumerate(attached):
@@ -183,13 +187,24 @@ def _restrict_documents(documents: List[Dict[str, Any]], tool: ToolCallRecord, s
         if doc_id:
             doc_index.setdefault(f"doc-{i}", str(doc_id))
 
+    scoped_ids = {
+        str(doc_id).strip()
+        for doc_id in [
+            *(state.context.selected_document_ids or []),
+            *(state.context.reference_contract_ids or []),
+            *([state.context.contract_id] if state.context.contract_id else []),
+        ]
+        if str(doc_id).strip()
+    }
     resolved_requested = set()
     for req in requested:
         req_str = str(req).strip()
-        if req_str in doc_index:
-            resolved_requested.add(doc_index[req_str])
-        else:
-            resolved_requested.add(req_str)
+        resolved_id = doc_index.get(req_str, req_str)
+        if resolved_id not in scoped_ids:
+            from services.contract_agent.graph.middleware import UnauthorizedAccessError
+
+            raise UnauthorizedAccessError(f"Access to document {req_str} is out of scoped context!")
+        resolved_requested.add(resolved_id)
 
     return [document for document in documents if str(document["_id"]) in resolved_requested]
 
@@ -1472,3 +1487,70 @@ def _calculate_from_evidence(expression: str, context: str) -> Dict[str, Any]:
         "expression": sanitized,
         "error": error,
     }
+
+
+def execute_correct_fact(
+    state: AgentRunState,
+    fact_id: str = "",
+    corrected_value: str = "",
+    reason: str = "",
+    *,
+    fact_description: str = "",
+    tags: Optional[Sequence[str]] = None,
+    origin: str = "user",
+) -> Dict[str, Any]:
+    """Execute fact correction directly against project memory."""
+    project_id = state.context.project_id
+    if not project_id:
+        return {"summary": "No project is in scope for this conversation.", "error": "No project in scope."}
+
+    corrected_text = (corrected_value or "").strip()
+    if not corrected_text:
+        return {"summary": "A correction needs replacement text.", "error": "Missing replacement text."}
+
+    try:
+        from core.database import db as core_db
+        from services.project_memory import ProjectMemoryManager
+
+        manager = ProjectMemoryManager(core_db)
+        all_facts = manager.list_facts(project_id, include_superseded=True)
+        target_fact = None
+        if fact_id:
+            target_fact = next((f for f in all_facts if str(f.get("fact_id") or "") == fact_id.strip()), None)
+        if not target_fact and fact_description:
+            desc = fact_description.strip().lower()
+            target_fact = next((f for f in all_facts if desc in str(f.get("text") or "").lower() and not f.get("superseded_by")), None)
+        if not target_fact and not fact_id and not fact_description:
+            active_facts = [f for f in all_facts if not f.get("superseded_by")]
+            if len(active_facts) == 1:
+                target_fact = active_facts[0]
+
+        if not target_fact:
+            return {
+                "summary": f"Could not find existing project fact to correct (fact_id='{fact_id}', description='{fact_description}').",
+                "error": "Fact not found",
+            }
+
+        resolved_origin = origin if origin in {"contract", "user"} else "user"
+        contract_id = state.context.contract_id or ""
+        sources = [{"contract_id": contract_id, "quote": reason}] if resolved_origin == "contract" and contract_id and reason else []
+
+        replacement = manager.remember_fact(
+            project_id=project_id,
+            text=corrected_text,
+            sources=sources,
+            tags=list(tags) if tags else [],
+            origin=resolved_origin,
+        )
+        manager.supersede_fact(project_id, target_fact["fact_id"], replacement["fact_id"])
+
+        return {
+            "summary": f"Corrected project fact. Superseded '{target_fact.get('text')}' with '{replacement.get('text')}'.",
+            "fact_id": replacement["fact_id"],
+            "superseded_fact_id": target_fact["fact_id"],
+            "text": replacement["text"],
+            "replacement": replacement,
+        }
+    except Exception as exc:
+        return {"summary": f"Failed to correct fact: {str(exc)[:300]}", "error": str(exc)}
+

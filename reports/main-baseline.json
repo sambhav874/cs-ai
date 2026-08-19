@@ -1,0 +1,964 @@
+{
+  "generated_at": "2026-08-17T19:15:48.736510+00:00",
+  "runner": "agent",
+  "suite": "smoke",
+  "model_provider": null,
+  "model_id": null,
+  "summary": {
+    "cases": 4,
+    "passed": 0,
+    "score": 0.787,
+    "pass_threshold": 0.9,
+    "hard_gate_passed": false,
+    "hard_gate_failures": [
+      {
+        "case_id": "public_smoke_contract_nli_not_mentioned",
+        "attempt": 1,
+        "checks": [
+          "required_citation_refs"
+        ]
+      },
+      {
+        "case_id": "public_smoke_multi_turn_kpi_follow_up",
+        "attempt": 1,
+        "checks": [
+          "required_citation_refs"
+        ]
+      }
+    ],
+    "pass_k": 0.0,
+    "by_category": {
+      "contract_inference": {
+        "cases": 1,
+        "passed": 0,
+        "score": 0.867
+      },
+      "contract_qa_extraction": {
+        "cases": 1,
+        "passed": 0,
+        "score": 0.812
+      },
+      "multi_turn_reference_resolution": {
+        "cases": 2,
+        "passed": 0,
+        "score": 0.736
+      }
+    },
+    "by_dimension": {
+      "citations": {
+        "earned": 6.0,
+        "possible": 8.0,
+        "failed_checks": 2,
+        "score": 0.75
+      },
+      "completion": {
+        "earned": 8.0,
+        "possible": 8.0,
+        "failed_checks": 0,
+        "score": 1.0
+      },
+      "factuality": {
+        "earned": 1.0,
+        "possible": 13.0,
+        "failed_checks": 4,
+        "score": 0.077
+      },
+      "process": {
+        "earned": 8.0,
+        "possible": 8.0,
+        "failed_checks": 0,
+        "score": 1.0
+      },
+      "security": {
+        "earned": 12.0,
+        "possible": 12.0,
+        "failed_checks": 0,
+        "score": 1.0
+      },
+      "side_effects": {
+        "earned": 16.0,
+        "possible": 16.0,
+        "failed_checks": 0,
+        "score": 1.0
+      }
+    },
+    "standards_coverage": {
+      "CUAD:clause_identification": {
+        "cases": 1,
+        "passed": 0,
+        "pass_rate": 0.0
+      },
+      "ContractNLI:NotMentioned": {
+        "cases": 1,
+        "passed": 0,
+        "pass_rate": 0.0
+      },
+      "HELM:multi_metric_measurement": {
+        "cases": 1,
+        "passed": 0,
+        "pass_rate": 0.0
+      },
+      "HELM:multi_turn_coherence": {
+        "cases": 2,
+        "passed": 0,
+        "pass_rate": 0.0
+      },
+      "LegalBench:legal_reasoning": {
+        "cases": 1,
+        "passed": 0,
+        "pass_rate": 0.0
+      }
+    },
+    "top_failure_modes": [
+      [
+        "required_facts",
+        4
+      ],
+      [
+        "required_citation_refs",
+        2
+      ]
+    ],
+    "public_release_gate": {
+      "passed": false,
+      "overall_score_min": 0.9,
+      "fact_coverage_min": 0.95,
+      "citation_recall_min": 0.95,
+      "citation_precision_min": 0.9,
+      "pass_k_min": 0.9,
+      "security_hard_gate_passed": true
+    },
+    "metrics": {
+      "latency_p50_ms": 3064.0,
+      "latency_p95_ms": 3600.0,
+      "input_tokens_per_turn": 11868.167,
+      "output_tokens_per_turn": 507.833,
+      "model_calls_per_turn": 2.667,
+      "tool_calls_per_turn": 1.667,
+      "citation_support_rate": 1.0,
+      "unsupported_answer_rate": 0.0,
+      "multi_turn_resolution_rate": 0.0,
+      "overall_score": 0.787,
+      "pass_rate": 0.0,
+      "counts": {
+        "cases": 4,
+        "turns": 6,
+        "multi_turn_cases": 2,
+        "answerable_cases": 3,
+        "citations_emitted": 6,
+        "citations_verified": 6,
+        "unsupported_answers": 0
+      }
+    },
+    "metric_comparison": {
+      "passed": true,
+      "has_baseline": false,
+      "regressions": [],
+      "floor_failures": [],
+      "warnings": [],
+      "comparisons": [
+        {
+          "metric": "citation_support_rate",
+          "baseline": null,
+          "current": 1.0,
+          "delta": null,
+          "verdict": "no_baseline"
+        },
+        {
+          "metric": "multi_turn_resolution_rate",
+          "baseline": null,
+          "current": 0.0,
+          "delta": null,
+          "verdict": "no_baseline"
+        },
+        {
+          "metric": "overall_score",
+          "baseline": null,
+          "current": 0.787,
+          "delta": null,
+          "verdict": "no_baseline"
+        },
+        {
+          "metric": "pass_rate",
+          "baseline": null,
+          "current": 0.0,
+          "delta": null,
+          "verdict": "no_baseline"
+        },
+        {
+          "metric": "unsupported_answer_rate",
+          "baseline": null,
+          "current": 0.0,
+          "delta": null,
+          "verdict": "no_baseline"
+        },
+        {
+          "metric": "model_calls_per_turn",
+          "baseline": null,
+          "current": 2.667,
+          "delta": null,
+          "verdict": "no_baseline"
+        },
+        {
+          "metric": "tool_calls_per_turn",
+          "baseline": null,
+          "current": 1.667,
+          "delta": null,
+          "verdict": "no_baseline"
+        },
+        {
+          "metric": "input_tokens_per_turn",
+          "baseline": null,
+          "current": 11868.167,
+          "delta": null,
+          "verdict": "no_baseline"
+        },
+        {
+          "metric": "output_tokens_per_turn",
+          "baseline": null,
+          "current": 507.833,
+          "delta": null,
+          "verdict": "no_baseline"
+        },
+        {
+          "metric": "latency_p50_ms",
+          "baseline": null,
+          "current": 3064.0,
+          "delta": null,
+          "verdict": "no_baseline"
+        },
+        {
+          "metric": "latency_p95_ms",
+          "baseline": null,
+          "current": 3600.0,
+          "delta": null,
+          "verdict": "no_baseline"
+        }
+      ],
+      "blocking_metrics": [
+        "citation_support_rate"
+      ],
+      "citation_support_floor": 0.9
+    }
+  },
+  "results": [
+    {
+      "case_id": "public_smoke_sla_service_credit",
+      "suite": "smoke",
+      "category": "contract_qa_extraction",
+      "visibility": "public",
+      "runner": "agent",
+      "attempt": 1,
+      "score": 0.812,
+      "passed": false,
+      "hard_gate_passed": true,
+      "checks": [
+        {
+          "name": "runner_error",
+          "dimension": "process",
+          "passed": true,
+          "hard_gate": true,
+          "points": 2.0,
+          "earned": 2.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "expected_outcome",
+          "dimension": "completion",
+          "passed": true,
+          "hard_gate": true,
+          "points": 2.0,
+          "earned": 2.0,
+          "detail": "expected OUTCOME_OK, got OUTCOME_OK",
+          "standards": []
+        },
+        {
+          "name": "required_facts",
+          "dimension": "factuality",
+          "passed": false,
+          "hard_gate": false,
+          "points": 3.0,
+          "earned": 0.0,
+          "detail": "missing ['2%', 'affected monthly invoice', '5 business days']",
+          "standards": []
+        },
+        {
+          "name": "forbidden_substrings",
+          "dimension": "security",
+          "passed": true,
+          "hard_gate": true,
+          "points": 3.0,
+          "earned": 3.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "required_citation_refs",
+          "dimension": "citations",
+          "passed": true,
+          "hard_gate": true,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "citation_precision",
+          "dimension": "citations",
+          "passed": true,
+          "hard_gate": true,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "required_artifact_types",
+          "dimension": "side_effects",
+          "passed": true,
+          "hard_gate": false,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "forbidden_artifact_types",
+          "dimension": "side_effects",
+          "passed": true,
+          "hard_gate": true,
+          "points": 2.0,
+          "earned": 2.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "min_artifacts",
+          "dimension": "side_effects",
+          "passed": true,
+          "hard_gate": false,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "expected >= 0, got 0",
+          "standards": []
+        }
+      ],
+      "observation": {
+        "case_id": "public_smoke_sla_service_credit",
+        "runner": "agent",
+        "attempt": 1,
+        "answer": "If the hot\u2011meal response rate drops below the 98\u202f% monthly target, the Terminal Authority can impose a service credit equal to\u202f2\u202f% of the affected month\u2019s invoice and must receive a written cure plan from the caterer within five business days.\u202f[1]",
+        "outcome": "OUTCOME_OK",
+        "citation_refs": [
+          "airport-food-master#service-credit"
+        ],
+        "citation_annotations": [
+          {
+            "type": "citation_data",
+            "ref": 1,
+            "doc_id": "airport-food-master",
+            "document_id": "airport-food-master",
+            "filename": "Airport Food Services Agreement.md",
+            "page": 2,
+            "page_start": 2,
+            "page_end": 2,
+            "quote": "If monthly hot meal response performance falls below 98%, Terminal Authority may apply a service credit equal to 2% of the affected monthly invoice and require a written cure plan within 5 business days.",
+            "evidence_id": "airport-food-master::airport-food-master#service-credit",
+            "segment_id": "airport-food-master::airport-food-master#service-credit",
+            "source_ref": 1,
+            "verified": true
+          }
+        ],
+        "artifacts": [],
+        "side_effects": [],
+        "trace": [
+          {
+            "event": "agent_run",
+            "latency_ms": 2698
+          },
+          {
+            "event": "agent_trace"
+          }
+        ],
+        "latency_ms": 2698,
+        "cost_usd": 0.0,
+        "error": null,
+        "metadata": {
+          "provider": null
+        },
+        "turns": 1,
+        "model_calls": 2,
+        "tool_calls": 1,
+        "input_tokens": 8735,
+        "output_tokens": 297,
+        "verified_citations": 1,
+        "emitted_citations": 1,
+        "unsupported": false
+      },
+      "standards": [
+        {
+          "framework": "HELM",
+          "control": "multi_metric_measurement",
+          "description": "Factuality, citation quality, and efficiency are scored separately."
+        },
+        {
+          "framework": "CUAD",
+          "control": "clause_identification",
+          "description": "Contract remedy clause must be located and cited."
+        }
+      ]
+    },
+    {
+      "case_id": "public_smoke_contract_nli_not_mentioned",
+      "suite": "smoke",
+      "category": "contract_inference",
+      "visibility": "public",
+      "runner": "agent",
+      "attempt": 1,
+      "score": 0.867,
+      "passed": false,
+      "hard_gate_passed": false,
+      "checks": [
+        {
+          "name": "runner_error",
+          "dimension": "process",
+          "passed": true,
+          "hard_gate": true,
+          "points": 2.0,
+          "earned": 2.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "expected_outcome",
+          "dimension": "completion",
+          "passed": true,
+          "hard_gate": true,
+          "points": 2.0,
+          "earned": 2.0,
+          "detail": "expected OUTCOME_NONE_UNSUPPORTED, got OUTCOME_NONE_UNSUPPORTED",
+          "standards": []
+        },
+        {
+          "name": "required_facts",
+          "dimension": "factuality",
+          "passed": false,
+          "hard_gate": false,
+          "points": 2.0,
+          "earned": 1.0,
+          "detail": "missing ['survive termination']",
+          "standards": []
+        },
+        {
+          "name": "forbidden_substrings",
+          "dimension": "security",
+          "passed": true,
+          "hard_gate": true,
+          "points": 3.0,
+          "earned": 3.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "required_citation_refs",
+          "dimension": "citations",
+          "passed": false,
+          "hard_gate": true,
+          "points": 1.0,
+          "earned": 0.0,
+          "detail": "missing ['sample-nda#term']",
+          "standards": []
+        },
+        {
+          "name": "citation_precision",
+          "dimension": "citations",
+          "passed": true,
+          "hard_gate": true,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "required_artifact_types",
+          "dimension": "side_effects",
+          "passed": true,
+          "hard_gate": false,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "forbidden_artifact_types",
+          "dimension": "side_effects",
+          "passed": true,
+          "hard_gate": true,
+          "points": 2.0,
+          "earned": 2.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "min_artifacts",
+          "dimension": "side_effects",
+          "passed": true,
+          "hard_gate": false,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "expected >= 0, got 0",
+          "standards": []
+        }
+      ],
+      "observation": {
+        "case_id": "public_smoke_contract_nli_not_mentioned",
+        "runner": "agent",
+        "attempt": 1,
+        "answer": "The NDA does not contain a survival provision. It only states when the agreement begins and that it can end early by written agreement, without mentioning that any duties (such as confidentiality) continue after termination.\u202f[1]",
+        "outcome": "OUTCOME_NONE_UNSUPPORTED",
+        "citation_refs": [
+          "sample-nda#confidentiality"
+        ],
+        "citation_annotations": [
+          {
+            "type": "citation_data",
+            "ref": 1,
+            "doc_id": "sample-nda",
+            "document_id": "sample-nda",
+            "filename": "Sample NDA.md",
+            "page": 1,
+            "page_start": 1,
+            "page_end": 1,
+            "quote": "Recipient shall protect Confidential Information using at least reasonable care and shall not disclose it except to authorized representatives.",
+            "evidence_id": "sample-nda::sample-nda#confidentiality",
+            "segment_id": "sample-nda::sample-nda#confidentiality",
+            "source_ref": 1,
+            "verified": true
+          }
+        ],
+        "artifacts": [],
+        "side_effects": [],
+        "trace": [
+          {
+            "event": "agent_run",
+            "latency_ms": 3600
+          },
+          {
+            "event": "agent_trace"
+          }
+        ],
+        "latency_ms": 3600,
+        "cost_usd": 0.0,
+        "error": null,
+        "metadata": {
+          "provider": null
+        },
+        "turns": 1,
+        "model_calls": 6,
+        "tool_calls": 5,
+        "input_tokens": 26742,
+        "output_tokens": 842,
+        "verified_citations": 1,
+        "emitted_citations": 1,
+        "unsupported": true
+      },
+      "standards": [
+        {
+          "framework": "ContractNLI",
+          "control": "NotMentioned",
+          "description": "Classify a hypothesis as not mentioned and identify relevant evidence."
+        },
+        {
+          "framework": "LegalBench",
+          "control": "legal_reasoning",
+          "description": "Avoid hallucinating unsupported legal obligations."
+        }
+      ]
+    },
+    {
+      "case_id": "public_smoke_multi_turn_sla_follow_up",
+      "suite": "smoke",
+      "category": "multi_turn_reference_resolution",
+      "visibility": "public",
+      "runner": "agent",
+      "attempt": 1,
+      "score": 0.765,
+      "passed": false,
+      "hard_gate_passed": true,
+      "checks": [
+        {
+          "name": "runner_error",
+          "dimension": "process",
+          "passed": true,
+          "hard_gate": true,
+          "points": 2.0,
+          "earned": 2.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "expected_outcome",
+          "dimension": "completion",
+          "passed": true,
+          "hard_gate": true,
+          "points": 2.0,
+          "earned": 2.0,
+          "detail": "expected OUTCOME_OK, got OUTCOME_OK",
+          "standards": []
+        },
+        {
+          "name": "required_facts",
+          "dimension": "factuality",
+          "passed": false,
+          "hard_gate": false,
+          "points": 4.0,
+          "earned": 0.0,
+          "detail": "missing ['hot meal', '98%', 'cold storage', '99%']",
+          "standards": []
+        },
+        {
+          "name": "forbidden_substrings",
+          "dimension": "security",
+          "passed": true,
+          "hard_gate": true,
+          "points": 3.0,
+          "earned": 3.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "required_citation_refs",
+          "dimension": "citations",
+          "passed": true,
+          "hard_gate": true,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "citation_precision",
+          "dimension": "citations",
+          "passed": true,
+          "hard_gate": true,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "required_artifact_types",
+          "dimension": "side_effects",
+          "passed": true,
+          "hard_gate": false,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "forbidden_artifact_types",
+          "dimension": "side_effects",
+          "passed": true,
+          "hard_gate": true,
+          "points": 2.0,
+          "earned": 2.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "min_artifacts",
+          "dimension": "side_effects",
+          "passed": true,
+          "hard_gate": false,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "expected >= 0, got 0",
+          "standards": []
+        }
+      ],
+      "observation": {
+        "case_id": "public_smoke_multi_turn_sla_follow_up",
+        "runner": "agent",
+        "attempt": 1,
+        "answer": "The agreement sets two service\u2011level provisions for Global Air Caterers: [1]\n\n1. **Cold\u2011storage SLA** \u2013 chilled inventory must be kept between\u202f1\u202f\u00b0C and\u202f4\u202f\u00b0C, temperature logged every\u202f4\u202fhours, with at least\u202f99\u202f% of logs compliant each calendar month.  \n2. **Hot\u2011meal SLA** \u2013 approved hot\u2011meal requests must be delivered to the assigned gate within\u202f15\u202fminutes of dispatch acknowledgement, achieving at least\u202f98\u202f% compliance each calendar month.",
+        "outcome": "OUTCOME_OK",
+        "citation_refs": [
+          "airport-food-master#sla-cold-storage",
+          "airport-food-master#sla-hot-meals"
+        ],
+        "citation_annotations": [
+          {
+            "type": "citation_data",
+            "ref": 1,
+            "doc_id": "airport-food-master",
+            "document_id": "airport-food-master",
+            "version_id": null,
+            "version_number": null,
+            "filename": "Airport Food Services Agreement.md",
+            "page": 2,
+            "page_start": 2,
+            "page_end": 2,
+            "quote": "Global Air Caterers must hold all chilled inventory between 1 and 4 degrees Celsius and log the temperature every 4 hours, achieving at least 99% logged compliance each calendar month.",
+            "text": "Global Air Caterers must hold all chilled inventory between 1 and 4 degrees Celsius and log the temperature every 4 hours, achieving at least 99% logged compliance each calendar month.",
+            "preview": "Global Air Caterers must hold all chilled inventory between 1 and 4 degrees Celsius and log the temperature every 4 hours, achieving at least 99% logged compliance each calendar month.",
+            "verified": true,
+            "source_ref": 1
+          },
+          {
+            "type": "citation_data",
+            "ref": 2,
+            "doc_id": "airport-food-master",
+            "document_id": "airport-food-master",
+            "version_id": null,
+            "version_number": null,
+            "filename": "Airport Food Services Agreement.md",
+            "page": 1,
+            "page_start": 1,
+            "page_end": 1,
+            "quote": "Global Air Caterers must deliver approved hot meal requests to the assigned gate within 15 minutes after dispatch acknowledgement for at least 98% of measured requests in each calendar month.",
+            "text": "Global Air Caterers must deliver approved hot meal requests to the assigned gate within 15 minutes after dispatch acknowledgement for at least 98% of measured requests in each calendar month.",
+            "preview": "Global Air Caterers must deliver approved hot meal requests to the assigned gate within 15 minutes after dispatch acknowledgement for at least 98% of measured requests in each calendar month.",
+            "verified": true,
+            "source_ref": 2
+          }
+        ],
+        "artifacts": [],
+        "side_effects": [],
+        "trace": [
+          {
+            "event": "agent_run",
+            "latency_ms": 3064
+          },
+          {
+            "event": "agent_trace"
+          }
+        ],
+        "latency_ms": 3064,
+        "cost_usd": 0.0,
+        "error": null,
+        "metadata": {
+          "provider": null
+        },
+        "turns": 2,
+        "model_calls": 4,
+        "tool_calls": 2,
+        "input_tokens": 17778,
+        "output_tokens": 945,
+        "verified_citations": 2,
+        "emitted_citations": 2,
+        "unsupported": false
+      },
+      "standards": [
+        {
+          "framework": "HELM",
+          "control": "multi_turn_coherence",
+          "description": "A follow-up turn must resolve references established earlier in the session."
+        }
+      ]
+    },
+    {
+      "case_id": "public_smoke_multi_turn_kpi_follow_up",
+      "suite": "smoke",
+      "category": "multi_turn_reference_resolution",
+      "visibility": "public",
+      "runner": "agent",
+      "attempt": 1,
+      "score": 0.706,
+      "passed": false,
+      "hard_gate_passed": false,
+      "checks": [
+        {
+          "name": "runner_error",
+          "dimension": "process",
+          "passed": true,
+          "hard_gate": true,
+          "points": 2.0,
+          "earned": 2.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "expected_outcome",
+          "dimension": "completion",
+          "passed": true,
+          "hard_gate": true,
+          "points": 2.0,
+          "earned": 2.0,
+          "detail": "expected OUTCOME_OK, got OUTCOME_OK",
+          "standards": []
+        },
+        {
+          "name": "required_facts",
+          "dimension": "factuality",
+          "passed": false,
+          "hard_gate": false,
+          "points": 4.0,
+          "earned": 0.0,
+          "detail": "missing ['hot meal', '91.2%', 'cold storage', '99.6%']",
+          "standards": []
+        },
+        {
+          "name": "forbidden_substrings",
+          "dimension": "security",
+          "passed": true,
+          "hard_gate": true,
+          "points": 3.0,
+          "earned": 3.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "required_citation_refs",
+          "dimension": "citations",
+          "passed": false,
+          "hard_gate": true,
+          "points": 1.0,
+          "earned": 0.0,
+          "detail": "missing ['airport-food-master#sla-hot-meals']",
+          "standards": []
+        },
+        {
+          "name": "citation_precision",
+          "dimension": "citations",
+          "passed": true,
+          "hard_gate": true,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "required_artifact_types",
+          "dimension": "side_effects",
+          "passed": true,
+          "hard_gate": false,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "forbidden_artifact_types",
+          "dimension": "side_effects",
+          "passed": true,
+          "hard_gate": true,
+          "points": 2.0,
+          "earned": 2.0,
+          "detail": "",
+          "standards": []
+        },
+        {
+          "name": "min_artifacts",
+          "dimension": "side_effects",
+          "passed": true,
+          "hard_gate": false,
+          "points": 1.0,
+          "earned": 1.0,
+          "detail": "expected >= 0, got 0",
+          "standards": []
+        }
+      ],
+      "observation": {
+        "case_id": "public_smoke_multi_turn_kpi_follow_up",
+        "runner": "agent",
+        "attempt": 1,
+        "answer": "The Airport Food Services Agreement tracks two service\u2011level KPIs: [1]\n\n| KPI | Threshold | Latest actual (May\u202f2026) | Status |\n|-----|-----------|--------------------------|--------|\n| Hot\u2011meal response time |\u202f98\u202f% monthly compliance |\u202f91.2\u202f% | **Breach** |\n| Cold\u2011storage temperature logging |\u202f99\u202f% logged compliance |\u202f99.6\u202f% | **Compliant** |",
+        "outcome": "OUTCOME_OK",
+        "citation_refs": [],
+        "citation_annotations": [
+          {
+            "type": "citation_data",
+            "ref": 1,
+            "doc_id": "airport-food-master",
+            "document_id": "airport-food-master",
+            "version_id": null,
+            "version_number": null,
+            "filename": "Airport Food Services Agreement.md",
+            "page": null,
+            "page_start": null,
+            "page_end": null,
+            "quote": "Hot meal response SLA: threshold=98% monthly compliance; actual=91.2% for May 2026; status=breach",
+            "text": "Hot meal response SLA: threshold=98% monthly compliance; actual=91.2% for May 2026; status=breach",
+            "preview": "Hot meal response SLA: threshold=98% monthly compliance; actual=91.2% for May 2026; status=breach",
+            "verified": true,
+            "source_ref": 1
+          },
+          {
+            "type": "citation_data",
+            "ref": 2,
+            "doc_id": "airport-food-master",
+            "document_id": "airport-food-master",
+            "version_id": null,
+            "version_number": null,
+            "filename": "Airport Food Services Agreement.md",
+            "page": null,
+            "page_start": null,
+            "page_end": null,
+            "quote": "Cold storage temperature logging: threshold=99% logged compliance; actual=99.6% for May 2026; status=compliant",
+            "text": "Cold storage temperature logging: threshold=99% logged compliance; actual=99.6% for May 2026; status=compliant",
+            "preview": "Cold storage temperature logging: threshold=99% logged compliance; actual=99.6% for May 2026; status=compliant",
+            "verified": true,
+            "source_ref": 2
+          }
+        ],
+        "artifacts": [],
+        "side_effects": [],
+        "trace": [
+          {
+            "event": "agent_run",
+            "latency_ms": 3048
+          },
+          {
+            "event": "agent_trace"
+          }
+        ],
+        "latency_ms": 3048,
+        "cost_usd": 0.0,
+        "error": null,
+        "metadata": {
+          "provider": null
+        },
+        "turns": 2,
+        "model_calls": 4,
+        "tool_calls": 2,
+        "input_tokens": 17954,
+        "output_tokens": 963,
+        "verified_citations": 2,
+        "emitted_citations": 2,
+        "unsupported": false
+      },
+      "standards": [
+        {
+          "framework": "HELM",
+          "control": "multi_turn_coherence",
+          "description": "Tool routing for a short follow-up must come from the prompt, not a regex rewrite."
+        }
+      ]
+    }
+  ],
+  "public_safe": true,
+  "methodology": {
+    "suite_name": "ContractSense Agent Public Smoke Suite",
+    "suite_version": "1.1.0",
+    "fixtures": "/Users/sambhavjain/Desktop/Codes/extractor/extractor/testing/backend/evals/contractsense_agent/fixtures/public_smoke.json",
+    "no_ragas": true,
+    "public_cases_are_not_release_holdout": true,
+    "standards": [
+      "NIST AI RMF",
+      "NIST AI 600-1",
+      "ISO/IEC 42001",
+      "OWASP Top 10 for LLM Applications",
+      "MLCommons AILuminate",
+      "HELM",
+      "BitGN PAC",
+      "tau-bench",
+      "BFCL",
+      "GAIA",
+      "LegalBench",
+      "CUAD",
+      "ContractNLI"
+    ]
+  }
+}

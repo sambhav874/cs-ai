@@ -14,20 +14,22 @@ No separate verification pass. The model handles all reasoning internally.
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
     SystemMessage,
-    AIMessage,
     ToolMessage,
 )
 from langchain_core.tools import BaseTool
 
 from core.config import settings
 
+from services.contract_agent import citations
 from services.contract_agent.react_agent import ApprovalRequiredError
 from services.contract_agent.system_prompt import build_adaptive_system_prompt
 
@@ -40,13 +42,58 @@ from .state import (
     TabularReviewProposal,
     ToolCallRecord,
 )
+from .tools import errors as tool_errors
 from .tools.langchain_tools import build_langchain_tools
 from .tools.registry import FORBIDDEN_TOOL_NAMES
 
 
 ToolExecutor = Callable[[ToolCallRecord, AgentRunState], Dict[str, Any]]
 
-DEFAULT_MAX_ITERATIONS = 8
+logger = logging.getLogger(__name__)
+
+
+# ── Synthesis-turn capability flag (F-04) ─────────────────────────────────────
+#
+# The loop used to append a synthesis HumanMessage and make a second full model
+# call every time a tool returned evidence-shaped content. That was a workaround
+# for weaker tool-calling models that would not cite from evidence in the turn
+# they received it; current models do.
+#
+# Measured against a held-constant scripted model in
+# testing/backend/tests/test_synthesis_turn_flag.py:
+#
+#   single retrieval round   2 model calls either way. A tool-calling loop needs
+#                            one call to request the tool and one to consume the
+#                            result, so the synthesis turn only relabels the
+#                            second call. There is no 2x saving to be had here.
+#   two retrieval rounds     on: 3 calls, and only ONE search runs — the model's
+#                            second retrieval request arrives on the synthesis
+#                            call, which has tools unbound, so it is discarded.
+#                            off: 3 calls and both searches run.
+#
+# So the flag is not really about cost; the cost metric stays flat. What it costs
+# is coverage on anything multi-hop, which is why the default is off. Turn it
+# back on for a specific provider only if the eval shows that provider's
+# citation-support rate needs it.
+DEFAULT_SYNTHESIS_TURN_PROVIDERS: frozenset[str] = frozenset()
+
+
+def _synthesis_turn_enabled(provider: str) -> bool:
+    """Whether `provider` needs the extra synthesis model call.
+
+    AGENT_SYNTHESIS_TURN_PROVIDERS overrides the default table without a deploy:
+    a comma-separated provider list, or `all` / `none`. Unset means the table.
+    """
+    configured = os.environ.get("AGENT_SYNTHESIS_TURN_PROVIDERS")
+    normalized = str(provider or "").strip().lower()
+    if configured is None:
+        return normalized in DEFAULT_SYNTHESIS_TURN_PROVIDERS
+    configured = configured.strip().lower()
+    if configured in {"", "none", "0", "false"}:
+        return False
+    if configured in {"all", "1", "true"}:
+        return True
+    return normalized in {item.strip() for item in configured.split(",") if item.strip()}
 
 
 
@@ -91,7 +138,16 @@ class ContractReActRuntime:
         *,
         checkpoint_config: Optional[Dict[str, Any]] = None,
         on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> AgentRunState:
+        """`cancel_check`, if given, is polled once per ReAct iteration (F-10).
+
+        It cannot interrupt a model call already in flight — there is no
+        preemption inside a blocking HTTP request to the provider — but it
+        stops the *next* iteration from starting, which is what actually
+        matters for an abandoned tab: without this, a disconnected client
+        still drove the loop to its full iteration budget.
+        """
         tools = build_langchain_tools(
             state=state,
             tool_executor=self.tool_executor,
@@ -119,7 +175,8 @@ class ContractReActRuntime:
         try:
             model = self.model or build_chat_model(state)
             return self._tool_call_loop(
-                state, model=model, tools=tools, system_prompt=system_prompt, on_event=on_event
+                state, model=model, tools=tools, system_prompt=system_prompt,
+                on_event=on_event, cancel_check=cancel_check,
             )
         except ApprovalRequiredError as exc:
             self._apply_approval_payload(state, exc.payload)
@@ -146,6 +203,7 @@ class ContractReActRuntime:
         tools: Sequence[BaseTool],
         system_prompt: str,
         on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> AgentRunState:
         self._on_event = on_event  # stored so finish helpers can emit events
         tools_by_name: Dict[str, BaseTool] = {t.name: t for t in tools}
@@ -158,18 +216,15 @@ class ContractReActRuntime:
             HumanMessage(content=user_message),
         ]
 
+        cancelled = False
         for iteration in range(1, self.max_iterations + 1):
+            if cancel_check and cancel_check():
+                cancelled = True
+                state.add_trace("run_cancelled", iteration=iteration)
+                break
+
             if on_event:
                 on_event("status", {"message": f"Thinking (step {iteration})", "iteration": iteration})
-
-            # Format the messages (prompts and chunks) for debugging
-            prompt_str = ""
-            for idx, msg in enumerate(messages):
-                role = msg.__class__.__name__
-                content = getattr(msg, "content", "")
-                if hasattr(msg, "tool_calls") and msg.tool_calls:
-                    content += f"\nTool Calls: {json.dumps(msg.tool_calls, default=str, indent=2)}"
-                prompt_str += f"\n--- Message {idx + 1} ({role}) ---\n{content}\n"
 
             state.add_trace(
                 "prompt_sent",
@@ -182,21 +237,20 @@ class ContractReActRuntime:
             response = self._invoke_tool_call(tool_model, messages, state)
             state.react_iterations = max(state.react_iterations, iteration)
 
-            # Format the raw response for debugging
-            raw_response_str = f"Content: {response.content}\n"
-            if hasattr(response, "tool_calls") and response.tool_calls:
-                raw_response_str += f"Tool Calls: {json.dumps(response.tool_calls, default=str, indent=2)}\n"
-            if hasattr(response, "response_metadata") and response.response_metadata:
-                raw_response_str += f"Response Metadata: {json.dumps(response.response_metadata, default=str, indent=2)}\n"
-
-            _append_agent_debug_log(state.workflow_id, iteration, prompt_str, raw_response_str)
+            _log_agent_turn(
+                state.workflow_id,
+                iteration,
+                messages,
+                response_text=_content_text(getattr(response, "content", "")),
+                tool_names=[c.get("name") for c in (getattr(response, "tool_calls", None) or [])],
+                response_metadata=getattr(response, "response_metadata", None),
+            )
 
             reasoning = _extract_reasoning(response)
             if reasoning and on_event:
                 on_event("thinking", {"message": reasoning, "iteration": iteration})
 
             tool_calls = list(getattr(response, "tool_calls", None) or [])
-            tool_calls = self._repair_follow_up_tool_choice(state, tool_calls)
 
             state.add_trace(
                 "response_received",
@@ -216,14 +270,29 @@ class ContractReActRuntime:
                 )
                 messages.extend(tool_messages)
 
+                # Approval is a turn-level decision. Checking only after every
+                # sibling has returned prevents a side-effect proposal from
+                # hiding evidence that was requested in the same model turn.
+                approval_payload = self._pending_approval_payload(state)
+                if approval_payload:
+                    self._apply_approval_payload(state, approval_payload)
+                    return state
+
                 # Synthesis turn: after tools return evidence chunks, feed them
                 # back to the same agent (without tools bound) so it produces a
                 # properly cited answer from the evidence, rather than answering
                 # inline in the same turn it calls tools.
+                #
+                # Off by default — see DEFAULT_SYNTHESIS_TURN_PROVIDERS. With it
+                # off the loop falls through to the next iteration, where the
+                # model sees the same evidence with tools still bound and can
+                # either answer or retrieve again.
+                provider_name = self._provider_name(state)
                 if (
                     tool_messages
                     and _has_evidence_content(tool_messages)
                     and iteration < self.max_iterations
+                    and _synthesis_turn_enabled(provider_name)
                 ):
                     state.add_trace(
                         "synthesis_turn", iteration=iteration,
@@ -240,22 +309,21 @@ class ContractReActRuntime:
                     )
                     messages.append(HumanMessage(content=synthesis_prompt))
 
-                    # Log synthesis prompt for debugging
                     synth_iteration = iteration + 1
-                    synth_prompt_str = ""
-                    for idx, msg in enumerate(messages):
-                        role = msg.__class__.__name__
-                        content = getattr(msg, "content", "")
-                        if hasattr(msg, "tool_calls") and msg.tool_calls:
-                            content += f"\nTool Calls: {json.dumps(msg.tool_calls, default=str, indent=2)}"
-                        synth_prompt_str += f"\n--- Message {idx + 1} ({role}) ---\n{content}\n"
-
                     if on_event:
                         on_event("status", {"message": "Writing answer…", "iteration": synth_iteration})
-                    provider = str(state.ai_provider or getattr(settings, "ai_provider", None) or "groq").lower()
-                    synthesis_model = tool_model if "groq" in provider else model
+                    # Groq rejects tool_choice=none on a model with tools bound,
+                    # so it keeps the bound model; others drop tools to force a
+                    # text answer.
+                    synthesis_model = tool_model if "groq" in provider_name else model
                     answer = self._stream_text_response(synthesis_model, messages, state, on_event, synth_iteration)
-                    _append_agent_debug_log(state.workflow_id, synth_iteration, synth_prompt_str, answer)
+                    _log_agent_turn(
+                        state.workflow_id,
+                        synth_iteration,
+                        messages,
+                        response_text=answer,
+                        label="synthesis",
+                    )
                     if answer:
                         state.react_iterations = max(state.react_iterations, iteration + 1)
                         return self._finish_answer(
@@ -279,18 +347,40 @@ class ContractReActRuntime:
                 )
                 return self._finish_answer(state, answer=answer, reason="Tool-calling agent produced the final answer.")
 
-        # Step limit reached — synthesize from whatever was observed
+        # Step limit reached, or the caller cancelled the run (client
+        # disconnected / wall-clock timeout) — synthesize from whatever was
+        # observed rather than discarding evidence already retrieved.
         answer = _answer_from_observations(state)
         if answer:
             return self._finish_answer(
                 state,
                 answer=answer,
-                reason="Agent reached step limit; answer synthesized from observed evidence.",
+                reason=(
+                    "Run cancelled before completion; answer synthesized from observed evidence."
+                    if cancelled else
+                    "Agent reached step limit; answer synthesized from observed evidence."
+                ),
             )
         return self._finish_cannot_answer(
             state,
             answer="I could not produce a final answer from the available scoped evidence.",
-            reason="Tool-calling loop ended without a final answer.",
+            reason=(
+                "Tool-calling loop was cancelled before a final answer."
+                if cancelled else
+                "Tool-calling loop ended without a final answer."
+            ),
+        )
+
+    def _provider_name(self, state: AgentRunState) -> str:
+        """The provider this run resolved to, normalized the way model_factory does.
+
+        Reused rather than re-derived so a flag keyed on "anthropic" and a model
+        built for "claude" cannot disagree.
+        """
+        from .model_factory import _normalize_provider_name
+
+        return _normalize_provider_name(
+            state.ai_provider or getattr(settings, "ai_provider", None) or "groq"
         )
 
     def _build_user_message(self, state: AgentRunState) -> str:
@@ -314,54 +404,16 @@ class ContractReActRuntime:
             f"- project_id: {context.project_id or 'N/A'}\n"
             f"- contract_id: {context.contract_id or 'N/A'}\n"
             f"- selected_document_ids: {selected_ids}\n\n"
-            "Choose the tool that matches the user's intent. For whole-contract summaries, use outline_document followed by read_document with include_full=true; do not use narrow search alone. "
+            # Routing policy is stated once, in the system prompt's coverage-vs-retrieval
+            # rule and in the tool descriptions. Restating it per turn only made three
+            # copies to keep in sync.
+            "Choose the tool that matches the user's intent. "
             "Answer conversationally and directly. "
             "Keep internal identifiers private. Add sources only when they are needed or requested."
         )
 
-    def _repair_follow_up_tool_choice(self, state: AgentRunState, tool_calls: list) -> list:
-        """Keep short follow-ups attached to the topic established in the conversation."""
-        if not tool_calls:
-            return tool_calls
-
-        question = str(state.message or "").strip().lower()
-        memory = str(state.memory_context or "").lower()
-        is_list_follow_up = bool(re.search(r"\b(list|show|give|tell)\b.*\b(them|these|those|all)\b", question))
-        prior_kpi_topic = bool(re.search(r"\b(kpi|kpis|sla|service level|breach|threshold)\b", memory))
-        first_tool = str(tool_calls[0].get("name") or "").strip()
-        needs_full_context = bool(
-            re.search(r"\b(summary|summarize|overview|whole contract|full contract|entire contract|what is (?:in|covered by) this contract)\b", question)
-        )
-        if needs_full_context and first_tool in {"list_documents", "fetch_documents", "search_evidence", "find_in_document"}:
-            repaired = dict(tool_calls[0])
-            repaired["name"] = "outline_document"
-            repaired["args"] = {"document_id": ""}
-            state.add_trace(
-                "tool_choice_repaired",
-                from_tool=first_tool,
-                to_tool="outline_document",
-                reason="Whole-contract request requires document-wide context before targeted retrieval.",
-            )
-            return [repaired, *tool_calls[1:]]
-        if not (is_list_follow_up and prior_kpi_topic and first_tool in {"list_documents", "fetch_documents", "search_evidence"}):
-            return tool_calls
-
-        repaired = dict(tool_calls[0])
-        repaired["name"] = "get_kpi_context"
-        repaired["args"] = {
-            "contract_id": "",
-            "metric_name": "",
-            "query": "list all KPI and SLA records for the current contract",
-        }
-        state.add_trace(
-            "tool_choice_repaired",
-            from_tool=first_tool,
-            to_tool="get_kpi_context",
-            reason="Short follow-up continues the prior KPI request.",
-        )
-        return [repaired, *tool_calls[1:]]
-
     def _invoke_tool_call(self, tool_model: Any, messages: list, state: "AgentRunState") -> Any:
+        state.model_calls += 1
         response = tool_model.invoke(messages)
         self._add_token_usage_from_message(state, response)
         return response
@@ -376,6 +428,9 @@ class ContractReActRuntime:
     ) -> str:
         """Stream a text-only model call, emitting SSE delta events per chunk.
         Falls back to invoke() for models that don't support streaming."""
+        # One logical turn regardless of whether it lands on stream() or the
+        # invoke() fallback below.
+        state.model_calls += 1
         if not hasattr(model, "stream"):
             response = model.invoke(messages)
             self._add_token_usage_from_message(state, response)
@@ -471,9 +526,11 @@ class ContractReActRuntime:
                     last = state.tools[-1]
                     if last.name == name:
                         obs = last.observation
-                        status = last.status
+                        status = str(obs.get("status") or last.status) if isinstance(obs, dict) else last.status
                         if isinstance(obs, dict):
                             summary = str(obs.get("summary") or "Done.")
+                            if obs.get("status") == "approval_required":
+                                summary = str(obs.get("message") or "Approval required.")
                             if "search_results" in obs:
                                 content = obs["search_results"]
                             elif "snippet" in obs:
@@ -526,31 +583,45 @@ class ContractReActRuntime:
                 )
 
             except ApprovalRequiredError as exc:
-                self._apply_approval_payload(state, exc.payload)
+                # Compatibility for an older wrapper that still raises. Keep
+                # the batch moving; the turn-boundary scan below owns the gate.
+                content = json.dumps(exc.payload, default=str)
                 if on_event:
                     on_event("tool_result", {
                         "name": name,
                         "summary": "Approval required.",
-                        "status": "planned",
+                        "status": "approval_required",
                         "iteration": iteration,
                     })
-                raise  # bubble up to run() which handles WAITING_APPROVAL
+                tool_messages.append(ToolMessage(content=content, tool_call_id=call_id))
+                continue
 
             except Exception as exc:
-                error_text = str(exc)[:500]
-                state.add_trace("tool_result", iteration=iteration, tool=name, status="error", summary=error_text)
+                # A typed envelope, not a raw string: the model needs to know
+                # whether this is a scope denial (never retry), a no-match
+                # (rephrase or concede), bad arguments (fix and retry), or a
+                # provider blip (already retried once by the tool wrapper).
+                kind = tool_errors.classify(exc)
+                envelope = tool_errors.envelope(kind, tool=name, detail=str(exc))
+                error_text = envelope["summary"]
+                state.add_trace(
+                    "tool_result",
+                    iteration=iteration,
+                    tool=name,
+                    status="error",
+                    kind=kind.value,
+                    summary=error_text[:500],
+                )
                 if on_event:
                     on_event("tool_result", {
                         "name": name,
                         "summary": error_text,
                         "status": "error",
+                        "kind": kind.value,
                         "iteration": iteration,
                     })
                 tool_messages.append(
-                    ToolMessage(
-                        content=f"Tool execution error: {error_text}",
-                        tool_call_id=call_id,
-                    )
+                    ToolMessage(content=error_text, tool_call_id=call_id)
                 )
 
         return tool_messages
@@ -572,40 +643,21 @@ class ContractReActRuntime:
         return self._finish_final_answer(state, answer=answer, reason=reason)
 
     def _finish_final_answer(self, state: AgentRunState, *, answer: str, reason: str) -> AgentRunState:
-        # Unify double-byte bracket citation markers
-        if answer:
-            answer = re.sub(
-                r"【(\d+(?:\s*,\s*\d+)*)(?:†[^】\n]*)?】",
-                lambda m: f"[{m.group(1)}]",
-                answer,
-            )
-        # Try parsing model-generated citations first if not already parsed
+        # Steps 1-2 of the citation pipeline: normalize markers, parse the
+        # model's <CITATIONS> block, resolve doc labels to documents, enrich
+        # pages from observations. Validation, renumbering and marker rewriting
+        # happen later in middleware.answer_guard — see services/contract_agent/
+        # citations.py for why the order matters.
         if not state.citation_annotations:
-            model_citations = self._parse_and_resolve_citations(answer, state)
-            if model_citations:
-                # Strip the <CITATIONS> block from the answer prose FIRST so we can
-                # scan for inline markers on the clean text.
-                clean_answer = re.sub(r"<CITATIONS>[\s\S]*?(?:</CITATIONS>|$)", "", answer, flags=re.IGNORECASE).strip()
-                # --- Bug fix 1: Drop citations whose [N] marker is never used inline ---
-                # Collect every numeric ref that actually appears in the prose.
-                used_refs = {int(m) for m in re.findall(r"\[(\d+)\]", clean_answer)}
-                if used_refs:
-                    model_citations = [c for c in model_citations if c.get("ref") in used_refs]
-                answer = clean_answer
-                state.citation_annotations = model_citations
-
-            # --- Fallback: model used 【N】 markers but no <CITATIONS> block ---
-            # Build precise citations from tool observations matching the cited refs,
-            # instead of falling through to _annotations_from_observations which
-            # pulls in ALL evidence indiscriminately.
-            if not state.citation_annotations:
-                clean_answer = re.sub(r"<CITATIONS>[\s\S]*?(?:</CITATIONS>|$)", "", answer, flags=re.IGNORECASE).strip()
-                cited_refs = {int(m) for m in re.findall(r"\[(\d+)\]", clean_answer)}
-                if cited_refs:
-                    answer = clean_answer
-                    fallback_citations = _build_citations_from_tool_observations(state, cited_refs)
-                    if fallback_citations:
-                        state.citation_annotations = fallback_citations
+            answer, annotations, style = citations.resolve_for_answer(answer, state)
+            if annotations:
+                state.citation_annotations = annotations
+                state.citation_details = {
+                    **(state.citation_details or {}),
+                    "citation_style": style,
+                }
+        else:
+            answer = citations.strip_citation_block(citations.normalize_markers(answer))
 
         state.answer = answer.strip()
         state.reason = reason
@@ -613,10 +665,18 @@ class ContractReActRuntime:
         state.react_complete = True
         self._apply_answer_metadata(state)
         state.add_trace("verify_answer", issue_count=len(state.verifier_issues))
-        state.add_trace("final", action="final_answer", confidence=state.confidence)
+        state.add_trace(
+            "final",
+            action="final_answer",
+            confidence=state.confidence,
+            model_calls=state.model_calls,
+            tool_calls=len(state.tools),
+            iterations=state.react_iterations,
+            citation_count=len(state.citation_annotations),
+        )
 
         # Log final answer and citations to debug log
-        _log_final_answer_debug(state.workflow_id, state.answer, state.citation_annotations)
+        _log_final_answer(state.workflow_id, state.answer, state.citation_annotations)
 
         
 
@@ -629,10 +689,17 @@ class ContractReActRuntime:
         state.confidence = "low"
         state.react_complete = True
         state.add_trace("verify_answer", issue_count=len(state.verifier_issues))
-        state.add_trace("final", action="cannot_answer", reason=reason[:500])
+        state.add_trace(
+            "final",
+            action="cannot_answer",
+            reason=reason[:500],
+            model_calls=state.model_calls,
+            tool_calls=len(state.tools),
+            iterations=state.react_iterations,
+        )
 
         # Log final failure to debug log
-        _log_final_answer_debug(state.workflow_id, state.answer, [])
+        _log_final_answer(state.workflow_id, state.answer, [])
 
         return state
 
@@ -640,7 +707,7 @@ class ContractReActRuntime:
 
     def _apply_approval_payload(self, state: AgentRunState, payload: Dict[str, Any]) -> None:
         tool_name = str(payload.get("tool") or "").strip()
-        if tool_name in ("create_tabular_review", "suggest_tabular_review"):
+        if tool_name == "propose_tabular_review":
             proposal = self._tabular_proposal_from_payload(state, payload)
             state.tabular_proposal = proposal
             state.approval_request = self.approvals.tabular_request(workflow_id=state.workflow_id, proposal=proposal)
@@ -657,11 +724,11 @@ class ContractReActRuntime:
     def _pending_approval_payload(self, state: AgentRunState) -> Optional[Dict[str, Any]]:
         for tool in state.tools:
             observation = tool.observation
-            if isinstance(observation, dict) and observation.get("__APPROVAL_REQUIRED__"):
+            if _is_approval_payload(observation):
                 return observation
         for scratch in state.react_scratchpad:
             observation = scratch.get("observation")
-            if isinstance(observation, dict) and observation.get("__APPROVAL_REQUIRED__"):
+            if _is_approval_payload(observation):
                 return observation
         return None
 
@@ -696,223 +763,31 @@ class ContractReActRuntime:
     # ── Citation helpers ───────────────────────────────────────────────────
 
     def _parse_and_resolve_citations(self, answer: str, state: AgentRunState) -> List[Dict[str, Any]]:
-        match = re.search(r"<CITATIONS?>\s*([\s\S]*?)\s*(?:</CITATIONS?>|$)", answer, re.IGNORECASE)
-        if not match:
-            return []
-        raw_content = match.group(1).strip()
-        try:
-            if raw_content.startswith("```"):
-                lines = raw_content.splitlines()
-                if lines[0].startswith("```"):
-                    lines = lines[1:]
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]
-                raw_content = "\n".join(lines).strip()
-            
-            raw_citations = []
-            try:
-                raw_citations = json.loads(raw_content)
-                if not isinstance(raw_citations, list):
-                    raw_citations = []
-            except Exception:
-                # Fallback: Find individual JSON objects { ... } using regex
-                matches = re.finditer(r"\{[\s\S]*?\}", raw_content)
-                for m in matches:
-                    try:
-                        obj = json.loads(m.group(0))
-                        if isinstance(obj, dict):
-                            raw_citations.append(obj)
-                    except Exception:
-                        continue
-            if not raw_citations:
-                return []
-        except Exception:
-            return []
+        """Parse and resolve the model's <CITATIONS> block.
 
-        resolved = []
-        doc_index: Dict[str, Any] = {}
-        attached = state.context.attached_documents or []
-
-        for i, doc in enumerate(attached):
-            doc_label = f"doc-{i}"
-            doc_id = doc.get("document_id") or doc.get("id") or ""
-            filename = doc.get("filename") or doc.get("name") or doc_label
-            doc_info = {
-                "document_id": doc_id,
-                "filename": filename,
-                "version_id": doc.get("version_id"),
-                "version_number": doc.get("version_number"),
-            }
-            doc_index[doc_label] = doc_info
-            if doc_id:
-                doc_index[str(doc_id)] = doc_info
-            if filename:
-                doc_index[filename] = doc_info
-
-        selected_ids = state.context.selected_document_ids or []
-        for i, doc_id in enumerate(selected_ids):
-            doc_label = f"doc-{i}"
-            if doc_label not in doc_index:
-                filename = doc_label
-                for t in state.tools:
-                    obs = t.observation
-                    if isinstance(obs, dict):
-                        for m in (obs.get("matches") or []):
-                            if isinstance(m, dict) and (m.get("document_id") == doc_id or m.get("doc_id") == doc_id):
-                                filename = m.get("filename") or filename
-                                break
-                doc_info = {"document_id": doc_id, "filename": filename, "version_id": None, "version_number": None}
-                doc_index[doc_label] = doc_info
-                doc_index[doc_id] = doc_info
-
-        for item in raw_citations:
-            if not isinstance(item, dict):
-                continue
-            try:
-                ref_val = int(item.get("ref", 0))
-            except (ValueError, TypeError):
-                continue
-            if ref_val <= 0:
-                continue
-            raw_doc_id = str(item.get("doc_id") or "").strip()
-            quote = str(item.get("quote") or "").strip()
-            if quote.startswith("{") and ("kpi_id" in quote or "kpi_type" in quote):
-                try:
-                    parsed_q = json.loads(quote)
-                    if isinstance(parsed_q, dict):
-                        quote = (
-                            parsed_q.get("quote")
-                            or parsed_q.get("source_clause")
-                            or parsed_q.get("definition")
-                            or f"{parsed_q.get('name', '')}: {parsed_q.get('value', '')} {parsed_q.get('unit', '')}".strip(" :")
-                        )
-                except Exception:
-                    pass
-            raw_page = item.get("page")
-            page, page_start, page_end = _parse_page_range(raw_page)
-            doc_info = doc_index.get(raw_doc_id)
-            if not doc_info:
-                for key, val in doc_index.items():
-                    if key.lower() == raw_doc_id.lower():
-                        doc_info = val
-                        break
-            doc_id_resolved = doc_info["document_id"] if (doc_info and doc_info.get("document_id")) else raw_doc_id
-            filename_resolved = doc_info["filename"] if (doc_info and doc_info.get("filename")) else raw_doc_id
-
-            from bson import ObjectId
-            if not ObjectId.is_valid(doc_id_resolved):
-                fallback_id = (
-                    (str(state.context.contract_id) if state.context.contract_id and ObjectId.is_valid(str(state.context.contract_id)) else None)
-                    or ((state.context.displayed_document or {}).get("document_id") if ObjectId.is_valid((state.context.displayed_document or {}).get("document_id") or "") else None)
-                    or next((str(sid) for sid in (state.context.selected_document_ids or []) if ObjectId.is_valid(str(sid))), None)
-                )
-                if fallback_id:
-                    doc_id_resolved = fallback_id
-
-            if not filename_resolved or filename_resolved in ("kpi_context", "doc-0", "doc-1") or not (doc_info and doc_info.get("filename")):
-                fallback_filename = (
-                    (state.context.displayed_document or {}).get("filename")
-                    or (state.context.visible_state or {}).get("contract_name")
-                )
-                if fallback_filename:
-                    filename_resolved = fallback_filename
-            resolved.append({
-                "type": "citation_data",
-                "ref": ref_val,
-                "doc_id": doc_id_resolved,
-                "document_id": doc_id_resolved,
-                "version_id": doc_info.get("version_id") if doc_info else None,
-                "version_number": doc_info.get("version_number") if doc_info else None,
-                "filename": filename_resolved,
-                "page": page,
-                "page_start": page_start,
-                "page_end": page_end,
-                "quote": quote,
-                "text": quote,
-                "preview": quote,
-            })
-        return resolved
-
-    # ── Metadata / token helpers ───────────────────────────────────────────
+        Kept as a thin delegation because callers outside the loop reach for it;
+        the implementation is steps 1-2 of services/contract_agent/citations.py.
+        """
+        return citations.resolve_citations(citations.parse_citation_block(answer), state)
 
     def _apply_answer_metadata(self, state: AgentRunState) -> None:
-        confidence_match = re.search(r"\*\*Confidence:\*\*\s*(high|medium|low)", state.answer, flags=re.IGNORECASE)
+        """Set the answer's confidence.
+
+        Citation assembly used to live here too. It now belongs to
+        services/contract_agent/citations.py: steps 1-2 run in
+        _finish_final_answer and steps 3-5 in middleware.answer_guard, so the
+        inline markers are rewritten only after validation has settled the
+        numbering.
+        """
+        confidence_match = re.search(
+            r"\*\*Confidence:\*\*\s*(high|medium|low)", state.answer, flags=re.IGNORECASE
+        )
         if confidence_match:
             state.confidence = confidence_match.group(1).lower()  # type: ignore[assignment]
         elif state.react_scratchpad:
             state.confidence = "medium"
         elif state.answer:
             state.confidence = "high"
-
-        if state.citation_annotations:
-            annotations = state.citation_annotations
-            annotations = _enrich_citations_from_observations(annotations, state)
-            state.citation_annotations = annotations
-            state.answer = _normalize_answer_citation_markers(state.answer, annotations, state.react_scratchpad)
-            # --- Drop annotations whose [N] marker is not used inline in the answer ---
-            # The model may have included an annotation in the CITATIONS block or my
-            # fallback may have built it, but if the marker never appears in the prose
-            # it should not be surfaced to the frontend.
-            used_refs_in_answer = {int(m) for m in re.findall(r"\[(\d+)\]", state.answer)}
-            if used_refs_in_answer:
-                annotations = [a for a in annotations if a.get("ref") in used_refs_in_answer]
-            state.citation_annotations = annotations
-            state.citation_details = {
-                "annotations": annotations,
-                "cited_segments": [
-                    {
-                        "id": item.get("segment_id") or f"model-citation-{index}",
-                        "text": item.get("quote", ""),
-                        "quote": item.get("quote", ""),
-                        "preview": item.get("quote", ""),
-                        "page": item.get("page"),
-                        "page_number": item.get("page"),
-                        "page_start": item.get("page_start") or item.get("page"),
-                        "page_end": item.get("page_end"),
-                        "contract_id": item.get("doc_id"),
-                        "contract_name": item.get("filename"),
-                        "type": "model_citation",
-                        "verified": item.get("verified", True),
-                    }
-                    for index, item in enumerate(annotations, start=1)
-                ],
-                "citation_style": "model_citations",
-            }
-        else:
-            annotations = _annotations_from_observations(state)
-            if annotations:
-                state.answer = _normalize_answer_citation_markers(state.answer, annotations, state.react_scratchpad)
-                # --- Bug fix (fallback path): drop annotations whose [N] marker
-                # is not actually used inline in the answer prose.
-                # The model may have cited only [1] but the search returned 3+
-                # unique segments — we must not surface the uncited ones.
-                used_refs_in_answer = {int(m) for m in re.findall(r"\[(\d+)\]", state.answer)}
-                if used_refs_in_answer:
-                    annotations = [a for a in annotations if a.get("ref") in used_refs_in_answer]
-                state.citation_annotations = annotations
-                state.citation_details = {
-                    "annotations": annotations,
-                    "cited_segments": [
-                        {
-                            "id": item.get("segment_id") or f"tool-observation-{index}",
-                            "text": item.get("quote", ""),
-                            "quote": item.get("quote", ""),
-                            "preview": item.get("quote", ""),
-                            "page": item.get("page"),
-                            "page_number": item.get("page"),
-                            "page_start": item.get("page_start") or item.get("page"),
-                            "page_end": item.get("page_end"),
-                            "contract_id": item.get("doc_id"),
-                            "contract_name": item.get("filename"),
-                            "type": "tool_observation",
-                            "verified": item.get("verified", True),
-                        }
-                        for index, item in enumerate(annotations, start=1)
-                    ],
-                    "citation_style": "react_tool_observation",
-                }
-        if state.citation_annotations:
-            state.answer = _ensure_inline_citation_marker(state.answer, state.citation_annotations)
 
     def _add_token_usage_from_message(self, state: AgentRunState, message: Any) -> None:
         """Accumulate token usage from a model response into state.
@@ -1205,504 +1080,8 @@ def _observation_context(state: AgentRunState) -> str:
     return "\n".join(lines[-40:])
 
 
-def _normalize_answer_citation_markers(answer: str, annotations: list[Dict[str, Any]], react_scratchpad: list[Dict[str, Any]]) -> str:
-    if not answer or not annotations:
-        return answer
-
-    # 1. Build mappings
-    # Map segment_id / evidence_id / id to display ref
-    marker_to_ref: dict[str, str] = {}
-    # Map original tool observation index (matches list) to display ref
-    tool_idx_to_display_ref: dict[int, str] = {}
-    # Map original citation ref in the LLM CITATIONS block to display ref
-    citation_ref_to_display_ref: dict[int, str] = {}
-
-    from services.contract_agent.graph.middleware import (
-        _normalize_citation_text,
-        _citation_tokens,
-    )
-
-    for annotation in annotations:
-        ref = annotation.get("ref")
-        if not ref:
-            continue
-        ref_text = str(ref)
-
-        # Populate original citation ref mapping
-        try:
-            own_ref = int(ref)
-            if own_ref > 0:
-                citation_ref_to_display_ref[own_ref] = ref_text
-        except (ValueError, TypeError):
-            pass
-
-        # Populate tool observation index mapping from explicit source_ref field
-        source_ref = annotation.get("source_ref")
-        if source_ref:
-            try:
-                tool_idx_to_display_ref[int(source_ref)] = ref_text
-            except (ValueError, TypeError):
-                pass
-
-        # Match by evidence_id/segment_id or quote text overlap to find corresponding tool match index
-        ann_evidence_id = str(annotation.get("evidence_id") or annotation.get("segment_id") or "").strip()
-        cit_quote = _normalize_citation_text(annotation.get("quote") or "")
-        quote_tokens = set(_citation_tokens(cit_quote)) if cit_quote else set()
-
-        for scratch in react_scratchpad:
-            observation = scratch.get("observation")
-            if not isinstance(observation, dict):
-                continue
-            matches = observation.get("matches") or []
-            if not isinstance(matches, list):
-                continue
-            for idx, match in enumerate(matches, start=1):
-                if not isinstance(match, dict):
-                    continue
-
-                # Primary: match by evidence_id / segment_id — immune to index drift
-                if ann_evidence_id:
-                    match_eid = str(match.get("evidence_id") or match.get("segment_id") or "").strip()
-                    if match_eid and match_eid == ann_evidence_id:
-                        tool_idx_to_display_ref[idx] = ref_text
-                        break
-
-                # Secondary: token-overlap or substring match on quote text
-                if not cit_quote:
-                    continue
-                for key in ("context", "quote", "snippet", "text"):
-                    obs_text = _normalize_citation_text(str(match.get(key) or ""))
-                    if not obs_text:
-                        continue
-                    supported = False
-                    if quote_tokens:
-                        obs_tokens = set(_citation_tokens(obs_text))
-                        if obs_tokens:
-                            overlap = quote_tokens & obs_tokens
-                            overlap_ratio = len(overlap) / len(quote_tokens)
-                            if overlap_ratio >= 0.40:
-                                supported = True
-                    if not supported and (cit_quote in obs_text or obs_text in cit_quote):
-                        supported = True
-
-                    if supported:
-                        tool_idx_to_display_ref[idx] = ref_text
-                        break
-
-        # Populate segment_id mapping
-        for key in ("segment_id", "evidence_id", "source_id", "id"):
-            value = annotation.get(key)
-            if value:
-                marker_to_ref[str(value).strip()] = ref_text
-
-    # 2. Normalize document-prefixed markers: [doc-0 #3], [doc-0 p.3], [doc-0: 3], [doc-0, #3], etc.
-    doc_marker_pattern = r"\[doc-\d+(?:\s*,\s*|\s*:\s*|\s+)(?:#|p\.|page\s*)?(\d+)\]"
-    def replace_doc_marker(match: re.Match[str]) -> str:
-        try:
-            val = int(match.group(1))
-            display_ref = tool_idx_to_display_ref.get(val)
-            if display_ref:
-                return f"[{display_ref}]"
-        except (ValueError, TypeError):
-            pass
-        return match.group(0)
-    answer = re.sub(doc_marker_pattern, replace_doc_marker, answer)
-
-    # 3. Normalize numeric markers: [5] -> [4] if renumbered
-    def replace_numeric_marker(match: re.Match[str]) -> str:
-        try:
-            val = int(match.group(1))
-            display_ref = citation_ref_to_display_ref.get(val)
-            if display_ref:
-                return f"[{display_ref}]"
-        except (ValueError, TypeError):
-            pass
-        return match.group(0)
-    answer = re.sub(r"\[(\d+)\]", replace_numeric_marker, answer)
-
-    # 4. Normalize segment ID/UUID markers: [segment_id] -> [ref]
-    if marker_to_ref:
-        def replace_uuid_marker(match: re.Match[str]) -> str:
-            marker = match.group(1).strip()
-            ref = marker_to_ref.get(marker)
-            return f"[{ref}]" if ref else match.group(0)
-        answer = re.sub(r"\[([A-Za-z0-9:_\-]{8,})\]", replace_uuid_marker, answer)
-
-    return answer
-
-
-def _ensure_inline_citation_marker(answer: str, annotations: list[Dict[str, Any]]) -> str:
-    if not answer or not annotations or re.search(r"\[\d+\]", answer):
-        return answer
-    if _is_unsupported_or_refusal(answer):
-        return answer
-
-    refs = [
-        int(item.get("ref"))
-        for item in annotations
-        if str(item.get("ref") or "").isdigit()
-    ]
-    if not refs:
-        return answer
-    marker = f"[{min(refs)}]"
-
-    lines = answer.splitlines()
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith(("#", "-", "*", "<", "|")):
-            continue
-        if stripped.lower().startswith("**confidence"):
-            continue
-        lines[index] = line.rstrip() + f" {marker}"
-        return "\n".join(lines)
-    return answer.rstrip() + f" {marker}"
-
-
-def _parse_page_range(
-    raw_page: Any,
-) -> Tuple[Optional[int], Optional[int], Optional[int]]:
-    """Parse a raw page value (int, str number, or range like "1-3") into (page, page_start, page_end).
-
-    Handles all common dash variants: hyphen (-), en-dash (–), em-dash (—),
-    non-breaking hyphen (‑), and figure dash (‒).
-    Returns (first_page, page_start, page_end).  When raw_page is a single page,
-    page_start == page_end == first_page.  When it's a range, page_start is the
-    first page and page_end is the last page.
-    """
-    if raw_page is None:
-        return None, None, None
-
-    # Integer already
-    if isinstance(raw_page, int):
-        return raw_page, raw_page, raw_page
-
-    # Non-string numeric
-    if not isinstance(raw_page, str):
-        try:
-            v = int(raw_page)
-            return v, v, v
-        except (ValueError, TypeError):
-            return None, None, None
-
-    raw_str = raw_page.strip()
-    if not raw_str:
-        return None, None, None
-
-    # Normalise all dash variants to plain hyphen for splitting
-    normalised = re.sub(r"[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE58\uFE63\uFF0D]", "-", raw_str)
-
-    # Check for page range pattern: digits - digits (optional whitespace around dash)
-    range_match = re.fullmatch(r"(\d+)\s*-\s*(\d+)", normalised)
-    if range_match:
-        start = int(range_match.group(1))
-        end = int(range_match.group(2))
-        if end < start:
-            end = start
-        return start, start, end
-
-    # Single number or "Page N" style
-    single_match = re.search(r"\d+", raw_str)
-    if single_match:
-        v = int(single_match.group(0))
-        return v, v, v
-
-    return None, None, None
-
-
-def _extract_page_from_text_markers(full_text: str, quote: str) -> Optional[int]:
-    """Search for the last page marker preceding the quote in full_text."""
-    if not full_text or not quote:
-        return None
-
-    # Find the position of the quote in the full text (case-insensitive and normalized-space)
-    norm_full = re.sub(r"\s+", " ", full_text).lower()
-    norm_quote = re.sub(r"\s+", " ", quote).lower()
-
-    pos = norm_full.find(norm_quote)
-    if pos == -1:
-        # Try a substring of the quote if the full quote is slightly off
-        norm_quote_short = norm_quote[:100]
-        pos = norm_full.find(norm_quote_short)
-
-    if pos == -1:
-        # Try finding the first few words of the quote
-        words = norm_quote.split()
-        if len(words) > 5:
-            words_short = " ".join(words[:5])
-            pos = norm_full.find(words_short)
-
-    if pos == -1:
-        return None
-
-    prefix = norm_full[:pos]
-
-    # Find page markers in the prefix: e.g. "--- page 6 ---"
-    markers = list(re.finditer(r"-\s*-\s*-\s*page\s*(\d+)\s*-\s*-\s*-", prefix))
-    if not markers:
-        # Try matching "[page 6]" or "page 6"
-        markers = list(re.finditer(r"(?:page\s*|\[\s*page\s*)(\d+)", prefix))
-
-    if markers:
-        return int(markers[-1].group(1))
-
-    return None
-
-
-def _enrich_citations_from_observations(annotations: list[Dict[str, Any]], state: AgentRunState) -> list[Dict[str, Any]]:
-    if not annotations:
-        return annotations
-
-    from services.contract_agent.graph.middleware import (
-        _normalize_citation_text,
-        _citation_tokens,
-    )
-
-    # Collect all page/quote data from tool observations
-    obs_entries: list[Dict[str, Any]] = []
-    for scratch in state.react_scratchpad:
-        observation = scratch.get("observation")
-        if not isinstance(observation, dict):
-            continue
-        candidates: list[Dict[str, Any]] = []
-        if isinstance(observation.get("matches"), list):
-            candidates.extend(item for item in observation["matches"] if isinstance(item, dict))
-        if observation.get("snippet"):
-            candidates.append(observation)
-        for candidate in candidates:
-            # Use fuller context/text if available to run page estimation
-            text = str(candidate.get("context") or candidate.get("snippet") or candidate.get("quote") or "").strip()
-            if not text:
-                continue
-            obs_entries.append({
-                "doc_id": str(candidate.get("document_id") or candidate.get("doc_id") or ""),
-                "filename": candidate.get("filename"),
-                "page": candidate.get("page"),
-                "page_start": candidate.get("page_start") or candidate.get("page_number"),
-                "page_end": candidate.get("page_end"),
-                "quote": text,
-            })
-
-    if not obs_entries:
-        return annotations
-
-    # Build lookup by doc_id
-    doc_entries: dict[str, list[Dict[str, Any]]] = {}
-    for entry in obs_entries:
-        doc_id = entry["doc_id"]
-        if doc_id:
-            doc_entries.setdefault(doc_id, []).append(entry)
-
-    for item in annotations:
-        cit_quote = str(item.get("quote") or "").strip()
-        doc_id = str(item.get("doc_id") or item.get("document_id") or "")
-        
-        # Try to find a matching observation chunk if quote is present
-        matched = None
-        if cit_quote:
-            norm_cit_quote = _normalize_citation_text(cit_quote)
-            cit_tokens = set(_citation_tokens(norm_cit_quote))
-            best_overlap = 0.0
-            
-            # Filter observations for this doc_id
-            doc_obs = doc_entries.get(doc_id, [])
-            if not doc_obs and doc_id:
-                # Try to fall back to matches where doc_id matches partially or is empty
-                doc_obs = [entry for entry in obs_entries if entry["doc_id"] == doc_id or not entry["doc_id"]]
-            if not doc_obs:
-                doc_obs = obs_entries
-
-            # 1. Substring matches first (precise)
-            for entry in doc_obs:
-                norm_obs_quote = _normalize_citation_text(entry["quote"])
-                if norm_cit_quote in norm_obs_quote or norm_obs_quote in norm_cit_quote:
-                    matched = entry
-                    break
-
-            # 2. Token overlap matches if no substring match found
-            if not matched and cit_tokens:
-                for entry in doc_obs:
-                    norm_obs_quote = _normalize_citation_text(entry["quote"])
-                    obs_tokens = set(_citation_tokens(norm_obs_quote))
-                    if obs_tokens:
-                        overlap = cit_tokens & obs_tokens
-                        ratio = len(overlap) / len(cit_tokens)
-                        if ratio >= 0.40 and ratio > best_overlap:
-                            best_overlap = ratio
-                            matched = entry
-
-        # If we matched an observation chunk, enrich the page and filename
-        if matched:
-            page_start = matched.get("page_start")
-            page_end = matched.get("page_end")
-            
-            # If the chunk spans multiple pages, interpolate using the quote position.
-            # Only estimate when the annotation lacks a page — the search result's own
-            # `page` field is more reliable than linear interpolation (which can be off
-            # when the chunk's text doesn't distribute evenly across pages).
-            if page_start and page_end and page_end > page_start and item.get("page") is None:
-                from services.contract_agent.graph.tools.executor import _estimate_page_for_quote
-                item["page"] = _estimate_page_for_quote(matched["quote"], cit_quote, page_start=page_start, page_end=page_end)
-            elif matched.get("page") is not None:
-                # Only populate/overwrite if page was missing
-                if item.get("page") is None:
-                    item["page"] = matched["page"]
-            
-            # Extract page from text page markers if still not resolved
-            if item.get("page") is None:
-                marker_page = _extract_page_from_text_markers(matched.get("quote") or "", cit_quote)
-                if marker_page is not None:
-                    item["page"] = marker_page
-                    item["page_start"] = marker_page
-                    item["page_end"] = marker_page
-            
-            if not item.get("filename"):
-                item["filename"] = matched.get("filename")
-
-        # Enrich fallback: if page is STILL missing but doc_id is known, pick best observation for that doc
-        if item.get("page") is None and doc_id:
-            entries = doc_entries.get(doc_id, [])
-            if entries:
-                best = entries[0]
-                for entry in entries:
-                    if entry.get("page") is not None:
-                        best = entry
-                        break
-                item["page"] = best["page"]
-                if not item.get("filename"):
-                    item["filename"] = best.get("filename")
-                # DO NOT overwrite item["quote"] or item["text"] if they are already present!
-                if not item.get("quote"):
-                    item["quote"] = best["quote"][:500]
-                if not item.get("text"):
-                    item["text"] = best["quote"][:500]
-
-        # Enrich: if quote is missing but doc_id is known, pick best observation for that doc
-        if not item.get("quote") and item.get("doc_id"):
-            doc_id = str(item["doc_id"])
-            entries = doc_entries.get(doc_id, [])
-            if entries:
-                # Pick entry with page info, preferring the one closest to the citation ref
-                best = entries[0]
-                for entry in entries:
-                    if entry.get("page") is not None:
-                        best = entry
-                        break
-                item["quote"] = best["quote"][:500]
-                item["text"] = best["quote"][:500]
-                item["preview"] = best["quote"][:500]
-                if item.get("page") is None and best.get("page") is not None:
-                    item["page"] = best["page"]
-                if not item.get("filename"):
-                    item["filename"] = best.get("filename")
-
-    return annotations
-
-
-def _annotations_from_observations(state: AgentRunState) -> list[Dict[str, Any]]:
-    annotations: list[Dict[str, Any]] = []
-    seen: set[tuple[str, str]] = set()
-    for scratch in state.react_scratchpad:
-        observation = scratch.get("observation")
-        if not isinstance(observation, dict):
-            continue
-        candidates: list[Dict[str, Any]] = []
-        if isinstance(observation.get("matches"), list):
-            candidates.extend(item for item in observation["matches"] if isinstance(item, dict))
-        if observation.get("snippet"):
-            candidates.append(observation)
-        for candidate in candidates:
-            quote = str(candidate.get("quote") or candidate.get("snippet") or candidate.get("context") or "").strip()
-            if not quote:
-                continue
-            doc_id = str(candidate.get("document_id") or candidate.get("doc_id") or "")
-            key = (doc_id, quote[:160])
-            if key in seen:
-                continue
-            seen.add(key)
-            annotations.append({
-                "type": "citation_data",
-                "ref": len(annotations) + 1,
-                "doc_id": doc_id or None,
-                "document_id": doc_id or None,
-                "filename": candidate.get("filename"),
-                "page": candidate.get("page"),
-                "page_start": candidate.get("page_start") or candidate.get("page"),
-                "page_end": candidate.get("page_end"),
-                "quote": quote[:500],
-                "evidence_id": candidate.get("evidence_id") or candidate.get("segment_id"),
-                "segment_id": candidate.get("evidence_id") or candidate.get("segment_id"),
-            })
-            if len(annotations) >= 8:
-                return annotations
-    return annotations
-
-
-def _build_citations_from_tool_observations(state: AgentRunState, cited_refs: set[int]) -> list[Dict[str, Any]]:
-    """Build citation annotations matching the model's inline [N] markers.
-
-    Iterates through all tool observations sequentially, assigns each match a
-    1-indexed position, and creates an annotation only when the position is in
-    *cited_refs* (the marker numbers the model actually used).  This avoids the
-    "pull in everything" behaviour of _annotations_from_observations, which can
-    cause the wrong evidence to survive the citation filter chain.
-    """
-    annotations: list[Dict[str, Any]] = []
-    seen: set[tuple[str, str]] = set()
-    position = 0
-
-    for scratch in state.react_scratchpad:
-        observation = scratch.get("observation")
-        if not isinstance(observation, dict):
-            continue
-        matches = observation.get("matches")
-        if not isinstance(matches, list):
-            continue
-
-        for candidate in matches:
-            if not isinstance(candidate, dict):
-                continue
-            position += 1
-            if position not in cited_refs:
-                continue
-
-            quote = str(candidate.get("quote") or candidate.get("snippet") or candidate.get("context") or "").strip()
-            if not quote:
-                continue
-            doc_id = str(candidate.get("document_id") or candidate.get("doc_id") or "")
-            key = (doc_id, quote[:160])
-            if key in seen:
-                continue
-            seen.add(key)
-
-            annotations.append({
-                "type": "citation_data",
-                "ref": position,
-                "doc_id": doc_id or None,
-                "document_id": doc_id or None,
-                "filename": candidate.get("filename"),
-                "page": candidate.get("page"),
-                "page_start": candidate.get("page_start") or candidate.get("page"),
-                "page_end": candidate.get("page_end"),
-                "quote": quote[:500],
-                "evidence_id": candidate.get("evidence_id") or candidate.get("segment_id"),
-                "segment_id": candidate.get("evidence_id") or candidate.get("segment_id"),
-            })
-
-    if not annotations:
-        return annotations
-
-    # Renumber sequentially so Path A in _apply_answer_metadata uses
-    # clean refs that match the inline markers the model wrote.
-    for idx, ann in enumerate(annotations, start=1):
-        ann["ref"] = idx
-
-    return annotations
-
-
 def _answer_from_observations(state: AgentRunState) -> str:
-    annotations = _annotations_from_observations(state)
+    annotations = citations.citations_from_observations(state)
     if annotations:
         first = annotations[0]
         quote = str(first.get("quote") or "").strip()
@@ -1730,43 +1109,98 @@ def _coerce_string_list(value: Any) -> list[str]:
     return [str(value)] if str(value).strip() else []
 
 
-def _append_agent_debug_log(workflow_id: str, iteration: int, prompt_str: str, raw_response_str: str):
-    import datetime
-    import os
-    log_file_path = os.environ.get(
-        "AGENT_DEBUG_LOG",
-        "/Users/sambhavjain/Desktop/Codes/extractor/extractor/apps/backend/agent_debug.log",
+def _is_approval_payload(value: Any) -> bool:
+    """Recognize both current and legacy approval observations.
+
+    The explicit status is the model-facing contract; the private flag keeps
+    pending approvals discoverable for checkpoints written before this change.
+    """
+    return (
+        isinstance(value, dict)
+        and (
+            value.get("status") == "approval_required"
+            or bool(value.get("__APPROVAL_REQUIRED__"))
+        )
     )
-    try:
-        with open(log_file_path, "a", encoding="utf-8") as f:
-            f.write("=" * 80 + "\n")
-            f.write(f"TIMESTAMP: {datetime.datetime.now().isoformat()}\n")
-            f.write(f"WORKFLOW ID: {workflow_id}\n")
-            f.write(f"ITERATION: {iteration}\n")
-            f.write("=" * 80 + "\n\n")
-            f.write("--- PROMPT / MESSAGES SENT TO AGENT (INCLUDES CHUNKS) ---\n")
-            f.write(prompt_str + "\n")
-            f.write("--- RAW RESPONSE FROM AGENT ---\n")
-            f.write(raw_response_str + "\n\n")
-    except Exception as e:
-        print(f"Failed to write to agent_debug.log: {e}")
 
 
-def _log_final_answer_debug(workflow_id: str, answer: str, citations: list):
-    import json
-    import os
-    log_file_path = os.environ.get(
-        "AGENT_DEBUG_LOG",
-        "/Users/sambhavjain/Desktop/Codes/extractor/extractor/apps/backend/agent_debug.log",
+def _trace_bodies_enabled() -> bool:
+    """Prompt and response bodies contain retrieved contract text.
+
+    They are only emitted when explicitly opted into, and must stay off in every
+    deployed environment.
+    """
+    return os.environ.get("AGENT_TRACE_BODIES", "").strip() == "1"
+
+
+def _content_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if value in (None, "", [], {}):
+        return ""
+    return json.dumps(value, default=str)
+
+
+def _render_message_stack(messages: Sequence[BaseMessage]) -> str:
+    parts: List[str] = []
+    for idx, message in enumerate(messages, start=1):
+        content = _content_text(getattr(message, "content", ""))
+        tool_calls = getattr(message, "tool_calls", None)
+        if tool_calls:
+            content += f"\nTool Calls: {json.dumps(tool_calls, default=str, indent=2)}"
+        parts.append(f"\n--- Message {idx} ({message.__class__.__name__}) ---\n{content}\n")
+    return "".join(parts)
+
+
+def _log_agent_turn(
+    workflow_id: str,
+    iteration: int,
+    messages: Sequence[BaseMessage],
+    *,
+    response_text: str = "",
+    tool_names: Sequence[Any] = (),
+    response_metadata: Optional[Dict[str, Any]] = None,
+    label: str = "turn",
+) -> None:
+    """Metadata-only DEBUG record for one model turn."""
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+    logger.debug(
+        "agent %s workflow=%s iteration=%s messages=%d prompt_chars=%d response_chars=%d tools=%s usage=%s",
+        label,
+        workflow_id,
+        iteration,
+        len(messages),
+        sum(len(_content_text(getattr(m, "content", ""))) for m in messages),
+        len(response_text or ""),
+        list(tool_names),
+        (response_metadata or {}).get("token_usage") or (response_metadata or {}).get("usage"),
     )
-    try:
-        with open(log_file_path, "a", encoding="utf-8") as f:
-            f.write("=" * 80 + "\n")
-            f.write(f"FINAL ANSWER FOR WORKFLOW ID: {workflow_id}\n")
-            f.write("=" * 80 + "\n\n")
-            f.write("--- ANSWER ---\n")
-            f.write(answer + "\n\n")
-            f.write("--- CITATIONS ---\n")
-            f.write(json.dumps(citations, default=str, indent=2) + "\n\n")
-    except Exception as e:
-        print(f"Failed to write final answer to agent_debug.log: {e}")
+    if _trace_bodies_enabled():
+        logger.debug(
+            "agent %s bodies workflow=%s iteration=%s\n--- PROMPT ---\n%s\n--- RESPONSE ---\n%s",
+            label,
+            workflow_id,
+            iteration,
+            _render_message_stack(messages),
+            response_text,
+        )
+
+
+def _log_final_answer(workflow_id: str, answer: str, citations: Sequence[Any]) -> None:
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+    citation_list = list(citations or [])
+    logger.debug(
+        "agent final workflow=%s answer_chars=%d citations=%d",
+        workflow_id,
+        len(answer or ""),
+        len(citation_list),
+    )
+    if _trace_bodies_enabled():
+        logger.debug(
+            "agent final bodies workflow=%s\n--- ANSWER ---\n%s\n--- CITATIONS ---\n%s",
+            workflow_id,
+            answer,
+            json.dumps(citation_list, default=str, indent=2),
+        )

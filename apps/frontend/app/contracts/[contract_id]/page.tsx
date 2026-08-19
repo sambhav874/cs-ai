@@ -256,6 +256,7 @@ interface WorkspaceDocumentSummary {
   _id: string;
   contract_name: string;
   status?: string;
+  indexStatus?: string | null;
   projectId?: string | null;
   uploaded_by?: string;
   uploader_name?: string | null;
@@ -866,7 +867,7 @@ export default function ContractView() {
     explorerDocuments.map((document) => ({
       id: document._id,
       name: document.contract_name,
-      status: document.status,
+      status: document.indexStatus ?? undefined,
       isCurrent: document._id === contract?._id,
     }))
   ), [contract?._id, explorerDocuments]);

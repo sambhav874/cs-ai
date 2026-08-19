@@ -38,8 +38,21 @@ SECURITY_STANDARD_PREFIXES = {
 }
 
 
+_DASH_VARIANTS = str.maketrans(
+    {ch: "-" for ch in "‐‑‒–—−"}
+)
+
+
 def normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "").lower()).strip()
+    # Models render compound terms with a typographic non-breaking hyphen
+    # ("hot‑meal", "cold‑storage" in markdown tables) and put a
+    # narrow no-break space before a unit ("2 %"); fixtures spell the
+    # same facts "hot meal" / "cold storage" / "2%". Canonicalize both so a
+    # correct answer isn't scored as missing the fact over typography.
+    lowered = (text or "").lower().translate(_DASH_VARIANTS)
+    hyphen_as_space = lowered.replace("-", " ")
+    collapsed = re.sub(r"(\d)\s+(%|percent\b)", r"\1\2", hyphen_as_space)
+    return re.sub(r"\s+", " ", collapsed).strip()
 
 
 def contains_all(text: str, required: Iterable[str]) -> List[str]:
@@ -412,6 +425,35 @@ def score_observation(
             "process",
             observed_iterations is not None and observed_iterations <= expected.max_iterations,
             f"expected <= {expected.max_iterations}, got {observed_iterations}",
+            points=1,
+        )
+
+    # Cost ceilings. Read from the observation's own telemetry when the runner
+    # populated it, falling back to the trace for runners that only report there.
+    if expected.max_model_calls is not None:
+        observed_model_calls = (
+            observation.model_calls
+            if observation.model_calls is not None
+            else int_trace_scalar(observation, "model_calls")
+        )
+        add_check(
+            "max_model_calls",
+            "process",
+            observed_model_calls is not None and observed_model_calls <= expected.max_model_calls,
+            f"expected <= {expected.max_model_calls}, got {observed_model_calls}",
+            points=1,
+        )
+    if expected.max_tool_calls is not None:
+        observed_tool_calls = (
+            observation.tool_calls
+            if observation.tool_calls is not None
+            else int_trace_scalar(observation, "tool_calls")
+        )
+        add_check(
+            "max_tool_calls",
+            "process",
+            observed_tool_calls is not None and observed_tool_calls <= expected.max_tool_calls,
+            f"expected <= {expected.max_tool_calls}, got {observed_tool_calls}",
             points=1,
         )
 

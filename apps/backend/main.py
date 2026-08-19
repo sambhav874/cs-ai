@@ -25,6 +25,7 @@ from api.routes.playbooks import router as playbooks_router
 from api.routes.agent import router as agent_router
 from api.routes.evaluations import router as evaluations_router
 from api.routes.model_settings import router as model_settings_router
+from api.routes.preferences import router as preferences_router
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from core.rate_limiter import limiter
@@ -205,6 +206,7 @@ v1_router.include_router(playbooks_router, tags=["Playbooks"])
 v1_router.include_router(agent_router, tags=["ContractSense Agent"])
 v1_router.include_router(evaluations_router, tags=["Evaluations"])
 v1_router.include_router(model_settings_router, tags=["Model Settings"])
+v1_router.include_router(preferences_router, tags=["User Preferences"])
 
 if settings.testing:
     from test_support.testing_utils import testing_router

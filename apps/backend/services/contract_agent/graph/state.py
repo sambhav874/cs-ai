@@ -118,6 +118,7 @@ class ApprovalRequest(BaseModel):
         "duplicate_document_copy",
         "extract_kpis",
         "remember_fact",
+        "correct_fact",
         "replicate_document",
     ]
     title: str
@@ -174,6 +175,10 @@ class AgentRunState(BaseModel):
     citation_annotations: List[Dict[str, Any]] = Field(default_factory=list)
     tools: List[ToolCallRecord] = Field(default_factory=list)
     react_iterations: int = 0
+    # Counted separately from react_iterations: one loop iteration can issue two
+    # model calls (tool selection, then the synthesis turn). This is the number
+    # the cost/latency gate reports.
+    model_calls: int = 0
     react_scratchpad: List[Dict[str, Any]] = Field(default_factory=list)
     react_complete: bool = False
     traces: List[AgentTraceEvent] = Field(default_factory=list)
@@ -209,5 +214,6 @@ class AgentResponse(BaseModel):
     tools: List[Dict[str, Any]] = Field(default_factory=list)
     agent_trace: List[Dict[str, Any]] = Field(default_factory=list)
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
+    model_calls: int = 0
     cost_usd: float = 0.0
     created_review_id: Optional[str] = None

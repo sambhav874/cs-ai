@@ -36,6 +36,17 @@ class Settings(BaseSettings):
     embeddings_model_name: str = Field(default="intfloat/e5-large-v2", env="EMBEDDINGS_MODEL_NAME")
 
 
+    # Contract Agent Configuration
+    contract_agent_max_react_iterations: int = Field(default=10, env="CONTRACT_AGENT_MAX_REACT_ITERATIONS")
+    # One budget over the whole run, replacing the per-tool-name repeat caps that
+    # never bounded a run spreading its calls across several tools.
+    contract_agent_tool_call_budget: int = Field(default=16, env="CONTRACT_AGENT_TOOL_CALL_BUDGET")
+    # Zero disables the cost half of the budget; enable once the executor reports
+    # real per-call costs.
+    contract_agent_tool_cost_budget_usd: float = Field(
+        default=0.0, env="CONTRACT_AGENT_TOOL_COST_BUDGET_USD"
+    )
+
     # Other Configuration
     thread_pool_workers: int = Field(default=4, env="THREAD_POOL_WORKERS")
     chunk_size: int = Field(default=4000, env="CHUNK_SIZE")

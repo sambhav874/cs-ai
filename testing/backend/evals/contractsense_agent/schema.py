@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Visibility = Literal["public", "private", "retired"]
 SuiteName = Literal["smoke", "full", "security", "benchmark"]
-RunnerName = Literal["core", "api", "bitgn"]
+RunnerName = Literal["core", "agent", "api", "bitgn"]
 RouteTarget = Literal[
     "core_project",
     "contract_query",
@@ -95,6 +95,8 @@ class EvalExpectations(BaseModel):
     max_retrieval_count: Optional[int] = None
     max_iterations: Optional[int] = None
     max_prompt_chars: Optional[int] = None
+    max_model_calls: Optional[int] = None
+    max_tool_calls: Optional[int] = None
 
 
 class ContractSenseEvalCase(BaseModel):
@@ -104,6 +106,11 @@ class ContractSenseEvalCase(BaseModel):
     visibility: Visibility = "private"
     category: str = Field(..., min_length=1)
     prompt: str = Field(..., min_length=1)
+    # Turns asked after `prompt`, in order, on the same session. Expectations are
+    # scored against the LAST turn's answer, so a follow-up that leans on a
+    # pronoun ("list them") only passes if conversation memory resolved it.
+    # Empty means a single-turn case.
+    follow_up_prompts: List[str] = Field(default_factory=list)
     target: EvalTarget = Field(default_factory=EvalTarget)
     documents: List[EvalDocument] = Field(default_factory=list)
     kpis: List[EvalKPI] = Field(default_factory=list)
@@ -156,6 +163,21 @@ class AgentEvalObservation(BaseModel):
     cost_usd: Optional[float] = None
     error: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    # ── Per-run telemetry, for the seven reported metrics ──────────────────
+    # Populated per *turn* by the agent runner. `turns` is 1 for a single-turn
+    # case, so the per-turn metrics divide by it rather than assuming one turn.
+    turns: int = Field(1, ge=1)
+    model_calls: Optional[int] = None
+    tool_calls: Optional[int] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    # Citations the backend's own validator marked verified (`verified: true` in
+    # middleware._validate_citations), versus how many it emitted.
+    verified_citations: Optional[int] = None
+    emitted_citations: Optional[int] = None
+    # Answers where the agent said it had no supporting evidence.
+    unsupported: bool = False
 
 
 class EvalCheckResult(BaseModel):

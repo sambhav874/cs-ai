@@ -18,25 +18,20 @@ class ToolSpec:
 
 READ_ONLY_TOOLS = {
     "calculate_from_evidence",
-    "fetch_documents",
-    "find_in_document",
     "get_kpi_context",
-    "get_project_timeline",
     "list_documents",
-    "outline_document",
+    "project_memory",
     "read_document",
-    "read_project_concept",
-    "read_project_events",
     "search_evidence",
 }
 
 APPROVAL_REQUIRED_TOOLS = {
-    "create_tabular_review",
     "extract_kpis",
     "generate_tabular_review",
     "remember_fact",
+    "correct_fact",
+    "propose_tabular_review",
     "replicate_document",
-    "suggest_tabular_review",
 }
 
 # Forbidden tools are never callable by the agent. They exist as documentation
@@ -56,22 +51,17 @@ FORBIDDEN_TOOL_NAMES = frozenset({
 def tool_specs() -> Dict[str, ToolSpec]:
     descriptions = {
         "calculate_from_evidence": "Evaluate arithmetic using only values found in cited evidence or KPI context.",
-        "fetch_documents": "Fetch scoped indexed document metadata by IDs.",
-        "find_in_document": "Locate an exact phrase, clause reference, or keyword inside one scoped document.",
         "get_kpi_context": "Retrieve KPI/SLA targets, actuals, breach state, and operational context matching the user query.",
-        "get_project_timeline": "Retrieve project memory: the complete list of documents in this project with how they relate to each other, plus any recorded facts and team notes. Use this before assuming what a project does or does not contain.",
-        "read_project_concept": "Read one document's full project-memory overview by its document id, as listed in the project index. Use when the index line is not enough detail.",
-        "read_project_events": "Read the recent history of what has happened in this project — documents ingested, amendments detected, facts recorded.",
-        "list_documents": "List scoped indexed documents available to this agent run.",
-        "outline_document": "Read a document outline or high-level structure.",
-        "read_document": "Read a focused excerpt, or the full indexed document when include_full is enabled for whole-contract summaries.",
-        "search_evidence": "Search scoped contracts and return clause-level evidence with quote, context, page, section, score, and evidence ID.",
-        "create_tabular_review": "Create a tabular review only after human approval.",
+        "list_documents": "List scoped indexed documents, or fetch metadata for a named subset by ID.",
+        "project_memory": "Read the project index, one document overview, or recent project events; it is context, not clause evidence.",
+        "read_document": "Read one scoped document in outline, excerpt, or full mode; use full for coverage-sensitive review.",
+        "search_evidence": "Search scoped contracts for clause evidence, or locate an exact phrase with exact=.",
         "extract_kpis": "Extract draft KPI/SLA candidates for a scoped ingested contract only after human approval.",
         "generate_tabular_review": "Generate tabular review cells only after human approval.",
+        "propose_tabular_review": "Propose an editable tabular review only after human approval.",
         "replicate_document": "Replicate a document to another project only after human approval.",
-        "suggest_tabular_review": "Suggest an editable tabular review column configuration for human approval.",
-        "remember_fact": "Record a durable fact about this project in memory, only after human approval. Use only when the user explicitly asks for something to be remembered — not to log the conversation. A fact taken from a contract must carry the document id and the quote supporting it.",
+        "remember_fact": "Record a durable fact about this project in memory, only after human approval. Propose it whenever the user volunteers a fact worth keeping (a business context, decision, preference, or correction), even if they never say 'remember' or 'save' — most users won't. Do not use it to log routine conversation. A fact taken from a contract must carry the document id and the quote supporting it.",
+        "correct_fact": "Correct an existing project fact by recording the replacement and superseding the old fact, only after human approval.",
     }
     specs: Dict[str, ToolSpec] = {}
     for name in sorted(READ_ONLY_TOOLS):

@@ -20,6 +20,8 @@ from uuid import uuid4
 import yaml
 from bson import ObjectId
 
+from services.memory import lifecycle
+
 logger = logging.getLogger(__name__)
 
 
@@ -193,8 +195,12 @@ def _parse_json_object(text: str) -> Optional[Dict[str, Any]]:
         return None
     # The underlying agent run may append its own <CITATIONS> block after the
     # requested JSON object (its system prompt encourages this whenever it
-    # cites evidence) — strip it before extracting our object.
-    stripped = re.sub(r"<CITATIONS?>[\s\S]*?(?:</CITATIONS?>|$)", "", text, flags=re.IGNORECASE).strip()
+    # cites evidence) — strip it before extracting our object. The block's shape
+    # is owned by services.contract_agent.citations; keeping a local copy of the
+    # pattern here is how the two drift apart.
+    from services.contract_agent import citations
+
+    stripped = citations.strip_citation_block(text)
     stripped = _strip_citation_markers(stripped)
     fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", stripped)
     if fence:
@@ -236,6 +242,9 @@ class ProjectMemoryManager:
         self.memories = agent_db["project_memories"]
         self.scratchpads = agent_db["project_scratchpads"]
         self.facts = agent_db["project_facts"]
+        # Same collection AgentMemoryManager owns — read here only to
+        # propagate the amendment "needs review" flag onto it (2.6, F-23).
+        self.agent_memories = agent_db["agent_memories"]
         self.events = agent_db["project_events"]
         # The index is built from the contracts collection, not from memory —
         # see render_index for why.
@@ -775,6 +784,15 @@ class ProjectMemoryManager:
             },
             {"$set": {"needs_review": True}},
         )
+        try:
+            lifecycle.flag_memories_for_amended_document(
+                self.agent_memories, contract_id=contract_id
+            )
+        except Exception as flag_exc:
+            logger.warning(
+                "Could not flag agent memories for amended document %s: %s",
+                contract_id, flag_exc,
+            )
         return result.modified_count
 
     def render_facts(self, project_id: str) -> str:

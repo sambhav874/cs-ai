@@ -7,7 +7,7 @@ import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from '@/components/ui/skeleton';
-import { User, Crown, Loader2, AlertCircle, MessageSquare, SettingsIcon, Users as TeamIcon } from 'lucide-react';
+import { User, Crown, Loader2, AlertCircle, MessageSquare, SettingsIcon, Sparkles, SlidersHorizontal, Users as TeamIcon } from 'lucide-react';
 // Assuming Loader is a custom component you have. If not, replace Loader with Loader2 from lucide-react.
 // For example, if you don't have a custom Loader:
 // import { Loader2 as Loader } from 'lucide-react'; 
@@ -374,6 +374,36 @@ export default function AccountPage() {
                          <CardContent><p>Could not load detailed account information at this time. Please ensure you have selected an account context.</p></CardContent>
                     </Card>
                 )}
+
+                <Card className="mt-6 rounded-md border-gray-200 shadow-none">
+                    <CardHeader className="flex flex-row items-center gap-3 space-y-0">
+                        <Sparkles className="h-5 w-5 text-gray-700" />
+                        <div>
+                            <CardTitle>Model Settings</CardTitle>
+                            <CardDescription>Configure AI providers, models, and reasoning parameters for your account.</CardDescription>
+                        </div>
+                    </CardHeader>
+                    <CardFooter className="border-t border-gray-200 bg-gray-50/50 p-4">
+                        <Link href="/account/model-settings">
+                            <Button variant="outline" size="sm">Configure Models</Button>
+                        </Link>
+                    </CardFooter>
+                </Card>
+
+                <Card className="mt-6 rounded-md border-gray-200 shadow-none">
+                    <CardHeader className="flex flex-row items-center gap-3 space-y-0">
+                        <SlidersHorizontal className="h-5 w-5 text-gray-700" />
+                        <div>
+                            <CardTitle>Agent Preferences</CardTitle>
+                            <CardDescription>Set your practice area, jurisdiction, citation style, and answer verbosity for the contract agent.</CardDescription>
+                        </div>
+                    </CardHeader>
+                    <CardFooter className="border-t border-gray-200 bg-gray-50/50 p-4">
+                        <Link href="/account/agent-preferences">
+                            <Button variant="outline" size="sm">Set Preferences</Button>
+                        </Link>
+                    </CardFooter>
+                </Card>
 
                 <Card className="mt-6 rounded-md border-gray-200 shadow-none">
                     <CardHeader className="flex flex-row items-center gap-3 space-y-0">

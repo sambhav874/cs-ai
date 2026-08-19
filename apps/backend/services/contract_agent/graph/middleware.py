@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
+
+from services.contract_agent import citations
 
 from .state import AgentRunState, AgentStatus, AgentWorkflow
+from .tools import errors as tool_errors
 from .tools.registry import APPROVAL_REQUIRED_TOOLS, FORBIDDEN_TOOL_NAMES, READ_ONLY_TOOLS, tool_specs
 
 
@@ -29,10 +31,11 @@ class MiddlewareDescriptor:
 def middleware_descriptors() -> List[MiddlewareDescriptor]:
     return [
         MiddlewareDescriptor("HumanInTheLoopMiddleware", True, {"approval_required_tools": [
-            "create_tabular_review",
+            "propose_tabular_review",
             "generate_tabular_review",
             "extract_kpis",
             "remember_fact",
+            "correct_fact",
             "replicate_document",
         ]}, runtime="local"),
         MiddlewareDescriptor("ModelRetryMiddleware", True, {"max_retries": 2}, runtime="langchain"),
@@ -141,8 +144,24 @@ class ActiveMiddlewareEngine:
             state.add_trace("middleware:ToolPolicyMiddleware", decision="reject", tools=rejected_names)
         else:
             state.add_trace("middleware:ToolPolicyMiddleware", decision="allow", tools=[tool.name for tool in state.tools])
-        state.add_trace("middleware:ToolCallLimitMiddleware", limit=16, planned_tools=len(state.tools))
-        state.add_trace("middleware:ToolRetryMiddleware", max_retries=1, enforced=False, reason="Tool calls return structured errors instead of retryable exceptions.")
+        # The real budget, not a hardcoded 16 that no longer matched anything.
+        limits = tool_errors.budget_limits()
+        state.add_trace(
+            "middleware:ToolCallLimitMiddleware",
+            limit=limits["max_tool_calls"],
+            max_cost_usd=limits["max_cost_usd"],
+            planned_tools=len(state.tools),
+            enforced=True,
+        )
+        state.add_trace(
+            "middleware:ToolRetryMiddleware",
+            max_retries=1,
+            enforced=True,
+            reason=(
+                "Transient tool failures are retried once in the tool wrapper; every other "
+                "failure returns a typed error envelope with a recovery hint."
+            ),
+        )
         return state
 
     def approval_guard(self, state: AgentRunState) -> AgentRunState:
@@ -155,17 +174,11 @@ class ActiveMiddlewareEngine:
         return state
 
     def answer_guard(self, state: AgentRunState) -> AgentRunState:
-        citation_report = _validate_citations(state)
-        state.citation_annotations = citation_report["annotations"]
-        if state.citation_details:
-            state.citation_details["annotations"] = state.citation_annotations
-            state.citation_details["citation_guard"] = citation_report
-        elif state.citation_annotations:
-            state.citation_details = {
-                "annotations": state.citation_annotations,
-                "citation_style": "react_tool_observation",
-                "citation_guard": citation_report,
-            }
+        # Steps 3-5 of the citation pipeline: validate each quote against what
+        # the tools returned, renumber the survivors, then rewrite the inline
+        # markers. The rewrite is last so that dropping an unsupported citation
+        # cannot leave the prose pointing at the wrong evidence (F-05).
+        citation_report = citations.validate_and_finalize(state)
         if citation_report["issues"]:
             state.verifier_issues.extend(
                 issue for issue in citation_report["issues"] if issue not in state.verifier_issues
@@ -182,146 +195,14 @@ class ActiveMiddlewareEngine:
         return state
 
 
-def _conversation_summary_from_memory(memory_context: str) -> str:
-    if not memory_context:
-        return ""
-    match = re.search(
-        r"Prior conversation summary:\s*(.+?)(?:\n\n(?:Recent turns:|Useful remembered topics:)|\Z)",
-        memory_context.strip(),
-        flags=re.DOTALL,
-    )
-    if not match:
-        return ""
-    return re.sub(r"\s+", " ", match.group(1)).strip()[:1200]
-
-
-def _validate_citations(state: AgentRunState) -> Dict[str, Any]:
-    observed_texts = _observed_evidence(state)
-    answer_tokens = set(_citation_tokens(state.answer))
-    issues: List[str] = []
-    valid_annotations: List[Dict[str, Any]] = []
-    seen: set[Tuple[str, str]] = set()
-
-    # When there are no tool observations at all (e.g. the model answered from its
-    # system-prompt context alone) we should not discard citations — just let them
-    # through with a note.
-    no_observations = len(observed_texts) == 0
-
-    for annotation in state.citation_annotations:
-        quote = str(annotation.get("quote") or "").strip()
-        doc_id = str(annotation.get("doc_id") or annotation.get("document_id") or "").strip()
-        if not doc_id:
-            issues.append("invalid_citation_missing_document_id")
-            continue
-        if not quote:
-            issues.append("invalid_citation_missing_quote")
-            continue
-
-        normalized_quote = _normalize_citation_text(quote)
-
-        # ── Support check ──────────────────────────────────────────────────
-        # Use token-overlap instead of substring containment so that:
-        #   • minor paraphrasing, punctuation differences, extra whitespace
-        #   • quotes slightly longer/shorter than the retrieved snippet
-        # …do not cause false rejections.
-        if no_observations:
-            # No tool evidence at all — pass through; note it.
-            supported = True
-            issues.append("citation_no_evidence_passthrough")
-        else:
-            quote_tokens = set(_citation_tokens(normalized_quote))
-            supported = False
-            if quote_tokens:
-                for obs_text in observed_texts:
-                    if not obs_text:
-                        continue
-                    obs_tokens = set(_citation_tokens(obs_text))
-                    if not obs_tokens:
-                        continue
-                    overlap = quote_tokens & obs_tokens
-                    # Accept if ≥40% of the quote's content tokens appear in evidence,
-                    # OR the evidence contains a significant multi-word fragment of the quote.
-                    overlap_ratio = len(overlap) / len(quote_tokens)
-                    if overlap_ratio >= 0.40:
-                        supported = True
-                        break
-                    # Also accept direct substring containment (original behaviour)
-                    if normalized_quote in obs_text or obs_text in normalized_quote:
-                        supported = True
-                        break
-            else:
-                # Quote has no meaningful tokens — treat as unsupported
-                supported = False
-
-        if not supported:
-            issues.append("invalid_or_unsupported_citation")
-
-        dedupe_key = (doc_id, normalized_quote[:180])
-        if dedupe_key in seen:
-            issues.append("duplicate_citation_removed")
-            continue
-        seen.add(dedupe_key)
-
-        cleaned = dict(annotation)
-        cleaned["verified"] = supported
-        cleaned["source_ref"] = annotation.get("ref")
-
-        if len(quote) > 520:
-            cleaned["quote"] = quote[:520].rsplit(" ", 1)[0].rstrip() + " ..."
-            issues.append("broad_citation_trimmed")
-
-        quote_tokens_check = set(_citation_tokens(cleaned.get("quote") or ""))
-        if answer_tokens and quote_tokens_check and not (answer_tokens & quote_tokens_check):
-            issues.append("weak_claim_citation_overlap")
-
-        cleaned["ref"] = len(valid_annotations) + 1
-        valid_annotations.append(cleaned)
-
-    return {
-        "annotations": valid_annotations,
-        "issues": list(dict.fromkeys(issues)),
-    }
-
-
-def _observed_evidence(state: AgentRunState) -> List[str]:
-    texts: List[str] = []
-    for scratch in state.react_scratchpad:
-        observation = scratch.get("observation")
-        if not isinstance(observation, dict):
-            continue
-        candidates: List[Dict[str, Any]] = []
-        if isinstance(observation.get("matches"), list):
-            candidates.extend(item for item in observation["matches"] if isinstance(item, dict))
-        if observation.get("snippet") or observation.get("quote") or observation.get("search_results"):
-            candidates.append(observation)
-        for candidate in candidates:
-            for key in ("context", "quote", "snippet", "search_results", "text"):
-                value = _normalize_citation_text(str(candidate.get(key) or ""))
-                if value:
-                    texts.append(value)
-    return texts
-
-
-def _normalize_citation_text(value: str) -> str:
-    """Lowercase, collapse whitespace, and strip punctuation noise."""
-    normalized = re.sub(r"\s+", " ", value or "").strip().lower()
-    # Remove common punctuation that varies between source and model output
-    normalized = re.sub(r"[\"'""''\[\](){}]", "", normalized)
-    return normalized
-
-
-def _citation_tokens(value: str) -> List[str]:
-    """Return significant content words from a text, excluding stop words."""
-    _STOP = {
-        "a", "an", "and", "are", "as", "at", "be", "been", "but",
-        "by", "contract", "document", "for", "from", "had", "has",
-        "have", "if", "in", "into", "is", "it", "its", "no", "not",
-        "of", "on", "or", "shall", "such", "than", "that", "the",
-        "their", "this", "to", "was", "were", "which", "will", "with",
-    }
-    return [
-        token
-        for token in re.findall(r"[a-z][a-z0-9_$%.-]{2,}", (value or "").lower())
-        if token not in _STOP
-    ]
-
+# `_conversation_summary_from_memory` lived here: a regex that recovered the
+# session summary by re-parsing the rendered memory prose. It had no callers,
+# and MemoryComposer now hands out the summary as a labelled block, so parsing
+# it back out of the text would be a second source of truth for what was sent —
+# and one that returns "" against the composer's headings without saying so.
+# Re-exported from services.contract_agent.citations, which owns the single
+# implementation. Kept here as aliases because other modules already import them
+# from this path; two copies of the normalisation rules would let the support
+# check and the marker matching disagree about what counts as the same quote.
+_normalize_citation_text = citations.normalize_text
+_citation_tokens = citations.content_tokens

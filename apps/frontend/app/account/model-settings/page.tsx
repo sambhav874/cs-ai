@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/apiClient";
+import { useBreadcrumbs } from "@/app/context/BreadcrumbContext";
 
 const API = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL;
 
@@ -51,14 +52,22 @@ export default function ModelSettingsPage() {
   // Writes are admin-only server-side; a 403 on save flips this so the form
   // renders read-only instead of letting a member keep hitting a wall.
   const [isReadOnly, setIsReadOnly] = useState(false);
+  const { setBreadcrumbs } = useBreadcrumbs();
+
+  useEffect(() => {
+    setBreadcrumbs([
+      { label: "Account Settings", href: "/account" },
+      { label: "Model Settings" },
+    ]);
+  }, [setBreadcrumbs]);
 
   const load = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const [catalogRes, settingsRes] = await Promise.all([
-        apiFetch(`${API}/api/v1/model-settings/catalog`),
-        apiFetch(`${API}/api/v1/model-settings`),
+        apiFetch(`${API}/model-settings/catalog`),
+        apiFetch(`${API}/model-settings`),
       ]);
       if (!catalogRes.ok) throw new Error("Could not load the model catalog.");
       if (!settingsRes.ok) throw new Error("Could not load your account's model settings.");
@@ -96,7 +105,7 @@ export default function ModelSettingsPage() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const res = await apiFetch(`${API}/api/v1/model-settings`, {
+      const res = await apiFetch(`${API}/model-settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),

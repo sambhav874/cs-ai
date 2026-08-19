@@ -9,13 +9,25 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 from uuid import uuid4
+
+from services.memory import lifecycle, semantic
+from services.memory.summarizer import (
+    SUMMARY_BUDGET_CHARS,
+    summarize_run_outcome,
+    summarize_session,
+)
 
 
 MAX_MEMORY_CHARS = 3500
 RECENT_MESSAGE_LIMIT = 8
 SUMMARY_AFTER_MESSAGES = 14
+
+# Messages that must age out before another fold runs. Without it the summary
+# would be rebuilt on every single append, which is one LLM call per turn to
+# re-express material that has not changed.
+SUMMARY_STRIDE = 6
 
 
 def _now() -> datetime:
@@ -45,19 +57,11 @@ def _is_placeholder_title(title: Any) -> bool:
     }
 
 
-def _question_memory_key(question: str) -> Optional[str]:
-    lowered = (question or "").lower()
-    rules = [
-        ("payment_terms", ["payment", "invoice", "fee", "rate", "price", "billing"]),
-        ("termination_terms", ["termination", "terminate", "renewal", "expiry", "cure"]),
-        ("obligations", ["obligation", "deadline", "deliverable", "shall", "must"]),
-        ("risk_review", ["risk", "liability", "indemnity", "warranty", "breach"]),
-        ("drafting", ["draft", "approval note", "edit", "redline", "amend", "rewrite"]),
-    ]
-    for key, terms in rules:
-        if any(term in lowered for term in terms):
-            return key
-    return None
+# `_question_memory_key` lived here: five keyword buckets that any question
+# was forced into, becoming the key a memory was written under and overwrote.
+# It is why a contract could remember exactly one thing about payment, and why
+# that thing was whichever answer mentioned an invoice most recently (F-20).
+# Memories are now keyed by their own question and ranked by embedding.
 
 
 def _work_product_side_effect_requested(question: str) -> bool:
@@ -103,6 +107,7 @@ class AgentMemoryManager:
         self.messages = agent_db["agent_chat_messages"]
         self.memories = agent_db["agent_memories"]
         self.drafts = agent_db["agent_drafts"]
+        self.episodes = agent_db["agent_run_episodes"]
 
     def ensure_session(
         self,
@@ -245,96 +250,160 @@ class AgentMemoryManager:
         self._summarize_session_if_needed(session_id=session_id, contract_id=contract_id, user_id=user_id)
         return doc
 
-    def _summarize_session_if_needed(self, *, session_id: str, contract_id: str, user_id: str) -> None:
-        count = self.messages.count_documents({"session_id": session_id, "contract_id": contract_id, "user_id": user_id})
-        if count <= SUMMARY_AFTER_MESSAGES:
-            return
-
-        older_count = max(0, count - RECENT_MESSAGE_LIMIT)
-        older = list(
-            self.messages.find(
-                {"session_id": session_id, "contract_id": contract_id, "user_id": user_id},
-                {"role": 1, "content": 1, "created_at": 1},
-            ).sort("created_at", 1).limit(older_count)
-        )
-        if not older:
-            return
-
-        lines: List[str] = []
-        for message in older[-12:]:
-            role = "User" if message.get("role") == "user" else "Assistant"
-            lines.append(f"- {role}: {_clean_text(message.get('content'), 220)}")
-
-        existing_summary = (self.sessions.find_one({"session_id": session_id}) or {}).get("summary", "")
-        summary = _clean_text(f"{existing_summary}\n" + "\n".join(lines), MAX_MEMORY_CHARS)
-        self.sessions.update_one(
-            {"session_id": session_id, "contract_id": contract_id, "user_id": user_id},
-            {"$set": {"summary": summary, "summarized_message_count": older_count, "updated_at": _now()}},
-        )
-
-    def build_memory_context(
+    def _summarize_session_if_needed(
         self,
         *,
         session_id: str,
         contract_id: str,
         user_id: str,
+        model: Optional[Any] = None,
+    ) -> None:
+        """Fold newly-aged messages into the running summary.
+
+        Only the messages that have aged out *since the last fold* are read.
+        The rest are already represented in the summary, and re-summarizing
+        them every time would both cost a full re-read per turn and let each
+        pass paraphrase the previous pass's paraphrase.
+
+        Runs at most once per `SUMMARY_STRIDE` messages rather than on every
+        append, which is what turns this from an LLM call per turn into one per
+        several turns.
+        """
+        query = {"session_id": session_id, "contract_id": contract_id, "user_id": user_id}
+        count = self.messages.count_documents(query)
+        if count <= SUMMARY_AFTER_MESSAGES:
+            return
+
+        session = self.sessions.find_one(query) or {}
+        already_summarized = int(session.get("summarized_message_count") or 0)
+        older_count = max(0, count - RECENT_MESSAGE_LIMIT)
+        if older_count - already_summarized < SUMMARY_STRIDE:
+            return
+
+        aged = list(
+            self.messages.find(query, {"role": 1, "content": 1, "created_at": 1})
+            .sort("created_at", 1)
+            .limit(older_count)
+        )[already_summarized:]
+        if not aged:
+            return
+
+        summary = summarize_session(
+            str(session.get("summary") or ""),
+            aged,
+            model=model,
+            budget=SUMMARY_BUDGET_CHARS,
+        )
+        self.sessions.update_one(
+            query,
+            {
+                "$set": {
+                    "summary": summary,
+                    "summarized_message_count": older_count,
+                    "updated_at": _now(),
+                }
+            },
+        )
+
+    def record_run_episode(
+        self,
+        *,
+        session_id: str,
+        contract_id: str,
+        user_id: str,
+        project_id: Optional[str],
         question: str,
-    ) -> str:
-        session = self.sessions.find_one({
+        tools_called: Sequence[str],
+        citation_count: int = 0,
+        confidence: Any = None,
+        unsupported: bool = False,
+        workflow_id: Optional[str] = None,
+        correction: str = "",
+    ) -> Dict[str, Any]:
+        """One episode per completed run: what was asked, how it was worked.
+
+        Distinct from a chat message, which records what was *said*. An episode
+        records what the agent *did* — the tool sequence, whether evidence was
+        found, how confident it was. That makes "what have we already checked
+        on this contract?" answerable across sessions, and it is the trajectory
+        substrate 2.4 mines.
+        """
+        doc = {
+            "episode_id": f"ep-{uuid4().hex}",
             "session_id": session_id,
             "contract_id": contract_id,
+            "project_id": project_id,
             "user_id": user_id,
-            "archived_at": {"$exists": False},
-        })
-        if not session:
-            return ""
+            "workflow_id": workflow_id,
+            "question": _clean_text(question, 400),
+            "tools_called": list(tools_called),
+            "citation_count": int(citation_count or 0),
+            "confidence": confidence,
+            "unsupported": bool(unsupported),
+            "summary": summarize_run_outcome(
+                question=question,
+                tools_called=tools_called,
+                citation_count=citation_count,
+                confidence=confidence,
+                unsupported=unsupported,
+                correction=correction,
+            ),
+            "created_at": _now(),
+        }
+        self.episodes.insert_one(doc)
+        return doc
 
-        recent = list(
-            self.messages.find(
-                {"session_id": session_id, "contract_id": contract_id, "user_id": user_id},
-                {"role": 1, "content": 1, "created_at": 1},
-            ).sort("created_at", -1).limit(RECENT_MESSAGE_LIMIT)
+    def recent_episodes(
+        self,
+        *,
+        contract_id: str,
+        user_id: str,
+        exclude_session_id: Optional[str] = None,
+        limit: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """Past runs on this contract.
+
+        The current session is excluded by default: its turns are already in
+        the conversation blocks verbatim, and repeating them as episodes would
+        spend budget restating what the model can already see.
+        """
+        query: Dict[str, Any] = {"contract_id": contract_id, "user_id": user_id}
+        if exclude_session_id:
+            query["session_id"] = {"$ne": exclude_session_id}
+        return list(
+            self.episodes.find(query, {"_id": 0}).sort("created_at", -1).limit(limit)
         )
-        recent.reverse()
 
-        semantic = self._semantic_memories(contract_id=contract_id, user_id=user_id, question=question)
-        parts = [
-            "Conversation memory below is for continuity only. Do not treat it as contract evidence and do not cite it.",
-        ]
-        summary = _clean_text(session.get("summary"), 1200)
-        if summary:
-            parts.append(f"Prior conversation summary:\n{summary}")
-        if recent:
-            recent_lines = [
-                f"- {'User' if msg.get('role') == 'user' else 'Assistant'}: {_clean_text(msg.get('content'), 360)}"
-                for msg in recent
-            ]
-            parts.append("Recent turns:\n" + "\n".join(recent_lines))
-        if semantic:
-            memory_lines = [f"- {item.get('memory_key')}: {_clean_text(item.get('content'), 240)}" for item in semantic]
-            parts.append("Useful remembered topics:\n" + "\n".join(memory_lines))
-
-        return "\n\n".join(parts)[:MAX_MEMORY_CHARS]
+    # `build_memory_context` lived here. It pre-joined the session summary,
+    # recent turns and semantic recall into one string capped at
+    # MAX_MEMORY_CHARS, which is why truncation used to eat whichever tier the
+    # concatenation happened to put last rather than the least valuable one.
+    # `services.memory.MemoryComposer` reads the three separately and budgets
+    # them against project memory too (F-17); this method had no callers left,
+    # and keeping a second assembler with its own format is how the two drift.
 
     def _semantic_memories(self, *, contract_id: str, user_id: str, question: str) -> List[Dict[str, Any]]:
-        query_terms = {
-            token.lower()
-            for token in re.findall(r"[a-zA-Z][a-zA-Z0-9_-]{3,}", question or "")
-        }
+        """Recall by meaning, ranked by relevance × recency.
+
+        The candidate set is no longer "the twelve most recently updated". That
+        cap silently made recall a recency filter with a keyword check bolted
+        on: anything older than the last twelve writes was unreachable no
+        matter how well it matched.
+        """
         memories = list(
             self.memories.find(
                 {"contract_id": contract_id, "user_id": user_id},
                 {"_id": 0},
-            ).sort("updated_at", -1).limit(12)
+            ).sort("updated_at", -1).limit(semantic.MAX_CANDIDATES)
         )
-        scored = []
-        for memory in memories:
-            haystack = f"{memory.get('memory_key', '')} {memory.get('content', '')}".lower()
-            overlap = sum(1 for term in query_terms if term in haystack)
-            scored.append((overlap, memory))
-        return [memory for score, memory in sorted(scored, key=lambda item: (-item[0], item[1].get("updated_at", _now())), reverse=False) if score > 0][:3]
+        # A memory past its hard TTL is dropped as a candidate entirely rather
+        # than left for recency weighting to rank toward the bottom — decay
+        # asymptotes, it never reaches "gone", and an old unattributed guess
+        # ranked last is still shown before nothing at all.
+        memories = lifecycle.apply_ttl(memories, now=_now())
+        return semantic.rank(question, memories, limit=3)
 
-    def remember_turn(
+    def remember_answer_if_durable(
         self,
         *,
         contract_id: str,
@@ -342,24 +411,108 @@ class AgentMemoryManager:
         session_id: str,
         question: str,
         answer: str,
-    ) -> None:
-        key = _question_memory_key(question)
-        if not key or not answer:
-            return
+        citation_count: int = 0,
+        confidence: Any = None,
+        quote: str = "",
+        explicit_request: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Write a durable memory only when the answer earned one.
+
+        Replaces `remember_turn`, which wrote on every turn matching one of
+        five keyword buckets and overwrote whatever that bucket held. Three
+        things change:
+
+        - **Gated.** See `semantic.is_durable_answer`. Most turns write
+          nothing, which is the point.
+        - **Appended, not overwritten.** Each memory is its own record with its
+          own question and provenance. Overwriting meant a contract could only
+          ever remember one thing about payment, and the thing it remembered
+          was whichever answer came last.
+        - **Attributed.** Origin, source contract, supporting quote and
+          confidence are stored, matching the shape
+          `ProjectMemoryManager.remember_fact` already uses, so the composer
+          can label the block honestly and 2.6 can decay it.
+        """
+        if not semantic.is_durable_answer(
+            citation_count=citation_count,
+            confidence=confidence,
+            answer=answer,
+            explicit_request=explicit_request,
+        ):
+            return None
+
         now = _now()
-        content = _clean_text(answer, 500)
-        self.memories.update_one(
-            {"contract_id": contract_id, "user_id": user_id, "memory_key": key},
-            {
-                "$set": {
-                    "content": content,
-                    "source_session_id": session_id,
-                    "updated_at": now,
-                },
-                "$setOnInsert": {"created_at": now},
-            },
-            upsert=True,
+        content = _clean_text(answer, 800)
+        doc = {
+            "memory_id": f"mem-{uuid4().hex}",
+            "contract_id": contract_id,
+            "user_id": user_id,
+            "memory_key": _clean_text(question, 120),
+            "question": _clean_text(question, 400),
+            "content": content,
+            "origin": "user" if explicit_request else "contract",
+            "source_contract_id": contract_id,
+            "source_session_id": session_id,
+            "quote": _clean_text(quote, 600),
+            "confidence": confidence,
+            "citation_count": int(citation_count or 0),
+            "embedding": semantic.embed(f"{question}\n{content}"),
+            "created_at": now,
+            "updated_at": now,
+            "last_verified_at": now,
+        }
+        self.memories.insert_one(doc)
+        return doc
+
+    def migrate_legacy_memories(self, *, dry_run: bool = True, limit: int = 500) -> List[Dict[str, Any]]:
+        """Backfill embeddings onto pre-2.3 memories without promoting them.
+
+        These rows were written by the overwrite path: no provenance, no
+        citation, no record of which answer produced them. They cannot be
+        trusted as facts, so the migration gives them exactly one thing —
+        an embedding, so they are *reachable* by meaning — and marks them
+        `origin: "legacy"` with low confidence so the composer keeps labelling
+        them as unverified and 2.6's decay can retire them.
+
+        Deliberately not `origin: "contract"`. Silently promoting them to the
+        shape gated writes produce would make them indistinguishable from
+        memories that actually earned their place.
+        """
+        candidates = list(
+            self.memories.find({"origin": {"$exists": False}}, {"_id": 0}).limit(limit)
         )
+        results: List[Dict[str, Any]] = []
+        for record in candidates:
+            content = str(record.get("content") or "").strip()
+            if not content:
+                continue
+            results.append(
+                {
+                    "contract_id": record.get("contract_id"),
+                    "memory_key": record.get("memory_key"),
+                    "content_preview": content[:120],
+                }
+            )
+            if dry_run:
+                continue
+            self.memories.update_one(
+                {
+                    "contract_id": record.get("contract_id"),
+                    "user_id": record.get("user_id"),
+                    "memory_key": record.get("memory_key"),
+                },
+                {
+                    "$set": {
+                        "origin": "legacy",
+                        "confidence": "low",
+                        "embedding": semantic.embed(
+                            f"{record.get('memory_key') or ''}\n{content}"
+                        ),
+                        "migrated_at": _now(),
+                    }
+                },
+            )
+        return results
 
     def record_draft_if_any(
         self,

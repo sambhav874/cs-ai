@@ -1,6 +1,5 @@
 import sys
 from pymongo import MongoClient
-sys.path.append("/Users/kunaldhamiwal/dev/contractsense/apps/backend")
 from services.kpi_source_ingestion import KpiSourceIngestionService
 from core.database import kpi_db
 

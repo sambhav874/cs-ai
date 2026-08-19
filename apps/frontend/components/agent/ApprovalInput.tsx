@@ -70,7 +70,8 @@ export function ApprovalInput({ suggestion, busy, onApprove, onReject, onCustom 
           <button
             type="submit"
             disabled={busy}
-            className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cs-primary/90 disabled:opacity-50"
+            aria-label="Send custom instruction"
+            className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-cs-primary/90 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-[#015CA9] focus-visible:outline-none"
           >
             <ArrowRight className="h-3.5 w-3.5" />
           </button>

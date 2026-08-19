@@ -1,0 +1,48 @@
+[Suggested upload date: 2026-03-10]
+
+MASTER SERVICE AGREEMENT
+
+This Master Service Agreement ("Agreement") is entered into as of 3 March
+2026 ("Effective Date") between HARBORVIEW HEALTH SYSTEMS ("Client") and
+TRELLIS DATA PARTNERS, INC. ("Vendor"). Confidential information exchanged
+by the Parties in connection with this Agreement remains governed by the
+Mutual Non-Disclosure Agreement between the Parties dated 12 January 2026.
+
+1. TERM. This Agreement continues for two (2) years from the Effective Date
+unless earlier terminated as provided herein.
+
+2. SERVICES. Vendor shall perform Services pursuant to one or more
+Statements of Work or Order Forms executed by both Parties, each referencing
+this Agreement by date.
+
+3. INTELLECTUAL PROPERTY. Client owns all work product created specifically
+for Client under a Statement of Work. Vendor retains ownership of its
+pre-existing analytics platform and underlying models.
+
+4. LIABILITY. Each Party's aggregate liability under this Agreement shall
+not exceed USD 3,000,000, except for breaches of confidentiality or data
+protection obligations, which are uncapped.
+
+5. INSURANCE. Vendor shall maintain, at its own expense: (a) Commercial
+General Liability insurance of not less than USD 2,000,000 per occurrence;
+(b) Professional Liability/Errors & Omissions insurance of not less than
+USD 5,000,000 in the aggregate; and (c) Cyber Liability insurance of not
+less than USD 5,000,000 in the aggregate. Client shall be named as
+additional insured, evidenced by a certificate of insurance provided to
+Client prior to commencement of Services.
+
+6. TERMINATION. Either Party may terminate this Agreement for convenience
+upon ninety (90) days' written notice, or for material breach upon thirty
+(30) days' written notice if the breach remains uncured. Upon termination,
+Vendor shall provide reasonable transition assistance and comply with data
+return/deletion obligations under any Data Processing Addendum in effect.
+
+7. GOVERNING LAW. This Agreement is governed by the laws of the State of
+Ohio.
+
+IN WITNESS WHEREOF, the Parties have executed this Agreement as of the
+Effective Date.
+
+For HARBORVIEW HEALTH SYSTEMS             For TRELLIS DATA PARTNERS, INC.
+Name: L. Fennimore                         Name: K. Ostrander
+Title: VP Strategic Partnerships           Title: Chief Revenue Officer

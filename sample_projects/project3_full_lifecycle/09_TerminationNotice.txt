@@ -1,0 +1,43 @@
+[Suggested upload date: 2026-11-12]
+
+NOTICE OF TERMINATION FOR CONVENIENCE
+
+Date: 10 November 2026
+
+To: Trellis Data Partners, Inc.
+Attn: K. Ostrander, Chief Revenue Officer
+
+From: Harborview Health Systems
+
+Re: Termination of Statement of Work SOW-001 under the Master Service
+Agreement dated 3 March 2026
+
+Dear Ms. Ostrander,
+
+This letter serves as formal notice of termination for convenience,
+invoking the termination-for-convenience clause of the Master Service
+Agreement between Harborview Health Systems and Trellis Data Partners, Inc.
+dated 3 March 2026 (the "Agreement").
+
+Pursuant to the Agreement, this notice terminates Statement of Work SOW-001
+(as modified by Change Order No. 1 dated 14 July 2026) effective ninety
+(90) days from the date of this notice, i.e., 8 February 2027.
+
+This decision follows Harborview's internal review and resolution to
+consolidate its analytics vendor relationships onto a single platform, and
+is not related to any performance concern with Trellis's delivery under
+SOW-001.
+
+We request that Trellis provide a transition/wind-down plan consistent with
+the exit-assistance provisions of the Agreement, and confirm that all data
+return and deletion obligations under the Data Processing Addendum dated 24
+March 2026 will be fulfilled within the timeframes specified therein.
+
+We appreciate Trellis's partnership during this engagement and look forward
+to an orderly transition.
+
+Sincerely,
+
+L. Fennimore
+VP Strategic Partnerships
+Harborview Health Systems

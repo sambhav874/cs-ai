@@ -1345,6 +1345,7 @@ def _serialize_project_contract_summary(doc: Dict[str, Any], user_map: Dict[str,
             "approver_name": user_map.get(str(workflow_roles.get("approverUserId"))),
         },
         "index": doc.get("index"),
+        "indexStatus": (doc.get("index") or {}).get("status"),
     }
 
 

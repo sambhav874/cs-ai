@@ -1,0 +1,31 @@
+[Suggested upload date: 2026-07-20]
+
+CHANGE ORDER NO. 1
+
+Change Order No. 1 to Statement of Work SOW-001, issued under the Master
+Service Agreement between Harborview Health Systems and Trellis Data
+Partners, Inc. dated 3 March 2026.
+
+Dated: 14 July 2026
+
+1. BACKGROUND. Following favorable interim results at the three pilot
+facilities under SOW-001, Harborview Health Systems has requested expansion
+of the pilot prior to network-wide rollout.
+
+2. CHANGES TO SOW-001.
+(a) The pilot scope is expanded from three (3) to five (5) facilities.
+(b) The implementation timeline is extended from sixteen (16) to twenty
+(20) weeks to accommodate onboarding of the two additional facilities.
+(c) The implementation fee under Exhibit B is increased by USD 95,000,
+calculated on the same per-facility rate basis as the original three
+facilities, payable upon go-live at the two additional facilities.
+
+3. SERVICE LEVELS UNCHANGED. The service levels set out in Exhibit C (SLA
+Exhibit) remain unchanged and shall apply to all five (5) facilities upon
+their respective go-live dates.
+
+4. NO OTHER CHANGES. All other terms of SOW-001 remain unchanged.
+
+For HARBORVIEW HEALTH SYSTEMS             For TRELLIS DATA PARTNERS, INC.
+Name: Dr. R. Nabhan                        Name: S. Voss
+Title: Clinical Analytics Lead             Title: Delivery Lead

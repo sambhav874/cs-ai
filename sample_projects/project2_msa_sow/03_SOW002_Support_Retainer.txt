@@ -1,0 +1,37 @@
+[Suggested upload date: 2026-07-20]
+
+STATEMENT OF WORK SOW-002
+
+Statement of Work SOW-002, issued under the Master Service Agreement between
+Solstice Retail Group, Inc. and Cobalt Digital Solutions, LLC dated 2 March
+2026.
+
+1. SCOPE. Ongoing managed support and platform maintenance retainer for
+Solstice's legacy point-of-sale (POS) systems, following Solstice's decision
+to transition existing legacy POS support to Vendor. This engagement is
+independent of, and unrelated in scope to, the inventory-forecasting
+implementation described in Statement of Work SOW-001.
+
+2. TERM. Twelve (12) months, commencing 14 July 2026, renewing month-to-month
+thereafter unless either Party gives thirty (30) days' notice of
+non-renewal.
+
+3. FEES. Monthly retainer of USD 18,500, covering up to forty (40) support
+hours per month. Work exceeding the included hours is billed time-and-
+materials at the following rates: Senior Engineer USD 210/hour; Support
+Analyst USD 130/hour.
+
+4. SERVICE LEVELS.
+- Priority 1 (P1) incidents: acknowledged within thirty (30) minutes,
+  resolved or workaround provided within four (4) hours.
+- Monthly platform uptime target: 99.5%. For each 0.1% shortfall below the
+  target in a given month, Client receives a service credit equal to two
+  percent (2%) of that month's retainer fee, capped at twenty percent (20%)
+  of the monthly fee.
+
+5. PROJECT TEAM.
+Solstice IT Manager: D. Okafor
+Cobalt Support Lead: P. Ilić
+
+This Statement of Work is governed by the terms of the Master Service
+Agreement referenced above.

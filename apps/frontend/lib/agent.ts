@@ -35,6 +35,25 @@ export interface AgentContext {
   visible_state?: Record<string, unknown>;
 }
 
+export interface CitationAnnotation {
+  type?: "citation_data";
+  ref: number;
+  source_ref?: number;
+  id?: string;
+  evidence_id?: string;
+  source_id?: string;
+  doc_id?: string;
+  document_id?: string | null;
+  contract_id?: string | null;
+  filename?: string;
+  page?: number | string | null;
+  page_start?: number | null;
+  page_end?: number | null;
+  quote: string;
+  segment_id?: string;
+  verified?: boolean;
+}
+
 export interface TabularReviewProposal {
   title: string;
   project_id?: string | null;

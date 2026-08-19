@@ -27,6 +27,9 @@ from core.security import get_current_active_user
 from models.domain import UserInDB
 from services.agent_documents import AgentDocumentManager
 from services.agent_memory import AgentMemoryManager, detect_work_product_type
+from services.memory import ComposedMemory, MemoryBlock, MemoryComposer, MemoryScope, UserPreferencesManager, preferences_block
+from services.agent_stream import stream_agent_run
+from services.project_memory import ProjectMemoryManager
 from services.kpi_manager import ContractKPIManager
 from services.kpi_source_ingestion import KpiSourceIngestionService
 from services.document_artifacts import (
@@ -47,7 +50,7 @@ from services.contract_agent.graph import (
 )
 from services.contract_agent.graph.approvals import ApprovalManager
 from services.contract_agent.graph.persistence import AgentRunStore
-from services.contract_agent.graph.state import ApprovalRequest, ToolCallRecord
+from services.contract_agent.graph.state import ToolCallRecord
 from utils.text_cleanup import get_formatted_citations
 
 from services.contract_agent.graph.tools.executor import execute_mongo_read_tool
@@ -314,6 +317,8 @@ def approve_workflow(
         return _approve_kpi_extraction_workflow(state, current_user)
     if state.approval_request.action == "remember_fact":
         return _approve_remember_fact_workflow(state, current_user)
+    if state.approval_request.action == "correct_fact":
+        return _approve_correct_fact_workflow(state, current_user)
     if state.approval_request.action in {
         "create_editable_copy",
         "duplicate_document_copy",
@@ -538,6 +543,125 @@ def _approve_remember_fact_workflow(state: AgentRunState, current_user: UserInDB
     return DeepContractAgentRunner(store=_store()).response_from_state(state)
 
 
+def _approve_correct_fact_workflow(state: AgentRunState, _current_user: UserInDB) -> AgentResponse:
+    """Record a user correction as a new fact, then supersede the old one.
+
+    The replacement is written rather than editing the old row so a later audit
+    can still see what the project believed before the lawyer corrected it. The
+    old fact is checked first because creating a replacement for a missing id
+    would leave durable memory with an orphaned correction.
+    """
+    if not state.approval_request:
+        raise HTTPException(status_code=400, detail="Workflow is not waiting for approval.")
+
+    payload = state.approval_request.payload or {}
+    project_id = str(state.context.project_id or "")
+    fact_id = str(payload.get("fact_id") or "").strip()
+    fact_description = str(payload.get("fact_description") or "").strip()
+    corrected_text = str(payload.get("corrected_value") or payload.get("text") or "").strip()
+    if not project_id:
+        raise HTTPException(status_code=400, detail="No project is in scope for this conversation.")
+    if not corrected_text:
+        raise HTTPException(status_code=400, detail="A correction needs replacement text.")
+
+    from core.database import db as core_db
+    from services.project_memory import ProjectMemoryManager
+
+    manager = ProjectMemoryManager(core_db)
+    all_facts = manager.list_facts(project_id, include_superseded=True)
+    existing = None
+    if fact_id:
+        existing = next(
+            (fact for fact in all_facts if str(fact.get("fact_id") or "") == fact_id),
+            None,
+        )
+    if not existing and fact_description:
+        desc = fact_description.strip().lower()
+        existing = next(
+            (fact for fact in all_facts if desc in str(fact.get("text") or "").lower() and not fact.get("superseded_by")),
+            None,
+        )
+    if not existing and not fact_id and not fact_description:
+        active_facts = [fact for fact in all_facts if not fact.get("superseded_by")]
+        if len(active_facts) == 1:
+            existing = active_facts[0]
+
+    if not existing:
+        raise HTTPException(status_code=404, detail="The project fact to correct was not found.")
+    if existing.get("superseded_by"):
+        raise HTTPException(status_code=409, detail="That project fact was already superseded; correct the current fact instead.")
+
+    fact_id = existing["fact_id"]
+    origin = str(payload.get("origin") or "user").strip().lower()
+    contract_id = str(payload.get("contract_id") or "").strip()
+    quote = str(payload.get("reason") or payload.get("quote") or "").strip()
+    # A user correction may happen while discussing a contract, but that
+    # context is not evidence for the correction. Avoid making the replacement
+    # look contract-backed unless the approval explicitly marked it that way.
+    sources = [{"contract_id": contract_id, "quote": quote}] if origin == "contract" and contract_id else []
+    tags = [tag.strip() for tag in str(payload.get("tags") or "").split(",") if tag.strip()]
+
+    try:
+        replacement = manager.remember_fact(
+            project_id=project_id,
+            text=corrected_text,
+            sources=sources,
+            tags=tags,
+            origin=origin,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if not manager.supersede_fact(project_id, fact_id, replacement["fact_id"]):
+        raise HTTPException(status_code=409, detail="The project fact changed before the correction could be applied.")
+
+    # The correction is episodic evidence of what changed, not a normal cited
+    # answer. Keep it separate so future recall can distinguish user feedback
+    # from a model conclusion that happened to mention the same term.
+    try:
+        _agent_memory().record_run_episode(
+            session_id=str(state.context.session_id or state.workflow_id),
+            contract_id=str(state.context.contract_id or project_id),
+            user_id=str(state.user_id),
+            project_id=project_id,
+            question=state.message,
+            tools_called=["correct_fact"],
+            citation_count=0,
+            confidence=state.confidence,
+            unsupported=False,
+            workflow_id=state.workflow_id,
+            correction=corrected_text,
+        )
+    except Exception as episode_error:
+        log_exception(logger, "Failed to record correction episode", episode_error)
+
+    state.status = AgentStatus.COMPLETED
+    state.approval_request = None
+    state.answer = f"Approved. I've corrected that project fact: {replacement['text']}"
+    state.reason = "Human approved superseding a project fact with the user's correction."
+    state.artifacts = [{
+        "artifact_id": replacement["fact_id"],
+        "artifact_kind": "project_fact_correction",
+        "type": "project_fact_correction",
+        "filename": "Project fact corrected",
+        "project_id": project_id,
+        "fact_id": replacement["fact_id"],
+        "superseded_fact_id": fact_id,
+        "text": replacement["text"],
+        "origin": replacement["origin"],
+        "sources": replacement["sources"],
+        "tags": replacement["tags"],
+    }]
+    state.add_trace(
+        "approval_executed",
+        action="correct_fact",
+        fact_id=replacement["fact_id"],
+        superseded_fact_id=fact_id,
+    )
+    _store().save(state)
+    return DeepContractAgentRunner(store=_store()).response_from_state(state)
+
+
 def _approve_artifact_workflow(state: AgentRunState, current_user: UserInDB) -> AgentResponse:
     if not state.approval_request:
         raise HTTPException(status_code=400, detail="Workflow is not waiting for approval.")
@@ -624,8 +748,92 @@ def _agent_memory() -> AgentMemoryManager:
     return AgentMemoryManager(db)
 
 
-def _agent_documents() -> AgentDocumentManager:
-    return AgentDocumentManager(db, fs)
+def _remember_if_durable(
+    memory: AgentMemoryManager,
+    *,
+    contract_id: str,
+    user_id: str,
+    session_id: str,
+    question: str,
+    answer: str,
+    metadata: Dict[str, Any],
+) -> None:
+    """Offer a completed answer to durable memory; the manager decides.
+
+    Every answer path assembles the same `assistant_metadata` before persisting
+    its message, so the citation and confidence the gate needs are read from
+    there rather than re-derived per call site. Guarded because a memory write
+    must never fail an answer the user already has.
+    """
+    annotations = metadata.get("citation_annotations") or []
+    try:
+        memory.remember_answer_if_durable(
+            contract_id=contract_id,
+            user_id=user_id,
+            session_id=session_id,
+            question=question,
+            answer=answer,
+            citation_count=len(annotations),
+            confidence=metadata.get("confidence"),
+            quote=str((annotations[0] or {}).get("quote") or "") if annotations else "",
+        )
+    except Exception as memory_error:
+        log_exception(logger, "Failed to write durable agent memory", memory_error)
+
+
+def _memory_composer(memory: AgentMemoryManager) -> MemoryComposer:
+    """The single assembly point for what the agent is told up front.
+
+    Both stores are resolved for every run regardless of surface. A contract
+    chat inside a project used to see project facts only if the model guessed
+    to call get_project_timeline (F-17); now it always sees the project index
+    and facts, and the tools stay for pulling detail on demand.
+    """
+    return MemoryComposer(agent_memory=memory, project_memory=ProjectMemoryManager(db))
+
+
+def _memory_disclosure_payload(composed: ComposedMemory) -> Dict[str, Any]:
+    """The "what I remember" panel (4.5) gets exactly the blocks the model saw.
+
+    Bodies are capped for transport; the panel is a disclosure, not a full
+    memory browser, and the model already received the untruncated text.
+    """
+    return {
+        "blocks": [
+            {
+                "name": block.name,
+                "tier": block.tier,
+                "heading": block.heading,
+                "body": block.body[:1200],
+                "provenance": block.provenance,
+                "truncated": block.truncated,
+            }
+            for block in composed.blocks
+        ],
+        "dropped": list(composed.dropped),
+        "total_chars": composed.total_chars,
+        "budget_chars": composed.budget_chars,
+    }
+
+
+def _preference_blocks(current_user: UserInDB) -> List[MemoryBlock]:
+    """Extra composer block for this user's saved preferences, or none set.
+
+    Read here rather than inside the composer for the same reason kpi_context
+    is: the composer owns ranking and budget, not how each block is sourced.
+    Never raises — an unreadable preferences doc must degrade to no block, not
+    fail the run.
+    """
+    try:
+        org_id = str(current_user.ownedAccountId) if current_user.ownedAccountId else (
+            str(current_user.teamIds[0]) if current_user.teamIds else None
+        )
+        values = UserPreferencesManager(db).get(str(current_user.id), org_id)
+        block = preferences_block(values)
+        return [block] if block else []
+    except Exception as preferences_error:
+        log_exception(logger, "Failed to load user preferences for memory composition", preferences_error)
+        return []
 
 
 def _agent_run_store() -> AgentRunStore:
@@ -642,18 +850,21 @@ def _run_stream_agent_gate(
     message: str,
     context: AgentContext,
     ai_provider: Optional[str],
+    memory_context: str = "",
     on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
 ) -> AgentResponse:
     state = AgentRunState(
         user_id=user_id,
         message=message.strip(),
         context=context,
         ai_provider=ai_provider,
+        memory_context=memory_context or "",
     )
     return DeepContractAgentRunner(
         store=_agent_run_store(),
         tool_executor=_stream_agent_tool_executor,
-    ).run(state, on_event=on_event)
+    ).run(state, on_event=on_event, cancel_check=cancel_check)
 
 
 def _stream_agent_tool_executor(tool: ToolCallRecord, state: AgentRunState) -> Dict[str, Any]:
@@ -708,58 +919,40 @@ def _persist_stream_agent_gate_message(
         metadata=metadata,
     )
     if not response.requires_approval:
-        memory.remember_turn(
+        annotations = response.citation_annotations or []
+        # Gated: only an answer backed by validated citations at real
+        # confidence becomes a durable memory. Everything else is already a
+        # conversation turn and does not need a second, unreviewed copy (F-20).
+        memory.remember_answer_if_durable(
             contract_id=scope_id,
             user_id=user_id,
             session_id=session_id,
             question=question,
             answer=response.answer,
+            citation_count=len(annotations),
+            confidence=response.confidence,
+            quote=str((annotations[0] or {}).get("quote") or "") if annotations else "",
         )
+        # An episode of the agent's own work, separate from the transcript of
+        # what was said. Guarded because a memory write must never be the thing
+        # that fails a completed answer.
+        try:
+            memory.record_run_episode(
+                session_id=session_id,
+                contract_id=scope_id,
+                user_id=user_id,
+                project_id=project_id,
+                question=question,
+                tools_called=response.tools_called or [],
+                citation_count=len(response.citation_annotations or []),
+                confidence=response.confidence,
+                unsupported=not (response.citation_annotations or []),
+                workflow_id=response.workflow_id,
+            )
+        except Exception as episode_error:
+            log_exception(logger, "Failed to record agent run episode", episode_error)
 
 
-def _create_stream_artifact_approval(
-    *,
-    user_id: str,
-    message: str,
-    answer: str,
-    context: AgentContext,
-    action: str,
-    title: str,
-    description: str,
-    payload: Dict[str, Any],
-    ai_provider: Optional[str],
-    workflow: AgentWorkflow,
-) -> AgentResponse:
-    state = AgentRunState(
-        user_id=user_id,
-        message=message.strip(),
-        context=context,
-        ai_provider=ai_provider,
-        workflow=workflow,
-        status=AgentStatus.WAITING_APPROVAL,
-        answer=answer,
-        reason="Human approval is required before creating or duplicating assistant work product.",
-    )
-    state.approval_request = ApprovalRequest(
-        workflow_id=state.workflow_id,
-        action=action,  # type: ignore[arg-type]
-        title=title,
-        description=description,
-        tabular_review=None,
-        payload={"idempotency_key": f"{state.workflow_id}:{action}", **payload},
-    )
-    state.add_trace("decide_action", action="request_approval", side_effect=action)
-    state.add_trace("middleware:HumanInTheLoopMiddleware", action=action, decision="interrupt")
-    state.add_trace("approval_gate", requires_approval=True)
-    _agent_run_store().save(state)
-    return DeepContractAgentRunner(store=_agent_run_store()).response_from_state(state)
-
-
-
-
-
-def _kpi_manager() -> ContractKPIManager:
-    return ContractKPIManager(db)
 
 def _kpi_source_ingestion() -> KpiSourceIngestionService:
     return KpiSourceIngestionService(db)
@@ -1180,16 +1373,6 @@ def _create_agent_document_if_needed(
         log_exception(logger, f"Failed to create editable agent document for contract {contract_id}", artifact_error)
         return None
 
-
-def _requested_copy_count(message: str) -> Optional[int]:
-    match = re.search(
-        r"\b(?:create|make|generate|duplicate|copy)\s+(\d{1,2})\s+(?:more\s+)?cop(?:y|ies)\b",
-        message or "",
-        flags=re.IGNORECASE,
-    )
-    if not match:
-        return None
-    return max(1, min(int(match.group(1)), 20))
 
 def check_contract_access(contract_doc: Optional[Dict[str, Any]], current_user: UserInDB):
     """
@@ -2081,11 +2264,13 @@ def query_contract_agent(
             "attached_documents": request.attached_documents or [],
         },
     )
-    memory_context = memory.build_memory_context(
-        session_id=session_id,
-        contract_id=contract_id,
+    memory_scope = MemoryScope(
         user_id=user_id_text,
         question=request.message.strip(),
+        session_id=session_id,
+        contract_id=contract_id,
+        project_id=project_id_text,
+        surface="contract",
     )
 
     reference_contract_oids: List[ObjectId] = []
@@ -2167,8 +2352,13 @@ def query_contract_agent(
             actuals=kpi_operational_context["actuals"],
             breaches=kpi_operational_context["breaches"],
         )
-        if kpi_context:
-            memory_context = f"{memory_context}\n\n{kpi_context}" if memory_context else kpi_context
+        # One assembly point. The composer decides what each memory tier is
+        # worth against a single budget; this route only supplies the KPI
+        # context, because reading it needs the document set already resolved
+        # and access-checked above.
+        memory_context = _memory_composer(memory).compose(
+            memory_scope, kpi_context=kpi_context, extra_blocks=_preference_blocks(current_user)
+        ).text
 
         operational_payload = _build_operational_kpi_answer(
             request.message.strip(),
@@ -2199,12 +2389,14 @@ def query_contract_agent(
                 content=answer_text,
                 metadata=assistant_metadata,
             )
-            memory.remember_turn(
+            _remember_if_durable(
+                memory,
                 contract_id=contract_id,
                 user_id=user_id_text,
                 session_id=session_id,
                 question=request.message.strip(),
                 answer=answer_text,
+                metadata=assistant_metadata,
             )
             return AgentQueryResponse(
                 answer=answer_text,
@@ -2261,6 +2453,7 @@ def query_contract_agent(
             message=request.message,
             context=deep_agent_context,
             ai_provider=request.ai_provider,
+            memory_context=memory_context,
         )
         _persist_stream_agent_gate_message(
             memory=memory,
@@ -2388,12 +2581,14 @@ def query_contract_agent(
             content=str(validated_payload.get("answer") or ""),
             metadata=assistant_metadata,
         )
-        memory.remember_turn(
+        _remember_if_durable(
+            memory,
             contract_id=contract_id,
             user_id=user_id_text,
             session_id=session_id,
             question=request.message.strip(),
             answer=str(validated_payload.get("answer") or ""),
+            metadata=assistant_metadata,
         )
         memory.record_draft_if_any(
             contract_id=contract_id,
@@ -2431,6 +2626,7 @@ def query_contract_agent(
 def stream_project_agent(
     project_id: str,
     request: AgentQueryRequest,
+    http_request: Request,
     current_user: UserInDB = Depends(get_current_active_user)
 ) -> StreamingResponse:
     project_doc = verify_project_access(project_id, current_user)
@@ -2462,14 +2658,15 @@ def stream_project_agent(
             "scope": "project",
         },
     )
-    memory_context = memory.build_memory_context(
-        session_id=session_id,
-        contract_id=project_scope_id,
+    memory_scope = MemoryScope(
         user_id=user_id_text,
         question=request.message.strip(),
+        session_id=session_id,
+        contract_id=project_scope_id,
+        project_id=project_id,
+        surface="project",
     )
 
-    rag_system = ContractRAGSystem(ai_provider=request.ai_provider)
     project_documents = _load_indexed_project_documents(
         project_id=project_id,
         current_user=current_user,
@@ -2486,19 +2683,11 @@ def stream_project_agent(
         actuals=kpi_operational_context["actuals"],
         breaches=kpi_operational_context["breaches"],
     )
-    if project_kpi_context:
-        memory_context = f"{memory_context}\n\n{project_kpi_context}" if memory_context else project_kpi_context
-
-    operational_payload = _build_operational_kpi_answer(
-        request.message.strip(),
-        _kpi_manager().list_project_kpis(
-            project_id,
-            contract_ids=project_contract_ids,
-        ),
-        source_configs=kpi_operational_context["source_configs"],
-        actuals=kpi_operational_context["actuals"],
-        breaches=kpi_operational_context["breaches"],
+    composed_memory = _memory_composer(memory).compose(
+        memory_scope, kpi_context=project_kpi_context, extra_blocks=_preference_blocks(current_user)
     )
+    memory_context = composed_memory.text
+
     deep_agent_context = AgentContext(
         surface=AgentSurface.PROJECT,
         project_id=project_id,
@@ -2514,55 +2703,38 @@ def stream_project_agent(
         },
     )
 
-    def event_stream():
+    async def event_stream():
         try:
             yield format_sse_event("session", {"session_id": session_id})
+            yield format_sse_event("memory", _memory_disclosure_payload(composed_memory))
             yield format_sse_event("status", {"message": "planning"})
 
-            import queue
-            import threading
+            stream_result: Dict[str, Any] = {}
+            async for frame in stream_agent_run(
+                http_request=http_request,
+                run_agent=lambda on_event, cancel_check: _run_stream_agent_gate(
+                    user_id=user_id_text,
+                    message=request.message,
+                    context=deep_agent_context,
+                    ai_provider=request.ai_provider,
+                    memory_context=memory_context,
+                    on_event=on_event,
+                    cancel_check=cancel_check,
+                ),
+                format_event=format_sse_event,
+                result=stream_result,
+            ):
+                yield frame
 
-            event_queue = queue.Queue()
+            if stream_result.get("client_gone"):
+                # Nothing left to stream to — the background thread will
+                # observe cancel_check on its next iteration checkpoint and
+                # stop there. Persisting a run whose request context may
+                # already be torn down is out of scope for this cancellation
+                # path; the run's own trace still records run_cancelled.
+                return
 
-            def run_agent():
-                try:
-                    def on_event(event_type: str, payload: Dict[str, Any]):
-                        event_queue.put((event_type, payload))
-
-                    response = _run_stream_agent_gate(
-                        user_id=user_id_text,
-                        message=request.message,
-                        context=deep_agent_context,
-                        ai_provider=request.ai_provider,
-                        on_event=on_event,
-                    )
-                    event_queue.put(("final_response", response))
-                except Exception as e:
-                    event_queue.put(("error", e))
-
-            thread = threading.Thread(target=run_agent)
-            thread.start()
-
-            deep_agent_response = None
-            while True:
-                try:
-                    item = event_queue.get(timeout=0.1)
-                    event_type, payload = item
-                    if event_type == "final_response":
-                        deep_agent_response = payload
-                        break
-                    elif event_type == "error":
-                        raise payload
-                    elif event_type == "delta":
-                        # Token chunks from _stream_text_response — forward immediately
-                        yield format_sse_event("delta", payload)
-                    else:
-                        yield format_sse_event(event_type, payload)
-                except queue.Empty:
-                    if not thread.is_alive():
-                        break
-                    continue
-
+            deep_agent_response = stream_result.get("response")
             if not deep_agent_response:
                 raise RuntimeError("Agent failed to produce a response.")
 
@@ -2580,19 +2752,11 @@ def stream_project_agent(
                 except Exception as memory_error:
                     log_exception(logger, f"Failed to persist deep agent gate for project {project_id}", memory_error)
 
-                answer_text = deep_agent_response.answer or ""
-                yield format_sse_event("content_done", {})   # always emit, not gated on answer_text
-
                 if not deep_agent_response.citation_annotations:
                     yield format_sse_event("citations", {
                         "citation": getattr(deep_agent_response, "citation", "") or "",
                         "citation_details": deep_agent_response.citation_details,
                         "citation_annotations": [],
-                    })
-                    yield format_sse_event("citation", {
-                        "citation": getattr(deep_agent_response, "citation", "") or "",
-                        "citation_details": deep_agent_response.citation_details,
-                        "citation_annotations": deep_agent_response.citation_annotations,
                     })
 
                 event_name = "approval_required" if deep_agent_response.requires_approval else "final"
@@ -2600,175 +2764,16 @@ def stream_project_agent(
                 yield format_sse_event("done", {})
                 return
 
-            yield format_sse_event("status", {"message": "retrieving"})
-            final_payload: Optional[Dict[str, Any]] = None
-            if operational_payload:
-                answer_text = str(operational_payload.get("answer") or "")
-                yield format_sse_event("thinking", {"message": "Reading ContractSense KPI register."})
-                for index in range(0, len(answer_text), 48):
-                    yield format_sse_event("delta", {"text": answer_text[index:index + 48]})
-                yield format_sse_event("content_done", {})
-                final_payload = {**dict(operational_payload), "artifacts": []}
-                yield format_sse_event("citations", {
-                    "citation": final_payload.get("citation", ""),
-                    "citation_details": final_payload.get("citation_details", {}),
-                    "citation_annotations": final_payload.get("citation_annotations", []),
-                })
-                yield format_sse_event("citation", {
-                    "citation": final_payload.get("citation", ""),
-                    "citation_details": final_payload.get("citation_details", {}),
-                    "citation_annotations": final_payload.get("citation_annotations", []),
-                })
-                yield format_sse_event("final", final_payload)
-                try:
-                    assistant_metadata = {
-                        "confidence": final_payload.get("confidence"),
-                        "citation": final_payload.get("citation"),
-                        "reason": final_payload.get("reason"),
-                        "citation_details": final_payload.get("citation_details", {}),
-                        "citation_annotations": final_payload.get("citation_annotations", []),
-                        "agent_trace": final_payload.get("agent_trace"),
-                        "vector_namespace": None,
-                        "vector_backend": None,
-                        "artifacts": [],
-                        "source": "operational_kpi_register",
-                    }
-                    memory.append_message(
-                        session_id=session_id,
-                        contract_id=project_scope_id,
-                        user_id=user_id_text,
-                        role="assistant",
-                        content=answer_text,
-                        metadata=assistant_metadata,
-                    )
-                    memory.remember_turn(
-                        contract_id=project_scope_id,
-                        user_id=user_id_text,
-                        session_id=session_id,
-                        question=request.message.strip(),
-                        answer=answer_text,
-                    )
-                except Exception as memory_error:
-                    log_exception(logger, f"Failed to persist operational KPI stream for project {project_id}", memory_error)
-                yield format_sse_event("done", {})
-                return
-            elif project_documents:
-                stream_iterator = rag_system.stream_project_question(
-                    project_documents=project_documents,
-                    project_id=project_id,
-                    question=request.message.strip(),
-                    user_id=user_id_text,
-                    displayed_document=request.displayed_document,
-                    attached_documents=request.attached_documents or [],
-                    memory_context=memory_context,
-                )
-            else:
-                stream_iterator = rag_system.stream_project_chat_without_documents(
-                    project_name=project_name,
-                    question=request.message.strip(),
-                    memory_context=memory_context,
-                )
-
-            for payload in stream_iterator:
-                payload_for_event = dict(payload)
-                event_type = payload_for_event.pop("type", "message")
-                if event_type == "final":
-                    final_payload = dict(payload_for_event)
-                    continue
-                if event_type == "citations":
-                    # Re-emit validated citations after final payload assembly.
-                    continue
-                yield format_sse_event(event_type, payload_for_event)
-
-            if final_payload:
-                final_payload = dict(final_payload)
-                answer_text = str(final_payload.get("answer") or "")
-                yield format_sse_event("citations", {
-                    "citation": final_payload.get("citation", ""),
-                    "citation_details": final_payload.get("citation_details", {}),
-                    "citation_annotations": final_payload.get("citation_annotations", []),
-                })
-                yield format_sse_event("citation", {
-                    "citation": final_payload.get("citation", ""),
-                    "citation_details": final_payload.get("citation_details", {}),
-                    "citation_annotations": final_payload.get("citation_annotations", []),
-                })
-                artifacts: List[Dict[str, Any]] = []
-                created_artifact: Optional[Dict[str, Any]] = None
-                copy_count = 0 if operational_payload else _requested_copy_count(request.message.strip())
-                if copy_count:
-                    approval_response = _create_stream_artifact_approval(
-                        user_id=user_id_text,
-                        message=request.message,
-                        answer=answer_text,
-                        context=deep_agent_context,
-                        action="duplicate_document_copy",
-                        title=f"Create {copy_count} project document copies",
-                        description="Approve before duplicating assistant-created project work products.",
-                        payload={
-                            "scope_id": project_scope_id,
-                            "project_id": project_id,
-                            "session_id": session_id,
-                            "count": copy_count,
-                        },
-                        ai_provider=request.ai_provider,
-                        workflow=AgentWorkflow.DRAFT,
-                    )
-                    _persist_stream_agent_gate_message(
-                        memory=memory,
-                        session_id=session_id,
-                        scope_id=project_scope_id,
-                        project_id=project_id,
-                        user_id=user_id_text,
-                        question=request.message.strip(),
-                        response=approval_response,
-                    )
-                    yield format_sse_event("approval_required", approval_response.model_dump(mode="json"))
-                    yield format_sse_event("done", {})
-                    return
-
-
-                final_payload["artifacts"] = artifacts
-                yield format_sse_event("final", final_payload)
-
-                assistant_metadata = {
-                    "confidence": final_payload.get("confidence"),
-                    "citation": final_payload.get("citation"),
-                    "reason": final_payload.get("reason"),
-                    "citation_details": final_payload.get("citation_details", {}),
-                    "citation_annotations": final_payload.get("citation_annotations", []),
-                    "agent_trace": final_payload.get("agent_trace"),
-                    "vector_namespace": final_payload.get("vector_namespace"),
-                    "vector_backend": final_payload.get("vector_backend"),
-                    "artifacts": artifacts,
-                }
-                memory.append_message(
-                    session_id=session_id,
-                    contract_id=project_scope_id,
-                    user_id=user_id_text,
-                    role="assistant",
-                    content=answer_text,
-                    metadata=assistant_metadata,
-                )
-                memory.remember_turn(
-                    contract_id=project_scope_id,
-                    user_id=user_id_text,
-                    session_id=session_id,
-                    question=request.message.strip(),
-                    answer=answer_text,
-                )
-                memory.record_draft_if_any(
-                    contract_id=project_scope_id,
-                    project_id=project_id,
-                    user_id=user_id_text,
-                    session_id=session_id,
-                    question=request.message.strip(),
-                    answer=answer_text,
-                    metadata=assistant_metadata,
-                    artifact=created_artifact or (artifacts[0] if artifacts else None),
-                )
-
-            yield format_sse_event("done", {})
+            # `_should_interrupt_stream_for_agent` is true for every outcome
+            # `DeepContractAgentRunner.run()` can produce — COMPLETED always
+            # carries a non-empty answer (`_finish_answer`/
+            # `_finish_cannot_answer` both set one), WAITING_APPROVAL and
+            # SECURITY_DENIAL are each covered directly — so the branch above
+            # always returns. Everything past this point (the operational-KPI
+            # shortcut, the legacy `rag_system.stream_project_*` calls, and
+            # the artifact-copy-approval path) was unreachable (F-12); deleted
+            # rather than kept as a fallback that could never run (3.4).
+            raise RuntimeError("Deep agent response did not resolve to a terminal outcome.")
         except Exception as stream_error:
             log_exception(logger, f"Agent stream failed for project {project_id}", stream_error)
             yield format_sse_event("error", {"detail": "Agent stream failed."})
@@ -2789,6 +2794,7 @@ def stream_project_agent(
 def stream_contract_agent(
     contract_id: str,
     request: AgentQueryRequest,
+    http_request: Request,
     current_user: UserInDB = Depends(get_current_active_user)
 ) -> StreamingResponse:
     contract = get_contract_and_verify_access(
@@ -2874,11 +2880,13 @@ def stream_contract_agent(
             "attached_documents": request.attached_documents or [],
         },
     )
-    memory_context = memory.build_memory_context(
-        session_id=session_id,
-        contract_id=contract_id,
+    memory_scope = MemoryScope(
         user_id=user_id_text,
         question=request.message.strip(),
+        session_id=session_id,
+        contract_id=contract_id,
+        project_id=project_id_text,
+        surface="contract",
     )
 
     reference_contract_oids: List[ObjectId] = []
@@ -2958,16 +2966,11 @@ def stream_contract_agent(
         actuals=kpi_operational_context["actuals"],
         breaches=kpi_operational_context["breaches"],
     )
-    if kpi_context:
-        memory_context = f"{memory_context}\n\n{kpi_context}" if memory_context else kpi_context
-
-    operational_payload = _build_operational_kpi_answer(
-        request.message.strip(),
-        scoped_kpis,
-        source_configs=kpi_operational_context["source_configs"],
-        actuals=kpi_operational_context["actuals"],
-        breaches=kpi_operational_context["breaches"],
+    composed_memory = _memory_composer(memory).compose(
+        memory_scope, kpi_context=kpi_context, extra_blocks=_preference_blocks(current_user)
     )
+    memory_context = composed_memory.text
+
     deep_displayed_document = request.displayed_document or {
         "document_id": contract_id,
         "filename": contract.get("contract_name", contract_id),
@@ -3004,55 +3007,38 @@ def stream_contract_agent(
         },
     )
 
-    def event_stream():
+    async def event_stream():
         try:
             yield format_sse_event("session", {"session_id": session_id})
+            yield format_sse_event("memory", _memory_disclosure_payload(composed_memory))
             yield format_sse_event("status", {"message": "planning"})
 
-            import queue
-            import threading
+            stream_result: Dict[str, Any] = {}
+            async for frame in stream_agent_run(
+                http_request=http_request,
+                run_agent=lambda on_event, cancel_check: _run_stream_agent_gate(
+                    user_id=user_id_text,
+                    message=request.message,
+                    context=deep_agent_context,
+                    ai_provider=request.ai_provider,
+                    memory_context=memory_context,
+                    on_event=on_event,
+                    cancel_check=cancel_check,
+                ),
+                format_event=format_sse_event,
+                result=stream_result,
+            ):
+                yield frame
 
-            event_queue = queue.Queue()
+            if stream_result.get("client_gone"):
+                # Nothing left to stream to — the background thread will
+                # observe cancel_check on its next iteration checkpoint and
+                # stop there. Persisting a run whose request context may
+                # already be torn down is out of scope for this cancellation
+                # path; the run's own trace still records run_cancelled.
+                return
 
-            def run_agent():
-                try:
-                    def on_event(event_type: str, payload: Dict[str, Any]):
-                        event_queue.put((event_type, payload))
-
-                    response = _run_stream_agent_gate(
-                        user_id=user_id_text,
-                        message=request.message,
-                        context=deep_agent_context,
-                        ai_provider=request.ai_provider,
-                        on_event=on_event,
-                    )
-                    event_queue.put(("final_response", response))
-                except Exception as e:
-                    event_queue.put(("error", e))
-
-            thread = threading.Thread(target=run_agent)
-            thread.start()
-
-            deep_agent_response = None
-            while True:
-                try:
-                    item = event_queue.get(timeout=0.1)
-                    event_type, payload = item
-                    if event_type == "final_response":
-                        deep_agent_response = payload
-                        break
-                    elif event_type == "error":
-                        raise payload
-                    elif event_type == "delta":
-                        # Token chunks from _stream_text_response — forward immediately
-                        yield format_sse_event("delta", payload)
-                    else:
-                        yield format_sse_event(event_type, payload)
-                except queue.Empty:
-                    if not thread.is_alive():
-                        break
-                    continue
-
+            deep_agent_response = stream_result.get("response")
             if not deep_agent_response:
                 raise RuntimeError("Agent failed to produce a response.")
 
@@ -3070,15 +3056,7 @@ def stream_contract_agent(
                 except Exception as memory_error:
                     log_exception(logger, f"Failed to persist deep agent gate for contract {contract_id}", memory_error)
 
-                answer_text = deep_agent_response.answer or ""
-                yield format_sse_event("content_done", {})   # always emit, not gated on answer_text
-
                 yield format_sse_event("citations", {
-                    "citation": getattr(deep_agent_response, "citation", "") or "",
-                    "citation_details": deep_agent_response.citation_details,
-                    "citation_annotations": deep_agent_response.citation_annotations,
-                })
-                yield format_sse_event("citation", {
                     "citation": getattr(deep_agent_response, "citation", "") or "",
                     "citation_details": deep_agent_response.citation_details,
                     "citation_annotations": deep_agent_response.citation_annotations,
@@ -3089,226 +3067,13 @@ def stream_contract_agent(
                 yield format_sse_event("done", {})
                 return
 
-            # The deep agent path above does not need the legacy RAG system.
-            # Initialize it only when we actually fall back to legacy retrieval;
-            # constructing embeddings/vector clients here delayed first response.
-            rag_system = ContractRAGSystem(ai_provider=request.ai_provider)
-            yield format_sse_event("status", {"message": "retrieving"})
-            final_payload: Optional[Dict[str, Any]] = None
-            if operational_payload:
-                answer_text = str(operational_payload.get("answer") or "")
-                yield format_sse_event("thinking", {"message": "Reading ContractSense KPI register."})
-                for index in range(0, len(answer_text), 48):
-                    yield format_sse_event("delta", {"text": answer_text[index:index + 48]})
-                yield format_sse_event("content_done", {})
-                final_payload = {**dict(operational_payload), "artifacts": []}
-                yield format_sse_event("citations", {
-                    "citation": final_payload.get("citation", ""),
-                    "citation_details": final_payload.get("citation_details", {}),
-                    "citation_annotations": final_payload.get("citation_annotations", []),
-                })
-                yield format_sse_event("citation", {
-                    "citation": final_payload.get("citation", ""),
-                    "citation_details": final_payload.get("citation_details", {}),
-                    "citation_annotations": final_payload.get("citation_annotations", []),
-                })
-                yield format_sse_event("final", final_payload)
-                try:
-                    assistant_metadata = {
-                        "confidence": final_payload.get("confidence"),
-                        "citation": final_payload.get("citation"),
-                        "reason": final_payload.get("reason"),
-                        "citation_details": final_payload.get("citation_details", {}),
-                        "citation_annotations": final_payload.get("citation_annotations", []),
-                        "agent_trace": final_payload.get("agent_trace"),
-                        "vector_namespace": None,
-                        "vector_backend": None,
-                        "artifacts": [],
-                        "source": "operational_kpi_register",
-                    }
-                    memory.append_message(
-                        session_id=session_id,
-                        contract_id=contract_id,
-                        user_id=user_id_text,
-                        role="assistant",
-                        content=answer_text,
-                        metadata=assistant_metadata,
-                    )
-                    memory.remember_turn(
-                        contract_id=contract_id,
-                        user_id=user_id_text,
-                        session_id=session_id,
-                        question=request.message.strip(),
-                        answer=answer_text,
-                    )
-                except Exception as memory_error:
-                    log_exception(logger, f"Failed to persist operational KPI stream for contract {contract_id}", memory_error)
-                yield format_sse_event("done", {})
-                return
-            elif project_documents:
-                displayed_document = request.displayed_document or {
-                    "document_id": contract_id,
-                    "filename": contract.get("contract_name", contract_id),
-                }
-                attached_documents = request.attached_documents
-                if attached_documents is None and reference_contract_oids:
-                    reference_id_texts = {str(oid) for oid in reference_contract_oids if oid != contract_oid}
-                    attached_documents = [
-                        {
-                            "document_id": str(document["_id"]),
-                            "filename": document.get("contract_name") or str(document["_id"]),
-                        }
-                        for document in project_documents
-                        if str(document["_id"]) in reference_id_texts
-                    ]
-                stream_iterator = rag_system.stream_project_question(
-                    project_documents=project_documents,
-                    project_id=str(project_id),
-                    question=request.message.strip(),
-                    user_id=user_id_text,
-                    displayed_document=displayed_document,
-                    attached_documents=attached_documents or [],
-                    memory_context=memory_context,
-                )
-            else:
-                stream_iterator = rag_system.stream_agent_question(
-                    contract_text=index_content,
-                    contract_name=contract.get("contract_name", contract_id),
-                    contract_id=contract_id,
-                    project_id=project_id_text,
-                    question=request.message.strip(),
-                    user_id=user_id_text,
-                    vector_namespace=index_data.get("vector_namespace"),
-                    vector_backend=index_data.get("vector_backend"),
-                    displayed_document=request.displayed_document or {
-                        "document_id": contract_id,
-                        "filename": contract.get("contract_name", contract_id),
-                    },
-                    attached_documents=request.attached_documents or [],
-                    memory_context=memory_context,
-                )
-
-            for payload in stream_iterator:
-                payload_for_event = dict(payload)
-                event_type = payload_for_event.pop("type", "message")
-                if event_type == "final":
-                    final_payload = dict(payload_for_event)
-                    continue
-                if event_type == "citations":
-                    # Re-emit validated citations after final payload assembly.
-                    continue
-                yield format_sse_event(event_type, payload_for_event)
-
-            vector_namespace = getattr(rag_system, "current_namespace", None)
-            vector_backend = getattr(rag_system, "current_vector_backend", None)
-            if (
-                not operational_payload and
-                not project_documents and
-                (vector_namespace != index_data.get("vector_namespace") or vector_backend != index_data.get("vector_backend"))
-            ):
-                collection.update_one(
-                    {"_id": contract_oid},
-                    {"$set": {
-                        "index.vector_namespace": vector_namespace,
-                        "index.vector_backend": vector_backend,
-                        "index.vector_count": getattr(rag_system, "current_vector_count", 0),
-                        "index.chunk_schema_version": getattr(settings, "chunk_schema_version", 2),
-                        "index.embedding_status": "success",
-                        "index.embedded_at": datetime.utcnow(),
-                    }}
-                )
-
-            if final_payload:
-                final_payload = dict(final_payload)
-                answer_text = str(final_payload.get("answer") or "")
-                yield format_sse_event("citations", {
-                    "citation": final_payload.get("citation", ""),
-                    "citation_details": final_payload.get("citation_details", {}),
-                    "citation_annotations": final_payload.get("citation_annotations", []),
-                })
-                yield format_sse_event("citation", {
-                    "citation": final_payload.get("citation", ""),
-                    "citation_details": final_payload.get("citation_details", {}),
-                    "citation_annotations": final_payload.get("citation_annotations", []),
-                })
-                artifacts: List[Dict[str, Any]] = []
-                should_emit_edit = False
-                created_artifact: Optional[Dict[str, Any]] = None
-                copy_count = 0 if operational_payload else _requested_copy_count(request.message.strip())
-                if copy_count:
-                    approval_response = _create_stream_artifact_approval(
-                        user_id=user_id_text,
-                        message=request.message,
-                        answer=answer_text,
-                        context=deep_agent_context,
-                        action="duplicate_document_copy",
-                        title=f"Create {copy_count} document copies",
-                        description="Approve before duplicating assistant-created contract work products.",
-                        payload={
-                            "scope_id": contract_id,
-                            "contract_id": contract_id,
-                            "project_id": project_id_text,
-                            "session_id": session_id,
-                            "count": copy_count,
-                        },
-                        ai_provider=request.ai_provider,
-                        workflow=AgentWorkflow.DRAFT,
-                    )
-                    _persist_stream_agent_gate_message(
-                        memory=memory,
-                        session_id=session_id,
-                        scope_id=contract_id,
-                        project_id=project_id_text,
-                        user_id=user_id_text,
-                        question=request.message.strip(),
-                        response=approval_response,
-                    )
-                    yield format_sse_event("approval_required", approval_response.model_dump(mode="json"))
-                    yield format_sse_event("done", {})
-                    return
-
-                if artifacts:
-                    final_payload["artifacts"] = artifacts
-                yield format_sse_event("final", final_payload)
-
-                assistant_metadata = {
-                    "confidence": final_payload.get("confidence"),
-                    "citation": final_payload.get("citation"),
-                    "reason": final_payload.get("reason"),
-                    "citation_details": final_payload.get("citation_details", {}),
-                    "citation_annotations": final_payload.get("citation_annotations", []),
-                    "agent_trace": final_payload.get("agent_trace"),
-                    "vector_namespace": final_payload.get("vector_namespace"),
-                    "vector_backend": final_payload.get("vector_backend"),
-                    "artifacts": artifacts,
-                }
-                memory.append_message(
-                    session_id=session_id,
-                    contract_id=contract_id,
-                    user_id=user_id_text,
-                    role="assistant",
-                    content=answer_text,
-                    metadata=assistant_metadata,
-                )
-                memory.remember_turn(
-                    contract_id=contract_id,
-                    user_id=user_id_text,
-                    session_id=session_id,
-                    question=request.message.strip(),
-                    answer=answer_text,
-                )
-                memory.record_draft_if_any(
-                    contract_id=contract_id,
-                    project_id=project_id_text,
-                    user_id=user_id_text,
-                    session_id=session_id,
-                    question=request.message.strip(),
-                    answer=answer_text,
-                    metadata=assistant_metadata,
-                    artifact=created_artifact,
-                )
-
-            yield format_sse_event("done", {})
+            # `_should_interrupt_stream_for_agent` is true for every outcome
+            # `DeepContractAgentRunner.run()` can produce (see the identical
+            # note in stream_project_agent), so the branch above always
+            # returns. Everything past this point — the legacy RAG-system
+            # fallback and the operational-KPI shortcut — was unreachable
+            # (F-12); deleted rather than kept as dead weight (3.4).
+            raise RuntimeError("Deep agent response did not resolve to a terminal outcome.")
         except Exception as stream_error:
             log_exception(logger, f"Agent stream failed for contract {contract_id}", stream_error)
             yield format_sse_event("error", {"detail": "Agent stream failed."})
@@ -3323,4 +3088,3 @@ def stream_contract_agent(
             "X-Accel-Buffering": "no",
         },
     )
-

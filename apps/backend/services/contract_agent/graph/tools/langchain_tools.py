@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import ast
 import json
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 from langchain_core.tools import BaseTool, tool
 from pydantic import BaseModel, Field
 
 from ..state import AgentRunState, ToolCallRecord
+from . import errors
 from .registry import APPROVAL_REQUIRED_TOOLS
 
 
@@ -17,31 +18,57 @@ APPROVAL_REQUIRED_FLAG = "__APPROVAL_REQUIRED__"
 
 ToolExecutor = Callable[[ToolCallRecord, AgentRunState], Dict[str, Any]]
 
-READ_TOOL_REPEAT_LIMITS = {
-    "search_evidence": 5,
-    "find_in_document": 4,
-    "read_document": 3,
-    "outline_document": 2,
-    "get_kpi_context": 2,
-}
+#: One automatic retry, and only for kinds errors.RETRYABLE_KINDS allows. More
+#: than one turns a slow provider into a stalled run.
+TRANSIENT_RETRY_ATTEMPTS = 1
 
 
-class ProjectInput(BaseModel):
-    project_id: str = Field(default="", description="Optional project scope ID. Leave blank to use the current authorized scope.")
+def _invoke_with_transient_retry(
+    executor: Optional[ToolExecutor],
+    record: ToolCallRecord,
+    state: AgentRunState,
+    name: str,
+) -> Any:
+    """Run the executor, retrying once on a genuine infrastructure failure.
+
+    Retrying here rather than sending the error to the model means a timeout
+    costs one extra call instead of a whole model turn, and the model never sees
+    a failure that fixed itself.
+    """
+    attempt = 0
+    while True:
+        try:
+            if executor is None:
+                return _default_read_observation(record, state)
+            return executor(record, state)
+        except Exception as exc:
+            kind = errors.classify(exc)
+            if attempt >= TRANSIENT_RETRY_ATTEMPTS or not errors.is_retryable(kind):
+                raise
+            attempt += 1
+            state.add_trace(
+                "tool_retry",
+                iteration=record.iteration,
+                tool=name,
+                kind=kind.value,
+                attempt=attempt,
+                detail=str(exc)[:300],
+            )
 
 
-class DocumentIdInput(BaseModel):
+class ListDocumentsInput(BaseModel):
+    document_ids: Any = Field(default_factory=list, description="Optional scoped document IDs to return; leave blank to list every authorized document.")
+
+
+class DocumentReadInput(BaseModel):
     document_id: str = Field(default="", description="Unique ID of the target document. Leave blank for the current scoped document.")
-    include_full: bool = Field(default=False, description="For whole-document summaries, return the full indexed text instead of a short excerpt.")
-    max_chars: int = Field(default=50000, ge=1000, le=100000, description="Maximum indexed characters to return when include_full is enabled.")
-
-
-class FetchDocumentsInput(BaseModel):
-    document_ids: Any = Field(default_factory=list, description="Optional document IDs to fetch; leave blank to inspect scoped documents.")
+    mode: Literal["outline", "excerpt", "full"] = Field(default="excerpt", description="Use outline for headings, excerpt for a focused read, or full for coverage-sensitive review.")
+    max_chars: int = Field(default=50000, ge=1000, le=100000, description="Maximum indexed characters to return in full mode.")
 
 
 class SearchInput(BaseModel):
-    query: Any = Field(..., description="Concise clause/evidence query rewritten from the user's need, e.g. 'governing law', 'change of control', or 'payment deadline'.")
+    query: Any = Field(default="", description="Concise clause/evidence query rewritten from the user's need, e.g. 'governing law', 'change of control', or 'payment deadline'.")
+    exact: str = Field(default="", description="Optional exact phrase or clause reference to locate within the authorized documents.")
     queries: Any = Field(default_factory=list, description="Optional related query variants when the issue has aliases or multiple evidence needs.")
     document_ids: Any = Field(default_factory=list, description="Optional document IDs to restrict search; leave blank to search the authorized scope.")
     top_k: Any = Field(default=12, description="Maximum evidence snippets to return. Default is 12. Use 12-20 for query clause banks or dense documents.")
@@ -50,22 +77,10 @@ class SearchInput(BaseModel):
     section_ref: str = Field(default="", description="Optional section, clause, article, schedule, or exhibit reference from the user's request.")
 
 
-class FindInDocumentInput(BaseModel):
-    document_id: str = Field(default="", description="Document to search within; leave blank for the current scoped document.")
-    term: str = Field(default="", description="Exact keyword, phrase, or clause reference to locate after broad evidence search is too thin.")
-    query: str = Field(default="", description="Alias for term.")
-
-
-class ProjectTimelineInput(BaseModel):
-    project_id: str = Field(default="", description="Project ID to retrieve document history for. Leave blank to use the current authorized project scope.")
-
-
-class ProjectConceptInput(BaseModel):
-    document_id: str = Field(default="", description="Document id to read the project-memory overview for, exactly as it appears in the project index.")
-
-
-class ProjectEventsInput(BaseModel):
-    limit: int = Field(default=20, description="How many recent events to return.")
+class ProjectMemoryInput(BaseModel):
+    view: Literal["index", "document", "events"] = Field(default="index", description="Use index for the project map, document for one document overview, or events for recent project activity.")
+    document_id: str = Field(default="", description="Required only when view=document; use an ID returned by the project index.")
+    limit: int = Field(default=20, ge=1, le=100, description="Maximum events to return when view=events.")
 
 
 class RememberFactInput(BaseModel):
@@ -74,6 +89,17 @@ class RememberFactInput(BaseModel):
     quote: str = Field(default="", description="The exact wording from that document supporting the fact, so it can be re-verified later.")
     tags: str = Field(default="", description="Optional comma-separated topic tags.")
     origin: str = Field(default="contract", description="'contract' when taken from a document, 'user' when the user stated it.")
+
+
+class CorrectFactInput(BaseModel):
+    fact_id: str = Field(default="", description="Fact ID to correct, exactly as shown by project memory.")
+    fact_description: str = Field(default="", description="Optional description or search snippet of the fact to correct if fact_id is not known.")
+    corrected_value: str = Field(default="", description="The corrected fact value or replacement text.")
+    text: str = Field(default="", description="The corrected fact, stated plainly and self-contained (alias for corrected_value).")
+    reason: str = Field(default="", description="Reason for the correction or supporting context.")
+    quote: str = Field(default="", description="Optional exact wording from the source document supporting the correction (alias for reason).")
+    tags: str = Field(default="", description="Optional comma-separated topic tags.")
+    origin: str = Field(default="user", description="'user' when the lawyer supplied the correction; use 'contract' only with a supporting document quote.")
 
 
 class KPIInput(BaseModel):
@@ -117,12 +143,13 @@ def build_langchain_tools(
 ) -> List[BaseTool]:
     """Build state-bound LangChain tools for one agent run."""
 
-    def run_read_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
-        from services.contract_agent.graph.middleware import UnauthorizedAccessError
-        doc_id = args.get("document_id") or args.get("contract_id")
-        if doc_id and state.context.selected_document_ids:
-            if doc_id not in state.context.selected_document_ids:
-                raise UnauthorizedAccessError(f"Access to document {doc_id} is out of scoped context!")
+    def run_read_tool(
+        name: str,
+        args: Dict[str, Any],
+        *,
+        executor_name: Optional[str] = None,
+        executor_args: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         record = ToolCallRecord(
             name=name,
             args=_sanitize_args(args),
@@ -133,20 +160,57 @@ def build_langchain_tools(
         state.tools.append(record)
         state.add_trace("tool_start", iteration=record.iteration, tool=record.name, args=record.args)
         executor = tool_executor or fallback_executor
-        try:
-            loop_result = _read_tool_loop_result(name, state)
-            result = loop_result if loop_result else executor(record, state) if executor else _default_read_observation(record, state)
-            result = _coerce_observation(result)
-            summary_text = str(result.get("summary") or "")
-            if len(summary_text) > 4000:
-                result["summary"] = summary_text[:4000] + "\n... [truncated due to context budget limits]"
-                state.add_trace("middleware:ContextEditingMiddleware", mode="prune_large_tool_results", original_len=len(summary_text))
-            record.status = "done"
-            if result.get("tool_budget_exhausted"):
-                state.add_trace("tool_budget_exhausted", tool=record.name, summary=str(result.get("summary") or "")[:500])
-        except Exception as exc:
-            result = {"summary": "Tool execution failed.", "error": str(exc)[:500]}
+
+        exhausted_reason = errors.budget_exceeded(state)
+        if exhausted_reason:
+            result = errors.envelope(
+                errors.ToolErrorKind.BUDGET_EXHAUSTED, tool=name, detail=exhausted_reason
+            )
+            # Hand back what was already retrieved, so the model can still write a
+            # cited answer instead of being cut off empty-handed.
+            result["matches"] = _recent_observed_matches(state)
             record.status = "error"
+            state.add_trace("tool_budget_exhausted", tool=record.name, reason=exhausted_reason)
+        else:
+            try:
+                # The public surface is intentionally narrower than the
+                # executor's stable implementation names. Keep the public
+                # record for traces and policy while reusing the proven handler.
+                execution_updates: Dict[str, Any] = {}
+                if executor_name and executor_name != name:
+                    execution_updates["name"] = executor_name
+                if executor_args is not None:
+                    execution_updates["args"] = _sanitize_args(executor_args)
+                execution_record = record.model_copy(update=execution_updates) if execution_updates else record
+                result = _coerce_observation(
+                    _invoke_with_transient_retry(executor, execution_record, state, name)
+                )
+                summary_text = str(result.get("summary") or "")
+                if len(summary_text) > 4000:
+                    result["summary"] = summary_text[:4000] + "\n... [truncated due to context budget limits]"
+                    state.add_trace("middleware:ContextEditingMiddleware", mode="prune_large_tool_results", original_len=len(summary_text))
+                record.status = "done"
+            except Exception as exc:
+                # Typed envelope rather than a raw string, so the model can tell an
+                # out-of-scope denial from a no-match from a provider blip and act
+                # accordingly instead of retrying whatever it was.
+                kind = errors.classify(exc)
+                result = errors.envelope(
+                    kind,
+                    tool=name,
+                    detail=str(exc),
+                    retried=errors.is_retryable(kind),
+                )
+                record.status = "error"
+                record.reason = result["error"]["recovery_hint"]
+                state.add_trace(
+                    "tool_error",
+                    iteration=record.iteration,
+                    tool=record.name,
+                    kind=kind.value,
+                    retryable=result["error"]["retryable"],
+                    detail=str(exc)[:300],
+                )
         record.observation = result
         state.react_scratchpad.append({
             "iteration": record.iteration,
@@ -171,11 +235,6 @@ def build_langchain_tools(
         return result
 
     def run_approval_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
-        from services.contract_agent.graph.middleware import UnauthorizedAccessError
-        doc_id = args.get("document_id") or args.get("contract_id")
-        if doc_id and state.context.selected_document_ids:
-            if doc_id not in state.context.selected_document_ids:
-                raise UnauthorizedAccessError(f"Access to document {doc_id} is out of scoped context!")
         params = _sanitize_args(args)
         record = ToolCallRecord(
             name=name,
@@ -209,42 +268,42 @@ def build_langchain_tools(
             status=record.status,
             summary=payload["message"],
         )
-        from services.contract_agent.react_agent import ApprovalRequiredError
-        raise ApprovalRequiredError(payload)
+        # Returning the proposal keeps LangChain's tool batch intact: a sibling
+        # read in the same model response must finish so its evidence is not
+        # discarded merely because another call needs approval.
+        return payload
 
-    @tool("list_documents", args_schema=ProjectInput)
-    def list_documents(project_id: str = "") -> Dict[str, Any]:
-        """List scoped documents with IDs, filenames, and indexing metadata. READ-ONLY."""
-        return run_read_tool("list_documents", {"project_id": project_id})
-
-    @tool("fetch_documents", args_schema=FetchDocumentsInput)
-    def fetch_documents(document_ids: Any = None) -> Dict[str, Any]:
-        """Fetch metadata for scoped indexed documents. READ-ONLY."""
+    @tool("list_documents", args_schema=ListDocumentsInput)
+    def list_documents(document_ids: Any = None) -> Dict[str, Any]:
+        """List metadata for every scoped document, or fetch a named subset by ID. READ-ONLY."""
         payload = _payload_from_react_value(document_ids, "document_ids")
-        return run_read_tool("fetch_documents", {"document_ids": _coerce_list(payload.get("document_ids"))})
+        return run_read_tool("list_documents", {"document_ids": _coerce_list(payload.get("document_ids"))})
 
-    @tool("read_document", args_schema=DocumentIdInput)
-    def read_document(document_id: str = "", include_full: bool = False, max_chars: int = 50000) -> Dict[str, Any]:
-        """Read the current or requested scoped document. Use include_full for whole-contract summaries; otherwise returns a focused excerpt. READ-ONLY."""
+    @tool("read_document", args_schema=DocumentReadInput)
+    def read_document(document_id: str = "", mode: str = "excerpt", max_chars: int = 50000) -> Dict[str, Any]:
+        """Read a scoped document in outline, excerpt, or full mode. Use full when coverage matters; use search_evidence for a specific clause. READ-ONLY."""
         payload = _payload_from_react_value(document_id, "document_id")
+        selected_mode = str(mode or "excerpt").strip().lower()
+        executor_name = "outline_document" if selected_mode == "outline" else "read_document"
         return run_read_tool(
             "read_document",
             {
                 "document_id": payload.get("document_id", ""),
-                "include_full": include_full,
+                "mode": selected_mode,
+                "max_chars": max_chars,
+            },
+            executor_name=executor_name,
+            executor_args={
+                "document_id": payload.get("document_id", ""),
+                "include_full": selected_mode == "full",
                 "max_chars": max_chars,
             },
         )
 
-    @tool("outline_document", args_schema=DocumentIdInput)
-    def outline_document(document_id: str = "", include_full: bool = False, max_chars: int = 50000) -> Dict[str, Any]:
-        """Return the current or requested document outline when available. READ-ONLY."""
-        payload = _payload_from_react_value(document_id, "document_id")
-        return run_read_tool("outline_document", {"document_id": payload.get("document_id", "")})
-
     @tool("search_evidence", args_schema=SearchInput)
     def search_evidence(
-        query: Any,
+        query: Any = "",
+        exact: str = "",
         queries: Any = None,
         document_ids: Any = None,
         top_k: Any = 12,
@@ -252,8 +311,10 @@ def build_langchain_tools(
         must_contain: Any = None,
         section_ref: str = "",
     ) -> Dict[str, Any]:
-        """Search scoped contracts for clause-level evidence with quote, context, page, section, score, and evidence ID. READ-ONLY."""
+        """Search scoped contracts for clause-level evidence; use exact= to locate an exact phrase or clause reference. READ-ONLY."""
         payload = _payload_from_react_value(query, "query")
+        if exact:
+            payload["exact"] = exact
         if queries not in (None, "", [], {}):
             payload["queries"] = queries
         if document_ids not in (None, "", [], {}):
@@ -267,48 +328,61 @@ def build_langchain_tools(
         if section_ref:
             payload["section_ref"] = section_ref
         rewritten_queries = _coerce_list(payload.get("queries"))
-        primary_query = str(payload.get("query") or "")
+        exact_query = str(payload.get("exact") or "")
+        primary_query = exact_query or str(payload.get("query") or "")
         if primary_query and primary_query not in rewritten_queries:
             rewritten_queries.insert(0, primary_query)
+        required_terms = _coerce_list(payload.get("must_contain"))
+        if exact_query and exact_query not in required_terms:
+            required_terms.append(exact_query)
         return run_read_tool(
             "search_evidence",
             {
-                "query": primary_query,
-                "queries": rewritten_queries,
+                "query": str(payload.get("query") or ""),
+                "exact": exact_query,
+                "queries": _coerce_list(payload.get("queries")),
                 "document_ids": _coerce_list(payload.get("document_ids")),
                 "top_k": _coerce_int(payload.get("top_k"), 12),
                 "intent": str(payload.get("intent") or ""),
                 "must_contain": _coerce_list(payload.get("must_contain")),
                 "section_ref": str(payload.get("section_ref") or ""),
             },
+            executor_args={
+                "query": primary_query,
+                "queries": rewritten_queries,
+                "document_ids": _coerce_list(payload.get("document_ids")),
+                "top_k": _coerce_int(payload.get("top_k"), 12),
+                "intent": str(payload.get("intent") or ""),
+                "must_contain": required_terms,
+                "section_ref": str(payload.get("section_ref") or ""),
+            },
         )
 
-    @tool("find_in_document", args_schema=FindInDocumentInput)
-    def find_in_document(document_id: str = "", term: str = "", query: str = "") -> Dict[str, Any]:
-        """Find an exact term, phrase, or formal clause reference inside one scoped document. READ-ONLY."""
-        payload = _payload_from_react_value(document_id, "document_id")
-        if term:
-            payload["term"] = term
-        if query:
-            payload["query"] = query
-        return run_read_tool("find_in_document", {"document_id": payload.get("document_id", ""), "term": payload.get("term", ""), "query": payload.get("query") or payload.get("term", "")})
-
-    @tool("get_project_timeline", args_schema=ProjectTimelineInput)
-    def get_project_timeline(project_id: str = "") -> Dict[str, Any]:
-        """Retrieve project memory: the complete list of documents in this project and how they relate to each other, plus any recorded facts and team notes. Consult this before stating what a project does or does not contain. READ-ONLY."""
-        # Always use the authorized scoped project_id, never a model-supplied value.
-        return run_read_tool("get_project_timeline", {"project_id": state.context.project_id or ""})
-
-    @tool("read_project_concept", args_schema=ProjectConceptInput)
-    def read_project_concept(document_id: str = "") -> Dict[str, Any]:
-        """Read one document's full project-memory overview by its id, as listed in the project index. Use when the index line lacks the detail you need. READ-ONLY."""
-        payload = _payload_from_react_value(document_id, "document_id")
-        return run_read_tool("read_project_concept", {"document_id": payload.get("document_id", "")})
-
-    @tool("read_project_events", args_schema=ProjectEventsInput)
-    def read_project_events(limit: int = 20) -> Dict[str, Any]:
-        """Read the recent history of this project: documents ingested, amendments detected, facts recorded. READ-ONLY."""
-        return run_read_tool("read_project_events", {"limit": limit})
+    @tool("project_memory", args_schema=ProjectMemoryInput)
+    def project_memory(view: str = "index", document_id: str = "", limit: int = 20) -> Dict[str, Any]:
+        """Read the project index, one document overview, or recent events. Project memory is context, not clause evidence. READ-ONLY."""
+        selected_view = str(view or "index").strip().lower()
+        if selected_view == "document":
+            return run_read_tool(
+                "project_memory",
+                {"view": selected_view, "document_id": document_id},
+                executor_name="read_project_concept",
+                executor_args={"document_id": document_id},
+            )
+        if selected_view == "events":
+            return run_read_tool(
+                "project_memory",
+                {"view": selected_view, "limit": limit},
+                executor_name="read_project_events",
+                executor_args={"limit": limit},
+            )
+        # Always use the route-built project scope, never a model-supplied ID.
+        return run_read_tool(
+            "project_memory",
+            {"view": selected_view},
+            executor_name="get_project_timeline",
+            executor_args={"project_id": state.context.project_id or ""},
+        )
 
     @tool("remember_fact", args_schema=RememberFactInput)
     def remember_fact(
@@ -318,11 +392,36 @@ def build_langchain_tools(
         tags: str = "",
         origin: str = "contract",
     ) -> Dict[str, Any]:
-        """Record a durable fact about this project. Use ONLY when the user explicitly asks for something to be remembered — never to log the conversation. A fact taken from a document must include its document id and the exact supporting quote. Requires human approval before writing."""
+        """Record a durable fact about this project. Propose this whenever the user volunteers a fact worth keeping, even without them saying "remember" — never to log routine conversation. A fact taken from a document must include its document id and the exact supporting quote. Requires human approval before writing."""
         return run_approval_tool("remember_fact", {
             "text": text,
             "contract_id": contract_id,
             "quote": quote,
+            "tags": tags,
+            "origin": origin,
+        })
+
+    @tool("correct_fact", args_schema=CorrectFactInput)
+    def correct_fact(
+        fact_id: str = "",
+        fact_description: str = "",
+        corrected_value: str = "",
+        text: str = "",
+        reason: str = "",
+        quote: str = "",
+        tags: str = "",
+        origin: str = "user",
+    ) -> Dict[str, Any]:
+        """Correct a durable project fact supplied by the user. The existing fact is preserved for audit, the replacement is recorded, and the old fact is superseded only after human approval."""
+        resolved_text = corrected_value or text
+        resolved_reason = reason or quote
+        return run_approval_tool("correct_fact", {
+            "fact_id": fact_id,
+            "fact_description": fact_description,
+            "corrected_value": resolved_text,
+            "text": resolved_text,
+            "reason": resolved_reason,
+            "quote": resolved_reason,
             "tags": tags,
             "origin": origin,
         })
@@ -354,15 +453,15 @@ def build_langchain_tools(
             payload["context"] = context
         return run_read_tool("calculate_from_evidence", {"expression": payload.get("expression", ""), "context": payload.get("context", "")})
 
-    @tool("create_tabular_review", args_schema=CreateTabularReviewInput)
-    def create_tabular_review(name: str = "ContractSense Review", document_ids: Any = None, columns: Any = None) -> Dict[str, Any]:
-        """Propose a structured tabular review. Requires human approval."""
+    @tool("propose_tabular_review", args_schema=CreateTabularReviewInput)
+    def propose_tabular_review(name: str = "ContractSense Review", document_ids: Any = None, columns: Any = None) -> Dict[str, Any]:
+        """Propose an editable structured tabular review. Requires human approval before creation."""
         payload = _payload_from_react_value(name, "name")
         if document_ids:
             payload["document_ids"] = document_ids
         if columns:
             payload["columns"] = columns
-        return run_approval_tool("create_tabular_review", {"name": payload.get("name", "ContractSense Review"), "document_ids": _coerce_list(payload.get("document_ids")), "columns": _coerce_list(payload.get("columns"))})
+        return run_approval_tool("propose_tabular_review", {"name": payload.get("name", "ContractSense Review"), "document_ids": _coerce_list(payload.get("document_ids")), "columns": _coerce_list(payload.get("columns"))})
 
     @tool("generate_tabular_review", args_schema=GenerateTabularReviewInput)
     def generate_tabular_review(review_id: str = "", instructions: str = "") -> Dict[str, Any]:
@@ -380,40 +479,31 @@ def build_langchain_tools(
             payload["target_project_id"] = target_project_id
         return run_approval_tool("replicate_document", payload)
 
-    @tool("suggest_tabular_review", args_schema=CreateTabularReviewInput)
-    def suggest_tabular_review(name: str = "ContractSense Review", document_ids: Any = None, columns: Any = None) -> Dict[str, Any]:
-        """Propose an editable tabular review configuration. Requires human approval."""
-        payload = _payload_from_react_value(name, "name")
-        if document_ids:
-            payload["document_ids"] = document_ids
-        if columns:
-            payload["columns"] = columns
-        return run_approval_tool("suggest_tabular_review", {"name": payload.get("name", "ContractSense Review"), "document_ids": _coerce_list(payload.get("document_ids")), "columns": _coerce_list(payload.get("columns"))})
-
     return [
         list_documents,
-        fetch_documents,
         read_document,
-        outline_document,
         search_evidence,
-        find_in_document,
-        get_project_timeline,
-        read_project_concept,
-        read_project_events,
+        project_memory,
         remember_fact,
+        correct_fact,
         get_kpi_context,
         extract_kpis,
         calculate_from_evidence,
-        create_tabular_review,
+        propose_tabular_review,
         generate_tabular_review,
         replicate_document,
-        suggest_tabular_review,
     ]
 
 
 def is_approval_required_payload(value: Any) -> bool:
     payload = parse_tool_output(value)
-    return isinstance(payload, dict) and bool(payload.get(APPROVAL_REQUIRED_FLAG))
+    return (
+        isinstance(payload, dict)
+        and (
+            bool(payload.get(APPROVAL_REQUIRED_FLAG))
+            or payload.get("status") == "approval_required"
+        )
+    )
 
 
 def parse_tool_output(value: Any) -> Any:
@@ -445,6 +535,7 @@ def _approval_payload(name: str, params: Dict[str, Any], state: AgentRunState) -
     }
     return {
         APPROVAL_REQUIRED_FLAG: True,
+        "status": "approval_required",
         "tool": name,
         "params": payload_params,
         "message": (
@@ -520,24 +611,6 @@ def _default_read_observation(tool_record: ToolCallRecord, state: AgentRunState)
     if tool_record.name in APPROVAL_REQUIRED_TOOLS:
         return {"summary": "Approval-required tool proposal captured.", "risk": "approval_required"}
     return {"summary": f"Read-only tool {tool_record.name} completed."}
-
-
-def _read_tool_loop_result(name: str, state: AgentRunState) -> Dict[str, Any] | None:
-    limit = READ_TOOL_REPEAT_LIMITS.get(name)
-    if not limit:
-        return None
-    prior_count = sum(1 for tool in state.tools[:-1] if tool.name == name)
-    if prior_count < limit:
-        return None
-    return {
-        "summary": (
-            f"{name} has already run in this turn. "
-            "Use any observed evidence to produce the final answer now. "
-            "If the answer is not supported by the observed evidence, say the scoped evidence does not contain it."
-        ),
-        "tool_budget_exhausted": True,
-        "matches": _recent_observed_matches(state),
-    }
 
 
 def _recent_observed_matches(state: AgentRunState) -> List[Dict[str, Any]]:
