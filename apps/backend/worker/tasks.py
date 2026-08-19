@@ -2,13 +2,12 @@ from celery import Celery, shared_task, chain, signature
 from celery.utils.log import get_task_logger
 from datetime import datetime, timedelta
 from pathlib import Path
-import asyncio
 import inspect
 import shutil
 import time
 import psutil
 from bson import ObjectId
-from typing import List, Dict, Any , Optional , Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 import requests
 import socket
 import json
@@ -461,6 +460,7 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
             index_images = marker_result.get("images", {})
             index_page_count = marker_result.get("page_count", 0)
             index_parse_quality_score = marker_result.get("parse_quality_score", 0.0)
+            index_parse_quality_signals = marker_result.get("parse_quality_signals", {})
             index_cost_breakdown = marker_result.get("cost_breakdown", {})
             index_error = marker_result.get("error", "")
             index_parser = marker_result.get("parser", "marker")
@@ -537,6 +537,7 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                         "index.page_count": index_page_count,
                         "index.parser": index_parser,
                         "index.parse_quality_score": index_parse_quality_score,
+                        "index.parse_quality_signals": index_parse_quality_signals,
                         "index.error": index_error,
                         "index.embedding_status": "success",
                         "index.vector_namespace": embedding_metadata.get("namespace"),
@@ -656,58 +657,42 @@ def _process_with_marker(temp_pdf_path: Path, file_name: str,
     else:
         return _process_with_external_marker(temp_pdf_path, file_name, contract_id)
 
-def _build_liteparse_parser(liteparse_cls: Any, *, ocr_enabled: bool) -> Any:
-    """Create a LiteParse parser through the Python package API."""
+def _build_liteparse_parser(
+    liteparse_cls: Any,
+    *,
+    ocr_enabled: bool,
+    target_pages: Optional[str] = None,
+) -> Any:
+    """Create a markdown LiteParse parser and fail closed if the format is downgraded."""
     init_params = inspect.signature(liteparse_cls).parameters
     kwargs: Dict[str, Any] = {}
     parser_options = {
         "ocr_enabled": ocr_enabled,
         "ocr_language": "eng",
         "max_pages": 10000,
+        "target_pages": target_pages,
         "dpi": 150,
+        "output_format": "markdown",
+        "image_mode": "placeholder",
+        "extract_links": True,
+        "keep_headers_footers": False,
+        "continue_on_page_error": True,
+        "extract_blocks": True,
         "preserve_very_small_text": True,
         "quiet": True,
     }
 
     for key, value in parser_options.items():
-        if key in init_params:
+        if value is not None and key in init_params:
             kwargs[key] = value
 
-    return liteparse_cls(**kwargs)
-
-async def _run_liteparse_parse(parser: Any, file_path: str, *, ocr_enabled: bool) -> Any:
-    """Run LiteParse via its Python API, supporting both stable and native wheels."""
-    parse_options = {
-        "ocr_enabled": ocr_enabled,
-        "ocr_language": "eng",
-        "max_pages": 10000,
-        "dpi": 150,
-        "preserve_very_small_text": True,
-        "precise_bounding_box": True,
-        "timeout": 120,
-    }
-
-    if hasattr(parser, "parse_async"):
-        parse_method = parser.parse_async
-        parse_params = inspect.signature(parse_method).parameters
-        kwargs = {
-            key: value
-            for key, value in parse_options.items()
-            if key in parse_params
-        }
-        return await parse_method(file_path, **kwargs)
-
-    parse_method = parser.parse
-    parse_params = inspect.signature(parse_method).parameters
-    kwargs = {
-        key: value
-        for key, value in parse_options.items()
-        if key in parse_params
-    }
-    return await asyncio.wait_for(
-        asyncio.to_thread(parse_method, file_path, **kwargs),
-        timeout=120,
-    )
+    parser = liteparse_cls(**kwargs)
+    config = parser.get_config() if hasattr(parser, "get_config") else None
+    output_format = getattr(config, "output_format", None)
+    if output_format != "markdown":
+        logger.error("LiteParse did not enable markdown output; received %r", output_format)
+        raise RuntimeError("LiteParse markdown output is unavailable or was downgraded")
+    return parser
 
 def _liteparse_page_text(page: Any) -> str:
     if isinstance(page, dict):
@@ -761,49 +746,221 @@ def _liteparse_page_number(page: Any, fallback: int) -> int:
     except (TypeError, ValueError):
         return fallback
 
-def _liteparse_result_to_text(result: Any) -> str:
-    """Convert LiteParse page output to text with stable page markers.
-
-    Also validates that markers are present and detectable by DocumentSegmenter.
-    """
+def _liteparse_result_pages(result: Any) -> List[Any]:
+    """Return parsed pages from either the object or dictionary LiteParse result."""
     pages = getattr(result, "pages", None)
     if pages is None and isinstance(result, dict):
         pages = result.get("pages")
-    pages = pages or []
+    return list(pages or [])
 
+
+def _liteparse_result_text(result: Any) -> str:
+    """Return whole-document markdown, falling back to page text when needed."""
+    text = getattr(result, "text", None)
+    if text is None and isinstance(result, dict):
+        text = result.get("text")
+    if text:
+        return _normalize_markdown_tables(str(text))
+    page_texts = [_liteparse_page_text(page).strip() for page in _liteparse_result_pages(result)]
+    return "\n\n".join(page_text for page_text in page_texts if page_text)
+
+
+def _liteparse_total_pages(result: Any) -> int:
+    """Return the parser-reported page count with a page-list fallback."""
+    total_pages = getattr(result, "total_pages", None)
+    if total_pages is None and isinstance(result, dict):
+        total_pages = result.get("total_pages")
+    try:
+        return max(0, int(total_pages))
+    except (TypeError, ValueError):
+        return len(_liteparse_result_pages(result))
+
+
+def _annotate_markdown_tables(markdown: str, blocks: Optional[List[Any]] = None) -> str:
+    """Wrap parser-identified tables, falling back to regex only when blocks cannot map."""
+    if blocks is None:
+        return _annotate_markdown_tables_by_regex(markdown)
+
+    lines = markdown.splitlines(keepends=True)
+    offsets: List[int] = []
+    cursor = 0
+    for line in lines:
+        offsets.append(cursor)
+        cursor += len(line)
+
+    table_blocks = [block for block in blocks if getattr(block, "kind", None) == "table"]
+    fallback_blocks = [block for block in blocks if getattr(block, "kind", None) == "grid_fallback"]
+    if fallback_blocks:
+        logger.warning("LiteParse reported %d unresolved grid_fallback block(s)", len(fallback_blocks))
+    if not table_blocks:
+        return markdown
+
+    ranges: List[Tuple[int, int, int, int]] = []
+    search_line = 0
+    for block in table_blocks:
+        header_cells = [str(getattr(cell, "text", "") or "").strip() for cell in (getattr(block, "header", []) or [])]
+        rows = getattr(block, "rows", []) or []
+        first_row = [str(getattr(cell, "text", "") or "").strip() for cell in (rows[0] if rows else [])]
+        needles = [cell for cell in (header_cells or first_row) if cell]
+        found_start: Optional[int] = None
+        for line_index in range(search_line, len(lines)):
+            line = lines[line_index]
+            if not re.match(r"^\s*\|.*\|\s*(?:\r?\n)?$", line):
+                continue
+            normalized_line = " ".join(line.strip().split())
+            if needles and all(" ".join(needle.split()) in normalized_line for needle in needles):
+                found_start = line_index
+                break
+        if found_start is None:
+            logger.warning("Could not map liteparse table block to markdown; using regex fallback for the page")
+            return _annotate_markdown_tables_by_regex(markdown)
+        found_end = found_start + 1
+        while found_end < len(lines) and re.match(r"^\s*\|.*\|\s*(?:\r?\n)?$", lines[found_end]):
+            found_end += 1
+        rows_count = max(1, len(rows))
+        cols_count = len(header_cells) or len(first_row) or 1
+        ranges.append((found_start, found_end, rows_count, cols_count))
+        search_line = found_end
+
+    result: List[str] = []
+    range_by_start = {start: (end, rows, cols) for start, end, rows, cols in ranges}
+    line_index = 0
+    table_index = 1
+    while line_index < len(lines):
+        table_range = range_by_start.get(line_index)
+        if table_range:
+            end, rows_count, cols_count = table_range
+            result.append(f"<!--TABLE:START id=t{table_index} rows={rows_count} cols={cols_count}-->\n")
+            result.extend(lines[line_index:end])
+            if not lines[end - 1].endswith(("\n", "\r")):
+                result.append("\n")
+            result.append(f"<!--TABLE:END id=t{table_index}-->\n")
+            table_index += 1
+            line_index = end
+            continue
+        result.append(lines[line_index])
+        line_index += 1
+    return "".join(result)
+
+
+def _annotate_markdown_tables_by_regex(markdown: str) -> str:
+    """Annotate pipe tables as a conservative fallback when block offsets cannot be mapped."""
+    lines = markdown.splitlines(keepends=True)
+    result: List[str] = []
+    table_index = 1
+    index = 0
+
+    def is_pipe_line(line: str) -> bool:
+        return bool(re.match(r"^\s*\|.*\|\s*(?:\r?\n)?$", line))
+
+    def is_delimiter_line(line: str) -> bool:
+        return bool(re.match(r"^\s*\|[\s:|\-]+\|\s*(?:\r?\n)?$", line))
+
+    while index < len(lines):
+        if index + 1 < len(lines) and is_pipe_line(lines[index]) and is_delimiter_line(lines[index + 1]):
+            end = index + 2
+            while end < len(lines) and is_pipe_line(lines[end]):
+                end += 1
+            table_lines = lines[index:end]
+            rows = max(1, len(table_lines) - 2)
+            cols = max(1, len(table_lines[0].strip().strip("|").split("|")))
+            result.append(f"<!--TABLE:START id=t{table_index} rows={rows} cols={cols}-->\n")
+            result.extend(table_lines)
+            if not table_lines[-1].endswith(("\n", "\r")):
+                result.append("\n")
+            result.append(f"<!--TABLE:END id=t{table_index}-->\n")
+            table_index += 1
+            index = end
+            continue
+        result.append(lines[index])
+        index += 1
+    return "".join(result)
+
+
+def _liteparse_markdown_pages(path: Path, *, ocr_enabled: bool) -> Tuple[List[Tuple[int, str]], str]:
+    """Return one parsed page markdown list plus whole-document markdown with coverage checks."""
+    from liteparse import LiteParse
+
+    parser = _build_liteparse_parser(LiteParse, ocr_enabled=ocr_enabled)
+    result = parser.parse(str(path))
+    pages = _liteparse_result_pages(result)
+    whole_md = _liteparse_result_text(result)
+    total_pages = _liteparse_total_pages(result) or len(pages)
     if not pages:
-        if isinstance(result, dict):
-            return result.get("text", "") or ""
-        return getattr(result, "text", "") or ""
+        return [], whole_md
 
-    content_with_markers = []
-    for index, page in enumerate(pages, 1):
-        page_num = _liteparse_page_number(page, index)
-        page_text = _liteparse_page_text(page).strip()
-        if page_text:
-            content_with_markers.append(f"--- Page {page_num} ---\n\n{page_text}")
-
-    full_text = "\n\n".join(content_with_markers)
-
-    # Validate markers — if a multi-page doc has no detectable markers,
-    # the segmenter won't be able to split by page.
-    marker_count = len(re.findall(r"---\s*Page\s+\d+\s*---", full_text))
-    if len(pages) > 1 and marker_count == 0:
+    raw_pages = [
+        (_liteparse_page_number(page, index), _liteparse_page_text(page).strip(), getattr(page, "blocks", None) or [])
+        for index, page in enumerate(pages, 1)
+    ]
+    extracted_chars = sum(len(page_text) for _, page_text, _blocks in raw_pages)
+    if whole_md and extracted_chars < 0.9 * len(whole_md):
         logger.warning(
-            "LiteParse returned %d pages but no page markers were detected. "
-            "Adding synthetic page breaks.",
-            len(pages),
+            "Page markdown covered %d/%d characters; using whole-document markdown to preserve coverage.",
+            extracted_chars,
+            len(whole_md),
         )
-        # Rebuild with explicit markers
-        rebuilt = []
-        for index, page in enumerate(pages, 1):
-            page_num = _liteparse_page_number(page, index)
-            page_text = _liteparse_page_text(page).strip()
-            if page_text:
-                rebuilt.append(f"\n\n--- Page {page_num} ---\n\n{page_text}")
-        full_text = "\n".join(rebuilt)
+        return [], whole_md
 
-    return full_text
+    if len(raw_pages) < total_pages:
+        logger.warning("LiteParse reported %d pages but returned %d page objects", total_pages, len(raw_pages))
+    page_markdown = [
+        (
+            page_number,
+            _annotate_markdown_tables(page_text, blocks) if page_text else "[no extractable text on this page]",
+        )
+        for page_number, page_text, blocks in raw_pages
+    ]
+    return page_markdown, whole_md
+
+
+def _score_parse_quality(markdown: str, page_count: int) -> Tuple[float, Dict[str, float]]:
+    """Score cheap extraction-quality signals without invoking a model."""
+    text = markdown or ""
+    char_count = len(text)
+    effective_pages = max(1, page_count)
+    chars_per_page = char_count / effective_pages
+    chars_signal = min(1.0, chars_per_page / 150.0)
+
+    alphanumeric_count = sum(char.isalnum() for char in text)
+    alphanumeric_ratio = alphanumeric_count / max(1, char_count)
+    alphanumeric_signal = min(1.0, alphanumeric_ratio / 0.45)
+
+    tokens = re.findall(r"\S+", text)
+    mean_token_length = sum(len(token) for token in tokens) / max(1, len(tokens))
+    if 2.0 <= mean_token_length <= 24.0:
+        token_signal = 1.0
+    elif mean_token_length < 2.0:
+        token_signal = max(0.0, mean_token_length / 2.0)
+    else:
+        token_signal = max(0.0, 1.0 - (mean_token_length - 24.0) / 40.0)
+
+    nonempty_lines = [line for line in text.splitlines() if line.strip()]
+    punctuation_only_lines = sum(
+        not re.search(r"[A-Za-z0-9]", line) for line in nonempty_lines
+    )
+    punctuation_line_fraction = punctuation_only_lines / max(1, len(nonempty_lines))
+    punctuation_signal = 1.0 - punctuation_line_fraction
+
+    replacement_count = text.count("�")
+    replacement_rate = replacement_count / max(1, char_count)
+    replacement_signal = max(0.0, 1.0 - min(1.0, replacement_rate * 100.0))
+
+    signals = {
+        "chars_per_page": round(chars_per_page, 3),
+        "alphanumeric_ratio": round(alphanumeric_ratio, 5),
+        "mean_token_length": round(mean_token_length, 3),
+        "punctuation_line_fraction": round(punctuation_line_fraction, 5),
+        "replacement_rate": round(replacement_rate, 5),
+    }
+    score = (
+        0.30 * chars_signal
+        + 0.20 * alphanumeric_signal
+        + 0.20 * token_signal
+        + 0.15 * punctuation_signal
+        + 0.15 * replacement_signal
+    )
+    return round(max(0.0, min(1.0, score)), 4), signals
 
 def _liteparse_runtime_error(exc: Exception) -> RuntimeError:
     """Include LiteParse stderr in parse errors."""
@@ -816,32 +973,44 @@ def _liteparse_runtime_error(exc: Exception) -> RuntimeError:
     return RuntimeError(f"LiteParse failed to parse the PDF: {message}")
 
 def _process_with_liteparse(temp_pdf_path: Path, file_name: str, contract_id: str) -> Dict[str, Any]:
-    """Process document using LiteParse when Marker API credentials are unavailable."""
-    try:
-        from liteparse import LiteParse
-    except ImportError as exc:
-        raise ImportError("The liteparse Python package is required to process PDF files.") from exc
-
-    markdown = ""
-    page_count = 0
+    """Process a PDF with markdown-first extraction and quality-gated OCR retry."""
+    best_markdown = ""
+    best_page_count = 0
+    best_score = -1.0
+    best_signals: Dict[str, float] = {}
     last_error: Optional[Exception] = None
+    quality_min = getattr(settings, "parse_quality_min", 0.55)
 
     for ocr_enabled in (False, True):
-        parser = _build_liteparse_parser(LiteParse, ocr_enabled=ocr_enabled)
         try:
-            result = asyncio.run(
-                _run_liteparse_parse(
-                    parser,
-                    str(temp_pdf_path),
-                    ocr_enabled=ocr_enabled,
-                )
+            pages, whole_md = _liteparse_markdown_pages(
+                temp_pdf_path,
+                ocr_enabled=ocr_enabled,
             )
-            markdown = _liteparse_result_to_text(result)
-            pages = getattr(result, "pages", None)
-            if pages is None and isinstance(result, dict):
-                pages = result.get("pages")
-            page_count = len(pages or []) or (1 if markdown.strip() else 0)
-            if markdown.strip() or ocr_enabled:
+            if pages:
+                markdown = "\n\n".join(
+                    f"--- Page {page_number} ---\n\n{page_markdown}"
+                    for page_number, page_markdown in pages
+                )
+                page_count = len(pages)
+            else:
+                markdown = _annotate_markdown_tables(whole_md)
+                page_count = 1 if markdown.strip() else 0
+
+            score, signals = _score_parse_quality(markdown, page_count)
+            logger.info(
+                "LiteParse %s parse quality for %s: score=%.4f signals=%s",
+                "OCR" if ocr_enabled else "native",
+                contract_id,
+                score,
+                signals,
+            )
+            if score > best_score:
+                best_markdown = markdown
+                best_page_count = page_count
+                best_score = score
+                best_signals = signals
+            if score >= quality_min:
                 break
         except Exception as exc:
             last_error = exc
@@ -849,29 +1018,30 @@ def _process_with_liteparse(temp_pdf_path: Path, file_name: str, contract_id: st
                 continue
             raise _liteparse_runtime_error(exc) from exc
 
-    if not markdown.strip() and last_error:
-        raise _liteparse_runtime_error(last_error) from last_error
-
-    if not markdown.strip():
+    if not best_markdown.strip():
+        if last_error:
+            raise _liteparse_runtime_error(last_error) from last_error
         raise ValueError("LiteParse returned no text content")
 
     result = {
         "status": "complete",
         "success": True,
-        "markdown": markdown,
+        "markdown": best_markdown,
         "html": "",
         "images": {},
-        "page_count": page_count,
-        "parse_quality_score": 0.0,
+        "page_count": best_page_count,
+        "parse_quality_score": best_score,
+        "parse_quality_signals": best_signals,
         "cost_breakdown": {},
         "error": "",
         "parser": "liteparse",
     }
     logger.info(
-        "LiteParse processed %s for contract %s with %s page(s)",
+        "LiteParse processed %s for contract %s with %s page(s) at quality %.4f",
         file_name,
         contract_id,
         result.get("page_count", 0),
+        best_score,
     )
     return result
 

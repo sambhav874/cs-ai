@@ -17,6 +17,8 @@ os.environ.setdefault("SECRET_KEY", "test-secret")
 os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017/test")
 
 from services.contract_agent.rag import ContractRAGSystem, DocumentSegmenter
+from services.contract_agent.rag.segmentation import _split_table
+from worker.tasks import _annotate_markdown_tables, _score_parse_quality
 
 
 GOLDEN_CONTRACT = """--- Page 1 ---
@@ -81,6 +83,38 @@ class LegalChunkingTests(unittest.TestCase):
         self.assertNotIn("macro", top_levels)
         self.assertIn("micro", top_levels)
         self.assertTrue(any("Rate Card" in doc.page_content for doc in docs))
+
+    def test_markdown_table_annotation_preserves_true_header_and_page_marker_contract(self) -> None:
+        markdown = "Before\n\n| Position | Number of Staff | Man hours |\n| --- | --- | --- |\n| Supervisor | 1 | 8 |\n\nAfter"
+        annotated = _annotate_markdown_tables(markdown)
+        self.assertIn("<!--TABLE:START id=t1 rows=1 cols=3-->", annotated)
+        self.assertIn("| Position | Number of Staff | Man hours |", annotated)
+        self.assertNotRegex(annotated, r"---\s*Page\s+\d+\s*---")
+
+    def test_malformed_table_passes_through_byte_identical(self) -> None:
+        malformed = "| Position | Staff |\n| Supervisor | 1 |\nordinary prose"
+        self.assertEqual(_annotate_markdown_tables(malformed), malformed)
+
+    def test_table_split_repeats_header_and_conserves_rows(self) -> None:
+        body = "| Position | Staff |\n| --- | --- |\n" + "\n".join(
+            f"| Role {index} | {index} |" for index in range(10)
+        )
+        parts = _split_table(body, max_tokens=25)
+        self.assertGreater(len(parts), 1)
+        self.assertTrue(all(part.splitlines()[:2] == body.splitlines()[:2] for part in parts))
+        rows = [line for part in parts for line in part.splitlines()[2:] if line.strip()]
+        self.assertEqual(rows, body.splitlines()[2:])
+
+    def test_table_split_degrades_for_an_oversized_row(self) -> None:
+        body = "| Label | Value |\n| --- | --- |\n| Role | " + ("x" * 2000) + " |"
+        parts = _split_table(body, max_tokens=32)
+        self.assertTrue(parts)
+        self.assertTrue(any("Label:" in part for part in parts))
+
+    def test_parse_quality_distinguishes_clean_markdown_from_replacement_soup(self) -> None:
+        clean_score, _clean_signals = _score_parse_quality("# Heading\n\nA valid contractual paragraph with several words.", 1)
+        soup_score, _soup_signals = _score_parse_quality("�" * 500, 1)
+        self.assertGreater(clean_score, soup_score)
 
     def test_inline_references_and_addresses_do_not_become_tiny_meso_chunks(self) -> None:
         noisy_contract = """--- Page 1 ---

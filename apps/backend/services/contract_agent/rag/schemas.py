@@ -50,6 +50,10 @@ class TextSegment(BaseModel):
     obligation_parties: List[str] = Field(default_factory=list)
     referenced_documents: List[str] = Field(default_factory=list)
     value_types: List[str] = Field(default_factory=list)
+    table_rows: Optional[int] = None
+    table_cols: Optional[int] = None
+    table_part_index: Optional[int] = None
+    table_part_count: Optional[int] = None
 
     def __str__(self) -> str:
         level = self.chunk_level or self.type

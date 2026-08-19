@@ -20,6 +20,8 @@ on:
   pull_request:
     paths:
       - 'apps/backend/services/contract_agent/**'
+      - 'apps/backend/worker/tasks.py'
+      - 'apps/backend/services/contract_agent/rag/segmentation.py'
       - 'apps/backend/services/agent_memory.py'
       - 'apps/backend/services/project_memory.py'
       - 'apps/backend/api/routes/agent.py'

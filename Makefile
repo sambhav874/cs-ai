@@ -48,7 +48,8 @@ AGENT_GATE_TESTS = \
 	../../testing/backend/tests/test_user_preferences.py \
 	../../testing/backend/tests/test_memory_lifecycle.py \
 	../../testing/backend/tests/test_run_cancellation.py \
-	../../testing/backend/tests/test_agent_stream.py
+	../../testing/backend/tests/test_agent_stream.py \
+	../../testing/backend/tests/test_legal_chunking.py
 
 eval-gate:
 	cd apps/backend && PYTHONPATH=../..:../../testing/backend poetry run pytest $(AGENT_GATE_TESTS) -q

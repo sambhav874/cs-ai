@@ -2692,44 +2692,24 @@ valkey = ["valkey (>=6)"]
 
 [[package]]
 name = "liteparse"
-version = "2.0.8"
+version = "2.13.0"
 description = "Python bindings for LiteParse - fast, lightweight PDF and document parsing"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "liteparse-2.0.8-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:440045bca8a7ad8e162fa80b0b1b48d12180d8c6c08bc5126c0c7c36e3cde4df"},
-    {file = "liteparse-2.0.8-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:465ec7d118dd8011ab7cbbf7243478b25d28c50aee8395617fb844c56215c627"},
-    {file = "liteparse-2.0.8-cp310-cp310-win_amd64.whl", hash = "sha256:b6271f5d9add5c14f7e692de150fe383982c7d9d21daf4dd4b33fd968ffe5beb"},
-    {file = "liteparse-2.0.8-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:bf7f8598b65fb72cdb79d0cedb86e94e488a5ad1c0ba1cb49d7d23d6e9de63ed"},
-    {file = "liteparse-2.0.8-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:1af386d9d0e053bef2b7bd9da09435ba284bde53a9c098baffae40daf538cd9e"},
-    {file = "liteparse-2.0.8-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:a55dea506f6bb93535116dfad54bf207e4de89338ffc7a355f626d18438e5147"},
-    {file = "liteparse-2.0.8-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:b4d689fd35785f856b6a56fa034c453fad2ad6590ab286422eb780c956961f69"},
-    {file = "liteparse-2.0.8-cp311-cp311-win_amd64.whl", hash = "sha256:10987345138e74fe3ca037cb60d21dcb28afd30df9fb74b12b3591cd641b2b23"},
-    {file = "liteparse-2.0.8-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:052c2d5b5a92b088e72b29c2e6874fbbcc586594e18fbb95d047f35037cbf84a"},
-    {file = "liteparse-2.0.8-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:1486987ef620cec06b8dfc365505f15cd5cd4bb05dac3775d260633df7060779"},
-    {file = "liteparse-2.0.8-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:3e3596d5d45d08880fb59306832247c9b56f81fc12f3e0fe5c9330c39c5d3b23"},
-    {file = "liteparse-2.0.8-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:e3a94b83bc0d22b9b6c2a6b1669447114949b19d8fc3d2877aa2e60cf3e1bd6b"},
-    {file = "liteparse-2.0.8-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:ceddc9b104147498e1bb0a4591b40884d0091a00af46335a99a7cca94f9a44ed"},
-    {file = "liteparse-2.0.8-cp312-cp312-win_amd64.whl", hash = "sha256:c2d25eee102c33c367076297e3de83b1f48440eb9ed5a4ad3a6e79e1b941ebe5"},
-    {file = "liteparse-2.0.8-cp312-cp312-win_arm64.whl", hash = "sha256:eece405e904992c062cf99ad0dca82b1c4236a420a5fe5fdc99ff7ed4f3d1f5d"},
-    {file = "liteparse-2.0.8-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:af76a8671b73ba57fd289338953cdc435e55b14c181f4431a2ff9f90b6fad8e9"},
-    {file = "liteparse-2.0.8-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:3d55ae1a870bd9d5f50eb247befc099ec32994671a5c3eeb38bd5cf386ecf144"},
-    {file = "liteparse-2.0.8-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:4781ef2333a0f660721987f25ee13c654189d756cb4ee3566fe0d3afeddd74e2"},
-    {file = "liteparse-2.0.8-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:a0583d453c183936b130ed4fd6267f1f2fa351b34b57fbdf3964875551e6329e"},
-    {file = "liteparse-2.0.8-cp313-cp313-win_amd64.whl", hash = "sha256:8445dec04fc365864e138f5dd5b0aa8b6c1cdb094ab6829bd8e3de6b2a40182c"},
-    {file = "liteparse-2.0.8-cp313-cp313-win_arm64.whl", hash = "sha256:230563f83fd0883c476311e84c03e2d928cbdcda79b5cb226646d0a9d735577e"},
-    {file = "liteparse-2.0.8-cp314-cp314-macosx_10_12_x86_64.whl", hash = "sha256:253f297d2c8ac6742e36a949cb2589a4414090d2855b6e3f306703139ee6e044"},
-    {file = "liteparse-2.0.8-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:922b26acffd23016a34cbfb7f41478252e226225f9672cf0cfa2f8629a99baca"},
-    {file = "liteparse-2.0.8-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:0233f11d5434637c24df925ed6898faaad99a87fdbe4a8cf9ee96b6fafb4e96a"},
-    {file = "liteparse-2.0.8-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:998319964a42d0b52f4b9c1042414e56a990d15c662901f86a0bd0d06c048d72"},
-    {file = "liteparse-2.0.8-cp314-cp314-win_amd64.whl", hash = "sha256:750d695a36ad430828727a8a60e1f14a5cbfe5a2ebd6d33a016517a10b8d10e8"},
-    {file = "liteparse-2.0.8-cp314-cp314-win_arm64.whl", hash = "sha256:105769a32cfd0b2a6ed7e6dfec969e58f60b23388b09c85bb9a6acbda247eb9d"},
-    {file = "liteparse-2.0.8-cp315-cp315-manylinux_2_28_aarch64.whl", hash = "sha256:0eba3487c79d99a07c2fc34fbc9278cdad3b0fc36e9e695aa881fa4fa969a14e"},
-    {file = "liteparse-2.0.8-cp315-cp315-manylinux_2_28_x86_64.whl", hash = "sha256:c3ecb11b54518deeb0caaf7688ff332f5a1bab51f955a288b6d039dddcd05b5f"},
-    {file = "liteparse-2.0.8-pp311-pypy311_pp73-manylinux_2_28_aarch64.whl", hash = "sha256:bffdcd8103fb708dce211bc8d452a143a4e97ea923f8cf9d6a8a6be6e958e33b"},
-    {file = "liteparse-2.0.8-pp311-pypy311_pp73-manylinux_2_28_x86_64.whl", hash = "sha256:1cb23f55f6c23e7a61da7ce98c793e52dbd09c5c7981ae9a023a1845d8c522c2"},
-    {file = "liteparse-2.0.8.tar.gz", hash = "sha256:c03b7b32508cf35e7ee01ea3fa7dd5d45592bc4a7c42696f7505e445ad5474c4"},
+    {file = "liteparse-2.13.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:d4c9e11b0f5dc64a429d93164fd27767ac781b6d8874c36ae7559b9019962e1e"},
+    {file = "liteparse-2.13.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:61d287ec0c7d5a3765faf6962bbb56673a47903511052d90d900040494f4a920"},
+    {file = "liteparse-2.13.0-cp310-cp310-win_amd64.whl", hash = "sha256:d076ded5dc27795577a906d856adc8167e63f08af5d651ce814dee91e6f54f53"},
+    {file = "liteparse-2.13.0-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:e4a73dae3159346cce77953d1d6296be329a5d2f6bef5655877bd23c72098096"},
+    {file = "liteparse-2.13.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:4fe8c84cdb8a85946a1f97c05c750a8f31b40ea4a6c9607e12abd3d2047547b3"},
+    {file = "liteparse-2.13.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:f9709e41583eb571da4bd614e7ee1978e676ff7ba659345425915a1ddb9cff1a"},
+    {file = "liteparse-2.13.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:1961df6569d46b0697e2ca696036f77e759a9848569b5954874ca09b2d381a24"},
+    {file = "liteparse-2.13.0-cp311-cp311-win_amd64.whl", hash = "sha256:0469f0ed41956909c8ef92a4ad56800219aa1ab82c205e91107a00f1b05ff9a9"},
+    {file = "liteparse-2.13.0-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:dc577f637c3f4d1f8369f449979d0ce8ef95d54da1b4f1fb7f0597ca235edc94"},
+    {file = "liteparse-2.13.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:6a7cd7ef5ff11dfa53913bac888653b537ff50892ae647e7b18536902d854e52"},
+    {file = "liteparse-2.13.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:eaead122bcde54ba3ea15eb032558fb5ab5ebbd610ead33bcb7e59cae81a1aef"},
+    {file = "liteparse-2.13.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:19c5e6a7f5ffcf50831e74490af85c0fd09ee1b995e3f36c6db27303bd9bd636"},
 ]
 
 [package.extras]
@@ -7183,4 +7163,4 @@ ml = ["accelerate", "langchain-huggingface", "sentence-transformers", "sentencep
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<=3.12"
-content-hash = "50a84e3e18c8d872d4f3ef23122a7292627ad83adc79a5e66199754d67fb1ff9"
+content-hash = "5cea3cea16f5c56e5006c81f94b05418e3892451b84ff931b06a432c2682364b"

@@ -32,6 +32,58 @@ def _get_tokenizer():
     return _tokenizer
 
 
+def _table_token_count(text: str) -> int:
+    """Count table tokens with the shared embedding tokenizer."""
+    return len(_get_tokenizer().encode(text or ""))
+
+
+def _linearize_table_row(header: str, row: str) -> str:
+    """Convert one oversized pipe row into compact labelled text."""
+    headers = [cell.strip() for cell in header.strip().strip("|").split("|")]
+    values = [cell.strip() for cell in row.strip().strip("|").split("|")]
+    pairs = [
+        f"{headers[index] or f'Column {index + 1}'}: {value}"
+        for index, value in enumerate(values)
+    ]
+    return "; ".join(pairs)
+
+
+def _split_table(body: str, *, max_tokens: int) -> List[str]:
+    """Split a markdown table on rows while repeating its header."""
+    lines = [line for line in body.splitlines() if line.strip()]
+    if len(lines) < 2 or _table_token_count(body) <= max_tokens:
+        return [body]
+
+    header, delimiter = lines[:2]
+    data_rows = lines[2:]
+    parts: List[str] = []
+    current_rows: List[str] = []
+    for row in data_rows:
+        candidate_rows = [*current_rows, row]
+        candidate = "\n".join([header, delimiter, *candidate_rows])
+        if current_rows and _table_token_count(candidate) > max_tokens:
+            parts.append("\n".join([header, delimiter, *current_rows]))
+            current_rows = []
+            candidate = "\n".join([header, delimiter, row])
+        if _table_token_count(candidate) > max_tokens:
+            if current_rows:
+                parts.append("\n".join([header, delimiter, *current_rows]))
+                current_rows = []
+            linearized = _linearize_table_row(header, row)
+            if _table_token_count(linearized) > max_tokens:
+                logger.warning("Table row exceeds token budget; falling back to character chunks")
+                step = max(1, max_tokens * 4)
+                parts.extend(linearized[index:index + step] for index in range(0, len(linearized), step))
+            else:
+                parts.append(linearized)
+            continue
+        current_rows.append(row)
+
+    if current_rows:
+        parts.append("\n".join([header, delimiter, *current_rows]))
+    return parts or [body]
+
+
 class DocumentSegmenter:
     """Handles document segmentation into hierarchical text units."""
 
@@ -71,6 +123,10 @@ class DocumentSegmenter:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.page_marker_regex = re.compile(r"(?:\{(\d+)\}-+\s*|---\s*Page\s+(\d+)\s*---\s*)", re.IGNORECASE)
+        self.table_marker_regex = re.compile(
+            r"<!--TABLE:START(?P<attrs>[^>]*)-->\n(?P<body>.*?)\n<!--TABLE:END[^>]*-->",
+            re.DOTALL,
+        )
 
     def generate_segment_id(self, text: str, segment_type: str, index: int) -> str:
         content_hash = hashlib.md5(text.encode()).hexdigest()[:8]
@@ -160,15 +216,47 @@ class DocumentSegmenter:
 
         return chunks
 
+    def _strip_table_markers(self, text: str) -> Tuple[str, List[Tuple[int, int, Dict[str, int]]]]:
+        """Remove table sentinels and return body spans with measured shape metadata."""
+        matches = list(self.table_marker_regex.finditer(text))
+        if not matches:
+            return text, []
+
+        parts: List[str] = []
+        spans: List[Tuple[int, int, Dict[str, int]]] = []
+        cursor = 0
+        output_cursor = 0
+        for match in matches:
+            prefix = text[cursor:match.start()]
+            parts.append(prefix)
+            output_cursor += len(prefix)
+            body = match.group("body")
+            body_start = output_cursor
+            parts.append(body)
+            output_cursor += len(body)
+            attrs = dict(
+                (key, int(value))
+                for key, value in re.findall(r"\b(rows|cols)=(\d+)", match.group("attrs"))
+            )
+            spans.append((body_start, output_cursor, attrs))
+            cursor = match.end()
+        suffix = text[cursor:]
+        parts.append(suffix)
+        return "".join(parts), spans
+
     def _legal_segments_from_page_chunks(self, page_chunks: List[Tuple[Optional[int], str]]) -> Tuple[str, List[TextSegment]]:
         full_text_parts: List[str] = []
         page_spans: List[Tuple[Optional[int], int, int]] = []
+        table_spans: List[Tuple[int, int, Dict[str, int]]] = []
         cursor = 0
 
         for page_number, page_text in page_chunks:
             if not page_text.strip():
                 continue
-            cleaned_page_text = self.page_marker_regex.sub("", clean_text_encoding(page_text)).strip()
+            raw_page_text = self.page_marker_regex.sub("", clean_text_encoding(page_text))
+            cleaned_page_text, local_table_spans = self._strip_table_markers(raw_page_text)
+            leading_trim = len(cleaned_page_text) - len(cleaned_page_text.lstrip())
+            cleaned_page_text = cleaned_page_text.strip()
             if not cleaned_page_text:
                 continue
             if full_text_parts:
@@ -178,15 +266,20 @@ class DocumentSegmenter:
             full_text_parts.append(cleaned_page_text)
             cursor += len(cleaned_page_text)
             page_spans.append((page_number, page_start, cursor))
+            for local_start, local_end, attrs in local_table_spans:
+                table_start = page_start + max(0, local_start - leading_trim)
+                table_end = page_start + min(len(cleaned_page_text), local_end - leading_trim)
+                if table_end > table_start:
+                    table_spans.append((table_start, table_end, attrs))
 
         full_text = "".join(full_text_parts).strip()
         if not full_text:
             return "", []
 
-        segments = self._build_legal_segments(full_text, page_spans)
+        segments = self._build_legal_segments(full_text, page_spans, table_spans)
         if not segments:
             self.logger.warning("Legal chunking produced no segments; falling back to paragraph chunks.")
-            segments = self._fallback_meso_segments(full_text, page_spans)
+            segments = self._fallback_meso_segments(full_text, page_spans, table_spans)
         return full_text, segments
 
     def _estimated_tokens(self, text: str) -> int:
@@ -360,11 +453,18 @@ class DocumentSegmenter:
         section_tags: List[str],
         parent_id: Optional[str] = None,
         value_types: Optional[List[str]] = None,
+        preserve_whitespace: bool = False,
+        table_rows: Optional[int] = None,
+        table_cols: Optional[int] = None,
+        table_part_index: Optional[int] = None,
+        table_part_count: Optional[int] = None,
     ) -> Optional[TextSegment]:
         cleaned = clean_text_encoding(text or "").strip()
-        cleaned = re.sub(r"[ \t\f\v]+", " ", cleaned)
-        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
-        if len(cleaned) < (30 if segment_type == "micro" else 60):
+        if not preserve_whitespace:
+            cleaned = re.sub(r"[ \t\f\v]+", " ", cleaned)
+            cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        min_length = 1 if segment_type == "table" else (30 if segment_type == "micro" else 60)
+        if len(cleaned) < min_length:
             return None
 
         page_start, page_end = self._page_range_for_span(start_index, end_index, page_spans)
@@ -389,6 +489,10 @@ class DocumentSegmenter:
             parent_chunk_id=parent_id,
             token_count=self._estimated_tokens(cleaned),
             value_types=value_types or [],
+            table_rows=table_rows,
+            table_cols=table_cols,
+            table_part_index=table_part_index,
+            table_part_count=table_part_count,
             **metadata,
         )
 
@@ -461,6 +565,141 @@ class DocumentSegmenter:
             )
         return sections
 
+    def _paragraph_blocks_excluding_tables(
+        self,
+        text: str,
+        *,
+        excluded_spans: List[Tuple[int, int]],
+    ) -> List[Tuple[int, int, str]]:
+        """Return prose blocks split around table spans so no text is visited twice."""
+        if not excluded_spans:
+            return self._paragraph_blocks(text)
+        blocks: List[Tuple[int, int, str]] = []
+        for block_start, block_end, _block_text in self._paragraph_blocks(text):
+            intervals = [(block_start, block_end)]
+            for excluded_start, excluded_end in excluded_spans:
+                next_intervals: List[Tuple[int, int]] = []
+                for start, end in intervals:
+                    if excluded_end <= start or excluded_start >= end:
+                        next_intervals.append((start, end))
+                        continue
+                    if start < excluded_start:
+                        next_intervals.append((start, excluded_start))
+                    if excluded_end < end:
+                        next_intervals.append((excluded_end, end))
+                intervals = next_intervals
+            for start, end in intervals:
+                content = text[start:end].strip()
+                if content:
+                    leading = len(text[start:end]) - len(text[start:end].lstrip())
+                    actual_start = start + leading
+                    blocks.append((actual_start, actual_start + len(content), content))
+        return blocks
+
+    def _table_segments_for_section(
+        self,
+        *,
+        full_text: str,
+        section: Dict[str, Any],
+        page_spans: List[Tuple[Optional[int], int, int]],
+        table_spans: List[Tuple[int, int, Dict[str, int]]],
+        parent_id: Optional[str] = None,
+    ) -> List[TextSegment]:
+        """Create atomic table chunks while retaining every source row in citations."""
+        segments: List[TextSegment] = []
+        max_tokens = max(128, getattr(settings, "table_max_tokens", 1500))
+        section_tables = [
+            (start, end, attrs)
+            for start, end, attrs in table_spans
+            if section["start"] <= start and end <= section["end"]
+        ]
+        for table_start, table_end, attrs in section_tables:
+            body = full_text[table_start:table_end]
+            lines = [line for line in body.splitlines() if line.strip()]
+            if len(lines) >= 2:
+                computed_rows = max(1, len(lines) - 2)
+                computed_cols = max(1, len(lines[0].strip().strip("|").split("|")))
+            else:
+                computed_rows = 1
+                computed_cols = 1
+            rows = attrs.get("rows") or computed_rows
+            cols = attrs.get("cols") or computed_cols
+            parts = _split_table(body, max_tokens=max_tokens)
+            if len(parts) > 40:
+                logger.warning(
+                    "Table at %s-%s produced %d parts; preserving rows in a capped final part",
+                    table_start,
+                    table_end,
+                    len(parts),
+                )
+                header_lines = lines[:2]
+                consumed_rows = [line for part in parts[:39] for line in part.splitlines()[2:] if line.strip().startswith("|")]
+                remaining_rows = [line for line in lines[2:] if line not in consumed_rows]
+                parts = [*parts[:39], "\n".join([*header_lines, *remaining_rows])]
+
+            section_tags = sorted(set([*(section.get("tags") or []), "table"]))
+            parent_segment: Optional[TextSegment] = None
+            if len(parts) > 1:
+                summary_lines = lines[: min(len(lines), 7)]
+                summary_text = f"Table summary: {rows} rows x {cols} columns\n" + "\n".join(summary_lines)
+                parent_segment = self._make_legal_segment(
+                    text=summary_text,
+                    segment_type="table",
+                    start_index=table_start,
+                    end_index=table_end,
+                    page_spans=page_spans,
+                    section_path=section["path"],
+                    section_tags=section_tags,
+                    parent_id=parent_id,
+                    preserve_whitespace=True,
+                    table_rows=rows,
+                    table_cols=cols,
+                    table_part_count=len(parts),
+                )
+                if parent_segment:
+                    segments.append(parent_segment)
+
+            search_cursor = table_start
+            part_segments: List[TextSegment] = []
+            for part_index, part in enumerate(parts, 1):
+                if len(parts) == 1:
+                    row_start = table_start
+                    row_end = table_end
+                    first_row = ""
+                else:
+                    first_row = next((line for line in part.splitlines()[2:] if line.strip()), "")
+                    row_start = full_text.find(first_row, search_cursor) if first_row else -1
+                if row_start < table_start:
+                    row_start = table_start
+                row_end = min(table_end, row_start + len(first_row)) if first_row else table_end
+                if len(parts) > 1 and "\n" in part:
+                    last_row = next((line for line in reversed(part.splitlines()[2:]) if line.strip()), first_row)
+                    last_start = full_text.find(last_row, row_start) if last_row else row_start
+                    if last_start >= row_start:
+                        row_end = min(table_end, last_start + len(last_row))
+                search_cursor = max(search_cursor, row_end)
+                segment = self._make_legal_segment(
+                    text=part,
+                    segment_type="table",
+                    start_index=row_start,
+                    end_index=max(row_start + 1, row_end),
+                    page_spans=page_spans,
+                    section_path=section["path"],
+                    section_tags=section_tags,
+                    parent_id=parent_segment.id if parent_segment else parent_id,
+                    preserve_whitespace=True,
+                    table_rows=rows,
+                    table_cols=cols,
+                    table_part_index=part_index if len(parts) > 1 else None,
+                    table_part_count=len(parts) if len(parts) > 1 else None,
+                )
+                if segment:
+                    part_segments.append(segment)
+            if parent_segment:
+                parent_segment.child_chunk_ids.extend(segment.id for segment in part_segments)
+            segments.extend(part_segments)
+        return segments
+
     def _paragraph_blocks(self, text: str) -> List[Tuple[int, int, str]]:
         blocks: List[Tuple[int, int, str]] = []
         cursor = 0
@@ -527,9 +766,18 @@ class DocumentSegmenter:
         section: Dict[str, Any],
         page_spans: List[Tuple[Optional[int], int, int]],
         parent_id: Optional[str] = None,
+        table_spans: Optional[List[Tuple[int, int, Dict[str, int]]]] = None,
     ) -> List[TextSegment]:
         section_text = full_text[section["start"]:section["end"]]
-        blocks = self._paragraph_blocks(section_text)
+        section_table_spans = table_spans or []
+        relative_table_spans = [
+            (max(0, start - section["start"]), min(len(section_text), end - section["start"]))
+            for start, end, _attrs in section_table_spans
+        ]
+        blocks = self._paragraph_blocks_excluding_tables(
+            section_text,
+            excluded_spans=relative_table_spans,
+        )
         min_chars = max(400, getattr(settings, "legal_meso_min_chars", 1200))
         max_chars = max(min_chars + 200, getattr(settings, "legal_meso_max_chars", 3000))
         segments: List[TextSegment] = []
@@ -752,13 +1000,36 @@ class DocumentSegmenter:
         self,
         full_text: str,
         page_spans: List[Tuple[Optional[int], int, int]],
+        table_spans: Optional[List[Tuple[int, int, Dict[str, int]]]] = None,
     ) -> List[TextSegment]:
         sections = self._structural_sections(full_text)
         macro_segments: List[TextSegment] = []
         meso_segments: List[TextSegment] = []
+        table_segments: List[TextSegment] = []
+        emitted_table_spans: set[Tuple[int, int]] = set()
+        all_table_spans = table_spans or []
+
+        def owned_tables(section: Dict[str, Any]) -> List[Tuple[int, int, Dict[str, int]]]:
+            owned: List[Tuple[int, int, Dict[str, int]]] = []
+            for table_start, table_end, attrs in all_table_spans:
+                if not (section["start"] <= table_start and table_end <= section["end"]):
+                    continue
+                nested = any(
+                    other is not section
+                    and other["start"] >= section["start"]
+                    and other["end"] <= section["end"]
+                    and other["start"] <= table_start
+                    and table_end <= other["end"]
+                    and (other["end"] - other["start"]) < (section["end"] - section["start"])
+                    for other in sections
+                )
+                if not nested:
+                    owned.append((table_start, table_end, attrs))
+            return owned
 
         for section in sections:
             section_text = full_text[section["start"]:section["end"]]
+            section_tables = owned_tables(section)
             is_macro = section["level"] <= 2
             macro_id: Optional[str] = None
             if is_macro and len(section_text.strip()) >= 250:
@@ -778,8 +1049,6 @@ class DocumentSegmenter:
                     macro_id = macro_segment.id
 
             if is_macro and section.get("has_child"):
-                # Create meso segments for the text between the macro end
-                # and the first child section to avoid gaps.
                 macro_end = macro_segments[-1].char_end if macro_segments else section["start"]
                 child_start = min(
                     (child_section["start"] for child_section in sections
@@ -793,25 +1062,51 @@ class DocumentSegmenter:
                         "path": section["path"],
                         "tags": section["tags"],
                     }
-                    section_meso_segments = self._meso_segments_for_section(
+                    gap_tables = [
+                        span for span in all_table_spans
+                        if gap_section["start"] <= span[0]
+                        and span[1] <= gap_section["end"]
+                        and (span[0], span[1]) not in emitted_table_spans
+                    ]
+                    emitted_table_spans.update((span[0], span[1]) for span in gap_tables)
+                    table_segments.extend(self._table_segments_for_section(
+                        full_text=full_text,
+                        section=gap_section,
+                        page_spans=page_spans,
+                        table_spans=gap_tables,
+                        parent_id=macro_id,
+                    ))
+                    meso_segments.extend(self._meso_segments_for_section(
                         full_text=full_text,
                         section=gap_section,
                         page_spans=page_spans,
                         parent_id=macro_id,
-                    )
-                    meso_segments.extend(section_meso_segments)
+                        table_spans=gap_tables,
+                    ))
                 continue
 
-            section_meso_segments = self._meso_segments_for_section(
+            section_tables = [
+                span for span in section_tables
+                if (span[0], span[1]) not in emitted_table_spans
+            ]
+            emitted_table_spans.update((span[0], span[1]) for span in section_tables)
+            table_segments.extend(self._table_segments_for_section(
+                full_text=full_text,
+                section=section,
+                page_spans=page_spans,
+                table_spans=section_tables,
+                parent_id=macro_id,
+            ))
+            meso_segments.extend(self._meso_segments_for_section(
                 full_text=full_text,
                 section=section,
                 page_spans=page_spans,
                 parent_id=macro_id,
-            )
-            meso_segments.extend(section_meso_segments)
+                table_spans=section_tables,
+            ))
 
         meso_segments = self._merge_tiny_meso_segments(meso_segments, full_text, page_spans)
-        segments: List[TextSegment] = [*macro_segments, *meso_segments]
+        segments: List[TextSegment] = [*macro_segments, *table_segments, *meso_segments]
         for meso_segment in meso_segments:
             micros = self._micro_segments_for_meso(meso_segment, full_text, page_spans)
             if micros:
@@ -824,6 +1119,7 @@ class DocumentSegmenter:
         self,
         full_text: str,
         page_spans: List[Tuple[Optional[int], int, int]],
+        table_spans: Optional[List[Tuple[int, int, Dict[str, int]]]] = None,
     ) -> List[TextSegment]:
         fallback_section = {
             "start": 0,
@@ -835,6 +1131,7 @@ class DocumentSegmenter:
             full_text=full_text,
             section=fallback_section,
             page_spans=page_spans,
+            table_spans=table_spans,
         )
 
     def segment_pdf(self, pdf_path: Path, contract_name: str, output_target_dir: Optional[Path] = None) -> Tuple[str, List[TextSegment]]:
