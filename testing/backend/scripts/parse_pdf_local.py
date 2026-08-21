@@ -31,6 +31,9 @@ def main() -> int:
             json.dumps(
                 {
                     "page_count": result.get("page_count"),
+                    "table_count": result.get("table_count", 0),
+                    "table_row_count": result.get("table_row_count", 0),
+                    "tables": result.get("tables", []),
                     "parse_quality_score": result.get("parse_quality_score"),
                     "parse_quality_signals": result.get("parse_quality_signals", {}),
                 },

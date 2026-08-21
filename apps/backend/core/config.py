@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     retriever_segment_excerpt_chars: int = Field(default=1200, env="RETRIEVER_SEGMENT_EXCERPT_CHARS")
     parse_quality_min: float = Field(default=0.55, env="PARSE_QUALITY_MIN")
     table_max_tokens: int = Field(default=1500, env="TABLE_MAX_TOKENS")
+    table_embedding_max_tokens: int = Field(default=12000, env="TABLE_EMBEDDING_MAX_TOKENS")
     chunk_schema_version: int = Field(default=3, env="CHUNK_SCHEMA_VERSION")
     legal_meso_min_chars: int = Field(default=1200, env="LEGAL_MESO_MIN_CHARS")
     legal_meso_max_chars: int = Field(default=3000, env="LEGAL_MESO_MAX_CHARS")

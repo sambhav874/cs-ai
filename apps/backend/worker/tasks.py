@@ -445,12 +445,12 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                 progress=calculate_stage_progress("indexing", 40)
             )
 
-            marker_result = _process_with_marker(
-                temp_pdf_path, sanitized_filename, contract_id, use_local_marker
+            marker_result = _process_with_liteparse(
+                temp_pdf_path, sanitized_filename, contract_id
             )
 
             if not isinstance(marker_result, dict) or "markdown" not in marker_result:
-                raise ValueError("Invalid content returned from marker processing")
+                raise ValueError("Invalid content returned from LiteParse processing")
                 
             from core.sanitizers import sanitize_llm_input
             raw_index_content = marker_result.get("markdown", "")
@@ -461,6 +461,10 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
             index_page_count = marker_result.get("page_count", 0)
             index_parse_quality_score = marker_result.get("parse_quality_score", 0.0)
             index_parse_quality_signals = marker_result.get("parse_quality_signals", {})
+            index_table_count = marker_result.get("table_count", 0)
+            index_table_row_count = marker_result.get("table_row_count", 0)
+            index_tables = marker_result.get("tables", [])
+            index_lexical_table_count = marker_result.get("lexical_table_count", 0)
             index_cost_breakdown = marker_result.get("cost_breakdown", {})
             index_error = marker_result.get("error", "")
             index_parser = marker_result.get("parser", "marker")
@@ -495,7 +499,8 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
             except Exception as embed_error:
                 log_exception(logger, f"Failed to embed extracted text for contract {contract_id}", embed_error)
                 raise RuntimeError("Failed to embed extracted contract text in MongoDB") from embed_error
-
+            index_table_count = embedding_metadata.get("table_count", index_table_count)
+            index_lexical_table_count = embedding_metadata.get("lexical_table_count", index_lexical_table_count)
             job_manager.update_job_status(
                 job_id=job_id,
                 status="IN_PROGRESS",
@@ -538,6 +543,10 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                         "index.parser": index_parser,
                         "index.parse_quality_score": index_parse_quality_score,
                         "index.parse_quality_signals": index_parse_quality_signals,
+                        "index.table_count": index_table_count,
+                        "index.table_row_count": index_table_row_count,
+                        "index.tables": index_tables,
+                        "index.lexical_table_count": index_lexical_table_count,
                         "index.error": index_error,
                         "index.embedding_status": "success",
                         "index.vector_namespace": embedding_metadata.get("namespace"),
@@ -774,6 +783,44 @@ def _liteparse_total_pages(result: Any) -> int:
         return max(0, int(total_pages))
     except (TypeError, ValueError):
         return len(_liteparse_result_pages(result))
+
+
+def _table_statistics(markdown: str) -> Dict[str, Any]:
+    """Return source-table counts and identities before any logical chunking."""
+    marker_pattern = re.compile(
+        r"<!--TABLE:START(?P<attrs>[^>]*)-->\n(?P<body>.*?)\n<!--TABLE:END[^>]*-->",
+        re.DOTALL,
+    )
+    page_pattern = re.compile(r"---\s*Page\s+(\d+)\s*---", re.IGNORECASE)
+    details: List[Dict[str, Any]] = []
+    current_page: Optional[int] = None
+    cursor = 0
+    for ordinal, match in enumerate(marker_pattern.finditer(markdown or ""), 1):
+        page_matches = list(page_pattern.finditer(markdown[cursor:match.start()]))
+        if page_matches:
+            current_page = int(page_matches[-1].group(1))
+        body = match.group("body")
+        attrs = {
+            key: int(value)
+            for key, value in re.findall(r"\b(rows|cols)=(\d+)", match.group("attrs"))
+        }
+        table_id = f"table_{ordinal}"
+        details.append({
+            "table_id": table_id,
+            "ordinal": ordinal,
+            "page": current_page,
+            "rows": int(attrs.get("rows") or max(1, len([line for line in body.splitlines() if line.strip()]) - 2)),
+            "cols": int(attrs.get("cols") or max(1, len(body.splitlines()[0].strip().strip("|").split("|"))) if body.splitlines() else 1),
+            "table_type": None,
+            "classification_confidence": None,
+            "classification_version": None,
+        })
+        cursor = match.end()
+    return {
+        "table_count": len(details),
+        "table_row_count": sum(int(detail["rows"]) for detail in details),
+        "tables": details,
+    }
 
 
 def _annotate_markdown_tables(markdown: str, blocks: Optional[List[Any]] = None) -> str:
@@ -1034,6 +1081,7 @@ def _process_with_liteparse(temp_pdf_path: Path, file_name: str, contract_id: st
         "status": "complete",
         "success": True,
         "markdown": best_markdown,
+        **_table_statistics(best_markdown),
         "html": "",
         "images": {},
         "page_count": best_page_count,

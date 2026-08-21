@@ -19,10 +19,9 @@ os.environ.setdefault("SECRET_KEY", "test-secret")
 os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017/test")
 
 from services.contract_agent.rag import ContractRAGSystem, DocumentSegmenter
-from services.contract_agent.rag.segmentation import _split_table
 from services.contract_agent.rag.vector_store import _batched, _linearize_table_for_embedding, segments_to_index_documents
 from services.contract_agent.rag.schemas import TextSegment
-from worker.tasks import _annotate_markdown_tables, _process_with_liteparse, _score_parse_quality
+from worker.tasks import _annotate_markdown_tables, _process_with_liteparse, _score_parse_quality, _table_statistics
 
 
 GOLDEN_CONTRACT = """--- Page 1 ---
@@ -100,22 +99,6 @@ class LegalChunkingTests(unittest.TestCase):
         malformed = "| Position | Staff |\n| Supervisor | 1 |\nordinary prose"
         self.assertEqual(_annotate_markdown_tables(malformed), malformed)
 
-    def test_table_split_repeats_header_and_conserves_rows(self) -> None:
-        body = "| Position | Staff |\n| --- | --- |\n" + "\n".join(
-            f"| Role {index} | {index} |" for index in range(10)
-        )
-        parts = _split_table(body, max_tokens=25)
-        self.assertGreater(len(parts), 1)
-        self.assertTrue(all(part.splitlines()[:2] == body.splitlines()[:2] for part in parts))
-        rows = [line for part in parts for line in part.splitlines()[2:] if line.strip()]
-        self.assertEqual(rows, body.splitlines()[2:])
-
-    def test_table_split_degrades_for_an_oversized_row(self) -> None:
-        body = "| Label | Value |\n| --- | --- |\n| Role | " + ("x" * 2000) + " |"
-        parts = _split_table(body, max_tokens=32)
-        self.assertTrue(parts)
-        self.assertTrue(any("Label:" in part for part in parts))
-
     def test_ocr_retry_failure_keeps_usable_native_markdown(self) -> None:
         native_pages = [(1, "Native parse remains usable with contractual content." )]
 
@@ -134,18 +117,36 @@ class LegalChunkingTests(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertIn("Native parse remains usable", result["markdown"])
 
-    def test_table_cap_conserves_duplicate_row_text_by_position(self) -> None:
+    def test_one_logical_table_chunk_preserves_duplicate_rows_and_stable_identity(self) -> None:
         duplicate_row = "| Duplicate fee | " + ("repeated value " * 450) + "|"
         body = "| Label | Value |\n| --- | --- |\n" + "\n".join([duplicate_row] * 46)
         table_segments = self.segmenter._table_segments_for_section(
             full_text=body,
             section={"start": 0, "end": len(body), "path": "Document", "tags": []},
             page_spans=[(1, 0, len(body))],
-            table_spans=[(0, len(body), {"rows": 46, "cols": 2})],
+            table_spans=[(0, len(body), {"rows": 46, "cols": 2, "table_id": "table_1_duplicate"})],
         )
-        parts = [segment for segment in table_segments if segment.table_part_index is not None]
-        self.assertEqual(len(parts), 40)
-        self.assertEqual(sum(segment.text.count(duplicate_row) for segment in parts), 46)
+        self.assertEqual(len(table_segments), 1)
+        table_segment = table_segments[0]
+        self.assertEqual(table_segment.table_id, "table_1_duplicate")
+        self.assertIsNone(table_segment.table_part_index)
+        self.assertIsNone(table_segment.table_part_count)
+        self.assertEqual(table_segment.text.count(duplicate_row), 46)
+        self.assertFalse(table_segment.embedding_eligible)
+        self.assertEqual(table_segment.embedding_skip_reason, "table exceeds embedding token limit")
+
+    def test_contract_table_statistics_count_source_tables_not_chunks(self) -> None:
+        markdown = (
+            "--- Page 1 ---\n\n"
+            "<!--TABLE:START id=t1 rows=2 cols=2-->\n| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n<!--TABLE:END id=t1-->\n\n"
+            "--- Page 2 ---\n\n"
+            "<!--TABLE:START id=t1 rows=1 cols=3-->\n| X | Y | Z |\n| --- | --- | --- |\n| a | b | c |\n<!--TABLE:END id=t1-->"
+        )
+        stats = _table_statistics(markdown)
+        self.assertEqual(stats["table_count"], 2)
+        self.assertEqual(stats["table_row_count"], 3)
+        self.assertEqual([detail["page"] for detail in stats["tables"]], [1, 2])
+        self.assertNotEqual(stats["tables"][0]["table_id"], stats["tables"][1]["table_id"])
 
     def test_table_embedding_is_linearized_but_display_text_stays_markdown(self) -> None:
         markdown_table = "| Position | Staff |\n| --- | --- |\n| Supervisor | 1 |"
@@ -166,6 +167,12 @@ class LegalChunkingTests(unittest.TestCase):
         self.assertIn("Position: Supervisor", document.page_content)
         self.assertNotIn("| Supervisor | 1 |", document.page_content)
         self.assertEqual(document.metadata["display_text"], markdown_table)
+
+        oversized = segment.model_copy(update={"embedding_eligible": False, "embedding_skip_reason": "table exceeds embedding token limit"})
+        self.assertEqual(
+            segments_to_index_documents([oversized], contract_name="sample", contract_id="contract-1"),
+            [],
+        )
 
     def test_vector_writes_are_bounded_batches(self) -> None:
         self.assertEqual(_batched(list(range(5)), n=2), [[0, 1], [2, 3], [4]])

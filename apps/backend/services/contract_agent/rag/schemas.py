@@ -51,8 +51,14 @@ class TextSegment(BaseModel):
     obligation_parties: List[str] = Field(default_factory=list)
     referenced_documents: List[str] = Field(default_factory=list)
     value_types: List[str] = Field(default_factory=list)
+    table_id: Optional[str] = None
     table_rows: Optional[int] = None
     table_cols: Optional[int] = None
+    table_type: Optional[str] = None
+    classification_confidence: Optional[float] = None
+    classification_version: Optional[str] = None
+    embedding_eligible: bool = True
+    embedding_skip_reason: Optional[str] = None
     table_part_index: Optional[int] = None
     table_part_count: Optional[int] = None
 

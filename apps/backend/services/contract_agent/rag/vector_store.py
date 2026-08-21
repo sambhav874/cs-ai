@@ -341,6 +341,12 @@ def segments_to_index_documents(
         segment_text = clean_text_encoding(segment.text)
         if segment.type == "sentence":
             continue
+        if segment.type == "table" and not segment.embedding_eligible:
+            logger.info(
+                "Skipping vector embedding for oversized table %s; lexical retrieval remains available",
+                segment.table_id or segment.id,
+            )
+            continue
         documents.append(
             Document(
                 page_content=embedding_text_for_segment(segment, segment_text),
@@ -354,6 +360,14 @@ def segments_to_index_documents(
                     "segment_id": segment.id,
                     "display_text": segment_text,
                     "segment_type": segment.type,
+                    "table_id": segment.table_id,
+                    "table_rows": segment.table_rows,
+                    "table_cols": segment.table_cols,
+                    "table_type": segment.table_type,
+                    "classification_confidence": segment.classification_confidence,
+                    "classification_version": segment.classification_version,
+                    "embedding_eligible": segment.embedding_eligible,
+                    "embedding_skip_reason": segment.embedding_skip_reason,
                     "chunk_schema_version": segment.chunk_schema_version,
                     "chunk_level": segment.chunk_level or segment.type,
                     "section_path": segment.section_path,
@@ -1069,20 +1083,6 @@ class VectorStoreManager:
                 project_id=project_id,
                 user_id=user_id,
             )
-            if not index_documents:
-                index_documents = [
-                    Document(
-                        page_content=f"Contract Content:\n{clean_content}",
-                        metadata={
-                            "source": "mongodb:index.content",
-                            "contract_name": contract_name,
-                            "contract_id": contract_id,
-                            "project_id": project_id,
-                            "user_id": user_id,
-                            "is_pdf": False,
-                        }
-                    )
-                ]
             chunk_count = len(documents_for_vector_store(index_documents, self.text_splitter))
             segment_count = len(segments)
 
@@ -1090,22 +1090,33 @@ class VectorStoreManager:
             segments_dicts = [segment.model_dump(mode="json") for segment in segments]
             cache_segments(contract_id, segments_dicts, schema_version)
 
-            vector_store = self.create_vector_store(
-                index_documents,
-                contract_name,
-                namespace=namespace,
-                contract_id=contract_id,
-                project_id=project_id,
-                user_id=user_id,
-                replace_existing=replace_existing,
-            )
+            if index_documents:
+                vector_store = self.create_vector_store(
+                    index_documents,
+                    contract_name,
+                    namespace=namespace,
+                    contract_id=contract_id,
+                    project_id=project_id,
+                    user_id=user_id,
+                    replace_existing=replace_existing,
+                )
+            else:
+                logger.warning(
+                    "No embedding-eligible documents remain for %s; using lexical-only retrieval for cached segments",
+                    contract_name,
+                )
+                self.current_namespace = namespace
+                self.current_vector_backend = "lexical"
+                self.current_vector_count = 0
+                vector_store = True
 
         if not vector_store:
             raise RuntimeError("Vector store creation failed.")
 
-        if require_mongodb and self.current_vector_backend != "mongodb":
+        if require_mongodb and self.current_vector_backend not in {"mongodb", "lexical"}:
             raise RuntimeError("MongoDB vector storage is unavailable; embeddings were not persisted in the database.")
 
+        table_segments = [segment for segment in self.last_embedded_segments if segment.type == "table"]
         return {
             "namespace": self.current_namespace,
             "backend": self.current_vector_backend,
@@ -1113,6 +1124,9 @@ class VectorStoreManager:
                 if self.current_vector_backend == "mongodb" else None,
             "chunk_count": self.current_vector_count or chunk_count,
             "segment_count": segment_count,
+            "table_count": len(table_segments),
+            "table_ids": [segment.table_id for segment in table_segments if segment.table_id],
+            "lexical_table_count": sum(1 for segment in table_segments if not segment.embedding_eligible),
             "chunk_schema_version": schema_version,
             "embedding_backend": self.embedding_backend,
             "embedding_model": self.embedding_model,
