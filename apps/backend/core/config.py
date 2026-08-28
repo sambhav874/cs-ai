@@ -59,7 +59,10 @@ class Settings(BaseSettings):
     parse_quality_min: float = Field(default=0.55, env="PARSE_QUALITY_MIN")
     table_max_tokens: int = Field(default=1500, env="TABLE_MAX_TOKENS")
     table_embedding_max_tokens: int = Field(default=12000, env="TABLE_EMBEDDING_MAX_TOKENS")
-    chunk_schema_version: int = Field(default=3, env="CHUNK_SCHEMA_VERSION")
+    # 4: table sentinels hold one logical table each and carry sig=/type=, so a
+    # v3 contract re-parsed under this version must be re-embedded rather than
+    # keep chunks whose offsets point into the old fused content.
+    chunk_schema_version: int = Field(default=4, env="CHUNK_SCHEMA_VERSION")
     legal_meso_min_chars: int = Field(default=1200, env="LEGAL_MESO_MIN_CHARS")
     legal_meso_max_chars: int = Field(default=3000, env="LEGAL_MESO_MAX_CHARS")
     legal_macro_max_chars: int = Field(default=2600, env="LEGAL_MACRO_MAX_CHARS")

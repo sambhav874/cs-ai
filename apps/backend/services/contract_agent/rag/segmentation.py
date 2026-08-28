@@ -32,6 +32,16 @@ def _get_tokenizer():
     return _tokenizer
 
 
+def _tag_for_table_type(table_type: str) -> str:
+    """Fold a table label into a section tag.
+
+    Retrieval filters on ``section_tags``, which is already in the Atlas index's
+    filter list. Adding a *value* to an existing field is safe; adding a new
+    filter field is not, because Atlas will not update an index in place.
+    """
+    return re.sub(r"[^a-z0-9]+", "_", (table_type or "").lower()).strip("_")
+
+
 class DocumentSegmenter:
     """Handles document segmentation into hierarchical text units."""
 
@@ -189,6 +199,18 @@ class DocumentSegmenter:
             marker_id = re.search(r"\bid=([A-Za-z0-9_.:-]+)", match.group("attrs"))
             if marker_id:
                 attrs["marker_id"] = marker_id.group(1)
+            # Written into the markup at ingestion, once the tables have been
+            # split and labelled, so the tag reaches chunk metadata without the
+            # segmenter having to re-derive or re-classify anything.
+            signature = re.search(r"\bsig=([0-9a-f]+)", match.group("attrs"))
+            if signature:
+                attrs["signature"] = signature.group(1)
+            table_type = re.search(r'\btype="([^"]*)"', match.group("attrs"))
+            if table_type:
+                attrs["table_type"] = table_type.group(1)
+            caption = re.search(r'\bcaption="([^"]*)"', match.group("attrs"))
+            if caption:
+                attrs["caption"] = caption.group(1)
             spans.append((body_start, output_cursor, attrs))
             cursor = match.end()
         suffix = text[cursor:]
@@ -593,12 +615,22 @@ class DocumentSegmenter:
             computed_cols = max(1, len(lines[0].strip().strip("|").split("|"))) if lines else 1
             rows = int(attrs.get("rows") or computed_rows)
             cols = int(attrs.get("cols") or computed_cols)
-            table_id = str(attrs.get("table_id") or self._stable_table_id(body, int(attrs.get("table_ordinal") or 1)))
+            # Prefer the ingestion-time signature: it is derived from the caption
+            # and header, so the same schedule keeps one id across documents and
+            # across revisions that change only the values. The ordinal fallback
+            # is stable within a single parse only.
+            table_id = str(
+                attrs.get("signature")
+                or attrs.get("table_id")
+                or self._stable_table_id(body, int(attrs.get("table_ordinal") or 1))
+            )
             token_count = self._estimated_tokens(body)
             embedding_eligible = token_count <= embedding_limit
+            table_type = attrs.get("table_type")
             section_tags = sorted(set([
                 *(section.get("tags") or []),
                 *self._assign_section_tags(section.get("path", ""), body.replace("|", " ")),
+                *([_tag_for_table_type(table_type)] if table_type else []),
                 "table",
             ]))
             segment = self._make_legal_segment(
@@ -611,6 +643,7 @@ class DocumentSegmenter:
                 section_tags=section_tags,
                 parent_id=parent_id,
                 preserve_whitespace=True,
+                table_type=table_type,
                 table_id=table_id,
                 table_rows=rows,
                 table_cols=cols,

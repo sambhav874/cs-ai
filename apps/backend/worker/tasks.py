@@ -445,8 +445,8 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                 progress=calculate_stage_progress("indexing", 40)
             )
 
-            marker_result = _process_with_liteparse(
-                temp_pdf_path, sanitized_filename, contract_id
+            marker_result = _extract_document_text(
+                temp_pdf_path, sanitized_filename, contract_id, contract_oid
             )
 
             if not isinstance(marker_result, dict) or "markdown" not in marker_result:
@@ -455,15 +455,27 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
             from core.sanitizers import sanitize_llm_input
             raw_index_content = marker_result.get("markdown", "")
             index_content = sanitize_llm_input(raw_index_content)
-            
+
+            # Split any table the parser fused, then label what survives. Doing
+            # both here means the segmenter, the vector metadata and the preview
+            # all read the same tables out of index.content instead of each
+            # re-deriving them. Both steps are advisory: either can no-op and
+            # ingestion continues with whatever it already had.
+            index_content, index_table_classifications = _normalize_and_classify_tables(
+                index_content, sanitized_filename, contract_id
+            )
+
             index_html_content = marker_result.get("html", "")
             index_images = marker_result.get("images", {})
             index_page_count = marker_result.get("page_count", 0)
             index_parse_quality_score = marker_result.get("parse_quality_score", 0.0)
             index_parse_quality_signals = marker_result.get("parse_quality_signals", {})
-            index_table_count = marker_result.get("table_count", 0)
-            index_table_row_count = marker_result.get("table_row_count", 0)
-            index_tables = marker_result.get("tables", [])
+            # Recomputed from the normalized content, so the stored counts match
+            # the logical tables rather than the parser's fused grids.
+            _table_stats = _table_statistics(index_content)
+            index_table_count = _table_stats["table_count"]
+            index_table_row_count = _table_stats["table_row_count"]
+            index_tables = _table_stats["tables"]
             index_lexical_table_count = marker_result.get("lexical_table_count", 0)
             index_cost_breakdown = marker_result.get("cost_breakdown", {})
             index_error = marker_result.get("error", "")
@@ -546,6 +558,7 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                         "index.table_count": index_table_count,
                         "index.table_row_count": index_table_row_count,
                         "index.tables": index_tables,
+                        "index.table_classifications": index_table_classifications,
                         "index.lexical_table_count": index_lexical_table_count,
                         "index.error": index_error,
                         "index.embedding_status": "success",
@@ -785,37 +798,170 @@ def _liteparse_total_pages(result: Any) -> int:
         return len(_liteparse_result_pages(result))
 
 
-def _table_statistics(markdown: str) -> Dict[str, Any]:
-    """Return source-table counts and identities before any logical chunking."""
-    marker_pattern = re.compile(
-        r"<!--TABLE:START(?P<attrs>[^>]*)-->\n(?P<body>.*?)\n<!--TABLE:END[^>]*-->",
-        re.DOTALL,
+def _normalize_marker_markdown(markdown: str) -> str:
+    """Bring Marker's output into the shape the rest of the pipeline expects.
+
+    Three differences matter downstream:
+
+    * Marker paginates as ``{0}------``, zero-indexed, while every page citation
+      in the product is derived from ``--- Page N ---`` starting at 1. Left
+      alone, page attribution would be silently absent.
+    * It escapes currency as ``\\$``, which stops the value patterns in
+      segmentation matching a price.
+    * It emits ``<br>`` inside table cells, which would otherwise split one cell
+      across two markdown rows.
+    """
+    if not markdown:
+        return markdown
+
+    normalized = re.sub(
+        r"\{(\d+)\}-{2,}\s*",
+        lambda match: f"--- Page {int(match.group(1)) + 1} ---\n\n",
+        markdown,
     )
-    page_pattern = re.compile(r"---\s*Page\s+(\d+)\s*---", re.IGNORECASE)
-    details: List[Dict[str, Any]] = []
-    current_page: Optional[int] = None
-    cursor = 0
-    for ordinal, match in enumerate(marker_pattern.finditer(markdown or ""), 1):
-        page_matches = list(page_pattern.finditer(markdown[cursor:match.start()]))
-        if page_matches:
-            current_page = int(page_matches[-1].group(1))
-        body = match.group("body")
-        attrs = {
-            key: int(value)
-            for key, value in re.findall(r"\b(rows|cols)=(\d+)", match.group("attrs"))
-        }
-        table_id = f"table_{ordinal}"
-        details.append({
-            "table_id": table_id,
-            "ordinal": ordinal,
-            "page": current_page,
-            "rows": int(attrs.get("rows") or max(1, len([line for line in body.splitlines() if line.strip()]) - 2)),
-            "cols": int(attrs.get("cols") or max(1, len(body.splitlines()[0].strip().strip("|").split("|"))) if body.splitlines() else 1),
-            "table_type": None,
+    normalized = re.sub(r"\\([$€£])", r"\1", normalized)
+    normalized = re.sub(r"<br\s*/?>", " ", normalized)
+    return normalized
+
+
+def _parser_for_contract(contract_oid: Any) -> str:
+    """The extraction engine this contract's owning account has selected.
+
+    The worker runs outside the request scope that publishes team settings, so
+    the account is resolved from the contract itself. Any failure here falls
+    back to the default engine — a settings lookup must not stop an ingestion.
+    """
+    try:
+        from core.database import collection, db
+        from services.model_settings import resolve_for_team, resolve_parser
+
+        contract = collection.find_one({"_id": contract_oid}, {"ownerType": 1, "ownerId": 1})
+        if not contract:
+            return "liteparse"
+        team_id = str(contract.get("ownerId")) if contract.get("ownerId") else None
+        return resolve_parser(resolve_for_team(db, team_id))
+    except Exception as exc:
+        logger.warning("Could not resolve extraction engine, using default: %s", exc)
+        return "liteparse"
+
+
+def _extract_document_text(
+    temp_pdf_path: Path,
+    file_name: str,
+    contract_id: str,
+    contract_oid: Any,
+) -> Dict[str, Any]:
+    """Parse a PDF with the engine this account selected in settings.
+
+    Marker is a network call, so a failure there falls back to the local parser
+    rather than failing the ingestion: a degraded parse is recoverable by
+    re-ingesting, a failed upload is not.
+    """
+    parser = _parser_for_contract(contract_oid)
+    if parser == "marker":
+        try:
+            result = _process_with_external_marker(temp_pdf_path, file_name, contract_id)
+            if isinstance(result, dict) and result.get("markdown"):
+                markdown = _normalize_marker_markdown(result["markdown"])
+                # Sentinels are what every later stage finds tables by, and the
+                # liteparse path adds them from parser blocks. Marker returns
+                # plain markdown, so wrap its tables here or nothing downstream
+                # sees a table at all.
+                result["markdown"] = _annotate_markdown_tables(markdown)
+                result.setdefault("parser", "marker")
+                result.update(_table_statistics(result["markdown"]))
+                return result
+            logger.warning("Marker returned no markdown for %s; falling back", contract_id)
+        except Exception as exc:
+            log_exception(logger, f"Marker extraction failed for {contract_id}; falling back", exc)
+    return _process_with_liteparse(temp_pdf_path, file_name, contract_id)
+
+
+def _normalize_and_classify_tables(
+    content: str,
+    contract_name: str,
+    contract_id: str,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """Split fused tables, classify them, and stamp the labels into the markup.
+
+    Returns the rewritten content and the classification records. Never raises:
+    a parser that produced no tables, an unconfigured model or a failed call all
+    leave the content usable and the labels empty.
+    """
+    try:
+        from services.table_extraction import extract_tables, normalize_table_markers
+    except Exception as exc:
+        logger.warning("Table normalization unavailable for %s: %s", contract_id, exc)
+        return content, []
+
+    try:
+        normalized = normalize_table_markers(content)
+        tables = extract_tables(normalized)
+    except Exception as exc:
+        log_exception(logger, f"Table normalization failed for {contract_id}", exc)
+        return content, []
+
+    if not tables:
+        return normalized, []
+
+    try:
+        from services.table_classification import classify_tables
+        records = classify_tables(tables, contract_name=contract_name)
+    except Exception as exc:
+        log_exception(logger, f"Table classification failed for {contract_id}", exc)
+        return normalized, []
+
+    if not records:
+        return normalized, []
+
+    labels = {
+        record["signature"]: record["table_type"]
+        for record in records
+        if record.get("signature") and record.get("table_type")
+    }
+    try:
+        # Second pass only stamps type= into attributes; the split is already
+        # done, so signatures and offsets are unchanged.
+        stamped = normalize_table_markers(normalized, labels)
+    except Exception as exc:
+        log_exception(logger, f"Could not stamp table labels for {contract_id}", exc)
+        return normalized, records
+
+    logger.info(
+        "Normalized %d table(s) and labelled %d for %s",
+        len(tables), len(records), contract_id,
+    )
+    return stamped, records
+
+
+def _table_statistics(markdown: str) -> Dict[str, Any]:
+    """Counts and identities of the logical tables in a parsed document.
+
+    Delegates to the shared extractor so the stored counts, the preview and the
+    segmenter can never disagree about how many tables a contract has.
+    """
+    try:
+        from services.table_extraction import extract_tables
+    except Exception as exc:  # pragma: no cover - import guard
+        logger.warning("Table statistics unavailable: %s", exc)
+        return {"table_count": 0, "table_row_count": 0, "tables": []}
+
+    details = [
+        {
+            "table_id": table["table_id"],
+            "ordinal": table["ordinal"],
+            "page": table["page"],
+            "rows": table["rows"],
+            "cols": table["cols"],
+            "caption": table.get("caption"),
+            "signature": table.get("signature"),
+            "content_hash": table.get("content_hash"),
+            "table_type": table.get("table_type"),
             "classification_confidence": None,
             "classification_version": None,
-        })
-        cursor = match.end()
+        }
+        for table in extract_tables(markdown or "")
+    ]
     return {
         "table_count": len(details),
         "table_row_count": sum(int(detail["rows"]) for detail in details),
