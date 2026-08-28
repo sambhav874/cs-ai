@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/apiClient";
 import { useBreadcrumbs } from "@/app/context/BreadcrumbContext";
+import { ExtractionCard, type CatalogParser } from "@/components/account/ExtractionCard";
 
 const API = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL;
 
@@ -30,6 +31,8 @@ interface CatalogProvider {
 
 interface Catalog {
   providers: CatalogProvider[];
+  parsers: CatalogParser[];
+  default_parser: string;
   reasoning_efforts: string[];
   temperature_range: [number, number];
   max_tokens_range: [number, number];
@@ -41,6 +44,8 @@ interface ModelSettings {
   temperature?: number;
   max_tokens?: number;
   reasoning_effort?: string;
+  /** Which engine turns an uploaded PDF into text. */
+  parser?: string;
 }
 
 export default function ModelSettingsPage() {
@@ -273,6 +278,14 @@ export default function ModelSettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      <ExtractionCard
+        parsers={catalog?.parsers || []}
+        defaultParser={catalog?.default_parser || ""}
+        selected={settings.parser}
+        isReadOnly={isReadOnly}
+        onSelect={(id) => setSettings((prev) => ({ ...prev, parser: id }))}
+      />
 
       <Card>
         <CardHeader>

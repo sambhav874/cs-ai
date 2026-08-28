@@ -67,6 +67,32 @@ PROVIDER_CATALOG: Dict[str, Dict[str, Any]] = {
     },
 }
 
+# Which engine turns an uploaded PDF into the markdown everything else reads.
+# This is a closed list, unlike PROVIDER_CATALOG: each entry needs its own code
+# path in the ingestion worker, so an unrecognised name has nothing to run.
+PARSER_CATALOG: Dict[str, Dict[str, Any]] = {
+    "liteparse": {
+        "label": "LiteParse",
+        "description": (
+            "Runs locally, no per-document cost, roughly instant. Weaker on layout: "
+            "tables sharing column positions can be merged into one, and multi-column "
+            "blocks such as signature panels may be flattened."
+        ),
+        "requires_key": False,
+    },
+    "marker": {
+        "label": "Marker",
+        "description": (
+            "External API. Stronger table and layout detection — keeps neighbouring "
+            "tables apart, preserves merged cells and reading order. Adds roughly "
+            "10-35 seconds per document, most of it queue rather than compute."
+        ),
+        "requires_key": True,
+    },
+}
+
+DEFAULT_PARSER = "liteparse"
+
 REASONING_EFFORTS = ["auto", "low", "medium", "high"]
 
 # Bounds mirror what the providers accept; the API validates against these so a
@@ -88,6 +114,30 @@ def _api_key_configured(provider: str) -> bool:
 def configured_providers() -> Dict[str, bool]:
     """Which providers have a server-side key. Booleans only — never the keys."""
     return {provider: _api_key_configured(provider) for provider in PROVIDER_CATALOG}
+
+
+def _parser_configured(parser: str) -> bool:
+    if not PARSER_CATALOG.get(parser, {}).get("requires_key"):
+        return True
+    return bool((getattr(settings, "marker_api_key", "") or "").strip())
+
+
+def configured_parsers() -> Dict[str, bool]:
+    """Which extraction engines are usable on this deployment."""
+    return {parser: _parser_configured(parser) for parser in PARSER_CATALOG}
+
+
+def resolve_parser(values: Optional[Dict[str, Any]]) -> str:
+    """The engine to parse with, falling back whenever the choice is unusable.
+
+    Ingestion must not fail because a team selected an engine whose key was
+    later removed, so an unconfigured or unknown choice degrades to the default
+    rather than raising.
+    """
+    chosen = str((values or {}).get("parser") or "").strip().lower()
+    if chosen in PARSER_CATALOG and _parser_configured(chosen):
+        return chosen
+    return DEFAULT_PARSER
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +230,10 @@ def _sanitize(values: Dict[str, Any]) -> Dict[str, Any]:
     if effort in REASONING_EFFORTS:
         clean["reasoning_effort"] = effort
 
+    parser = str(values.get("parser") or "").strip().lower()
+    if parser in PARSER_CATALOG:
+        clean["parser"] = parser
+
     return clean
 
 
@@ -229,6 +283,7 @@ def team_id_for_user(current_user) -> Optional[str]:
 def catalog_payload() -> Dict[str, Any]:
     """Everything a settings UI needs to render, minus anything secret."""
     configured = configured_providers()
+    parsers = configured_parsers()
     return {
         "providers": [
             {
@@ -239,6 +294,16 @@ def catalog_payload() -> Dict[str, Any]:
             }
             for provider, entry in PROVIDER_CATALOG.items()
         ],
+        "parsers": [
+            {
+                "id": parser,
+                "label": entry["label"],
+                "description": entry["description"],
+                "configured": parsers.get(parser, False),
+            }
+            for parser, entry in PARSER_CATALOG.items()
+        ],
+        "default_parser": DEFAULT_PARSER,
         "reasoning_efforts": REASONING_EFFORTS,
         "temperature_range": list(TEMPERATURE_RANGE),
         "max_tokens_range": list(MAX_TOKENS_RANGE),
