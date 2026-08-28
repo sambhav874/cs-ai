@@ -1,22 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Brain, History, Loader2, NotebookPen, Pencil, Save, Trash2, X } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { AlertTriangle, Brain, History, Table2, Trash2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { ProjectTablesTab } from "@/components/projects/ProjectTablesTab";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate } from "@/components/dashboard/utils";
-
-interface NotesState {
-  content: string;
-  updated_at: string | null;
-  edited_manually: boolean;
-}
 
 interface FactSource {
   contract_id: string;
@@ -53,25 +45,18 @@ export function ProjectMemoryPanel({ projectId, refreshSignal }: ProjectMemoryPa
   const { isAuthenticated, authenticatedFetch } = useAuth();
   const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL;
 
-  const [notes, setNotes] = useState<NotesState | null>(null);
   const [facts, setFacts] = useState<ProjectFact[]>([]);
   const [events, setEvents] = useState<ProjectEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
     if (!isAuthenticated || !apiUrl || !projectId) return;
     setIsLoading(true);
     const base = `${apiUrl}/projects/${projectId}/memory`;
-    const [notesRes, factsRes, eventsRes] = await Promise.all([
-      authenticatedFetch(base),
+    const [factsRes, eventsRes] = await Promise.all([
       authenticatedFetch(`${base}/facts`),
       authenticatedFetch(`${base}/events?limit=50`),
     ]);
-    if (notesRes.data) setNotes(notesRes.data as NotesState);
     if (factsRes.data) setFacts(((factsRes.data as { facts?: ProjectFact[] }).facts) || []);
     if (eventsRes.data) setEvents(((eventsRes.data as { events?: ProjectEvent[] }).events) || []);
     setIsLoading(false);
@@ -80,24 +65,6 @@ export function ProjectMemoryPanel({ projectId, refreshSignal }: ProjectMemoryPa
   useEffect(() => {
     fetchAll();
   }, [fetchAll, refreshSignal]);
-
-  const handleSaveNotes = async () => {
-    if (!apiUrl) return;
-    setIsSaving(true);
-    setSaveError(null);
-    const { data, error } = await authenticatedFetch(`${apiUrl}/projects/${projectId}/memory`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: draft }),
-    });
-    setIsSaving(false);
-    if (error) {
-      setSaveError("Failed to save. Try again.");
-      return;
-    }
-    if (data) setNotes(data as NotesState);
-    setIsEditing(false);
-  };
 
   const handleRetireFact = async (factId: string) => {
     if (!apiUrl) return;
@@ -116,87 +83,27 @@ export function ProjectMemoryPanel({ projectId, refreshSignal }: ProjectMemoryPa
 
   return (
     <div className="rounded-lg border border-border bg-card shadow-sm">
-      <Tabs defaultValue="notes">
+      <Tabs defaultValue="facts">
         <div className="flex items-center justify-between gap-2 border-b border-border p-3">
           <div className="flex items-center gap-2">
             <Brain className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium text-foreground">Project Memory</span>
           </div>
           <TabsList className="h-8">
-            <TabsTrigger value="notes" className="gap-1.5 text-xs">
-              <NotebookPen className="h-3.5 w-3.5" /> Notes
-            </TabsTrigger>
             <TabsTrigger value="facts" className="gap-1.5 text-xs">
               Facts
               {facts.length > 0 && (
                 <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{facts.length}</Badge>
               )}
             </TabsTrigger>
+            <TabsTrigger value="tables" className="gap-1.5 text-xs">
+              <Table2 className="h-3.5 w-3.5" /> Tables
+            </TabsTrigger>
             <TabsTrigger value="events" className="gap-1.5 text-xs">
               <History className="h-3.5 w-3.5" /> Events
             </TabsTrigger>
           </TabsList>
         </div>
-
-        {/* Notes — the only tab that is freely editable. */}
-        <TabsContent value="notes" className="m-0 p-4">
-          {isEditing ? (
-            <div className="flex flex-col gap-3">
-              <p className="text-[11px] text-muted-foreground">
-                Your notes only. Document overviews live on each document and no longer get written
-                into this text, so nothing here is overwritten when a document is ingested.
-              </p>
-              <Textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                className="min-h-[320px] font-mono text-xs"
-                placeholder="Write project notes here..."
-              />
-              {saveError && <p className="text-xs text-destructive">{saveError}</p>}
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => setIsEditing(false)} disabled={isSaving} className="gap-1.5">
-                  <X className="h-3.5 w-3.5" /> Cancel
-                </Button>
-                <Button size="sm" onClick={handleSaveNotes} disabled={isSaving} className="gap-1.5">
-                  {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                  Save
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                {notes?.updated_at ? (
-                  <span className="text-[11px] text-muted-foreground">Updated {formatDate(notes.updated_at)}</span>
-                ) : <span />}
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setDraft(notes?.content || ""); setSaveError(null); setIsEditing(true); }}>
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-              {notes?.content?.trim() ? (
-                <div className="max-h-[420px] overflow-y-auto text-xs leading-relaxed text-foreground">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      h2: ({ children }) => <h4 className="mb-1 mt-4 text-xs font-semibold text-foreground first:mt-0">{children}</h4>,
-                      p: ({ children }) => <p className="mb-1.5 text-muted-foreground last:mb-0">{children}</p>,
-                      strong: ({ children }) => <strong className="font-medium text-foreground">{children}</strong>,
-                      ul: ({ children }) => <ul className="mb-1.5 list-disc space-y-0.5 pl-4 text-muted-foreground">{children}</ul>,
-                      hr: () => <hr className="my-3 border-border" />,
-                    }}
-                  >
-                    {notes.content}
-                  </ReactMarkdown>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  No notes yet. Anything you write here is shown to the agent alongside the project&apos;s
-                  document list.
-                </p>
-              )}
-            </div>
-          )}
-        </TabsContent>
 
         {/* Facts — editable only by retiring; a correction is a new fact. */}
         <TabsContent value="facts" className="m-0 p-4">
@@ -262,6 +169,11 @@ export function ProjectMemoryPanel({ projectId, refreshSignal }: ProjectMemoryPa
               ))}
             </div>
           )}
+        </TabsContent>
+
+        {/* Tables — read-only view of what ingestion actually extracted. */}
+        <TabsContent value="tables" className="m-0 p-4">
+          <ProjectTablesTab projectId={projectId} />
         </TabsContent>
 
         {/* Events — append-only, so there is deliberately nothing to edit here. */}

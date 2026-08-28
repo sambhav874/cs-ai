@@ -232,6 +232,10 @@ class ModelSettingsUpdate(BaseModel):
     temperature: Optional[float] = Field(None, ge=0.0, le=1.0)
     max_tokens: Optional[int] = Field(None, ge=256, le=128000)
     reasoning_effort: Optional[str] = Field(None, max_length=20)
+    # Which engine turns an uploaded PDF into text. Validated against the
+    # catalog in _sanitize; a field missing here is dropped before it gets
+    # there, so the save appears to succeed and the value silently reverts.
+    parser: Optional[str] = Field(None, max_length=40)
 
 
 class ProjectMemoryRelatedDocumentUpdate(BaseModel):
@@ -252,6 +256,12 @@ class ProjectMemoryOverviewUpdate(BaseModel):
 
 class ProjectScratchpadUpdate(BaseModel):
     content: str = Field(..., max_length=200_000)
+
+
+class TableClassificationUpdate(BaseModel):
+    """A hand-set table label. Validated against the closed category set in the route."""
+    contract_id: str = Field(..., max_length=64)
+    table_type: str = Field(..., max_length=64)
 
 
 class ProjectFactSource(BaseModel):

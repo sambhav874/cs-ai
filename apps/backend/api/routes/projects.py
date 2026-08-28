@@ -17,6 +17,7 @@ from models.domain import (
     ProjectMemoryOverviewUpdate,
     ProjectFactCreate,
     ProjectScratchpadUpdate,
+    TableClassificationUpdate,
 )
 
 logger = logging.getLogger(__name__)
@@ -542,6 +543,141 @@ def get_project_memory_index(project_id: str, current_user: UserInDB = Depends(g
     from services.project_memory import ProjectMemoryManager
 
     return {"project_id": project_id, "index": ProjectMemoryManager(db).render_index(project_id)}
+
+
+@router.get("/{project_id}/tables")
+def list_project_tables(
+    project_id: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    """Every table extracted from every accessible contract in the project.
+
+    Bodies are read back out of each contract's stored ``index.content`` rather
+    than stored separately, so this reflects exactly what was indexed. Contracts
+    parsed before table sentinels existed simply contribute nothing.
+    """
+    project = verify_project_access(project_id, current_user)
+
+    from core.database import collection as contracts_collection
+    from services.table_classification import TABLE_CATEGORIES
+    from services.table_extraction import extract_tables, merge_stored_metadata
+
+    query = build_accessible_contract_query(project, current_user)
+    query["index.content"] = {"$regex": "<!--TABLE:START"}
+
+    contracts: List[Dict[str, Any]] = []
+    total_tables = 0
+    total_rows = 0
+
+    cursor = contracts_collection.find(
+        query,
+        {
+            "_id": 1, "contract_name": 1, "uploaded_at": 1,
+            "index.content": 1, "index.tables": 1, "index.table_classifications": 1,
+        },
+    ).sort("uploaded_at", -1)
+
+    for contract in cursor:
+        index_data = contract.get("index") or {}
+        tables = merge_stored_metadata(
+            extract_tables(index_data.get("content") or ""),
+            index_data.get("tables"),
+        )
+        # Labels are keyed by signature, so they survive tables being renumbered.
+        by_signature = {
+            record.get("signature"): record
+            for record in (index_data.get("table_classifications") or [])
+            if isinstance(record, dict)
+        }
+        for table in tables:
+            record = by_signature.get(table.get("signature"))
+            if not record:
+                continue
+            table["table_type"] = record.get("table_type") or table.get("table_type")
+            table["classification_confidence"] = record.get("classification_confidence")
+            table["classification_source"] = record.get("source")
+            table["trackable"] = record.get("trackable")
+        if not tables:
+            continue
+        total_tables += len(tables)
+        total_rows += sum(int(table.get("rows") or 0) for table in tables)
+        contracts.append({
+            "contract_id": str(contract["_id"]),
+            "contract_name": contract.get("contract_name"),
+            "uploaded_at": contract.get("uploaded_at"),
+            "table_count": len(tables),
+            "tables": tables,
+        })
+
+    return {
+        "project_id": project_id,
+        "contracts": contracts,
+        "categories": TABLE_CATEGORIES,
+        "totals": {
+            "contracts_with_tables": len(contracts),
+            "table_count": total_tables,
+            "row_count": total_rows,
+        },
+    }
+
+
+@router.put("/{project_id}/tables/{signature}/classification")
+def set_table_classification(
+    project_id: str,
+    signature: str,
+    request: TableClassificationUpdate,
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    """Correct a table's label by hand.
+
+    Stored with ``source: "user"``, which every later classifier run skips — a
+    correction that got overwritten on the next re-ingest would have to be made
+    again every time, so the override has to outrank the model permanently.
+    """
+    project = verify_project_access(project_id, current_user)
+
+    from core.database import collection as contracts_collection
+    from services.table_classification import (
+        TABLE_CATEGORIES,
+        TRACKABLE_CATEGORIES,
+        merge_classifications,
+    )
+
+    if request.table_type not in TABLE_CATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown table type. Expected one of: {', '.join(TABLE_CATEGORIES)}",
+        )
+
+    query = build_accessible_contract_query(project, current_user)
+    query["_id"] = ObjectId(request.contract_id) if ObjectId.is_valid(request.contract_id) else None
+    if query["_id"] is None:
+        raise HTTPException(status_code=400, detail="Invalid contract_id format.")
+
+    contract = contracts_collection.find_one(query, {"index.table_classifications": 1})
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found in this project.")
+
+    record = {
+        "signature": signature,
+        "table_type": request.table_type,
+        "classification_confidence": 1.0,
+        "classification_version": None,
+        "trackable": request.table_type in TRACKABLE_CATEGORIES,
+        "classified_at": datetime.utcnow(),
+        "source": "user",
+        "classified_by": str(current_user.id),
+    }
+    existing = (contract.get("index") or {}).get("table_classifications") or []
+    updated = [item for item in existing if item.get("signature") != signature]
+    updated = merge_classifications(updated, [])
+    updated.append(record)
+
+    contracts_collection.update_one(
+        {"_id": contract["_id"]},
+        {"$set": {"index.table_classifications": updated}},
+    )
+    return record
 
 
 @router.put("/{project_id}/memory")
