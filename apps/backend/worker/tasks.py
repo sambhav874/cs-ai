@@ -601,6 +601,17 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
             except Exception as memory_exc:
                 log_exception(logger, f"Project memory overview failed for contract {contract_id}", memory_exc)
 
+            # Compare this contract's schedules against the versions already in
+            # the project, so a reissued rate card becomes a recorded change
+            # rather than another isolated document. Best-effort like the
+            # overview above: a comparison failing must not fail an ingestion.
+            _record_schedule_changes(
+                contract_id=contract_id,
+                contract_name=sanitized_filename,
+                project_id=project_id_str,
+                content=index_content,
+            )
+
             job_manager.update_job_status(
                 job_id=job_id,
                 status="COMPLETED",
@@ -796,6 +807,101 @@ def _liteparse_total_pages(result: Any) -> int:
         return max(0, int(total_pages))
     except (TypeError, ValueError):
         return len(_liteparse_result_pages(result))
+
+
+def _record_schedule_changes(
+    *,
+    contract_id: str,
+    contract_name: str,
+    project_id: Optional[str],
+    content: str,
+) -> None:
+    """Record how this contract's schedules differ from the project's earlier ones.
+
+    Emits one event per schedule that changed and one durable fact per schedule
+    that was repriced. Deliberately not one per row: facts are rendered into
+    agent context, and a fee schedule with 40 lines would crowd out everything
+    else the agent needs to know about the project.
+
+    Never raises. A comparison is an enrichment, and losing it costs a history
+    entry; failing the task would cost the whole ingestion.
+    """
+    if not project_id:
+        return
+    try:
+        from bson import ObjectId
+
+        from core.database import collection
+        from services.project_memory import ProjectMemoryManager
+        from services.table_extraction import extract_tables
+        from services.table_tracking import diff_against_previous
+
+        current = extract_tables(content)
+        if not current:
+            return
+
+        # Oldest first: the comparison uses the most recent earlier version of
+        # each schedule, which is what "what changed" means to a reader.
+        history = []
+        for prior in collection.find(
+            {
+                "projectId": ObjectId(project_id) if ObjectId.is_valid(project_id) else project_id,
+                "_id": {"$ne": ObjectId(contract_id) if ObjectId.is_valid(contract_id) else contract_id},
+                "index.content": {"$regex": "<!--TABLE:START"},
+            },
+            {"contract_name": 1, "index.content": 1, "uploaded_at": 1},
+        ).sort("uploaded_at", 1):
+            history.append((
+                str(prior["_id"]),
+                prior.get("contract_name") or "",
+                extract_tables((prior.get("index") or {}).get("content") or ""),
+            ))
+        if not history:
+            return
+
+        findings = diff_against_previous(current, history)
+        manager = ProjectMemoryManager(db)
+        recorded = 0
+        for finding in findings:
+            if finding["status"] == "unchanged":
+                continue
+            if finding["status"] == "new":
+                # Only worth an event once there is a history to be new against.
+                continue
+            manager._safe_event(
+                project_id=project_id,
+                event_type="schedule_revised",
+                contract_id=contract_id,
+                summary=finding["summary"],
+                severity=finding["severity"],
+                payload={
+                    "signature": finding["signature"],
+                    "table_type": finding.get("table_type"),
+                    "previous_contract_id": finding.get("previous_contract_id"),
+                    "previous_contract_name": finding.get("previous_contract_name"),
+                    "observed_pct": finding.get("observed_pct"),
+                    "changed_rows": finding.get("changed_rows"),
+                    "added_rows": finding.get("added_rows"),
+                    "removed_rows": finding.get("removed_rows"),
+                    "changes": finding.get("changes"),
+                },
+            )
+            recorded += 1
+            try:
+                manager.remember_fact(
+                    project_id=project_id,
+                    text=f"{finding['summary']} (per {contract_name})",
+                    sources=[{"contract_id": contract_id, "quote": finding["summary"]}],
+                    tags=["rate_change", finding.get("table_type") or "schedule"],
+                    origin="contract",
+                )
+            except Exception as fact_exc:
+                logger.warning("Could not record schedule fact for %s: %s", contract_id, fact_exc)
+
+        if recorded:
+            logger.info("Recorded %d schedule change(s) for contract %s", recorded, contract_id)
+    except Exception as exc:
+        log_exception(logger, f"Schedule change tracking failed for {contract_id}", exc)
 
 
 def _normalize_marker_markdown(markdown: str) -> str:
