@@ -863,14 +863,17 @@ def _record_schedule_changes(
         manager = ProjectMemoryManager(db)
         recorded = 0
         for finding in findings:
-            if finding["status"] == "unchanged":
-                continue
-            if finding["status"] == "new":
-                # Only worth an event once there is a history to be new against.
+            status = finding["status"]
+            if status in ("unchanged", "new"):
+                # "new" means genuinely no predecessor — nothing to be revised
+                # against. A signature that broke but likely has a predecessor
+                # comes back as "possible_match", not "new", and is recorded
+                # below: it is exactly the case that must not go silent, since
+                # the alternative is a lineage quietly ending with no trace.
                 continue
             manager._safe_event(
                 project_id=project_id,
-                event_type="schedule_revised",
+                event_type="schedule_revised" if status == "revised" else "schedule_link_uncertain",
                 contract_id=contract_id,
                 summary=finding["summary"],
                 severity=finding["severity"],
@@ -884,6 +887,7 @@ def _record_schedule_changes(
                     "added_rows": finding.get("added_rows"),
                     "removed_rows": finding.get("removed_rows"),
                     "changes": finding.get("changes"),
+                    "header_similarity": finding.get("header_similarity"),
                 },
             )
             recorded += 1

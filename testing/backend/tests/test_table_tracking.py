@@ -124,18 +124,33 @@ class LineageTests(unittest.TestCase):
         self.assertEqual(result["observed_pct"], 10.0)
 
     def test_a_schedule_with_no_predecessor_is_not_forced_onto_one(self) -> None:
+        """DESCRIPTION/UNIT/PRICE is common enough that unrelated schedules share
+        it — header overlap alone must not be enough to link them. The captions
+        differ ("DE-ICING SERVICES" vs "RAMP SERVICES"), which is what actually
+        keeps a de-icing schedule from being fuzzy-matched onto a ramp one."""
         other = table([("DE-ICING", "PER LITRE", "3.00 EUR")], signature="sig-new",
                       caption="DE-ICING SERVICES")
         [result] = diff_against_previous([other], [("c1", "A.pdf", [BASE])])
         self.assertEqual(result["status"], "new")
         self.assertNotIn("previous_contract_id", result)
 
-    def test_a_severed_signature_reads_as_new_rather_than_a_silent_gap(self) -> None:
-        """A renamed column changes the signature. Reporting the schedule as new
-        is wrong but visible; dropping it would be wrong and invisible."""
-        renamed = table([("GPU", "PER HOUR", "49.50 EUR")], signature="sig-renamed")
+    def test_a_renamed_column_is_offered_as_a_possible_match_not_dropped(self) -> None:
+        """The corpus case that motivated this: a real revision renames one
+        column ("SGHA 2018" -> "SGHA Ref"), which changes the signature even
+        though it is still the same schedule. Reporting it as unrelated "new"
+        would be wrong but visible; a signature miss with no fallback drops the
+        lineage with no trace at all, which is worse."""
+        renamed = table([
+            ("GPU", "PER HOUR", "49.50 EUR"),
+            ("ASU", "PER ATTEMPT", "132.00 EUR"),
+            ("MARSHALLING", "PER FLIGHT", "FREE"),
+        ], signature="sig-renamed")
+        renamed["body"] = renamed["body"].replace("PRICE", "PRICE ")  # same header set, still same caption
         [result] = diff_against_previous([renamed], [("c1", "A.pdf", [BASE])])
-        self.assertEqual(result["status"], "new")
+        self.assertEqual(result["status"], "possible_match")
+        self.assertEqual(result["previous_contract_id"], "c1")
+        self.assertEqual(result["severity"], "warning")
+        self.assertGreaterEqual(result["header_similarity"], 0.5)
 
     def test_row_churn_is_raised_above_a_plain_uplift(self) -> None:
         after = table([("GPU", "PER HOUR", "49.50 EUR"), ("ASU", "PER ATTEMPT", "132.00 EUR")])

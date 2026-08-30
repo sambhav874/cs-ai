@@ -63,6 +63,42 @@ def _money(value: Any) -> Optional[Decimal]:
         return None
 
 
+# Below this, two tables just happen to look a bit alike — not worth surfacing
+# as "might be the same schedule". Above it we'd rather flag a possible match
+# for a human than let a renamed column sever the lineage with no trace at all.
+FUZZY_MATCH_THRESHOLD = 0.55
+
+
+def _header_cells(table: Dict[str, Any]) -> List[str]:
+    lines = [line for line in (table.get("body") or "").splitlines() if line.strip()]
+    if not lines:
+        return []
+    return [cell.strip().lower() for cell in lines[0].strip().strip("|").split("|") if cell.strip()]
+
+
+def _jaccard(a: set, b: set) -> float:
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def _lineage_similarity(a: Dict[str, Any], b: Dict[str, Any]) -> float:
+    """How likely two tables are the same schedule, when the signature does not agree.
+
+    Header overlap alone is too weak: two entirely unrelated rate cards often
+    share generic columns like DESCRIPTION/UNIT/PRICE, which would fuzzy-match
+    a de-icing schedule to a ramp-services one on shape alone. The caption is
+    the stronger signal — a renamed column keeps the caption, an unrelated
+    table rarely shares one — so it carries most of the weight, with header
+    overlap breaking ties between equally-captioned candidates.
+    """
+    caption_a = re.sub(r"[^a-z0-9]+", " ", (a.get("caption") or "").lower()).strip()
+    caption_b = re.sub(r"[^a-z0-9]+", " ", (b.get("caption") or "").lower()).strip()
+    caption_score = 1.0 if caption_a and caption_a == caption_b else 0.0
+    header_score = _jaccard(set(_header_cells(a)), set(_header_cells(b)))
+    return 0.65 * caption_score + 0.35 * header_score
+
+
 def _data_rows(table: Dict[str, Any]) -> List[List[str]]:
     lines = [line for line in (table.get("body") or "").splitlines() if line.strip()]
     return [
@@ -157,17 +193,32 @@ def diff_against_previous(
     """Match this contract's tables to the most recent earlier version of each.
 
     ``previous`` is (contract_id, contract_name, tables) ordered oldest first.
-    Matching is by signature, which is derived from the caption and column
-    headers, so a schedule keeps its identity while its prices change. A table
-    with no earlier match is reported as new rather than forced onto the
-    nearest-looking predecessor.
+    Matching is by signature first, which is derived from the caption and
+    column headers, so a schedule keeps its identity while its prices change.
+
+    A renamed column breaks that — the corpus case that motivated this is a
+    "SGHA 2018" header becoming "SGHA Ref" between two revisions of the same
+    rate card. Without a second attempt that lineage just stops, silently, and
+    nothing downstream ever learns the schedule kept existing. So a signature
+    miss falls back to header-overlap similarity against tables not already
+    claimed by an exact match, and a strong-enough overlap is reported as a
+    possible match rather than either a silent loss or a confident wrong link.
     """
     latest: Dict[str, Tuple[str, str, Dict[str, Any]]] = {}
-    for contract_id, contract_name, tables in previous:
+    # (recency, contract_id, contract_name, table) — recency breaks a tied
+    # header-similarity score toward the most recent candidate, the same
+    # "most recent earlier version" rule the exact-signature path follows.
+    unclaimed: List[Tuple[int, str, str, Dict[str, Any]]] = []
+    for recency, (contract_id, contract_name, tables) in enumerate(previous):
         for table in tables:
             signature = table.get("signature")
             if signature:
                 latest[signature] = (contract_id, contract_name, table)
+                unclaimed.append((recency, contract_id, contract_name, table))
+
+    exactly_matched_signatures = {
+        table.get("signature") for table in current if table.get("signature") in latest
+    }
 
     results: List[Dict[str, Any]] = []
     for table in current:
@@ -176,7 +227,37 @@ def diff_against_previous(
             continue
         caption = table.get("caption") or (table.get("body") or "").splitlines()[0][:60]
         match = latest.get(signature)
+
         if not match:
+            fuzzy = max(
+                (
+                    (recency, candidate_id, candidate_name, candidate_table, _lineage_similarity(table, candidate_table))
+                    for recency, candidate_id, candidate_name, candidate_table in unclaimed
+                    # A table already linked by an exact match elsewhere is not
+                    # available as a fuzzy candidate for this one.
+                    if candidate_table.get("signature") not in exactly_matched_signatures
+                ),
+                key=lambda item: (item[4], item[0]),
+                default=None,
+            )
+            if fuzzy and fuzzy[4] >= FUZZY_MATCH_THRESHOLD:
+                _recency, prior_id, prior_name, prior_table, score = fuzzy
+                results.append({
+                    "signature": signature,
+                    "caption": caption,
+                    "table_type": table.get("table_type"),
+                    "status": "possible_match",
+                    "summary": (
+                        f"A table matching \"{caption}\" could not be linked to its exact prior "
+                        f"version — its columns changed enough that {prior_name or 'an earlier document'} "
+                        f"may be the same schedule under a different header. Needs confirmation."
+                    ),
+                    "severity": "warning",
+                    "previous_contract_id": prior_id,
+                    "previous_contract_name": prior_name,
+                    "header_similarity": round(score, 2),
+                })
+                continue
             results.append({
                 "signature": signature,
                 "caption": caption,

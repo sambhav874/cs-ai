@@ -1068,10 +1068,10 @@ def _observation_context(state: AgentRunState) -> str:
                     continue
                 source = item.get("filename") or item.get("document_id") or item.get("doc_id") or "Scoped document"
                 page = item.get("page")
-                evidence_id = item.get("evidence_id") or item.get("segment_id")
                 location = f"{source}" + (f", p.{page}" if page else "")
-                suffix = f" [{evidence_id}]" if evidence_id else ""
-                lines.append(f"  - {location}{suffix}: {text[:1500]}")
+                # No internal id here either — this text can end up quoted back
+                # by the model in an answer, same as the fallback formatter below.
+                lines.append(f"  - {location}: {text[:1500]}")
         elif observation.get("snippet"):
             source = observation.get("filename") or observation.get("document_id") or "Scoped document"
             page = observation.get("page")
@@ -1088,12 +1088,12 @@ def _answer_from_observations(state: AgentRunState) -> str:
         if quote:
             source = first.get("filename") or first.get("document_id") or first.get("doc_id") or "scoped evidence"
             page = first.get("page")
-            evidence_id = first.get("segment_id")
             location = str(source)
             if page:
                 location = f"{location}, p.{page}"
-            if evidence_id:
-                location = f"{location}, {evidence_id}"
+            # segment_id is an internal chunk identifier (e.g. "macro_0_2fd71...")
+            # with no meaning to a reader — it must never reach this string, only
+            # the structured citation payload that carries it for the UI's own use.
             return f"{quote}\n\nSource: {location}\n\n**Confidence:** medium"
     observation_context = _observation_context(state).strip()
     if observation_context:
