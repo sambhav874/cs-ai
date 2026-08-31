@@ -22,6 +22,10 @@ interface LineageVersion {
   summary: string | null;
   severity: "info" | "warning" | "critical";
   observed_pct: number | null;
+  /** [low, high] when values moved by different amounts, so there is no single rate. */
+  spread_pct: [number, number] | null;
+  previous_signature: string | null;
+  link_confirmed?: boolean;
   added_rows: number | null;
   removed_rows: number | null;
   changes: RowChange[];
@@ -62,8 +66,26 @@ function Pct({ value }: { value: number }) {
   );
 }
 
-function LineageCard({ lineage, defaultOpen = false }: { lineage: Lineage; defaultOpen?: boolean }) {
+function Spread({ range }: { range: [number, number] }) {
+  const [low, high] = range;
+  return (
+    <span className="font-mono text-[10px] text-amber-600">
+      {low > 0 ? "+" : ""}{low.toFixed(2)}% … {high > 0 ? "+" : ""}{high.toFixed(2)}%
+    </span>
+  );
+}
+
+function LineageCard({
+  lineage,
+  defaultOpen = false,
+  onDecide,
+}: {
+  lineage: Lineage;
+  defaultOpen?: boolean;
+  onDecide?: (v: LineageVersion, decision: "confirmed" | "rejected") => Promise<void>;
+}) {
   const [open, setOpen] = useState(defaultOpen);
+  const [deciding, setDeciding] = useState(false);
   // A single-version schedule has no history to walk through yet.
   const expandable = lineage.version_count > 1 || lineage.needs_review;
 
@@ -120,9 +142,38 @@ function LineageCard({ lineage, defaultOpen = false }: { lineage: Lineage; defau
                     </span>
                     <span className="truncate text-[10px] text-foreground">{v.contract_name}</span>
                     {v.observed_pct !== null && <Pct value={v.observed_pct} />}
+                    {v.observed_pct === null && v.spread_pct && <Spread range={v.spread_pct} />}
                   </div>
                   {v.summary && (
                     <p className="mt-0.5 text-[10px] text-muted-foreground">{v.summary}</p>
+                  )}
+                  {v.status === "possible_match" && onDecide && v.previous_signature && (
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={deciding}
+                        onClick={async () => {
+                          setDeciding(true);
+                          await onDecide(v, "confirmed");
+                          setDeciding(false);
+                        }}
+                        className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:border-primary/60 disabled:opacity-50"
+                      >
+                        Same schedule
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deciding}
+                        onClick={async () => {
+                          setDeciding(true);
+                          await onDecide(v, "rejected");
+                          setDeciding(false);
+                        }}
+                        className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:border-primary/60 disabled:opacity-50"
+                      >
+                        Not related
+                      </button>
+                    </div>
                   )}
                   {v.changes.length > 0 && (
                     <div className="mt-1 overflow-x-auto">
@@ -177,6 +228,29 @@ export function ProjectLineagesTab({ projectId }: { projectId: string }) {
     fetchLineages();
   }, [fetchLineages]);
 
+  const decide = useCallback(
+    async (lineage: Lineage, version: LineageVersion, decision: "confirmed" | "rejected") => {
+      if (!apiUrl || !version.previous_signature) return;
+      const { error } = await authenticatedFetch(
+        `${apiUrl}/projects/${projectId}/schedule-links`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contract_id: version.contract_id,
+            signature: lineage.signature,
+            previous_signature: version.previous_signature,
+            decision,
+          }),
+        },
+      );
+      // Confirming merges two lineages into one and rejecting splits them, so
+      // the whole list is rebuilt rather than patched in place.
+      if (!error) await fetchLineages();
+    },
+    [apiUrl, projectId, authenticatedFetch, fetchLineages],
+  );
+
   if (isLoading) return <Skeleton className="h-40 w-full rounded-lg" />;
 
   const totals = data?.totals;
@@ -199,7 +273,11 @@ export function ProjectLineagesTab({ projectId }: { projectId: string }) {
       </p>
       <div className="flex max-h-[520px] flex-col gap-2 overflow-y-auto">
         {data!.lineages.map((lineage) => (
-          <LineageCard key={lineage.signature} lineage={lineage} />
+          <LineageCard
+            key={lineage.signature}
+            lineage={lineage}
+            onDecide={(version, decision) => decide(lineage, version, decision)}
+          />
         ))}
       </div>
     </div>

@@ -258,6 +258,14 @@ class ProjectScratchpadUpdate(BaseModel):
     content: str = Field(..., max_length=200_000)
 
 
+class ScheduleLinkDecision(BaseModel):
+    """A person's answer to "are these two the same schedule?"."""
+    contract_id: str = Field(..., max_length=64)
+    signature: str = Field(..., max_length=64)
+    previous_signature: str = Field(..., max_length=64)
+    decision: str = Field(..., max_length=16)
+
+
 class TableClassificationUpdate(BaseModel):
     """A hand-set table label. Validated against the closed category set in the route."""
     contract_id: str = Field(..., max_length=64)

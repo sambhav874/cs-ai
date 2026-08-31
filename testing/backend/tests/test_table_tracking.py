@@ -252,3 +252,119 @@ class LineageBuildingTests(unittest.TestCase):
                       table_type="Contact & Signature"),
             ]),
         ]), [])
+
+
+class ValueParsingTests(unittest.TestCase):
+    """A project can be denominated in anything; the comparison must not assume."""
+
+    def test_currencies_beyond_the_ones_this_corpus_happens_to_use(self) -> None:
+        from services.table_tracking import parse_value
+
+        for raw in ("45.00 EUR", "€ 45", "$1,234.56", "CHF 99.90", "¥12,000", "₹ 2,50,000", "£10"):
+            parsed = parse_value(raw)
+            self.assertIsNotNone(parsed, raw)
+            self.assertEqual(parsed[1], "currency", raw)
+
+    def test_both_decimal_conventions_read_as_the_same_amount(self) -> None:
+        """1,234.56 and 1.234,56 differ by three orders of magnitude if guessed wrong."""
+        from services.table_tracking import parse_value
+
+        self.assertEqual(parse_value("$1,234.56")[0], parse_value("1.234,56 EUR")[0])
+
+    def test_indian_digit_grouping(self) -> None:
+        from services.table_tracking import parse_value
+
+        self.assertEqual(int(parse_value("₹ 2,50,000")[0]), 250000)
+        self.assertEqual(int(parse_value("12,50,00,000")[0]), 125000000)
+
+    def test_percentages_are_a_different_kind_from_prices(self) -> None:
+        from services.table_tracking import parse_value
+
+        self.assertEqual(parse_value("5.25%")[1], "percent")
+        self.assertEqual(parse_value("8")[1], "number")
+
+    def test_contract_words_are_not_numbers(self) -> None:
+        from services.table_tracking import parse_value
+
+        for raw in ("FREE", "n/a", "at cost", "on request", "centralized", "PER FLIGHT", "—"):
+            self.assertIsNone(parse_value(raw), raw)
+
+    def test_negatives_in_either_notation(self) -> None:
+        from services.table_tracking import parse_value
+
+        self.assertEqual(parse_value("-45.00")[0], parse_value("(45.00)")[0])
+
+    def test_a_percentage_levy_does_not_break_a_uniform_uplift(self) -> None:
+        """A fee rising 10% beside a levy fixed at a percentage is still uniform."""
+        before = table([("GPU", "PER HOUR", "100.00 EUR"), ("Levy", "OF REVENUE", "5.25%")])
+        after = table([("GPU", "PER HOUR", "110.00 EUR"), ("Levy", "OF REVENUE", "6.00%")])
+        self.assertEqual(compare_tables(before, after)["observed_pct"], 10.0)
+
+    def test_individually_repriced_rows_report_their_range(self) -> None:
+        before = table([("A", "X", "1,500,000 EUR"), ("B", "X", "3,000,000 EUR")])
+        after = table([("A", "X", "2,000,000 EUR"), ("B", "X", "4,500,000 EUR")])
+        diff = compare_tables(before, after)
+        self.assertIsNone(diff["observed_pct"])
+        self.assertEqual(diff["spread_pct"], (33.33, 50.0))
+
+
+class NamingTests(unittest.TestCase):
+    def test_a_banner_caption_wins(self) -> None:
+        from services.table_tracking import describe_table
+
+        self.assertEqual(describe_table(table([("A", "B", "C")], caption="RAMP SERVICES")), "RAMP SERVICES")
+
+    def test_an_untitled_table_falls_back_to_its_heading(self) -> None:
+        """Better than a row of raw pipes in a list somebody has to scan."""
+        from services.table_tracking import describe_table
+
+        t = table([("A", "B", "C")], caption=None)
+        t["section_path"] = "PARAGRAPH 11 - LIMIT OF LIABILITY"
+        self.assertEqual(describe_table(t), "PARAGRAPH 11 - LIMIT OF LIABILITY")
+
+    def test_with_neither_it_uses_the_columns(self) -> None:
+        from services.table_tracking import describe_table
+
+        t = table([("A", "B", "C")], caption=None)
+        self.assertEqual(describe_table(t), "DESCRIPTION · UNIT · PRICE")
+
+
+class LinkDecisionTests(unittest.TestCase):
+    def _pair(self):
+        old = table([("GPU", "PER HOUR", "100.00 EUR")], signature="sig-old")
+        new = table([("GPU", "PER HOUR", "110.00 EUR")], signature="sig-new")
+        return old, new, [("c1", "A.pdf", [old])]
+
+    def test_without_a_decision_the_link_is_only_proposed(self) -> None:
+        old, new, history = self._pair()
+        [result] = diff_against_previous([new], history)
+        self.assertEqual(result["status"], "possible_match")
+        self.assertEqual(result["previous_signature"], "sig-old")
+
+    def test_confirming_turns_it_into_a_measured_revision(self) -> None:
+        from services.table_tracking import link_key
+
+        old, new, history = self._pair()
+        [result] = diff_against_previous([new], history, {link_key("sig-old", "sig-new"): "confirmed"})
+        self.assertEqual(result["status"], "revised")
+        self.assertEqual(result["observed_pct"], 10.0)
+        self.assertTrue(result["link_confirmed"])
+
+    def test_rejecting_leaves_the_schedule_standing_alone(self) -> None:
+        from services.table_tracking import link_key
+
+        old, new, history = self._pair()
+        [result] = diff_against_previous([new], history, {link_key("sig-old", "sig-new"): "rejected"})
+        self.assertEqual(result["status"], "new")
+
+    def test_a_confirmed_link_merges_the_two_histories(self) -> None:
+        from services.table_tracking import build_lineages, link_key
+
+        old = table([("GPU", "PER HOUR", "100.00 EUR")], signature="sig-old")
+        new = table([("GPU", "PER HOUR", "110.00 EUR")], signature="sig-new")
+        documents = [("c1", "A.pdf", "2022-01-01", [old]), ("c2", "B.pdf", "2023-01-01", [new])]
+
+        self.assertEqual(len(build_lineages(documents)), 2)
+        [merged] = build_lineages(documents, {link_key("sig-old", "sig-new"): "confirmed"})
+        self.assertEqual(merged["version_count"], 2)
+        self.assertEqual(merged["total_pct"], 10.0)

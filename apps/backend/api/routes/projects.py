@@ -17,6 +17,7 @@ from models.domain import (
     ProjectMemoryOverviewUpdate,
     ProjectFactCreate,
     ProjectScratchpadUpdate,
+    ScheduleLinkDecision,
     TableClassificationUpdate,
 )
 
@@ -621,6 +622,79 @@ def list_project_tables(
     }
 
 
+def _schedule_links(project_oid: ObjectId) -> Dict[str, str]:
+    """Confirmed and rejected schedule links for a project, keyed by link id."""
+    from core.database import db as core_db
+
+    try:
+        return {
+            record["link"]: record["decision"]
+            for record in core_db["schedule_links"].find(
+                {"project_id": project_oid}, {"link": 1, "decision": 1}
+            )
+            if record.get("link") and record.get("decision")
+        }
+    except Exception:
+        # A missing decision means the link is simply unresolved again, which is
+        # a worse answer but not a broken page.
+        logger.warning("Could not read schedule links for project %s", project_oid)
+        return {}
+
+
+@router.put("/{project_id}/schedule-links")
+def decide_schedule_link(
+    project_id: str,
+    request: ScheduleLinkDecision,
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    """Confirm or reject that two schedules are the same one across revisions.
+
+    Matching falls back to similarity when a column rename breaks the exact
+    signature, and similarity cannot be certain. Recording the answer means the
+    question is asked once rather than re-derived on every later ingestion.
+    """
+    project = verify_project_access(project_id, current_user)
+
+    from core.database import collection as contracts_collection, db as core_db
+    from services.table_extraction import extract_tables
+    from services.table_tracking import link_key
+
+    if request.decision not in ("confirmed", "rejected"):
+        raise HTTPException(status_code=400, detail="decision must be 'confirmed' or 'rejected'.")
+    if not ObjectId.is_valid(request.contract_id):
+        raise HTTPException(status_code=400, detail="Invalid contract_id format.")
+
+    # Authorize against the project's own contracts, so a signature from another
+    # project cannot be linked into this one.
+    query = build_accessible_contract_query(project, current_user)
+    query["_id"] = ObjectId(request.contract_id)
+    contract = contracts_collection.find_one(query, {"index.content": 1})
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found in this project.")
+
+    signatures = {
+        table.get("signature")
+        for table in extract_tables((contract.get("index") or {}).get("content") or "")
+    }
+    if request.signature not in signatures:
+        raise HTTPException(status_code=404, detail="No such schedule in that contract.")
+
+    link = link_key(request.previous_signature, request.signature)
+    record = {
+        "project_id": project["_id"],
+        "link": link,
+        "decision": request.decision,
+        "decided_by": str(current_user.id),
+        "decided_at": datetime.utcnow(),
+    }
+    core_db["schedule_links"].update_one(
+        {"project_id": project["_id"], "link": link},
+        {"$set": record},
+        upsert=True,
+    )
+    return {"link": link, "decision": request.decision}
+
+
 @router.get("/{project_id}/table-lineages")
 def list_project_table_lineages(
     project_id: str,
@@ -679,7 +753,10 @@ def list_project_table_lineages(
         ))
 
     documents.sort(key=lambda d: (d[2] or "", d[3] or datetime.min))
-    lineages = build_lineages([(c, n, eff, tables) for c, n, eff, _uploaded, tables in documents])
+    lineages = build_lineages(
+        [(c, n, eff, tables) for c, n, eff, _uploaded, tables in documents],
+        _schedule_links(project["_id"]),
+    )
 
     return {
         "project_id": project_id,
