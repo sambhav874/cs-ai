@@ -1177,6 +1177,13 @@ def _build_operational_kpi_answer(
 
 
 def _load_kpi_agent_operational_context(contract_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+    """Source configs, actuals and breaches for every scoped contract.
+
+    Three queries per contract, run in a loop, against Atlas at roughly 200ms a
+    round trip: a five-document project spent three and a half seconds here
+    before the agent had been asked anything. Callers should skip it entirely
+    when the project has no KPIs — see the project stream.
+    """
     manager = _kpi_manager()
     context = {"source_configs": [], "actuals": [], "breaches": []}
     seen: set[str] = set()
@@ -2678,50 +2685,69 @@ def stream_project_agent(
         surface="project",
     )
 
-    # Ids only. The deep agent reads document bodies through its own tools,
-    # which load them per document as they are actually needed
-    # (`_load_scoped_documents`), so pulling every body here was work whose
-    # result was thrown away after `_id` was read off it.
-    project_documents = _load_indexed_project_documents(
-        project_id=project_id,
-        current_user=current_user,
-        reference_contract_ids=request.reference_contract_ids,
-        include_content=False,
-    )
-    project_contract_ids = [str(document["_id"]) for document in project_documents]
-    kpi_operational_context = _load_kpi_agent_operational_context(project_contract_ids)
-    project_kpi_context = _compact_kpi_context(
-        _kpi_manager().list_project_kpis(
-            project_id,
-            contract_ids=project_contract_ids,
-        ),
-        source_configs=kpi_operational_context["source_configs"],
-        actuals=kpi_operational_context["actuals"],
-        breaches=kpi_operational_context["breaches"],
-    )
-    composed_memory = _memory_composer(memory).compose(
-        memory_scope, kpi_context=project_kpi_context, extra_blocks=_preference_blocks(current_user)
-    )
-    memory_context = composed_memory.text
-
-    deep_agent_context = AgentContext(
-        surface=AgentSurface.PROJECT,
-        project_id=project_id,
-        session_id=session_id,
-        selected_document_ids=project_contract_ids,
-        reference_contract_ids=request.reference_contract_ids or [],
-        displayed_document=request.displayed_document,
-        attached_documents=request.attached_documents or [],
-        visible_state={
-            "scope": "project",
-            "project_name": project_name,
-            "document_count": len(project_contract_ids),
-        },
-    )
-
     async def event_stream():
         try:
+            # The session event goes out before any of the loading below. All
+            # of it used to run before the StreamingResponse was constructed,
+            # so the browser sat on a blank panel for the whole of it —
+            # measured at six to seven seconds — with nothing to say anything
+            # had started. What gets loaded is unchanged; when the first byte
+            # reaches the client is not.
             yield format_sse_event("session", {"session_id": session_id})
+            yield format_sse_event("status", {"message": "reading the project"})
+
+            # Ids only. The deep agent reads document bodies through its own tools,
+            # which load them per document as they are actually needed
+            # (`_load_scoped_documents`), so pulling every body here was work whose
+            # result was thrown away after `_id` was read off it.
+            project_documents = _load_indexed_project_documents(
+                project_id=project_id,
+                current_user=current_user,
+                reference_contract_ids=request.reference_contract_ids,
+                include_content=False,
+            )
+            project_contract_ids = [str(document["_id"]) for document in project_documents]
+
+            # The KPI list first, and the operational context only if there is
+            # something for it to describe. `_compact_kpi_context` returns an empty
+            # string the moment the KPI list is empty, so on a project with no KPIs —
+            # most of them, and every project before someone sets one up — the
+            # three-queries-per-contract loop was building a result thrown away one
+            # line later. Measured at 3.5s of the wait before the agent said anything.
+            project_kpis = _kpi_manager().list_project_kpis(
+                project_id, contract_ids=project_contract_ids
+            )
+            kpi_operational_context: Dict[str, List[Dict[str, Any]]] = {
+                "source_configs": [], "actuals": [], "breaches": []
+            }
+            if project_kpis:
+                kpi_operational_context = _load_kpi_agent_operational_context(project_contract_ids)
+            project_kpi_context = _compact_kpi_context(
+                project_kpis,
+                source_configs=kpi_operational_context["source_configs"],
+                actuals=kpi_operational_context["actuals"],
+                breaches=kpi_operational_context["breaches"],
+            )
+            composed_memory = _memory_composer(memory).compose(
+                memory_scope, kpi_context=project_kpi_context, extra_blocks=_preference_blocks(current_user)
+            )
+            memory_context = composed_memory.text
+
+            deep_agent_context = AgentContext(
+                surface=AgentSurface.PROJECT,
+                project_id=project_id,
+                session_id=session_id,
+                selected_document_ids=project_contract_ids,
+                reference_contract_ids=request.reference_contract_ids or [],
+                displayed_document=request.displayed_document,
+                attached_documents=request.attached_documents or [],
+                visible_state={
+                    "scope": "project",
+                    "project_name": project_name,
+                    "document_count": len(project_contract_ids),
+                },
+            )
+
             yield format_sse_event("memory", _memory_disclosure_payload(composed_memory))
             yield format_sse_event("status", {"message": "planning"})
 
@@ -2790,6 +2816,16 @@ def stream_project_agent(
             # the artifact-copy-approval path) was unreachable (F-12); deleted
             # rather than kept as a fallback that could never run (3.4).
             raise RuntimeError("Deep agent response did not resolve to a terminal outcome.")
+        except HTTPException as scope_error:
+            # Loading moved inside the stream, so what used to be a 400 with a
+            # usable message now arrives after the response has started. Its
+            # detail still has to reach the user — "Agent stream failed" for a
+            # document that simply has not finished indexing sends someone
+            # looking for a bug that is not there.
+            logger.info(
+                "Agent stream rejected for project %s: %s", project_id, scope_error.detail
+            )
+            yield format_sse_event("error", {"detail": str(scope_error.detail)})
         except Exception as stream_error:
             log_exception(logger, f"Agent stream failed for project {project_id}", stream_error)
             yield format_sse_event("error", {"detail": "Agent stream failed."})

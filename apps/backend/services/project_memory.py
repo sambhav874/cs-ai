@@ -911,7 +911,9 @@ class ProjectMemoryManager:
             )
         return result.modified_count
 
-    def render_facts(self, project_id: str) -> str:
+    def render_facts(
+        self, project_id: str, facts: Optional[List[Dict[str, Any]]] = None
+    ) -> str:
         """All of the project's live facts, one delimited block each.
 
         One file, many blocks: the file is the storage unit a person reads,
@@ -919,7 +921,12 @@ class ProjectMemoryManager:
         stopped the old scratchpad from being splittable on anything better
         than a character count.
         """
-        facts = self.list_facts(project_id)
+        # `facts` lets a caller that has already fetched them pass them in. The
+        # memory composer reads the list and then renders it, which was two
+        # identical queries — and against Atlas a query costs a round trip
+        # whatever it returns.
+        if facts is None:
+            facts = self.list_facts(project_id)
         if not facts:
             return "No facts recorded for this project yet."
 

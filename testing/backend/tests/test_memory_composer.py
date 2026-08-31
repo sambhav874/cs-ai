@@ -71,7 +71,9 @@ class FakeProjectMemory:
     def list_facts(self, project_id, include_superseded=False):
         return self._facts
 
-    def render_facts(self, project_id):
+    def render_facts(self, project_id, facts=None):
+        # Mirrors the real signature: the composer passes the facts it already
+        # fetched so rendering does not re-query.
         return self._rendered_facts
 
     def get_notes(self, project_id):

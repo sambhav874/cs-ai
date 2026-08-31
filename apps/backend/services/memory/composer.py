@@ -590,7 +590,11 @@ class MemoryComposer:
 
         facts = self._safe(lambda: manager.list_facts(scope.project_id), "project facts") or []
         if facts:
-            rendered = self._safe(lambda: manager.render_facts(scope.project_id), "render facts")
+            # The facts are already in hand; rendering them must not fetch them
+            # again. Callers that have not fetched can still omit the argument.
+            rendered = self._safe(
+                lambda: manager.render_facts(scope.project_id, facts), "render facts"
+            )
             if rendered:
                 needs_review = sum(1 for fact in facts if fact.get("needs_review"))
                 provenance = "project facts · recorded on request, each with its source"
