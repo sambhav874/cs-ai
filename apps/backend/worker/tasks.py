@@ -1465,6 +1465,10 @@ def _process_with_external_marker(temp_pdf_path: Path, file_name: str, contract_
                 'file': (file_name, f, 'application/pdf'),
                 "mode": (None, "fast"),
                 "paginate": (None, True),
+                # Markdown only. The viewer falls back to index.content, and
+                # everything downstream — table sentinels, segmentation,
+                # embedding — reads the markdown, so the HTML was carried and
+                # stored without ever being the thing that got used.
                 'output_format': (None, 'markdown'),
                 "disable_image_extraction": (None, True),
             }
