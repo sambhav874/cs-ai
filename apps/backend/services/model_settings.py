@@ -91,7 +91,20 @@ PARSER_CATALOG: Dict[str, Dict[str, Any]] = {
     },
 }
 
-DEFAULT_PARSER = "liteparse"
+def default_parser() -> str:
+    """The engine to use when an account has not chosen one.
+
+    Marker when it is configured, because the local parser measurably loses
+    tables on real contracts: on the AHM 810 corpus it found 19 of 40, fusing
+    neighbouring tables into one grid, while reporting a healthy quality score
+    — the text is fine, it is the structure that is wrong. A knowledge base
+    built on half the tables is confidently incomplete, which is worse than
+    slow.
+
+    Falls back to the local parser with no key, so a deployment that has not
+    configured Marker never sends contract text anywhere by default.
+    """
+    return "marker" if _parser_configured("marker") else "liteparse"
 
 REASONING_EFFORTS = ["auto", "low", "medium", "high"]
 
@@ -137,7 +150,7 @@ def resolve_parser(values: Optional[Dict[str, Any]]) -> str:
     chosen = str((values or {}).get("parser") or "").strip().lower()
     if chosen in PARSER_CATALOG and _parser_configured(chosen):
         return chosen
-    return DEFAULT_PARSER
+    return default_parser()
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +316,7 @@ def catalog_payload() -> Dict[str, Any]:
             }
             for parser, entry in PARSER_CATALOG.items()
         ],
-        "default_parser": DEFAULT_PARSER,
+        "default_parser": default_parser(),
         "reasoning_efforts": REASONING_EFFORTS,
         "temperature_range": list(TEMPERATURE_RANGE),
         "max_tokens_range": list(MAX_TOKENS_RANGE),

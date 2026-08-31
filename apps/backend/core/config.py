@@ -93,7 +93,9 @@ class Settings(BaseSettings):
     azure_sender_address: str = Field(..., env="AZURE_SENDER_ADDRESS")
 
     marker_api_key: Optional[str] = Field(default=None, env="MARKER_API_KEY")
-    marker_api_url: str = Field(default = "https://www.datalab.to/api/v1/marker", env= "MARKER_API_URL")
+    # /api/v1/marker is deprecated upstream in favour of /convert, which takes a
+    # "mode" parameter in place of the several flags that endpoint now ignores.
+    marker_api_url: str = Field(default="https://www.datalab.to/api/v1/convert", env="MARKER_API_URL")
     domain: str = Field(default="http://localhost:4200", env="DOMAIN")
     cookie_domain: Optional[str] = Field(default=None, env="COOKIE_DOMAIN")
     secret_key: str = Field(..., env="SECRET_KEY") 

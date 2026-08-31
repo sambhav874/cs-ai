@@ -665,31 +665,6 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
             raise
 
 
-def _process_with_marker(temp_pdf_path: Path, file_name: str,
-                        contract_id: str, use_local_marker: bool) -> Dict[str, Any]:
-    """Helper function to process with Marker (local or external) with security enhancements"""
-    if use_local_marker:
-        try:
-            from utils.marker_processor import MarkerProcessor
-            marker_processor = MarkerProcessor()
-            
-            # Create secure output directory
-            output_dir = create_secure_temp_directory()
-            try:
-                result = marker_processor.process_document(str(temp_pdf_path), str(output_dir))
-                if not isinstance(result, str):
-                    raise ValueError("Invalid result from local marker processor")
-                return {"markdown": result, "html": ""}
-            finally:
-                if output_dir.exists():
-                    shutil.rmtree(output_dir, ignore_errors=True)
-                    
-        except ImportError:
-            logger.warning("Local marker not available, falling back to external API")
-            return _process_with_external_marker(temp_pdf_path, file_name, contract_id)
-    else:
-        return _process_with_external_marker(temp_pdf_path, file_name, contract_id)
-
 def _build_liteparse_parser(
     liteparse_cls: Any,
     *,
@@ -943,15 +918,18 @@ def _parser_for_contract(contract_oid: Any) -> str:
     """
     try:
         from core.database import collection, db
-        from services.model_settings import resolve_for_team, resolve_parser
+        from services.model_settings import default_parser, resolve_for_team, resolve_parser
 
         contract = collection.find_one({"_id": contract_oid}, {"ownerType": 1, "ownerId": 1})
         if not contract:
-            return "liteparse"
+            return default_parser()
         team_id = str(contract.get("ownerId")) if contract.get("ownerId") else None
         return resolve_parser(resolve_for_team(db, team_id))
     except Exception as exc:
-        logger.warning("Could not resolve extraction engine, using default: %s", exc)
+        # Deliberately the local parser rather than the configured default: if
+        # the settings lookup itself is broken, falling back to something that
+        # needs no network is the safer of the two.
+        logger.warning("Could not resolve extraction engine, using local parser: %s", exc)
         return "liteparse"
 
 
@@ -980,6 +958,16 @@ def _extract_document_text(
                 result["markdown"] = _annotate_markdown_tables(markdown)
                 result.setdefault("parser", "marker")
                 result.update(_table_statistics(result["markdown"]))
+                # Marker reports a quality score on its own scale, and the field
+                # is compared against parse_quality_min as a 0-1 value. Storing
+                # the raw number left the gate reading 5.0 as "far above 0.55"
+                # and silently unable to fail. Score it the same way the local
+                # parser is scored so the field means one thing everywhere.
+                score, signals = _score_parse_quality(
+                    result["markdown"], int(result.get("page_count") or 0)
+                )
+                result["parse_quality_score"] = score
+                result["parse_quality_signals"] = signals
                 return result
             logger.warning("Marker returned no markdown for %s; falling back", contract_id)
         except Exception as exc:
@@ -1433,15 +1421,17 @@ def _process_with_external_marker(temp_pdf_path: Path, file_name: str, contract_
         raise ValueError(f"File size {file_size} exceeds maximum {MAX_FILE_SIZE}")
 
     with open(temp_pdf_path, 'rb') as f:
-            form_data = { 
+            # langs, force_ocr, strip_existing_ocr and use_llm are all documented
+            # no-ops on this API now; use_llm was replaced by "mode". Measured on
+            # the AHM 810 corpus, mode=fast returns the same table structure as
+            # mode=accurate — same table count, same rows — at no credit cost,
+            # so the expensive mode buys nothing here.
+            form_data = {
                 'file': (file_name, f, 'application/pdf'),
-                'langs': (None, "English"),
-                "force_ocr": (None, False),
+                "mode": (None, "fast"),
                 "paginate": (None, True),
-                'output_format': (None, 'markdown,html'),
-                "use_llm": (None, True),
-                "strip_existing_ocr": (None, False),
-                "disable_image_extraction": (None, False),
+                'output_format': (None, 'markdown'),
+                "disable_image_extraction": (None, True),
             }
             
             response = requests.post(
