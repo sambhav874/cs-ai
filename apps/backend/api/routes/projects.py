@@ -984,3 +984,36 @@ def get_project_conflicts(
             "needs_decision": sum(1 for c in conflicts if c["severity"] == "warning"),
         },
     }
+
+
+@router.get("/{project_id}/escalation-check")
+def get_project_escalation_check(
+    project_id: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    """What the documents promise about rate movement, and whether the rates
+    kept to it.
+
+    Read from the documents on each call rather than stored at ingestion: a
+    stored rule would go stale the moment a later document changed it, which is
+    exactly the project this matters in.
+    """
+    project = verify_project_access(project_id, current_user)
+
+    from services.escalation import project_escalation
+
+    clauses, findings = project_escalation(
+        project_id,
+        contract_query=build_accessible_contract_query(project, current_user),
+        links=_schedule_links(project["_id"]),
+    )
+    return {
+        "project_id": project_id,
+        "clauses": clauses,
+        "findings": findings,
+        "totals": {
+            "checked": len(findings),
+            "above_promised": sum(1 for f in findings if f["status"] == "above_promised"),
+            "below_promised": sum(1 for f in findings if f["status"] == "below_promised"),
+        },
+    }

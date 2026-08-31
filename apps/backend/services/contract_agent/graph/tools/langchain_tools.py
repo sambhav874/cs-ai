@@ -85,9 +85,9 @@ class ProjectMemoryInput(BaseModel):
 
 
 class ReadSchedulesInput(BaseModel):
-    view: Literal["list", "history", "values"] = Field(
+    view: Literal["list", "history", "values", "escalation"] = Field(
         default="list",
-        description="list for every tracked schedule in the project, values for a schedule's actual rates, history for what changed between versions.",
+        description="list for every tracked schedule in the project, values for a schedule's actual rates, history for what changed between versions, escalation to check the measured movements against the increase the contract actually permits.",
     )
     schedule: str = Field(
         default="",
@@ -416,10 +416,17 @@ def build_langchain_tools(
 
     @tool("read_schedules", args_schema=ReadSchedulesInput)
     def read_schedules(view: str = "list", schedule: str = "", as_of: str = "") -> Dict[str, Any]:
-        """Read this project's tracked rate schedules across document versions: list them, read a schedule's current or past rates, or read what changed between versions. Prefer this over searching documents for any question about what a rate is, was, or how much it moved. READ-ONLY."""
+        """Read this project's tracked rate schedules across document versions: list them, read a schedule's current or past rates, read what changed between versions, or check those changes against the increase the contract permits (view=escalation). Prefer this over searching documents for any question about what a rate is, was, how much it moved, or whether an increase was allowed. READ-ONLY."""
         selected_view = str(view or "list").strip().lower()
-        if selected_view not in {"list", "history", "values"}:
+        if selected_view not in {"list", "history", "values", "escalation"}:
             selected_view = "list"
+        if selected_view == "escalation":
+            return run_read_tool(
+                "read_schedules",
+                {"view": selected_view},
+                executor_name="read_escalation_check",
+                executor_args={},
+            )
         args = {
             "view": selected_view,
             "schedule": str(schedule or "").strip(),

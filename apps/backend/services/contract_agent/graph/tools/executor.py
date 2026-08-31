@@ -124,6 +124,8 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
         return _read_project_concept(state, str(tool.args.get("document_id") or ""))
     if tool.name == "read_project_events":
         return _read_project_events(state, tool.args.get("limit"))
+    if tool.name == "read_escalation_check":
+        return _read_escalation(state)
     if tool.name == "read_document_conflicts":
         return _read_conflicts(state, str(tool.args.get("as_of") or ""))
     if tool.name == "read_governing_documents":
@@ -1347,6 +1349,55 @@ def _read_governing_documents(state: AgentRunState, as_of: str = "") -> Dict[str
     return {
         "summary": f"{len(live)} of {len(nodes)} document(s) govern as of {nodes[0]['as_of']}.",
         "snippet": render_document_graph(nodes),
+    }
+
+
+def _read_escalation(state: AgentRunState) -> Dict[str, Any]:
+    """What the contract promised the rates would do, against what they did.
+
+    Every other read here reports what changed. This one reports whether the
+    change was allowed, which is the question behind most of the others.
+    """
+    project_id = state.context.project_id
+    if not project_id:
+        return {"summary": "No project is in scope for this conversation.", "snippet": ""}
+
+    scoped_ids = [
+        str(doc_id) for doc_id in (state.context.selected_document_ids or []) if doc_id
+    ]
+    if not scoped_ids:
+        return {"summary": "No documents are in scope for this conversation.", "snippet": ""}
+
+    try:
+        from services.escalation import project_escalation, render_escalation
+
+        lookup_ids: List[Any] = []
+        for value in scoped_ids:
+            if ObjectId.is_valid(value):
+                lookup_ids.append(ObjectId(value))
+            lookup_ids.append(value)
+
+        clauses, findings = project_escalation(
+            project_id,
+            contract_query={"_id": {"$in": lookup_ids}},
+            links=_schedule_links_for_project(project_id),
+        )
+    except Exception as exc:
+        return {"summary": f"Escalation check failed: {str(exc)[:300]}", "snippet": ""}
+
+    if not clauses:
+        return {
+            "summary": "No document in this project states how charges move over time.",
+            "snippet": render_escalation(clauses, findings),
+        }
+
+    over = sum(1 for f in findings if f["status"] == "above_promised")
+    return {
+        "summary": (
+            f"{len(findings)} rate movement(s) checked against the stated rule; "
+            f"{over} exceed it."
+        ),
+        "snippet": render_escalation(clauses, findings),
     }
 
 
