@@ -96,13 +96,28 @@ class MemoryBlock:
     priority: int
     provenance: str
     truncated: bool = False
+    # Shown in place of `provenance` once the block has been cut down. A block
+    # whose provenance asserts completeness has to be able to withdraw that
+    # claim, or the model is told a partial list is the whole list and will
+    # state that a document is absent from a project it is actually in.
+    truncated_provenance: Optional[str] = None
+    kept_units: int = 0
+    total_units: int = 0
 
     @property
     def size(self) -> int:
         return len(self.render())
 
+    def describe_provenance(self) -> str:
+        if not self.truncated:
+            return self.provenance
+        base = self.truncated_provenance or self.provenance
+        if self.total_units and self.kept_units:
+            return f"{base} · showing {self.kept_units} of {self.total_units}"
+        return f"{base} · shortened to fit"
+
     def render(self) -> str:
-        return f"{self.heading} ({self.provenance})\n{self.body}".strip()
+        return f"{self.heading} ({self.describe_provenance()})\n{self.body}".strip()
 
 
 @dataclass
@@ -119,7 +134,14 @@ class ComposedMemory:
     def as_trace(self) -> Dict[str, Any]:
         return {
             "blocks": [
-                {"name": b.name, "tier": b.tier, "chars": b.size, "truncated": b.truncated}
+                {
+                    "name": b.name,
+                    "tier": b.tier,
+                    "chars": b.size,
+                    "truncated": b.truncated,
+                    "kept_units": b.kept_units,
+                    "total_units": b.total_units,
+                }
                 for b in self.blocks
             ],
             "dropped": list(self.dropped),
@@ -171,6 +193,30 @@ def _split_units(body: str) -> Tuple[List[str], str]:
     if "\n\n" in body:
         return [unit for unit in body.split("\n\n") if unit.strip()], "\n\n"
     return [unit for unit in body.split("\n") if unit.strip()], "\n"
+
+
+def _mark_truncation(block: "MemoryBlock", full_body: str, truncated: bool) -> None:
+    """Record that a block was cut down, and by how much.
+
+    The counts are what let the rendered block say "showing 40 of 212" instead
+    of only that it was shortened — the difference between a model that knows
+    to go and look and one that answers from a partial list.
+    """
+    block.truncated = truncated
+    if truncated:
+        block.kept_units = _unit_count(block.body)
+        block.total_units = _unit_count(full_body)
+    else:
+        block.kept_units = 0
+        block.total_units = 0
+
+
+def _unit_count(body: str) -> int:
+    """How many truncatable units a body holds — documents in the index,
+    facts in the fact list. Reported to the model so a shortened block says
+    how much of itself is missing rather than only that it is shortened."""
+    units, _ = _split_units(body)
+    return len(units)
 
 
 def _fit(body: str, limit: int) -> Tuple[str, bool]:
@@ -516,6 +562,16 @@ class MemoryComposer:
                     body=index,
                     priority=_PRIORITY["project_index"],
                     provenance="project index · complete, read a concept by id for detail",
+                    # The index is complete when it is sent whole, and it is
+                    # the only block that claims to be. A project with enough
+                    # documents to overflow the budget is exactly when that
+                    # claim turns into a false one — the model concludes a
+                    # document is not in the project because it cannot see it.
+                    truncated_provenance=(
+                        "project index · PARTIAL, not every document in the project · "
+                        "call list_documents for the full list before concluding "
+                        "a document is absent"
+                    ),
                 )
             )
 
@@ -603,7 +659,7 @@ class MemoryComposer:
                 continue
             spent = len(body)
             block.body = body
-            block.truncated = truncated
+            _mark_truncation(block, full_body, truncated)
             kept.append(block)
             remaining_tier[block.tier] = tier_left - spent
             total_left -= spent
@@ -612,14 +668,17 @@ class MemoryComposer:
 
         for block, already in pending:
             shared = total_left + max(0, remaining_tier.get(block.tier, 0) - already)
+            full_body = block.body
             body, truncated = _fit(block.body, shared)
             if len(body) < MIN_USEFUL_BLOCK_CHARS:
                 dropped.append(block.name)
                 continue
             block.body = body
-            block.truncated = truncated
+            _mark_truncation(block, full_body, truncated)
             kept.append(block)
             total_left -= len(body)
+            if truncated:
+                trimmed.append((block, full_body))
 
         # Pass three: hand whatever is left to the blocks that were cut short,
         # highest priority first, so the budget is actually spent before
@@ -632,7 +691,7 @@ class MemoryComposer:
                 continue
             total_left -= len(grown) - len(block.body)
             block.body = grown
-            block.truncated = truncated
+            _mark_truncation(block, full_body, truncated)
 
         kept.sort(key=lambda b: b.priority)
         return kept, dropped

@@ -1298,7 +1298,18 @@ def _load_indexed_project_documents(
     project_id: str,
     current_user: UserInDB,
     reference_contract_ids: Optional[List[str]] = None,
+    include_content: bool = True,
 ) -> List[Dict[str, Any]]:
+    """Every indexed, accessible document in the project.
+
+    `include_content=False` returns the same documents without their parsed
+    markdown. The filters are unchanged either way — "is this document indexed"
+    is still decided server-side by `index.status` and the `index.content` type
+    check — so the caller gets exactly the same document set, just without
+    carrying every body it is not going to read. A project agent turn that only
+    needs the ids was otherwise pulling the full text of every contract in the
+    project out of Mongo on every message.
+    """
     project_doc = verify_project_access(project_id, current_user)
     project_query = build_accessible_contract_query(project_doc, current_user)
     project_filters: List[Dict[str, Any]] = [
@@ -1319,17 +1330,17 @@ def _load_indexed_project_documents(
     if reference_oids:
         project_filters.append({"_id": {"$in": reference_oids}})
 
-    documents = list(collection.find(
-        {"$and": project_filters},
-        {
-            "_id": 1,
-            "contract_name": 1,
-            "projectId": 1,
-            "index.content": 1,
-            "index.vector_namespace": 1,
-            "index.vector_backend": 1,
-        },
-    ))
+    projection: Dict[str, Any] = {
+        "_id": 1,
+        "contract_name": 1,
+        "projectId": 1,
+        "index.vector_namespace": 1,
+        "index.vector_backend": 1,
+    }
+    if include_content:
+        projection["index.content"] = 1
+
+    documents = list(collection.find({"$and": project_filters}, projection))
 
     if reference_oids:
         found_reference_ids = {str(document["_id"]) for document in documents}
@@ -2667,10 +2678,15 @@ def stream_project_agent(
         surface="project",
     )
 
+    # Ids only. The deep agent reads document bodies through its own tools,
+    # which load them per document as they are actually needed
+    # (`_load_scoped_documents`), so pulling every body here was work whose
+    # result was thrown away after `_id` was read off it.
     project_documents = _load_indexed_project_documents(
         project_id=project_id,
         current_user=current_user,
         reference_contract_ids=request.reference_contract_ids,
+        include_content=False,
     )
     project_contract_ids = [str(document["_id"]) for document in project_documents]
     kpi_operational_context = _load_kpi_agent_operational_context(project_contract_ids)

@@ -331,6 +331,71 @@ def test_a_block_that_fits_is_left_alone_by_the_release_pass():
     assert block.truncated is False
 
 
+def test_a_truncated_index_withdraws_its_claim_to_be_complete():
+    """The index is the one block that asserts completeness.
+
+    A project large enough to overflow the budget is exactly when that
+    assertion becomes false, and a model told a partial list is the whole list
+    will state that a document is not in the project when it is.
+    """
+    big_index = "Documents in this project (complete list):\n" + "\n".join(
+        f"- Document {i}.pdf · 2026-01-01 · other · relates to: none · id: c{i}"
+        for i in range(300)
+    )
+    composer = MemoryComposer(
+        agent_memory=FakeAgentMemory(session=a_session()),
+        project_memory=FakeProjectMemory(index=big_index),
+        budget_chars=2000,
+    )
+
+    composed = composer.compose(scope())
+    block = next(b for b in composed.blocks if b.name == "project_index")
+
+    assert block.truncated is True
+    assert "complete" not in block.describe_provenance()
+    assert "PARTIAL" in block.describe_provenance()
+    assert "list_documents" in block.describe_provenance()
+    # The claim has to be withdrawn in what the model actually reads, not only
+    # on the object.
+    assert "PARTIAL" in composed.text
+
+
+def test_a_truncated_block_says_how_much_is_missing():
+    big_index = "Documents in this project (complete list):\n" + "\n".join(
+        f"- Document {i}.pdf · 2026-01-01 · other · relates to: none · id: c{i}"
+        for i in range(300)
+    )
+    composer = MemoryComposer(
+        agent_memory=FakeAgentMemory(session=a_session()),
+        project_memory=FakeProjectMemory(index=big_index),
+        budget_chars=2000,
+    )
+
+    composed = composer.compose(scope())
+    block = next(b for b in composed.blocks if b.name == "project_index")
+
+    assert block.total_units == 301  # 300 documents plus the header line
+    assert 0 < block.kept_units < block.total_units
+    assert f"showing {block.kept_units} of {block.total_units}" in block.render()
+
+
+def test_an_untruncated_index_keeps_its_completeness_claim():
+    composer = MemoryComposer(
+        agent_memory=FakeAgentMemory(session=a_session()),
+        project_memory=FakeProjectMemory(
+            index="Documents in this project (complete list):\n- A.pdf · id: c1"
+        ),
+    )
+
+    composed = composer.compose(scope())
+    block = next(b for b in composed.blocks if b.name == "project_index")
+
+    assert block.truncated is False
+    assert "complete" in block.describe_provenance()
+    assert "PARTIAL" not in composed.text
+    assert block.kept_units == 0 and block.total_units == 0
+
+
 # -------------------------------------------------------------------- dedupe
 
 
