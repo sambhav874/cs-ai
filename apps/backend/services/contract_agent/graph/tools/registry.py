@@ -56,7 +56,19 @@ def tool_specs() -> Dict[str, ToolSpec]:
         "list_documents": "List scoped indexed documents, or fetch metadata for a named subset by ID.",
         "project_memory": "Read the project index, one document overview, recent project events, which documents are currently in force and which have been superseded (view=governing), or where documents that all still govern disagree (view=conflicts); it is context, not clause evidence.",
         "read_document": "Read one scoped document in outline, excerpt, or full mode; use full for coverage-sensitive review.",
-        "read_schedules": "Read the project's tracked rate schedules across document versions: list them, read the current or a past version's actual rates, or read what changed between versions. Also checks measured movements against the increase the contract permits (view=escalation). Use this for any question about what a rate is now, what it used to be, how much it has moved, or whether an increase was allowed — searching the documents returns one version's table with no way to tell whether it is the one still in force.",
+        "read_schedules": (
+            "THE ONLY tool that can compare rates across document versions. "
+            "view=list names the tracked schedules; view=values reads a schedule's "
+            "actual rates now or on a past date; view=history reads what changed "
+            "between versions; view=escalation checks every measured rate movement "
+            "against the increase the contract actually permits. "
+            "Required for: whether an uplift was honoured, applied, allowed, "
+            "correct, or a breach; whether rates rose more than the contract "
+            "permits; what a rate is now or used to be; how much a rate has moved. "
+            "search_evidence and read_document CANNOT answer these — they return "
+            "one version's table with nothing to say whether it is still in force, "
+            "and no way to compare it against another version or against a clause."
+        ),
         "search_evidence": "Search scoped contracts for clause evidence, or locate an exact phrase with exact=.",
         "extract_kpis": "Extract draft KPI/SLA candidates for a scoped ingested contract only after human approval.",
         "generate_tabular_review": "Generate tabular review cells only after human approval.",

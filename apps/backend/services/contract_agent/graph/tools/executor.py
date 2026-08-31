@@ -1603,7 +1603,10 @@ def _render_schedule_list(lineages: List[Dict[str, Any]]) -> str:
         )
     lines.append(
         "Call this tool again with view=values to read the rates themselves, "
-        "or view=history for what changed between versions."
+        "view=history for what changed between versions, or view=escalation to "
+        "check every movement against the increase the contract permits — "
+        "view=escalation already does that comparison, so do not reconstruct it "
+        "from values and history by hand."
     )
     return "\n".join(lines)
 
