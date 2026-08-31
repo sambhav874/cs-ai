@@ -42,6 +42,16 @@ logger = logging.getLogger(__name__)
 # ceiling is now real rather than nominal.
 TOTAL_BUDGET_CHARS = 6000
 
+# The ceiling the budget may stretch to when a project genuinely has more to
+# say. 6000 was sized for a curated fact set and a short document list; a
+# project now carries an index that grows with every document and a fact set
+# that grows with every schedule revision, so a fixed number starves a large
+# project to keep a small one cheap. Demand-based rather than document-count
+# based: what matters is how much context actually exists, not how many files
+# it came from. Roughly 3k tokens at the ceiling — still small beside a single
+# contract, and only spent when there is something to spend it on.
+MAX_BUDGET_CHARS = 12000
+
 # Reservations, not hard walls. A tier that does not use its share releases it
 # to the others in priority order (see `_allocate`), so a run with no project
 # gives its project share to conversation history rather than wasting it.
@@ -396,7 +406,8 @@ class MemoryComposer:
 
         blocks.sort(key=lambda b: b.priority)
         blocks = self._dedupe_blocks(blocks)
-        kept, dropped = self._allocate(blocks)
+        budget_chars = self._budget_for(blocks)
+        kept, dropped = self._allocate(blocks, budget=budget_chars)
 
         rendered = [_PREAMBLE, *[block.render() for block in kept]]
         text = "\n\n".join(part for part in rendered if part.strip())
@@ -406,7 +417,9 @@ class MemoryComposer:
             dropped=dropped,
             truncated=[block.name for block in kept if block.truncated],
             total_chars=len(text),
-            budget_chars=self.budget_chars,
+            # The budget this run actually had, not the configured floor —
+            # otherwise the trace reports a ceiling the allocator never used.
+            budget_chars=budget_chars,
         )
 
     # ----------------------------------------------------------------- blocks
@@ -622,7 +635,25 @@ class MemoryComposer:
             kept.append(block)
         return kept
 
-    def _allocate(self, blocks: List[MemoryBlock]) -> Tuple[List[MemoryBlock], List[str]]:
+    def _budget_for(self, blocks: List[MemoryBlock]) -> int:
+        """How much this particular run is allowed to spend.
+
+        The budget stretches toward what the project actually has, up to a
+        ceiling, instead of holding every project to the size of a small one.
+        A caller that set an explicit budget keeps it exactly — the tests and
+        the callers that pin a size are asking for a fixed number, not a floor.
+        """
+        if self.budget_chars != TOTAL_BUDGET_CHARS:
+            return self.budget_chars
+        demand = sum(len(block.body) for block in blocks)
+        return max(TOTAL_BUDGET_CHARS, min(MAX_BUDGET_CHARS, demand))
+
+    def _allocate(
+        self,
+        blocks: List[MemoryBlock],
+        *,
+        budget: Optional[int] = None,
+    ) -> Tuple[List[MemoryBlock], List[str]]:
         """Spend the budget in priority order, tier reservations first.
 
         Three passes. The first gives each block what its tier reserved, so a
@@ -636,10 +667,11 @@ class MemoryComposer:
         episodic and procedural chars sat unspent because those tiers had no
         content — the common case for a project with no chat history.
         """
+        budget_chars = self.budget_chars if budget is None else budget
         remaining_tier = {
-            tier: int(self.budget_chars * share) for tier, share in TIER_BUDGET_SHARE.items()
+            tier: int(budget_chars * share) for tier, share in TIER_BUDGET_SHARE.items()
         }
-        total_left = self.budget_chars
+        total_left = budget_chars
         kept: List[MemoryBlock] = []
         dropped: List[str] = []
         pending: List[Tuple[MemoryBlock, int]] = []

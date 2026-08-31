@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from services.memory import MemoryComposer, MemoryScope, TOTAL_BUDGET_CHARS
+from services.memory.composer import MAX_BUDGET_CHARS
 from services.memory.composer import MIN_USEFUL_BLOCK_CHARS, MemoryBlock, _fit
 
 
@@ -394,6 +395,58 @@ def test_an_untruncated_index_keeps_its_completeness_claim():
     assert "complete" in block.describe_provenance()
     assert "PARTIAL" not in composed.text
     assert block.kept_units == 0 and block.total_units == 0
+
+
+def test_the_budget_stretches_toward_what_a_large_project_actually_has():
+    """6000 was sized for a curated fact set and a short document list. A
+    project now carries an index that grows with every document and facts that
+    grow with every schedule revision; holding it to the size of a small
+    project starves it for no benefit."""
+    facts = "\n\n".join(f"## Fact {i} about this project." for i in range(200))
+    index = "Documents in this project (complete list):\n" + "\n".join(
+        f"- Document {i}.pdf · 2026-01-01 · other · relates to: none · id: c{i}"
+        for i in range(200)
+    )
+    composer = MemoryComposer(
+        agent_memory=FakeAgentMemory(session=a_session()),
+        project_memory=FakeProjectMemory(
+            index=index, facts=[{"fact_id": "f1"}], rendered_facts=facts
+        ),
+    )
+
+    composed = composer.compose(scope())
+
+    assert composed.budget_chars > TOTAL_BUDGET_CHARS
+    assert composed.budget_chars <= MAX_BUDGET_CHARS
+    assert sum(len(b.body) for b in composed.blocks) <= MAX_BUDGET_CHARS
+
+
+def test_a_small_project_still_costs_what_it_always_did():
+    composer = MemoryComposer(
+        agent_memory=FakeAgentMemory(session=a_session()),
+        project_memory=FakeProjectMemory(
+            index="Documents in this project (complete list):\n- A.pdf · id: c1"
+        ),
+    )
+
+    composed = composer.compose(scope())
+
+    assert composed.budget_chars == TOTAL_BUDGET_CHARS
+
+
+def test_an_explicitly_set_budget_is_honoured_exactly():
+    """A caller that pins a size is asking for a fixed number, not a floor."""
+    facts = "\n\n".join(f"## Fact {i} about this project." for i in range(200))
+    composer = MemoryComposer(
+        agent_memory=FakeAgentMemory(session=a_session()),
+        project_memory=FakeProjectMemory(facts=[{"fact_id": "f1"}], rendered_facts=facts),
+        budget_chars=1500,
+    )
+
+    composed = composer.compose(scope())
+
+    assert composed.budget_chars == 1500
+    assert sum(len(b.body) for b in composed.blocks) <= 1500
 
 
 # -------------------------------------------------------------------- dedupe
