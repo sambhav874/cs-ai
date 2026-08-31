@@ -368,3 +368,38 @@ class LinkDecisionTests(unittest.TestCase):
         [merged] = build_lineages(documents, {link_key("sig-old", "sig-new"): "confirmed"})
         self.assertEqual(merged["version_count"], 2)
         self.assertEqual(merged["total_pct"], 10.0)
+
+
+def test_a_confirmed_link_clears_the_review_flag():
+    """The flag has to come down when a person resolves the link.
+
+    A lineage the user has already confirmed that still shows "needs review"
+    puts a permanent badge on the one thing they went and fixed, which is how
+    a warning stops meaning anything.
+    """
+    from services.table_tracking import build_lineages
+
+    tables_v1 = [{
+        "signature": "sig-1", "caption": "RAMP SERVICES", "table_type": "Rate Schedule",
+        "body": "| DESCRIPTION | PRICE |\n| --- | --- |\n| TOWING | 100.00 EUR |",
+        "rows": 1, "cols": 2, "page": 1,
+    }]
+    # Same schedule, renamed column: the matcher can only call this a possible
+    # match, which is the case a person is asked to resolve.
+    tables_v2 = [{
+        "signature": "sig-2", "caption": "RAMP SERVICES", "table_type": "Rate Schedule",
+        "body": "| DESCRIPTION | RATE |\n| --- | --- |\n| TOWING | 103.00 EUR |",
+        "rows": 1, "cols": 2, "page": 1,
+    }]
+    documents = [
+        ("c1", "Base_2022.pdf", "2022-04-01", tables_v1),
+        ("c2", "Revision_2023.pdf", "2023-04-01", tables_v2),
+    ]
+
+    unresolved = build_lineages(documents)
+    assert any(l["needs_review"] for l in unresolved)
+
+    confirmed = build_lineages(documents, {"sig-1->sig-2": "confirmed"})
+    assert len(confirmed) == 1
+    assert confirmed[0]["version_count"] == 2
+    assert confirmed[0]["needs_review"] is False

@@ -548,8 +548,14 @@ def build_lineages(
         # Surfaced so a caller can lead with the schedules that moved rather
         # than the ones that were reissued untouched.
         lineage["has_changes"] = any(v["status"] == "revised" for v in versions)
+        # A link a person has confirmed is resolved, however uncertain the
+        # matcher was about it. Leaving the flag up would leave a permanent
+        # badge on the one thing the user already went and fixed, which teaches
+        # people that the flag means nothing.
         lineage["needs_review"] = any(
-            v["severity"] == "warning" or v["status"] == "possible_match" for v in versions
+            not v.get("link_confirmed")
+            and (v["severity"] == "warning" or v["status"] == "possible_match")
+            for v in versions
         )
         uplifts = [v["observed_pct"] for v in versions if v.get("observed_pct") is not None]
         if uplifts:
