@@ -265,6 +265,72 @@ def test_a_cheap_high_priority_block_is_not_starved_by_an_expensive_one_above_it
     assert "project_index" in [b.name for b in composed.blocks]
 
 
+def test_unclaimed_tier_budget_is_released_to_a_block_that_was_cut_short():
+    """The bug this covers: a block trimmed in pass one was final.
+
+    A project with no chat history claims none of the episodic reservation, so
+    a run could report the facts as truncated while a third of the budget sat
+    unspent. Measured on a real project: 2086 chars of facts kept, 4222
+    available, 3043 of 6000 chars used.
+    """
+    facts = "\n\n".join(f"## Fact {i} about this project." for i in range(60))
+    composer = MemoryComposer(
+        # No session and no turns: the episodic tier has nothing to spend on.
+        agent_memory=FakeAgentMemory(),
+        project_memory=FakeProjectMemory(
+            facts=[{"fact_id": "f1"}],
+            rendered_facts=facts,
+        ),
+        budget_chars=2000,
+    )
+
+    composed = composer.compose(scope())
+    block = next(b for b in composed.blocks if b.name == "project_facts")
+
+    # Semantic alone reserves half the budget; the released episodic and
+    # procedural share takes it past that.
+    assert len(block.body) > int(2000 * 0.50)
+    # `total_chars` counts headings and provenance too; the budget governs bodies.
+    assert sum(len(b.body) for b in composed.blocks) <= 2000
+
+
+def test_releasing_budget_never_overspends_it():
+    facts = "\n\n".join(f"## Fact {i} about this project." for i in range(80))
+    index = "Documents in this project (complete list):\n" + "\n".join(
+        f"- Document {i}.pdf · 2026-01-01 · other · relates to: none · id: c{i}" for i in range(80)
+    )
+    composer = MemoryComposer(
+        agent_memory=FakeAgentMemory(
+            session=a_session(),
+            messages=[turn("user", "x" * 400, 1)],
+        ),
+        project_memory=FakeProjectMemory(
+            index=index, facts=[{"fact_id": "f1"}], rendered_facts=facts
+        ),
+        budget_chars=2400,
+    )
+
+    composed = composer.compose(scope())
+
+    assert sum(len(b.body) for b in composed.blocks) <= 2400
+
+
+def test_a_block_that_fits_is_left_alone_by_the_release_pass():
+    composer = MemoryComposer(
+        agent_memory=FakeAgentMemory(),
+        project_memory=FakeProjectMemory(
+            facts=[{"fact_id": "f1"}],
+            rendered_facts="## One short fact.",
+        ),
+    )
+
+    composed = composer.compose(scope())
+    block = next(b for b in composed.blocks if b.name == "project_facts")
+
+    assert block.body == "## One short fact."
+    assert block.truncated is False
+
+
 # -------------------------------------------------------------------- dedupe
 
 

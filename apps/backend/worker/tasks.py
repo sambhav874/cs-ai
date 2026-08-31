@@ -908,6 +908,18 @@ def _record_schedule_changes(
                     sources=[{"contract_id": contract_id, "quote": finding["summary"]}],
                     tags=["rate_change", finding.get("table_type") or "schedule"],
                     origin="contract",
+                    # Idempotent per (schedule, document): re-ingesting a
+                    # contract updates this fact rather than adding another
+                    # copy of it. Re-ingestion is routine — a retried queue
+                    # item, a re-dispatch from the UI — so without this the
+                    # fact set grew every time a document was reprocessed.
+                    dedup_key=f"schedule:{finding['signature']}:{contract_id}",
+                    # One live fact per schedule. Each revision supersedes the
+                    # last, so the agent is handed the current state of a rate
+                    # card instead of every uplift it has ever had. The full
+                    # history stays in the events log and in the superseded
+                    # facts, which the Schedules tab reads.
+                    supersedes_scope=f"schedule:{finding['signature']}",
                 )
             except Exception as fact_exc:
                 logger.warning("Could not record schedule fact for %s: %s", contract_id, fact_exc)

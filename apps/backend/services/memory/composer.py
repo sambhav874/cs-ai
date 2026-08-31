@@ -569,10 +569,16 @@ class MemoryComposer:
     def _allocate(self, blocks: List[MemoryBlock]) -> Tuple[List[MemoryBlock], List[str]]:
         """Spend the budget in priority order, tier reservations first.
 
-        Two passes. The first gives each block what its tier reserved, so a
+        Three passes. The first gives each block what its tier reserved, so a
         cheap high-priority block cannot be starved by an expensive one above
         it in a different tier. The second hands out whatever the tiers did not
-        claim, again in priority order.
+        claim to blocks that got nothing usable. The third gives what is *still*
+        unclaimed to blocks that were kept but truncated.
+
+        That third pass is not an optimisation. Without it a block trimmed in
+        pass one was final, so a run could truncate the facts while thousands of
+        episodic and procedural chars sat unspent because those tiers had no
+        content — the common case for a project with no chat history.
         """
         remaining_tier = {
             tier: int(self.budget_chars * share) for tier, share in TIER_BUDGET_SHARE.items()
@@ -582,9 +588,13 @@ class MemoryComposer:
         dropped: List[str] = []
         pending: List[Tuple[MemoryBlock, int]] = []
 
+        # Kept but trimmed in pass one, with the untrimmed body, for pass three.
+        trimmed: List[Tuple[MemoryBlock, str]] = []
+
         for block in blocks:
             tier_left = remaining_tier.get(block.tier, 0)
             allowance = min(tier_left, total_left)
+            full_body = block.body
             body, truncated = _fit(block.body, allowance)
             if len(body) < MIN_USEFUL_BLOCK_CHARS and len(block.body) > len(body):
                 # Nothing usable fit in the reservation. Hold it for pass two
@@ -597,6 +607,8 @@ class MemoryComposer:
             kept.append(block)
             remaining_tier[block.tier] = tier_left - spent
             total_left -= spent
+            if truncated:
+                trimmed.append((block, full_body))
 
         for block, already in pending:
             shared = total_left + max(0, remaining_tier.get(block.tier, 0) - already)
@@ -608,6 +620,19 @@ class MemoryComposer:
             block.truncated = truncated
             kept.append(block)
             total_left -= len(body)
+
+        # Pass three: hand whatever is left to the blocks that were cut short,
+        # highest priority first, so the budget is actually spent before
+        # anything is reported as truncated.
+        for block, full_body in sorted(trimmed, key=lambda pair: pair[0].priority):
+            if total_left <= 0:
+                break
+            grown, truncated = _fit(full_body, len(block.body) + total_left)
+            if len(grown) <= len(block.body):
+                continue
+            total_left -= len(grown) - len(block.body)
+            block.body = grown
+            block.truncated = truncated
 
         kept.sort(key=lambda b: b.priority)
         return kept, dropped

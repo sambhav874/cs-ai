@@ -734,6 +734,8 @@ class ProjectMemoryManager:
         sources: Optional[List[Dict[str, Any]]] = None,
         tags: Optional[List[str]] = None,
         origin: str = "contract",
+        dedup_key: Optional[str] = None,
+        supersedes_scope: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Record one durable fact about the project.
 
@@ -747,6 +749,19 @@ class ProjectMemoryManager:
         One document per fact rather than an array on the project: writes stay
         atomic under concurrent agent turns, there is no 16MB ceiling, and
         superseded/needs_review state is indexable.
+
+        `dedup_key` makes the write idempotent. Facts recorded by a person are
+        one-per-call, but facts emitted automatically during ingestion are not:
+        re-ingestion is a routine operation (a retried queue item, a re-dispatch
+        from the UI), and without a key each retry inserted the same fact again.
+        Passing a stable key updates the existing live fact instead.
+
+        `supersedes_scope` groups facts that are successive statements about the
+        same thing — the revisions of one rate schedule, say. Recording a new
+        one marks the earlier ones superseded rather than leaving every revision
+        live forever. The history is not lost; it is still readable with
+        `include_superseded=True`, and the events log keeps the full trail. Only
+        the newest statement is what the agent is handed.
         """
         cleaned = _clean_text(text, 1000)
         if not cleaned:
@@ -772,19 +787,69 @@ class ProjectMemoryManager:
                 "something the user told you."
             )
 
+        resolved_tags = [_clean_text(tag, 40) for tag in (tags or []) if str(tag).strip()][:8]
+        clean_dedup_key = _clean_text(dedup_key, 200) or None
+        clean_scope = _clean_text(supersedes_scope, 200) or None
+
+        if clean_dedup_key:
+            # Deliberately not filtered on `superseded_by`. A fact recorded
+            # for an older document may already have been superseded by a
+            # newer one; re-ingesting that older document must refresh it in
+            # place, not insert a fresh live copy that would then supersede
+            # the newer document's fact and walk the schedule backwards.
+            existing = self.facts.find_one(
+                {"project_id": project_id, "dedup_key": clean_dedup_key},
+                {"_id": 0},
+            )
+            if existing:
+                self.facts.update_one(
+                    {"project_id": project_id, "fact_id": existing["fact_id"]},
+                    {"$set": {
+                        "text": cleaned,
+                        "sources": resolved_sources,
+                        "tags": resolved_tags,
+                        # `learned_at` stays put: it is when the project first
+                        # learned this, and it is the sort key the composer
+                        # truncates on. Bumping it on a reprocess would push a
+                        # 2022 fact to the top of the agent's context.
+                        # `needs_review` stays put too — reprocessing a
+                        # document does not un-amend it.
+                        "last_seen_at": _now(),
+                        "supersedes_scope": clean_scope,
+                    }},
+                )
+                # No event: nothing new was learned, the same fact was seen
+                # again. Emitting one would make a retried ingestion look like
+                # fresh activity in the project timeline.
+                return {**existing, "text": cleaned, "sources": resolved_sources,
+                        "tags": resolved_tags, "supersedes_scope": clean_scope}
+
         record = {
             "fact_id": uuid4().hex,
             "project_id": project_id,
             "text": cleaned,
             "sources": resolved_sources,
-            "tags": [_clean_text(tag, 40) for tag in (tags or []) if str(tag).strip()][:8],
+            "tags": resolved_tags,
             "origin": resolved_origin,
             "learned_at": _now(),
             "superseded_by": None,
             "needs_review": False,
+            "dedup_key": clean_dedup_key,
+            "supersedes_scope": clean_scope,
         }
         self.facts.insert_one(dict(record))
         record.pop("_id", None)
+
+        if clean_scope:
+            self.facts.update_many(
+                {
+                    "project_id": project_id,
+                    "supersedes_scope": clean_scope,
+                    "superseded_by": None,
+                    "fact_id": {"$ne": record["fact_id"]},
+                },
+                {"$set": {"superseded_by": record["fact_id"], "needs_review": False}},
+            )
         self._safe_event(
             project_id=project_id,
             event_type="fact_recorded",
@@ -794,10 +859,19 @@ class ProjectMemoryManager:
         return record
 
     def list_facts(self, project_id: str, *, include_superseded: bool = False) -> List[Dict[str, Any]]:
+        """Newest first.
+
+        Not cosmetic. The memory composer renders this list and truncates it
+        from the end when it exceeds the semantic budget, so insertion order
+        decided what the agent stopped being able to see. Oldest-first meant a
+        project's most recent rate change was the first thing dropped and its
+        oldest one always survived — precisely backwards for a store whose
+        whole purpose is tracking what changed most recently.
+        """
         query: Dict[str, Any] = {"project_id": project_id}
         if not include_superseded:
             query["superseded_by"] = None
-        return list(self.facts.find(query, {"_id": 0}).sort("learned_at", 1))
+        return list(self.facts.find(query, {"_id": 0}).sort("learned_at", -1))
 
     def supersede_fact(self, project_id: str, fact_id: str, superseded_by: str) -> bool:
         """Facts are never edited in place — a correction is a new fact that
@@ -865,7 +939,7 @@ class ProjectMemoryManager:
                 f"- source: {sources}\n"
                 f"- fact_id: {fact.get('fact_id')}"
             )
-        return "Facts recorded for this project:\n\n" + "\n\n".join(blocks)
+        return "Facts recorded for this project (most recent first):\n\n" + "\n\n".join(blocks)
 
     def transfer_project_memory(self, from_project_id: str, to_project_id: str) -> Dict[str, Any]:
         """Move a project's memory to another project, for when its documents

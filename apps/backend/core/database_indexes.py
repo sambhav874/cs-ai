@@ -405,6 +405,30 @@ def initialize_all_indexes(db=None):
             "agent_drafts_contract_user_updated"
         )
 
+        # Project memory facts (contract_agent_db). The first index serves the
+        # list read on every agent turn; the second serves the idempotency
+        # lookup in remember_fact, which runs once per schedule change at
+        # ingestion. Neither is unique: dedup_key is null for the facts a
+        # person records, and a unique index would have to be partial and
+        # would fail to build against any project that already accumulated
+        # duplicates before this landed.
+        project_facts = agent_db["project_facts"]
+        _create_index_safe(
+            project_facts,
+            [("project_id", ASCENDING), ("superseded_by", ASCENDING), ("learned_at", DESCENDING)],
+            "project_facts_project_live_recent"
+        )
+        _create_index_safe(
+            project_facts,
+            [("project_id", ASCENDING), ("dedup_key", ASCENDING)],
+            "project_facts_project_dedup"
+        )
+        _create_index_safe(
+            project_facts,
+            [("project_id", ASCENDING), ("supersedes_scope", ASCENDING), ("superseded_by", ASCENDING)],
+            "project_facts_project_scope"
+        )
+
         # KPI register indexes (contract_kpi_db)
         contract_kpis = kpi_db["contract_kpis"]
         _create_unique_index_safe(
