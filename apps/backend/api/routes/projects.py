@@ -708,54 +708,12 @@ def list_project_table_lineages(
     """
     project = verify_project_access(project_id, current_user)
 
-    from core.database import collection as contracts_collection, db as core_db
-    from services.project_memory import ProjectMemoryManager, _parse_effective_date
-    from services.table_extraction import extract_tables
-    from services.table_tracking import build_lineages
+    from services.schedule_registry import project_schedules
 
-    query = build_accessible_contract_query(project, current_user)
-    query["index.content"] = {"$regex": "<!--TABLE:START"}
-
-    try:
-        effective_dates = {
-            str(record.get("contract_id")): record.get("effective_date")
-            for record in ProjectMemoryManager(core_db).memories.find(
-                {"project_id": project_id}, {"contract_id": 1, "effective_date": 1}
-            )
-        }
-    except Exception:
-        # Dates are an ordering refinement, not a dependency — without them the
-        # history still builds, just ordered by upload time.
-        effective_dates = {}
-
-    documents = []
-    for contract in contracts_collection.find(
-        query,
-        {"_id": 1, "contract_name": 1, "uploaded_at": 1,
-         "index.content": 1, "index.table_classifications": 1},
-    ):
-        index_data = contract.get("index") or {}
-        tables = extract_tables(index_data.get("content") or "")
-        labels = {
-            record.get("signature"): record.get("table_type")
-            for record in (index_data.get("table_classifications") or [])
-            if isinstance(record, dict)
-        }
-        for table in tables:
-            table["table_type"] = labels.get(table.get("signature")) or table.get("table_type")
-        contract_id = str(contract["_id"])
-        documents.append((
-            contract_id,
-            contract.get("contract_name") or "",
-            _parse_effective_date(effective_dates.get(contract_id)),
-            contract.get("uploaded_at"),
-            tables,
-        ))
-
-    documents.sort(key=lambda d: (d[2] or "", d[3] or datetime.min))
-    lineages = build_lineages(
-        [(c, n, eff, tables) for c, n, eff, _uploaded, tables in documents],
-        _schedule_links(project["_id"]),
+    lineages, _documents = project_schedules(
+        project_id,
+        contract_query=build_accessible_contract_query(project, current_user),
+        links=_schedule_links(project["_id"]),
     )
 
     return {

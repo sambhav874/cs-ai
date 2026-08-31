@@ -6,14 +6,9 @@ the agent under a fixed character budget: every redundant fact costs context
 that a real one would otherwise have used.
 """
 
-import os
-import sys
 from datetime import datetime, timezone
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "apps", "backend"))
-os.environ.setdefault("TESTING", "true")
-
-from services.project_memory import ProjectMemoryManager  # noqa: E402
+from services.project_memory import ProjectMemoryManager
 
 
 class FakeResult:

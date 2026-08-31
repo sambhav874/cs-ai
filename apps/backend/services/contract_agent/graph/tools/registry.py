@@ -22,6 +22,7 @@ READ_ONLY_TOOLS = {
     "list_documents",
     "project_memory",
     "read_document",
+    "read_schedules",
     "search_evidence",
 }
 
@@ -55,6 +56,7 @@ def tool_specs() -> Dict[str, ToolSpec]:
         "list_documents": "List scoped indexed documents, or fetch metadata for a named subset by ID.",
         "project_memory": "Read the project index, one document overview, or recent project events; it is context, not clause evidence.",
         "read_document": "Read one scoped document in outline, excerpt, or full mode; use full for coverage-sensitive review.",
+        "read_schedules": "Read the project's tracked rate schedules across document versions: list them, read the current or a past version's actual rates, or read what changed between versions. Use this for any question about what a rate is now, what it used to be, or how much it has moved — searching the documents returns one version's table with no way to tell whether it is the one still in force.",
         "search_evidence": "Search scoped contracts for clause evidence, or locate an exact phrase with exact=.",
         "extract_kpis": "Extract draft KPI/SLA candidates for a scoped ingested contract only after human approval.",
         "generate_tabular_review": "Generate tabular review cells only after human approval.",

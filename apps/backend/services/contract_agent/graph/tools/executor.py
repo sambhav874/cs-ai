@@ -124,6 +124,13 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
         return _read_project_concept(state, str(tool.args.get("document_id") or ""))
     if tool.name == "read_project_events":
         return _read_project_events(state, tool.args.get("limit"))
+    if tool.name == "read_schedules":
+        return _read_schedules(
+            state,
+            view=str(tool.args.get("view") or "list"),
+            schedule=str(tool.args.get("schedule") or ""),
+            as_of=str(tool.args.get("as_of") or ""),
+        )
     return {"summary": f"Read-only tool {tool.name} completed."}
 
 
@@ -1287,6 +1294,207 @@ def _read_project_events(state: AgentRunState, limit: Any = None) -> Dict[str, A
         return {"summary": "Retrieved recent project events.", "snippet": rendered}
     except Exception as exc:
         return {"summary": f"Project event lookup failed: {str(exc)[:300]}", "snippet": ""}
+
+
+def _read_schedules(
+    state: AgentRunState,
+    *,
+    view: str = "list",
+    schedule: str = "",
+    as_of: str = "",
+) -> Dict[str, Any]:
+    """Read the project's tracked rate schedules and their history.
+
+    This is the one piece of project knowledge that is structured, ordered in
+    time, and spans documents. Without it the agent can only reach rate changes
+    as the prose summaries in project memory — which say a card moved 3% but
+    cannot say what it costs now, because a summary describes the movement
+    between two versions rather than the values in either.
+    """
+    project_id = state.context.project_id
+    if not project_id:
+        return {"summary": "No project is in scope for this conversation.", "snippet": ""}
+
+    scoped_ids = [
+        str(doc_id) for doc_id in (state.context.selected_document_ids or []) if doc_id
+    ]
+    if not scoped_ids:
+        return {"summary": "No documents are in scope for this conversation.", "snippet": ""}
+
+    try:
+        from services.schedule_registry import find_schedule, project_schedules, schedule_table
+
+        lookup_ids: List[Any] = []
+        for value in scoped_ids:
+            if ObjectId.is_valid(value):
+                lookup_ids.append(ObjectId(value))
+            lookup_ids.append(value)
+
+        # Authorized against the route-built scope, never a project-wide read:
+        # the same boundary every other read tool honours.
+        lineages, documents = project_schedules(
+            project_id,
+            contract_query={"_id": {"$in": lookup_ids}},
+            links=_schedule_links_for_project(project_id),
+        )
+    except Exception as exc:
+        return {"summary": f"Schedule lookup failed: {str(exc)[:300]}", "snippet": ""}
+
+    if not lineages:
+        return {
+            "summary": "No tracked rate schedules were found in this project.",
+            "snippet": (
+                "No tables in this project are classified as a trackable schedule. "
+                "That means either the documents hold no rate tables, or their "
+                "tables are labelled as something other than a schedule."
+            ),
+        }
+
+    selected_view = (view or "list").strip().lower()
+    if selected_view not in {"list", "history", "values"}:
+        selected_view = "list"
+
+    if selected_view == "list":
+        return {
+            "summary": f"Found {len(lineages)} tracked schedule(s) in this project.",
+            "snippet": _render_schedule_list(lineages),
+        }
+
+    match, candidates = find_schedule(lineages, schedule)
+    if match is None:
+        return {
+            "summary": (
+                f'Could not tell which schedule "{schedule}" means.'
+                if schedule else "No schedule was named."
+            ),
+            # Deliberately not a best guess. Quoting the wrong rate card reads
+            # exactly like quoting the right one.
+            "snippet": _render_schedule_candidates(candidates),
+        }
+
+    if selected_view == "history":
+        return {
+            "summary": f'History for "{match.get("caption")}" — {match.get("version_count")} version(s).',
+            "snippet": _render_schedule_history(match),
+        }
+
+    table = schedule_table(match, documents, as_of=as_of.strip() or None)
+    if table is None:
+        return {
+            "summary": f'No version of "{match.get("caption")}" was in effect then.',
+            "snippet": (
+                f"The earliest version of this schedule takes effect "
+                f"{match['versions'][0].get('effective_date') or 'at an unstated date'}."
+            ),
+        }
+    when = "current" if table["is_latest"] else f"in effect on {as_of}"
+    return {
+        "summary": f'"{table["caption"]}" — {when}, from {table["contract_name"]}.',
+        "snippet": _render_schedule_values(table),
+    }
+
+
+def _schedule_links_for_project(project_id: str) -> Dict[str, str]:
+    """Schedule links a person has confirmed or rejected.
+
+    Read here rather than passed in so the agent sees the same resolved links
+    the Schedules tab does — an unresolved link the user has since confirmed
+    would otherwise show the agent a lineage break that no longer exists.
+    """
+    try:
+        from core.database import db as core_db
+
+        return {
+            record["link"]: record["decision"]
+            for record in core_db["schedule_links"].find(
+                {"project_id": ObjectId(project_id)}, {"link": 1, "decision": 1}
+            )
+            if record.get("link") and record.get("decision")
+        }
+    except Exception:
+        return {}
+
+
+def _render_schedule_candidates(candidates: List[Dict[str, Any]]) -> str:
+    """The schedules that could have been meant, each distinguishable.
+
+    Two schedules in one project can carry the same caption — a rate card that
+    appears in two documents without a confirmed link between them is exactly
+    that case, and it is common. Listing captions alone would offer the user a
+    choice between two identical strings, so each candidate carries what tells
+    it apart and the id to pass straight back.
+    """
+    if not candidates:
+        return "This project has no tracked schedules to choose from."
+    lines = ["Ask which of these is meant, then call again with schedule set to its id:"]
+    for lineage in candidates[:10]:
+        lines.append(
+            f'- "{lineage.get("caption")}" · {lineage.get("version_count")} version(s) · '
+            f'latest effective {lineage.get("latest_effective_date") or "unstated"} · '
+            f'id: {lineage.get("signature")}'
+        )
+    if len(candidates) > 10:
+        lines.append(f"- and {len(candidates) - 10} more; use view=list to see them all")
+    return "\n".join(lines)
+
+
+def _render_schedule_list(lineages: List[Dict[str, Any]]) -> str:
+    lines = ["Tracked rate schedules in this project:"]
+    for lineage in lineages:
+        total = lineage.get("total_pct")
+        movement = f"{total:+.2f}% overall" if total is not None else "no measured movement"
+        flag = " · NEEDS REVIEW: a version could not be linked with certainty" if lineage.get("needs_review") else ""
+        lines.append(
+            f'- "{lineage.get("caption")}" · {lineage.get("table_type") or "unlabelled"} · '
+            f'{lineage.get("version_count")} version(s) · {movement} · '
+            f'latest effective {lineage.get("latest_effective_date") or "unstated"} · '
+            f'id: {lineage.get("signature")}{flag}'
+        )
+    lines.append(
+        "Call this tool again with view=values to read the rates themselves, "
+        "or view=history for what changed between versions."
+    )
+    return "\n".join(lines)
+
+
+def _render_schedule_history(lineage: Dict[str, Any]) -> str:
+    lines = [
+        f'"{lineage.get("caption")}" ({lineage.get("table_type") or "unlabelled"}), oldest first:'
+    ]
+    for version in lineage.get("versions") or []:
+        effective = version.get("effective_date") or "date not stated"
+        lines.append(
+            f'- {effective} · {version.get("contract_name")} · '
+            f'{version.get("summary") or "first version recorded"}'
+        )
+        for change in (version.get("changes") or [])[:8]:
+            lines.append(
+                f'    · {change.get("row")}: {change.get("old") or "—"} → {change.get("new") or "—"}'
+            )
+        remaining = version.get("changes_truncated") or 0
+        if remaining:
+            lines.append(f"    · and {remaining} more change(s) not listed")
+    total = lineage.get("total_pct")
+    if total is not None:
+        lines.append(
+            f"Compounded across every version: {total:+.2f}%. "
+            "Successive uplifts multiply rather than add, so this is not the sum "
+            "of the individual percentages."
+        )
+    return "\n".join(lines)
+
+
+def _render_schedule_values(table: Dict[str, Any]) -> str:
+    header = (
+        f'"{table["caption"]}" as stated in {table["contract_name"]}'
+        f' (effective {table.get("effective_date") or "date not stated"}'
+        f', page {table.get("page") or "unknown"}):'
+    )
+    footer = (
+        "" if table["is_latest"]
+        else "\nThis is a superseded version. A later revision of this schedule exists."
+    )
+    return f'{header}\n{table.get("body") or "(no rows)"}{footer}'
 
 
 def _get_kpi_context(

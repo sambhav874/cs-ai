@@ -201,16 +201,17 @@ def test_unified_tool_surface_has_twelve_tools_and_no_retired_wrappers():
         "project_memory",
         "propose_tabular_review",
         "read_document",
+        "read_schedules",
         "remember_fact",
         "replicate_document",
         "search_evidence",
     }
 
     assert set(tools) == expected
-    assert len(tools) == 12
+    assert len(tools) == 13
     assert READ_ONLY_TOOLS == {
         "calculate_from_evidence", "get_kpi_context", "list_documents",
-        "project_memory", "read_document", "search_evidence",
+        "project_memory", "read_document", "read_schedules", "search_evidence",
     }
     assert APPROVAL_REQUIRED_TOOLS == {
         "correct_fact", "extract_kpis", "generate_tabular_review",
@@ -290,12 +291,14 @@ def test_unified_wrappers_keep_public_trace_and_translate_for_executor(
 # ── And in the prompt ─────────────────────────────────────────────────────────
 
 
-def test_prompt_tool_usage_is_four_compact_lines():
+def test_prompt_tool_usage_stays_a_short_list_of_compact_lines():
+    """A budget, not a fixed count: one line per tool family. Raise it
+    deliberately when a tool family is added, never to make room for prose."""
     prompt = system_prompt()
     usage_section = prompt.split("## Tool usage", 1)[1].split("\n## ", 1)[0]
     usage_lines = [line for line in usage_section.splitlines() if line.strip()]
 
-    assert len(usage_lines) == 4
+    assert len(usage_lines) == 5
     assert "Coverage vs retrieval" not in usage_section
     assert "outline_document" not in usage_section
     assert "find_in_document" not in usage_section

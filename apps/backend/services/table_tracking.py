@@ -514,6 +514,11 @@ def build_lineages(
             lineage["versions"].append({
                 "contract_id": contract_id,
                 "contract_name": contract_name,
+                # The signature this version actually hashed to, which is not
+                # the lineage's own once a schedule has been renamed and the
+                # rename confirmed. Without it there is no way back from a
+                # version to the table it came from.
+                "signature": signature,
                 "effective_date": effective_date,
                 "rows": table.get("rows"),
                 "cols": table.get("cols"),

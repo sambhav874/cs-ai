@@ -83,6 +83,21 @@ class ProjectMemoryInput(BaseModel):
     limit: int = Field(default=20, ge=1, le=100, description="Maximum events to return when view=events.")
 
 
+class ReadSchedulesInput(BaseModel):
+    view: Literal["list", "history", "values"] = Field(
+        default="list",
+        description="list for every tracked schedule in the project, values for a schedule's actual rates, history for what changed between versions.",
+    )
+    schedule: str = Field(
+        default="",
+        description="Which schedule, named the way it appears in the list (a partial name is fine). Required for view=values and view=history.",
+    )
+    as_of: str = Field(
+        default="",
+        description="Optional YYYY-MM-DD for view=values: read the version that was in force on that date instead of the current one.",
+    )
+
+
 class RememberFactInput(BaseModel):
     text: str = Field(default="", description="The fact to remember, stated plainly and self-contained.")
     contract_id: str = Field(default="", description="Document id the fact was taken from. Required unless the user simply told you the fact.")
@@ -384,6 +399,19 @@ def build_langchain_tools(
             executor_args={"project_id": state.context.project_id or ""},
         )
 
+    @tool("read_schedules", args_schema=ReadSchedulesInput)
+    def read_schedules(view: str = "list", schedule: str = "", as_of: str = "") -> Dict[str, Any]:
+        """Read this project's tracked rate schedules across document versions: list them, read a schedule's current or past rates, or read what changed between versions. Prefer this over searching documents for any question about what a rate is, was, or how much it moved. READ-ONLY."""
+        selected_view = str(view or "list").strip().lower()
+        if selected_view not in {"list", "history", "values"}:
+            selected_view = "list"
+        args = {
+            "view": selected_view,
+            "schedule": str(schedule or "").strip(),
+            "as_of": str(as_of or "").strip(),
+        }
+        return run_read_tool("read_schedules", args, executor_name="read_schedules", executor_args=args)
+
     @tool("remember_fact", args_schema=RememberFactInput)
     def remember_fact(
         text: str = "",
@@ -484,6 +512,7 @@ def build_langchain_tools(
         read_document,
         search_evidence,
         project_memory,
+        read_schedules,
         remember_fact,
         correct_fact,
         get_kpi_context,
