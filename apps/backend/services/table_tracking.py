@@ -291,3 +291,96 @@ def diff_against_previous(
             "changes_truncated": max(0, len(diff["changes"]) - MAX_DETAIL_ROWS),
         })
     return results
+
+
+def build_lineages(
+    documents: List[Tuple[str, str, Optional[str], List[Dict[str, Any]]]],
+) -> List[Dict[str, Any]]:
+    """Group a project's tables into per-schedule histories, oldest first.
+
+    ``documents`` is (contract_id, contract_name, effective_date, tables) in the
+    order the schedules took effect. Each returned lineage is one schedule and
+    every version of it found, with the change between consecutive versions.
+
+    Built by replaying ``diff_against_previous`` one document at a time rather
+    than matching everything at once, so the links here are exactly the links
+    recorded at ingestion — a lineage that shows a break is showing the same
+    break the events show, not a second opinion computed a different way.
+    """
+    lineages: Dict[str, Dict[str, Any]] = {}
+    history: List[Tuple[str, str, List[Dict[str, Any]]]] = []
+
+    for contract_id, contract_name, effective_date, tables in documents:
+        findings = {
+            finding["signature"]: finding
+            for finding in diff_against_previous(tables, history)
+        }
+
+        for table in tables:
+            signature = table.get("signature")
+            if not signature or not is_trackable(table.get("table_type")):
+                continue
+            finding = findings.get(signature) or {}
+            caption = table.get("caption") or (table.get("body") or "").splitlines()[0][:60]
+
+            lineage = lineages.setdefault(signature, {
+                "signature": signature,
+                "caption": caption,
+                "table_type": table.get("table_type"),
+                "versions": [],
+            })
+            # The most recent caption and label win: a schedule that gets
+            # renamed should be listed under what it is called now.
+            lineage["caption"] = caption
+            if table.get("table_type"):
+                lineage["table_type"] = table["table_type"]
+
+            lineage["versions"].append({
+                "contract_id": contract_id,
+                "contract_name": contract_name,
+                "effective_date": effective_date,
+                "rows": table.get("rows"),
+                "cols": table.get("cols"),
+                "page": table.get("page"),
+                "status": finding.get("status", "new"),
+                "summary": finding.get("summary"),
+                "severity": finding.get("severity", "info"),
+                "observed_pct": finding.get("observed_pct"),
+                "changed_rows": finding.get("changed_rows"),
+                "added_rows": finding.get("added_rows"),
+                "removed_rows": finding.get("removed_rows"),
+                "changes": finding.get("changes") or [],
+                "changes_truncated": finding.get("changes_truncated", 0),
+                "previous_contract_id": finding.get("previous_contract_id"),
+                "header_similarity": finding.get("header_similarity"),
+            })
+
+        history.append((contract_id, contract_name, tables))
+
+    results = list(lineages.values())
+    for lineage in results:
+        versions = lineage["versions"]
+        lineage["version_count"] = len(versions)
+        # Surfaced so a caller can lead with the schedules that moved rather
+        # than the ones that were reissued untouched.
+        lineage["has_changes"] = any(v["status"] == "revised" for v in versions)
+        lineage["needs_review"] = any(
+            v["severity"] == "warning" or v["status"] == "possible_match" for v in versions
+        )
+        uplifts = [v["observed_pct"] for v in versions if v.get("observed_pct") is not None]
+        if uplifts:
+            # Compounded, not summed. Successive uplifts multiply, so a card
+            # taken +3%, +3% and then back down -5.74% has returned to where it
+            # started; adding the percentages would report +0.26% and imply a
+            # rise that never happened.
+            factor = 1.0
+            for pct in uplifts:
+                factor *= 1 + pct / 100
+            lineage["total_pct"] = round((factor - 1) * 100, 2)
+        else:
+            lineage["total_pct"] = None
+        lineage["latest_effective_date"] = versions[-1]["effective_date"] if versions else None
+
+    # Schedules that need attention first, then longest history, then name.
+    results.sort(key=lambda l: (not l["needs_review"], -l["version_count"], l["caption"].lower()))
+    return results

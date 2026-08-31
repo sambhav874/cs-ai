@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Brain, History, Table2, Trash2 } from "lucide-react";
+import { AlertTriangle, Brain, GitBranch, History, Table2, Trash2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { ProjectTablesTab } from "@/components/projects/ProjectTablesTab";
+import { ProjectLineagesTab } from "@/components/projects/ProjectLineagesTab";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -99,6 +100,9 @@ export function ProjectMemoryPanel({ projectId, refreshSignal }: ProjectMemoryPa
             <TabsTrigger value="tables" className="gap-1.5 text-xs">
               <Table2 className="h-3.5 w-3.5" /> Tables
             </TabsTrigger>
+            <TabsTrigger value="lineages" className="gap-1.5 text-xs">
+              <GitBranch className="h-3.5 w-3.5" /> Schedules
+            </TabsTrigger>
             <TabsTrigger value="events" className="gap-1.5 text-xs">
               <History className="h-3.5 w-3.5" /> Events
             </TabsTrigger>
@@ -174,6 +178,11 @@ export function ProjectMemoryPanel({ projectId, refreshSignal }: ProjectMemoryPa
         {/* Tables — read-only view of what ingestion actually extracted. */}
         <TabsContent value="tables" className="m-0 p-4">
           <ProjectTablesTab projectId={projectId} />
+        </TabsContent>
+
+        {/* Schedules — each rate card and how it changed between contracts. */}
+        <TabsContent value="lineages" className="m-0 p-4">
+          <ProjectLineagesTab projectId={projectId} />
         </TabsContent>
 
         {/* Events — append-only, so there is deliberately nothing to edit here. */}

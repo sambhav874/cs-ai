@@ -174,3 +174,81 @@ class LineageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LineageBuildingTests(unittest.TestCase):
+    def _doc(self, contract_id, name, date, rows, signature="sig1"):
+        return (contract_id, name, date, [table(rows, signature=signature)])
+
+    def test_versions_are_grouped_into_one_schedule_in_date_order(self) -> None:
+        from services.table_tracking import build_lineages
+
+        [lineage] = build_lineages([
+            self._doc("c1", "A.pdf", "2022-04-01", [("GPU", "PER HOUR", "45.00 EUR")]),
+            self._doc("c2", "B.pdf", "2023-04-01", [("GPU", "PER HOUR", "49.50 EUR")]),
+            self._doc("c3", "C.pdf", "2024-04-01", [("GPU", "PER HOUR", "54.45 EUR")]),
+        ])
+        self.assertEqual(lineage["version_count"], 3)
+        self.assertEqual([v["effective_date"] for v in lineage["versions"]],
+                         ["2022-04-01", "2023-04-01", "2024-04-01"])
+        self.assertEqual([v["status"] for v in lineage["versions"]],
+                         ["new", "revised", "revised"])
+
+    def test_percentages_compound_rather_than_sum(self) -> None:
+        """+3%, +3% then back down is a return to the start, not +0.26%."""
+        from services.table_tracking import build_lineages
+
+        [lineage] = build_lineages([
+            self._doc("c1", "A.pdf", "2022-04-01", [("GPU", "PER HOUR", "100.00 EUR")]),
+            self._doc("c2", "B.pdf", "2023-04-01", [("GPU", "PER HOUR", "103.00 EUR")]),
+            self._doc("c3", "C.pdf", "2024-04-01", [("GPU", "PER HOUR", "106.09 EUR")]),
+        ])
+        self.assertEqual(lineage["total_pct"], 6.09)
+
+    def test_a_reverted_schedule_reports_no_net_change(self) -> None:
+        from services.table_tracking import build_lineages
+
+        [lineage] = build_lineages([
+            self._doc("c1", "A.pdf", "2022-04-01", [("GPU", "PER HOUR", "100.00 EUR")]),
+            self._doc("c2", "B.pdf", "2023-04-01", [("GPU", "PER HOUR", "110.00 EUR")]),
+            self._doc("c3", "C.pdf", "2024-04-01", [("GPU", "PER HOUR", "100.00 EUR")]),
+        ])
+        self.assertAlmostEqual(lineage["total_pct"], 0.0, places=1)
+
+    def test_unrelated_schedules_stay_separate(self) -> None:
+        from services.table_tracking import build_lineages
+
+        lineages = build_lineages([
+            ("c1", "A.pdf", "2022-04-01", [
+                table([("GPU", "PER HOUR", "45.00 EUR")], signature="sig-ramp", caption="RAMP"),
+                table([("DEICE", "PER LITRE", "3.00 EUR")], signature="sig-ice", caption="DE-ICING"),
+            ]),
+        ])
+        self.assertEqual(len(lineages), 2)
+        self.assertEqual({l["version_count"] for l in lineages}, {1})
+
+    def test_a_schedule_needing_review_sorts_first(self) -> None:
+        from services.table_tracking import build_lineages
+
+        lineages = build_lineages([
+            ("c1", "A.pdf", "2022-04-01", [
+                table([("GPU", "PER HOUR", "45.00 EUR")], signature="sig-a", caption="CLEAN"),
+                table([("X", "PER USE", "1.00 EUR")], signature="sig-b", caption="CHURN"),
+            ]),
+            ("c2", "B.pdf", "2023-04-01", [
+                table([("GPU", "PER HOUR", "46.35 EUR")], signature="sig-a", caption="CLEAN"),
+                table([("Y", "PER USE", "2.00 EUR")], signature="sig-b", caption="CHURN"),
+            ]),
+        ])
+        self.assertTrue(lineages[0]["needs_review"])
+        self.assertEqual(lineages[0]["caption"], "CHURN")
+
+    def test_non_trackable_kinds_never_become_a_lineage(self) -> None:
+        from services.table_tracking import build_lineages
+
+        self.assertEqual(build_lineages([
+            ("c1", "A.pdf", "2022-04-01", [
+                table([("Name", "X", "Y")], signature="sig-c", caption="Contacts",
+                      table_type="Contact & Signature"),
+            ]),
+        ]), [])
