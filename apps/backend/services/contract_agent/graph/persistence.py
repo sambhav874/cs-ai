@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from pymongo import UpdateOne
+
 from .state import AgentRunState, AgentStatus
 
 
@@ -25,6 +27,15 @@ class AgentRunStore:
             {"$set": payload},
             upsert=True,
         )
+        # One bulk write, not one round trip per trace event. A run emits a few
+        # dozen traces and each upsert was its own trip to Atlas at roughly
+        # 200ms, so saving the run took over seven seconds — and it runs after
+        # the answer is complete but before the citations are sent, which is
+        # what made sources look slow to resolve when resolving them costs 2ms.
+        #
+        # unordered: these are independent upserts keyed on distinct events, so
+        # one failure should not abandon the rest of the run's trace.
+        operations = []
         for trace in state.traces:
             event_payload = trace.model_dump(mode="json")
             event_payload["workflow_id"] = state.workflow_id
@@ -33,7 +44,11 @@ class AgentRunStore:
                 "event": trace.event,
                 "created_at": event_payload.get("created_at"),
             }
-            self.trace_events.update_one(event_key, {"$setOnInsert": event_payload}, upsert=True)
+            operations.append(
+                UpdateOne(event_key, {"$setOnInsert": event_payload}, upsert=True)
+            )
+        if operations:
+            self.trace_events.bulk_write(operations, ordered=False)
         if state.approval_request:
             approval_payload = state.approval_request.model_dump(mode="json")
             approval_payload["status"] = state.status.value

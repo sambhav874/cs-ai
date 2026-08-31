@@ -387,10 +387,19 @@ def initialize_all_indexes(db=None):
         )
 
         agent_memories = agent_db["agent_memories"]
-        _create_unique_index_safe(
+        # NOT unique. Semantic memory was changed from overwrite-per-key to
+        # append-per-record — see `remember_answer_if_durable`, and the test
+        # "writes append rather than overwrite the same key": overwriting meant
+        # a contract could remember exactly one thing about payment, and it was
+        # whichever answer came last. The unique index from the old design
+        # outlived it, so the second time anyone asked the same question the
+        # insert raised DuplicateKeyError and that memory was silently lost,
+        # visible only as a logged traceback after the answer had been sent.
+        _drop_index_safe(agent_memories, "agent_memory_contract_user_key_unique")
+        _create_index_safe(
             agent_memories,
             [("contract_id", ASCENDING), ("user_id", ASCENDING), ("memory_key", ASCENDING)],
-            "agent_memory_contract_user_key_unique"
+            "agent_memory_contract_user_key"
         )
         _create_index_safe(
             agent_memories,
@@ -705,6 +714,21 @@ def initialize_all_indexes(db=None):
     except Exception as e:
         logger.error(f"Failed to initialize database indexes: {str(e)}")
         raise
+
+def _drop_index_safe(collection, index_name):
+    """Remove an index that a later design made wrong.
+
+    Missing is the expected case on a fresh database, and on any deployment
+    where this has already run once, so it is not worth a warning.
+    """
+    try:
+        collection.drop_index(index_name)
+        logger.info("Dropped stale index %s on %s", index_name, collection.name)
+    except OperationFailure:
+        pass
+    except Exception as exc:
+        logger.warning("Could not drop index %s on %s: %s", index_name, collection.name, exc)
+
 
 def _create_index_safe(collection, keys, index_name=None):
     """
