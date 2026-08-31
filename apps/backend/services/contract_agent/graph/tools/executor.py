@@ -124,6 +124,8 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
         return _read_project_concept(state, str(tool.args.get("document_id") or ""))
     if tool.name == "read_project_events":
         return _read_project_events(state, tool.args.get("limit"))
+    if tool.name == "read_document_conflicts":
+        return _read_conflicts(state, str(tool.args.get("as_of") or ""))
     if tool.name == "read_governing_documents":
         return _read_governing_documents(state, str(tool.args.get("as_of") or ""))
     if tool.name == "read_schedules":
@@ -1345,6 +1347,52 @@ def _read_governing_documents(state: AgentRunState, as_of: str = "") -> Dict[str
     return {
         "summary": f"{len(live)} of {len(nodes)} document(s) govern as of {nodes[0]['as_of']}.",
         "snippet": render_document_graph(nodes),
+    }
+
+
+def _read_conflicts(state: AgentRunState, as_of: str = "") -> Dict[str, Any]:
+    """Documents that all still govern and disagree with each other.
+
+    Retrieval finds whichever version it ranked highest and presents it as the
+    answer. Where two live documents state a schedule differently, there is no
+    single answer to present, and saying so is the only correct response.
+    """
+    project_id = state.context.project_id
+    if not project_id:
+        return {"summary": "No project is in scope for this conversation.", "snippet": ""}
+
+    scoped_ids = [
+        str(doc_id) for doc_id in (state.context.selected_document_ids or []) if doc_id
+    ]
+    if not scoped_ids:
+        return {"summary": "No documents are in scope for this conversation.", "snippet": ""}
+
+    try:
+        from services.conflict_detection import detect_conflicts, render_conflicts
+
+        lookup_ids: List[Any] = []
+        for value in scoped_ids:
+            if ObjectId.is_valid(value):
+                lookup_ids.append(ObjectId(value))
+            lookup_ids.append(value)
+
+        conflicts = detect_conflicts(
+            project_id,
+            contract_query={"_id": {"$in": lookup_ids}},
+            links=_schedule_links_for_project(project_id),
+            as_of=as_of.strip() or None,
+        )
+    except Exception as exc:
+        return {"summary": f"Conflict check failed: {str(exc)[:300]}", "snippet": ""}
+
+    unresolved = sum(1 for c in conflicts if c["severity"] == "warning")
+    return {
+        "summary": (
+            f"{len(conflicts)} disagreement(s) between documents that all govern; "
+            f"{unresolved} need a decision."
+            if conflicts else "No live document contradicts another in this project."
+        ),
+        "snippet": render_conflicts(conflicts),
     }
 
 

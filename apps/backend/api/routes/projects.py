@@ -951,3 +951,36 @@ def get_project_document_graph(
             "spent": sum(1 for n in nodes if n["status"] == "spent"),
         },
     }
+
+
+@router.get("/{project_id}/conflicts")
+def get_project_conflicts(
+    project_id: str,
+    as_of: Optional[str] = None,
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    """Schedules stated differently by two documents that both still govern.
+
+    A revision is not a conflict — the document graph accounts for anything the
+    documents themselves say about replacing or amending each other. What is
+    left is disagreement nobody has resolved.
+    """
+    project = verify_project_access(project_id, current_user)
+
+    from services.conflict_detection import detect_conflicts
+
+    conflicts = detect_conflicts(
+        project_id,
+        contract_query=build_accessible_contract_query(project, current_user),
+        links=_schedule_links(project["_id"]),
+        as_of=as_of,
+    )
+    return {
+        "project_id": project_id,
+        "as_of": conflicts[0]["as_of"] if conflicts else as_of,
+        "conflicts": conflicts,
+        "totals": {
+            "total": len(conflicts),
+            "needs_decision": sum(1 for c in conflicts if c["severity"] == "warning"),
+        },
+    }

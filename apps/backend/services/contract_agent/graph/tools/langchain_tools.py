@@ -78,7 +78,7 @@ class SearchInput(BaseModel):
 
 
 class ProjectMemoryInput(BaseModel):
-    view: Literal["index", "document", "events", "governing"] = Field(default="index", description="Use index for the project map, document for one document overview, events for recent project activity, or governing for which documents are currently in force and which were superseded.")
+    view: Literal["index", "document", "events", "governing", "conflicts"] = Field(default="index", description="Use index for the project map, document for one document overview, events for recent project activity, governing for which documents are currently in force, or conflicts for where documents that all still govern disagree with each other.")
     document_id: str = Field(default="", description="Required only when view=document; use an ID returned by the project index.")
     limit: int = Field(default=20, ge=1, le=100, description="Maximum events to return when view=events.")
     as_of: str = Field(default="", description="Optional YYYY-MM-DD for view=governing: what governed on that date instead of today.")
@@ -376,8 +376,15 @@ def build_langchain_tools(
 
     @tool("project_memory", args_schema=ProjectMemoryInput)
     def project_memory(view: str = "index", document_id: str = "", limit: int = 20, as_of: str = "") -> Dict[str, Any]:
-        """Read the project index, one document overview, recent events, or which documents currently govern. Project memory is context, not clause evidence. READ-ONLY."""
+        """Read the project index, one document overview, recent events, which documents currently govern, or where live documents disagree. Project memory is context, not clause evidence. READ-ONLY."""
         selected_view = str(view or "index").strip().lower()
+        if selected_view == "conflicts":
+            return run_read_tool(
+                "project_memory",
+                {"view": selected_view, "as_of": str(as_of or "").strip()},
+                executor_name="read_document_conflicts",
+                executor_args={"as_of": str(as_of or "").strip()},
+            )
         if selected_view == "governing":
             return run_read_tool(
                 "project_memory",
