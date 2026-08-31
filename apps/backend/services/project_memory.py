@@ -77,6 +77,45 @@ def _clean_text(value: Any, limit: int = 2000) -> str:
     return text[:limit]
 
 
+def _parse_effective_date(value: Any) -> Optional[str]:
+    """An ISO date from whatever form a contract stated it in, or None.
+
+    The extracted value is whatever the document said — "01 April 2022",
+    "2023-04-01", "effective 1st June 2022" — so the raw string cannot be
+    ordered. Anything that needs a timeline (which revision of a schedule came
+    first) needs a comparable value, and upload order is not a substitute: it
+    reverses the moment somebody backfills an older contract.
+
+    Kept alongside the original rather than replacing it, because a date the
+    parser cannot read must not silently become nothing.
+    """
+    text = _clean_text(value, 60)
+    if not text:
+        return None
+
+    # An ISO date is already unambiguous, and day-first parsing would actively
+    # corrupt it — "2023-04-01" reads as 4 January under dayfirst. Take it as-is.
+    iso_match = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", text)
+    if iso_match:
+        try:
+            return datetime(*(int(g) for g in iso_match.groups())).date().isoformat()
+        except ValueError:
+            return None
+
+    try:
+        from dateutil import parser as date_parser
+
+        # Day-first for everything else: "01/06/2022" is June in a UK or EU
+        # contract and January in a US one, and these are IATA/European.
+        parsed = date_parser.parse(text, dayfirst=True, fuzzy=True, default=datetime(1900, 1, 1))
+    except Exception:
+        return None
+    if parsed.year < 1950 or parsed.year > 2200:
+        # Almost always a fragment like "Annex B 1.0" parsed as a year.
+        return None
+    return parsed.date().isoformat()
+
+
 
 CONCEPT_TYPE_DOCUMENT = "contract-document"
 
@@ -428,6 +467,7 @@ class ProjectMemoryManager:
                 "doc_type": _clean_text(parsed.get("doc_type"), 40) or "other",
                 "parties": [_clean_text(p, 200) for p in (parsed.get("parties") or []) if str(p).strip()][:10],
                 "effective_date": _clean_text(parsed.get("effective_date"), 60) or None,
+                "effective_from": _parse_effective_date(parsed.get("effective_date")),
                 "purpose_summary": _clean_text(parsed.get("purpose_summary"), 600),
                 "key_topics": [_clean_text(t, 60) for t in (parsed.get("key_topics") or []) if str(t).strip()][:5],
                 "related_documents": related_documents,
@@ -516,6 +556,8 @@ class ProjectMemoryManager:
             existing["parties"] = [str(p)[:200] for p in updates["parties"] if str(p).strip()][:10]
         if "effective_date" in updates:
             existing["effective_date"] = _clean_text(updates["effective_date"], 60) or None
+            # Reparse rather than leave a stale ISO value behind a corrected one.
+            existing["effective_from"] = _parse_effective_date(updates["effective_date"])
         if "purpose_summary" in updates and updates["purpose_summary"] is not None:
             existing["purpose_summary"] = _clean_text(updates["purpose_summary"], 600)
         if "key_topics" in updates and updates["key_topics"] is not None:

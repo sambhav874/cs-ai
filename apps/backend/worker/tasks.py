@@ -784,6 +784,31 @@ def _liteparse_total_pages(result: Any) -> int:
         return len(_liteparse_result_pages(result))
 
 
+def _effective_dates_for_project(project_id: str) -> Dict[str, str]:
+    """contract_id -> ISO effective date, for the documents that state one.
+
+    Extracted at ingestion into project memory. Missing entries are normal: a
+    document need not state a date, and one that does not simply falls back to
+    upload order rather than being excluded.
+    """
+    try:
+        from core.database import db as core_db
+        from services.project_memory import ProjectMemoryManager
+
+        records = ProjectMemoryManager(core_db).memories.find(
+            {"project_id": project_id, "effective_from": {"$ne": None}},
+            {"contract_id": 1, "effective_from": 1},
+        )
+        return {
+            str(r.get("contract_id")): r["effective_from"]
+            for r in records
+            if r.get("contract_id") and r.get("effective_from")
+        }
+    except Exception as exc:
+        logger.warning("Could not read effective dates for project %s: %s", project_id, exc)
+        return {}
+
+
 def _record_schedule_changes(
     *,
     contract_id: str,
@@ -816,16 +841,26 @@ def _record_schedule_changes(
             return
 
         # Oldest first: the comparison uses the most recent earlier version of
-        # each schedule, which is what "what changed" means to a reader.
-        history = []
-        for prior in collection.find(
+        # each schedule, which is what "what changed" means to a reader. Ordered
+        # by the date the contract says it takes effect, falling back to upload
+        # time — a contract uploaded late but effective early is an earlier
+        # version of the schedule, and upload order would invert it.
+        effective_dates = _effective_dates_for_project(project_id)
+        priors = list(collection.find(
             {
                 "projectId": ObjectId(project_id) if ObjectId.is_valid(project_id) else project_id,
                 "_id": {"$ne": ObjectId(contract_id) if ObjectId.is_valid(contract_id) else contract_id},
                 "index.content": {"$regex": "<!--TABLE:START"},
             },
             {"contract_name": 1, "index.content": 1, "uploaded_at": 1},
-        ).sort("uploaded_at", 1):
+        ))
+        priors.sort(key=lambda p: (
+            effective_dates.get(str(p["_id"])) or "",
+            p.get("uploaded_at") or datetime.min,
+        ))
+
+        history = []
+        for prior in priors:
             history.append((
                 str(prior["_id"]),
                 prior.get("contract_name") or "",
