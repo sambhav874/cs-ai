@@ -917,3 +917,37 @@ def get_project_dashboard_live_counts(project_id: str, current_user: UserInDB = 
         "breachesBySource": breaches_by_source,
         "dollarAtRiskOpen": dollar_at_risk_open,
     }
+
+
+@router.get("/{project_id}/document-graph")
+def get_project_document_graph(
+    project_id: str,
+    as_of: Optional[str] = None,
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    """Which documents govern the project, and which have been replaced.
+
+    ``as_of`` answers what applied on a past date rather than today, which is
+    the question anyone reconciling a historic invoice is actually asking.
+    """
+    project = verify_project_access(project_id, current_user)
+
+    from services.document_graph import build_document_graph
+
+    nodes = build_document_graph(
+        project_id,
+        contract_query=build_accessible_contract_query(project, current_user),
+        as_of=as_of,
+    )
+    live = {"in_force", "in_force_as_amended", "undated"}
+    return {
+        "project_id": project_id,
+        "as_of": nodes[0]["as_of"] if nodes else as_of,
+        "documents": nodes,
+        "totals": {
+            "documents": len(nodes),
+            "governing": sum(1 for n in nodes if n["status"] in live),
+            "superseded": sum(1 for n in nodes if n["status"] == "superseded"),
+            "spent": sum(1 for n in nodes if n["status"] == "spent"),
+        },
+    }

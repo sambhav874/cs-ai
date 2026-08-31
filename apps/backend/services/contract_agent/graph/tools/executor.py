@@ -124,6 +124,8 @@ def execute_mongo_read_tool(collection: Any, tool: ToolCallRecord, state: AgentR
         return _read_project_concept(state, str(tool.args.get("document_id") or ""))
     if tool.name == "read_project_events":
         return _read_project_events(state, tool.args.get("limit"))
+    if tool.name == "read_governing_documents":
+        return _read_governing_documents(state, str(tool.args.get("as_of") or ""))
     if tool.name == "read_schedules":
         return _read_schedules(
             state,
@@ -1294,6 +1296,56 @@ def _read_project_events(state: AgentRunState, limit: Any = None) -> Dict[str, A
         return {"summary": "Retrieved recent project events.", "snippet": rendered}
     except Exception as exc:
         return {"summary": f"Project event lookup failed: {str(exc)[:300]}", "snippet": ""}
+
+
+def _read_governing_documents(state: AgentRunState, as_of: str = "") -> Dict[str, Any]:
+    """Which documents in the project actually govern, and which were replaced.
+
+    Every document in a project stays retrievable forever, so search alone will
+    quote a superseded annex with exactly the confidence it quotes the current
+    one. This is the block that lets the model tell them apart.
+    """
+    project_id = state.context.project_id
+    if not project_id:
+        return {"summary": "No project is in scope for this conversation.", "snippet": ""}
+
+    scoped_ids = [
+        str(doc_id) for doc_id in (state.context.selected_document_ids or []) if doc_id
+    ]
+    if not scoped_ids:
+        return {"summary": "No documents are in scope for this conversation.", "snippet": ""}
+
+    try:
+        from services.document_graph import build_document_graph, render_document_graph
+
+        lookup_ids: List[Any] = []
+        for value in scoped_ids:
+            if ObjectId.is_valid(value):
+                lookup_ids.append(ObjectId(value))
+            lookup_ids.append(value)
+
+        nodes = build_document_graph(
+            project_id,
+            contract_query={"_id": {"$in": lookup_ids}},
+            as_of=as_of.strip() or None,
+        )
+    except Exception as exc:
+        return {"summary": f"Document status lookup failed: {str(exc)[:300]}", "snippet": ""}
+
+    if not nodes:
+        return {
+            "summary": "No document relationships have been recorded for this project.",
+            "snippet": (
+                "Nothing in this project states that it amends or supersedes anything "
+                "else, so every document stands on its own."
+            ),
+        }
+
+    live = [n for n in nodes if n["status"] in ("in_force", "in_force_as_amended", "undated")]
+    return {
+        "summary": f"{len(live)} of {len(nodes)} document(s) govern as of {nodes[0]['as_of']}.",
+        "snippet": render_document_graph(nodes),
+    }
 
 
 def _read_schedules(
