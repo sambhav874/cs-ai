@@ -39,6 +39,60 @@ function argChips(args: Record<string, unknown> | undefined): string[] {
   return chips;
 }
 
+// The same run reaches this component under three different event names.
+// The project panel stores the raw SSE names, the contract panel's stream hook
+// synthesizes its own, and a reloaded conversation carries what the backend
+// persisted. Normalising here rather than at each call site is what stopped
+// the two panels from needing two renderers — and drifting once they had them.
+type Step =
+  | { kind: "call"; tool: string; args: Record<string, unknown> }
+  | { kind: "observation"; tool: string; summary: string; failed: boolean }
+  | { kind: "thought"; thought: string }
+  | { kind: "memory"; detail: Record<string, unknown> };
+
+const FAILED_STATUSES = new Set(["error", "failed", "rejected", "denied"]);
+
+function toStep(event: { event?: string; detail?: any }): Step | null {
+  const name = event.event || "";
+  const detail = (event.detail ?? {}) as Record<string, any>;
+
+  const isCall =
+    (name === "react_model_step" && detail.action === "tool") ||
+    (name === "model_step" && detail.action === "tool_call") ||
+    name === "tool_call";
+  if (isCall) {
+    return {
+      kind: "call",
+      tool: String(detail.tool || detail.name || "tool"),
+      args: (detail.args ?? detail.input ?? {}) as Record<string, unknown>,
+    };
+  }
+
+  if (name === "react_tool_observation" || name === "tool_result") {
+    const summary = String(detail.summary || detail.result_summary || "").trim();
+    if (!summary) return null;
+    return {
+      kind: "observation",
+      tool: String(detail.tool || detail.name || ""),
+      summary,
+      // A failed call that renders like a successful one is how a user comes to
+      // believe an answer rests on evidence the agent never actually got.
+      failed: FAILED_STATUSES.has(String(detail.status || "").toLowerCase()),
+    };
+  }
+
+  if (name === "react_thought") {
+    const thought = String(detail.thought || "").trim();
+    return thought ? { kind: "thought", thought } : null;
+  }
+
+  if (name === "react_memory_recalled") {
+    return { kind: "memory", detail };
+  }
+
+  return null;
+}
+
 function argProse(args: Record<string, unknown> | undefined): string | null {
   if (!args) return null;
   for (const key of PROSE_ARGS) {
@@ -59,7 +113,11 @@ export function ActivityLog({
   const events = traceEventsFromData(message.agentTrace);
   const visibleEvents = events.filter((event) => {
     const name = event.event || "";
-    if (["input_guard", "context_resolver", "persist_run", "final_response", "tool_result", "tool_start", "verify_answer"].includes(name)) return false;
+    // "tool_result" is NOT filtered here any more. It is the project panel's
+    // name for an observation, and dropping it left that panel showing calls
+    // with no results at all — and, worse, no failures, since a failed call is
+    // only ever reported on the result.
+    if (["input_guard", "context_resolver", "persist_run", "final_response", "tool_start", "verify_answer"].includes(name)) return false;
     const detail = event.detail as any;
     if (name.startsWith("middleware:") && String(detail?.decision) !== "deny" && String(detail?.decision) !== "reject") return false;
     return true;
@@ -69,6 +127,20 @@ export function ActivityLog({
   const isExpanded = traceExpanded || isRunning;
   const tokenUsage = message.tokenUsage as any;
 
+  // A collapsed panel that says only "Steps" tells the reader nothing about
+  // whether the answer came from four tools or from none, so the one fact
+  // worth having at a glance is shown without expanding. A failure is named
+  // here too — the collapsed state is exactly where a user would otherwise
+  // never learn a tool call did not succeed.
+  const steps = visibleEvents.map(toStep).filter(Boolean) as Step[];
+  const callCount = steps.filter((step) => step.kind === "call").length;
+  const failedCount = steps.filter(
+    (step) => step.kind === "observation" && step.failed
+  ).length;
+  const summaryBits: string[] = [];
+  if (callCount) summaryBits.push(`${callCount} ${callCount === 1 ? "tool" : "tools"}`);
+  if (failedCount) summaryBits.push(`${failedCount} failed`);
+
   return (
     <div className="flex flex-col gap-0 select-none">
       <button
@@ -77,6 +149,13 @@ export function ActivityLog({
         className="flex items-center gap-1.5 text-[11px] text-black/40 hover:text-black/60 transition-colors w-fit"
       >
         <span className="italic">Steps</span>
+        {summaryBits.length > 0 && (
+          <span
+            className={`not-italic ${failedCount ? "text-red-600/70" : "text-black/35"}`}
+          >
+            {summaryBits.join(" · ")}
+          </span>
+        )}
         {tokenUsage && (
           <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-black/5 px-1.5 py-0.5 text-[9px] text-black/35 font-normal not-italic">
             {(tokenUsage.total_tokens || (tokenUsage.input_tokens + tokenUsage.output_tokens)).toLocaleString()} tok
@@ -99,27 +178,18 @@ export function ActivityLog({
             className="px-3 py-2 space-y-2 font-mono text-[11px] text-black/60 max-h-52 overflow-y-auto"
             style={{ scrollbarWidth: "none" }}
           >
-            {visibleEvents.map((event, eventIdx) => {
-              const detail = event.detail as any;
-              // "react_model_step" is what the live stream synthesizes;
-              // "model_step" is what the run persists. A reloaded conversation
-              // showed no calls at all until both were handled here.
-              const isCall =
-                (event.event === "react_model_step" && detail?.action === "tool") ||
-                (event.event === "model_step" && detail?.action === "tool_call");
-              if (isCall) {
-                const name = detail?.tool || "tool";
-                const args = (detail?.args ?? {}) as Record<string, unknown>;
-                const chips = argChips(args);
-                const prose = argProse(args);
+            {steps.map((step, stepIdx) => {
+              if (step.kind === "call") {
+                const chips = argChips(step.args);
+                const prose = argProse(step.args);
                 return (
-                  <div key={eventIdx} className="flex items-start gap-2">
+                  <div key={stepIdx} className="flex items-start gap-2">
                     <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider bg-black/8 text-black/50 px-1.5 py-0.5 rounded">
                       call
                     </span>
                     <div className="flex flex-col gap-0.5 min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-semibold text-black/75">{name}</span>
+                        <span className="font-semibold text-black/75">{step.tool}</span>
                         {chips.map((chip) => (
                           <span
                             key={chip}
@@ -138,69 +208,75 @@ export function ActivityLog({
                   </div>
                 );
               }
-              if (event.event === "react_tool_observation") {
-                const summary = detail?.summary || null;
-                return summary ? (
-                  <div key={eventIdx} className="flex items-start gap-2 pl-2">
-                    <span className="text-black/30 font-bold mt-0.5">↳</span>
-                    <span
-                      className="text-black/40 italic break-words line-clamp-2 flex-1"
-                      title={summary}
-                    >
-                      {summary}
-                    </span>
-                  </div>
-                ) : null;
-              }
-              if (event.event === "react_thought") {
-                const thought = detail?.thought || "";
-                return thought ? (
-                  <div
-                    key={eventIdx}
-                    className="text-black/30 italic break-words line-clamp-2 pl-2"
-                    title={thought}
-                  >
-                    Thinking: {thought}
-                  </div>
-                ) : null;
-              }
-              if (event.event === "react_memory_recalled") {
-                const blocks = Array.isArray(detail?.blocks) ? detail.blocks : [];
-                if (!blocks.length) return null;
+
+              if (step.kind === "observation") {
                 return (
-                  <div key={eventIdx} className="flex items-start gap-2">
-                    <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider bg-black/8 text-black/50 px-1.5 py-0.5 rounded">
-                      memory
+                  <div key={stepIdx} className="flex items-start gap-2 pl-2">
+                    <span
+                      className={`font-bold mt-0.5 ${step.failed ? "text-red-500/70" : "text-black/30"}`}
+                    >
+                      {step.failed ? "×" : "↳"}
                     </span>
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <span className="text-black/45">
-                        Recalled {blocks.length} {blocks.length === 1 ? "item" : "items"}
-                        {typeof detail?.total_chars === "number" && typeof detail?.budget_chars === "number"
-                          ? ` · ${detail.total_chars.toLocaleString()}/${detail.budget_chars.toLocaleString()} chars`
-                          : ""}
-                      </span>
-                      {blocks.map((block: any) => (
-                        <div key={block.name} className="flex items-start gap-1.5 pl-2">
-                          <span className="text-black/30 font-bold mt-0.5">↳</span>
-                          <div className="min-w-0">
-                            <span className="text-black/50">
-                              <span className="uppercase text-[9px] font-semibold text-black/40">{block.tier}</span>{" "}
-                              {block.heading}
-                              {block.truncated ? <span className="text-amber-600"> (truncated)</span> : null}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                      {Array.isArray(detail?.dropped) && detail.dropped.length ? (
-                        <span className="pl-2 text-black/30 break-words">
-                          Dropped for budget: {detail.dropped.join(", ")}
-                        </span>
-                      ) : null}
-                    </div>
+                    <span
+                      className={`italic break-words line-clamp-2 flex-1 ${
+                        step.failed ? "text-red-700/70 not-italic" : "text-black/40"
+                      }`}
+                      title={step.summary}
+                    >
+                      {step.failed ? "failed — " : ""}
+                      {step.summary}
+                    </span>
                   </div>
                 );
               }
-              return null;
+
+              if (step.kind === "thought") {
+                return (
+                  <div
+                    key={stepIdx}
+                    className="text-black/30 italic break-words line-clamp-2 pl-2"
+                    title={step.thought}
+                  >
+                    Thinking: {step.thought}
+                  </div>
+                );
+              }
+
+              const detail = step.detail as any;
+              const blocks = Array.isArray(detail?.blocks) ? detail.blocks : [];
+              if (!blocks.length) return null;
+              return (
+                <div key={stepIdx} className="flex items-start gap-2">
+                  <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider bg-black/8 text-black/50 px-1.5 py-0.5 rounded">
+                    memory
+                  </span>
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <span className="text-black/45">
+                      Recalled {blocks.length} {blocks.length === 1 ? "item" : "items"}
+                      {typeof detail?.total_chars === "number" && typeof detail?.budget_chars === "number"
+                        ? ` · ${detail.total_chars.toLocaleString()}/${detail.budget_chars.toLocaleString()} chars`
+                        : ""}
+                    </span>
+                    {blocks.map((block: any) => (
+                      <div key={block.name} className="flex items-start gap-1.5 pl-2">
+                        <span className="text-black/30 font-bold mt-0.5">↳</span>
+                        <div className="min-w-0">
+                          <span className="text-black/50">
+                            <span className="uppercase text-[9px] font-semibold text-black/40">{block.tier}</span>{" "}
+                            {block.heading}
+                            {block.truncated ? <span className="text-amber-600"> (truncated)</span> : null}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    {Array.isArray(detail?.dropped) && detail.dropped.length ? (
+                      <span className="pl-2 text-black/30 break-words">
+                        Dropped for budget: {detail.dropped.join(", ")}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              );
             })}
           </div>
         </div>

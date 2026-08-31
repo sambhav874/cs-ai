@@ -128,6 +128,8 @@ export type AgentMessage = {
   tokenUsage?: AgentTokenUsage | null;
   costUsd?: number | null;
   currentThinking?: string;
+  /** Latest progress line the run reported, e.g. "Reading rate schedules…". */
+  currentStatus?: string;
   durationMs?: number;
   /** Canned demo content, not model output. Renders a badge; never claims verification. */
   isDemo?: boolean;

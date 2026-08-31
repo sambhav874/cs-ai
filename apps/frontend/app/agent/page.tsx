@@ -48,6 +48,7 @@ import dynamic from "next/dynamic";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ThinkingDisplay } from "@/components/ThinkingDisplay";
+import { ActivityLog } from "@/components/agent/ActivityLog";
 
 const PDFViewerDynamic = dynamic(
   () => import("@/components/PDFViewer/Sample"),
@@ -403,6 +404,15 @@ export default function StandaloneAgentPage() {
   // Chat conversation state
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [isThinking, setIsThinking] = useState(false);
+  // The most recent status the run reported, e.g. "Reading rate schedules…".
+  // Read off the newest agent message so it survives re-renders without a
+  // second source of truth.
+  // Only the message currently being written. Scanning back through the list
+  // would show the previous run's last status during the gap before this run
+  // reports its first — the one moment the line most needs to be honest.
+  const liveStatus = String(
+    (messages[messages.length - 1] as any)?.currentStatus || ""
+  ).trim();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [inputText, setInputText] = useState("");
   const [expandedMessageIds, setExpandedMessageIds] = useState<Record<string, boolean>>({});
@@ -634,6 +644,7 @@ export default function StandaloneAgentPage() {
         current.map((msg) => {
           if (msg.id !== agentMessageId) return msg;
           const currentTrace = Array.isArray(msg.agentTrace) ? [...msg.agentTrace] : [];
+          let currentStatus = (msg as any).currentStatus as string | undefined;
 
           if (eventName === "thinking") {
             const isRedacted = message === "<thinking redacted>";
@@ -669,7 +680,14 @@ export default function StandaloneAgentPage() {
               eventName === "status" ? "react_model_step" : eventName,
             detail: traceDetail,
           });
-          return { ...msg, agentTrace: currentTrace };
+          // The latest status drives the waiting line. A spinner that always
+          // says "Thinking" cannot distinguish a run that is working from one
+          // that is stuck, and naming the step is the cheapest thing that
+          // makes a long wait tolerable.
+          if (eventName === "status" && message) {
+            currentStatus = message;
+          }
+          return { ...msg, agentTrace: currentTrace, currentStatus };
         })
       );
       return;
@@ -1196,8 +1214,12 @@ export default function StandaloneAgentPage() {
                 {isThinking && (
                   <div className="flex items-center justify-center gap-4 animate-message-up">
                     <div className="flex flex-col gap-0.5 text-left">
-                      <span className="text-sm font-medium text-black/60">Thinking</span>
-                      <span className="text-xs text-black/30">Analyzing contracts and preparing response</span>
+                      <span className="text-sm font-medium text-black/60">
+                        {liveStatus || "Thinking"}
+                      </span>
+                      <span className="text-xs text-black/30">
+                        {liveStatus ? "Working on your question" : "Analyzing contracts and preparing response"}
+                      </span>
                     </div>
                     <div className="h-5 w-5 rounded-full border-2 border-black/10 border-t-black/40 animate-spin flex-shrink-0" />
                   </div>
@@ -1241,78 +1263,18 @@ export default function StandaloneAgentPage() {
                               defaultExpanded={false}
                             />
 
-                            {/* ── Tool call trace — collapsible, shown only after thinking is done ── */}
-                            {msg.agentTrace?.some(e => e.event === "tool_call" || e.event === "react_thought") && (
-                              <div className="flex flex-col gap-0">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleMessageTrace(msg.id)}
-                                  className="flex items-center gap-1.5 text-[11px] text-black/40 hover:text-black/60 transition-colors w-fit"
-                                >
-                                  <span className="italic">Steps</span>
-                                  {msg.tokenUsage && (
-                                    <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-black/5 px-1.5 py-0.5 text-[9px] text-black/35 font-normal not-italic">
-                                      {(msg.tokenUsage.total_tokens || (msg.tokenUsage.input_tokens + msg.tokenUsage.output_tokens)).toLocaleString()} tok
-                                      {msg.tokenUsage.reasoning_tokens
-                                        ? ` · ${msg.tokenUsage.reasoning_tokens.toLocaleString()} reasoning`
-                                        : ""}
-                                      {msg.costUsd && msg.costUsd > 0
-                                        ? ` · $${msg.costUsd < 0.001 ? "<0.001" : msg.costUsd.toFixed(4)}`
-                                        : ""}
-                                    </span>
-                                  )}
-                                  <ChevronDown
-                                    className={`h-3 w-3 transition-transform duration-200 ${expandedMessageIds[msg.id] ? "rotate-180" : ""
-                                      }`}
-                                  />
-                                </button>
-
-                                {expandedMessageIds[msg.id] && (
-                                  <div className="mt-2 rounded-xl bg-black/[0.015] overflow-hidden animate-content-in">
-                                    <div
-                                      className="px-3 py-2 space-y-2 font-mono text-[11px] text-black/60 max-h-52 overflow-y-auto"
-                                      style={{ scrollbarWidth: "none" }}
-                                    >
-                                      {msg.agentTrace.map((event, eventIdx) => {
-                                        if (event.event === "tool_call") {
-                                          const name = event.detail?.name || "tool";
-                                          const args = event.detail?.args ?? event.detail?.input ?? event.detail;
-                                          const query =
-                                            typeof args?.query === "string"
-                                              ? args.query
-                                              : typeof args?.document_ids !== "undefined"
-                                                ? `${(args.document_ids as any[]).length} doc(s)`
-                                                : null;
-                                          return (
-                                            <div key={eventIdx} className="flex items-start gap-2">
-                                              <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider bg-black/8 text-black/50 px-1.5 py-0.5 rounded">
-                                                call
-                                              </span>
-                                              <div className="flex flex-col gap-0.5 min-w-0">
-                                                <span className="font-semibold text-black/75">{name}</span>
-                                                {query && (
-                                                  <span className="text-black/45 truncate max-w-xs">{query}</span>
-                                                )}
-                                              </div>
-                                            </div>
-                                          );
-                                        }
-                                        if (event.event === "tool_result") {
-                                          const summary = event.detail?.summary || event.detail?.result_summary || null;
-                                          return summary ? (
-                                            <div key={eventIdx} className="flex items-start gap-2 pl-2">
-                                              <span className="text-black/30 font-bold mt-0.5">↳</span>
-                                              <span className="text-black/40 italic truncate max-w-xs">{summary}</span>
-                                            </div>
-                                          ) : null;
-                                        }
-                                        return null;
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                            {/* One renderer for both panels. This page used to
+                                carry its own copy, which meant every fix to the
+                                steps panel had to be made twice and silently
+                                applied to one of them — arguments, wrapping and
+                                the persisted-trace event name were all fixed in
+                                ActivityLog while this panel kept the old bugs. */}
+                            <ActivityLog
+                              message={msg as any}
+                              isRunning={isThinking && !msg.content}
+                              traceExpanded={Boolean(expandedMessageIds[msg.id])}
+                              onToggleTraceExpanded={() => toggleMessageTrace(msg.id)}
+                            />
                           </div>
                         )}
 

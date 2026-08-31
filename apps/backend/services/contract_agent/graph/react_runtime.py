@@ -17,7 +17,7 @@ import json
 import logging
 import os
 import re
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from langchain_core.messages import (
     BaseMessage,
@@ -95,6 +95,45 @@ def _synthesis_turn_enabled(provider: str) -> bool:
         return True
     return normalized in {item.strip() for item in configured.split(",") if item.strip()}
 
+
+
+# What each tool is doing, in the words someone waiting would use. Keyed on the
+# tool and, where one tool does several different jobs, on the view it was asked
+# for — "checking the rate schedules against the contract" and "reading a rate
+# card" are the same tool and not the same wait.
+_TOOL_STATUS: Dict[str, str] = {
+    "search_evidence": "Searching the documents",
+    "read_document": "Reading a document",
+    "list_documents": "Listing the documents in scope",
+    "calculate_from_evidence": "Checking the arithmetic",
+    "get_kpi_context": "Reading tracked KPIs",
+    "project_memory": "Reading project memory",
+    "read_schedules": "Reading rate schedules",
+    "remember_fact": "Preparing a fact to save",
+    "correct_fact": "Preparing a correction",
+    "extract_kpis": "Drafting KPI candidates",
+    "propose_tabular_review": "Preparing a tabular review",
+    "generate_tabular_review": "Filling in the review",
+    "replicate_document": "Preparing to copy a document",
+}
+
+_VIEW_STATUS: Dict[Tuple[str, str], str] = {
+    ("project_memory", "governing"): "Working out which documents still govern",
+    ("project_memory", "conflicts"): "Checking whether the documents disagree",
+    ("project_memory", "events"): "Reading the project history",
+    ("project_memory", "index"): "Reading the project index",
+    ("read_schedules", "values"): "Reading the rates themselves",
+    ("read_schedules", "history"): "Reading how the rates changed",
+    ("read_schedules", "escalation"): "Checking the rises against the contract",
+}
+
+
+def _tool_status_message(name: str, args: Dict[str, Any]) -> str:
+    view = str((args or {}).get("view") or "").strip().lower()
+    specific = _VIEW_STATUS.get((name, view))
+    if specific:
+        return f"{specific}…"
+    return f"{_TOOL_STATUS.get(name, f'Running {name}')}…"
 
 
 class ContractReActRuntime:
@@ -502,6 +541,14 @@ class ContractReActRuntime:
 
             if on_event:
                 on_event("tool_call", {"name": name, "args": args, "iteration": iteration})
+                # A named progress line, not a spinner. A user watching
+                # "Thinking…" for eight seconds cannot tell a working run from
+                # a stuck one; "Reading rate schedules…" is the same wait and a
+                # different experience.
+                on_event(
+                    "status",
+                    {"message": _tool_status_message(name, args), "iteration": iteration},
+                )
 
             # Reject forbidden / unknown tools
             if name in FORBIDDEN_TOOL_NAMES or name.startswith("send_") or name not in tools_by_name:
