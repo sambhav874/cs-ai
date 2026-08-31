@@ -101,6 +101,11 @@ def _synthesis_turn_enabled(provider: str) -> bool:
 # tool and, where one tool does several different jobs, on the view it was asked
 # for — "checking the rate schedules against the contract" and "reading a rate
 # card" are the same tool and not the same wait.
+# Text is held until a turn has written this much, so a tool-calling turn's
+# stray "Let me check…" never reaches the transcript only to be replaced.
+_STREAM_COMMIT_CHARS = 24
+
+
 _TOOL_STATUS: Dict[str, str] = {
     "search_evidence": "Searching the documents",
     "read_document": "Reading a document",
@@ -168,6 +173,8 @@ class ContractReActRuntime:
         )
         self.max_iterations = self._config_max_iterations
         self.approvals = ApprovalManager()
+        # Characters of the current turn's answer already sent to the client.
+        self._streamed_answer_chars = 0
 
     # ── Public entry point ─────────────────────────────────────────────────
 
@@ -273,7 +280,9 @@ class ContractReActRuntime:
                 messages_count=len(messages),
             )
 
-            response = self._invoke_tool_call(tool_model, messages, state)
+            response = self._invoke_tool_call(
+                tool_model, messages, state, on_event=on_event, iteration=iteration
+            )
             state.react_iterations = max(state.react_iterations, iteration)
 
             _log_agent_turn(
@@ -376,7 +385,10 @@ class ContractReActRuntime:
             # _message_text correctly strips thinking blocks from Claude responses
             answer = _message_text(response).strip()
             if answer:
-                if on_event:
+                # Only when the turn was not streamed. Sending it again after
+                # the client has already been given it word by word would
+                # duplicate the whole answer on screen.
+                if on_event and not getattr(self, "_streamed_answer_chars", 0):
                     on_event("delta", {"text": answer, "iteration": iteration})
                 state.add_trace(
                     "model_step",
@@ -451,11 +463,110 @@ class ContractReActRuntime:
             "Keep internal identifiers private. Add sources only when they are needed or requested."
         )
 
-    def _invoke_tool_call(self, tool_model: Any, messages: list, state: "AgentRunState") -> Any:
+    def _invoke_tool_call(
+        self,
+        tool_model: Any,
+        messages: list,
+        state: "AgentRunState",
+        *,
+        on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+        iteration: int = 1,
+    ) -> Any:
+        """One model turn, streamed when the provider allows it.
+
+        This call has to be able to come back either way — as tool calls, or as
+        the final answer — which is why it used `invoke()` and why the answer
+        arrived as a single chunk after the model had finished writing all of
+        it. Streaming here forwards the answer as it is written, and costs
+        nothing when the turn turns out to be a tool call: a tool-calling turn
+        emits little or no text, and what it does emit is held back until the
+        turn proves to be an answer.
+
+        Falls back to `invoke()` whenever streaming is unavailable or fails, so
+        a provider that cannot stream a tool-bound call still works — it just
+        gets the old behaviour.
+        """
         state.model_calls += 1
+        self._streamed_answer_chars = 0
+        streamed = self._stream_tool_call(tool_model, messages, state, on_event, iteration)
+        if streamed is not None:
+            return streamed
         response = tool_model.invoke(messages)
         self._add_token_usage_from_message(state, response)
         return response
+
+    def _stream_tool_call(
+        self,
+        tool_model: Any,
+        messages: list,
+        state: "AgentRunState",
+        on_event: Optional[Callable[[str, Dict[str, Any]], None]],
+        iteration: int,
+    ) -> Any:
+        """Stream one tool-bound turn, or return None to fall back to invoke().
+
+        Text is buffered until the turn has produced enough of it to be an
+        answer rather than the stray prose a model sometimes emits alongside a
+        tool call. Emitting eagerly would put "Let me check the schedules." in
+        the transcript and then replace it, which reads as the agent changing
+        its mind.
+        """
+        if not hasattr(tool_model, "stream"):
+            return None
+
+        aggregate = None
+        emitted = 0
+        buffered: List[str] = []
+        try:
+            for chunk in tool_model.stream(messages):
+                aggregate = chunk if aggregate is None else aggregate + chunk
+                self._add_token_usage_from_message(state, chunk)
+
+                if not on_event:
+                    continue
+                # A turn that has started calling tools is not writing an
+                # answer; anything it says alongside the call is not the reply.
+                if getattr(aggregate, "tool_calls", None) or getattr(
+                    aggregate, "tool_call_chunks", None
+                ):
+                    buffered.clear()
+                    emitted = -1
+                    continue
+                if emitted < 0:
+                    continue
+
+                text = _message_text(chunk)
+                if not text:
+                    continue
+                buffered.append(text)
+                pending = "".join(buffered)
+                if emitted == 0 and len(pending) < _STREAM_COMMIT_CHARS:
+                    continue
+                on_event("delta", {"text": pending, "iteration": iteration})
+                emitted += len(pending)
+                buffered.clear()
+        except Exception as exc:
+            # Known provider limitations on streaming a tool-bound call. The
+            # run must not fail over a delivery detail, and nothing has been
+            # sent to the client unless text was already committed.
+            logger.warning("Streaming tool call failed (%s); falling back to invoke()", exc)
+            if emitted > 0:
+                # Text is already on the client's screen. Re-running the turn
+                # would duplicate it, so keep what the stream produced.
+                return aggregate
+            return None
+
+        if aggregate is None:
+            return None
+        if on_event and emitted >= 0 and buffered:
+            on_event("delta", {"text": "".join(buffered), "iteration": iteration})
+            emitted += len("".join(buffered))
+        # How much of this turn's text the client already has. The loop below
+        # emits the final answer as one delta for the non-streaming path, and
+        # would otherwise send it a second time on top of what was streamed.
+        # One runtime per run (see runner.run), so this is not shared state.
+        self._streamed_answer_chars = max(0, emitted)
+        return aggregate
 
     def _stream_text_response(
         self,
