@@ -130,7 +130,9 @@ export function ActivityLog({
                         ))}
                       </span>
                       {prose && (
-                        <span className="text-black/45 break-words line-clamp-2">{prose}</span>
+                        <span className="text-black/45 break-words line-clamp-2" title={prose}>
+                          {prose}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -141,7 +143,10 @@ export function ActivityLog({
                 return summary ? (
                   <div key={eventIdx} className="flex items-start gap-2 pl-2">
                     <span className="text-black/30 font-bold mt-0.5">↳</span>
-                    <span className="text-black/40 italic break-words line-clamp-2 flex-1">
+                    <span
+                      className="text-black/40 italic break-words line-clamp-2 flex-1"
+                      title={summary}
+                    >
                       {summary}
                     </span>
                   </div>
@@ -150,7 +155,11 @@ export function ActivityLog({
               if (event.event === "react_thought") {
                 const thought = detail?.thought || "";
                 return thought ? (
-                  <div key={eventIdx} className="text-black/30 italic break-words line-clamp-2 pl-2">
+                  <div
+                    key={eventIdx}
+                    className="text-black/30 italic break-words line-clamp-2 pl-2"
+                    title={thought}
+                  >
                     Thinking: {thought}
                   </div>
                 ) : null;
