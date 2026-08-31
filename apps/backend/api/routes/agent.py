@@ -1306,6 +1306,7 @@ def _load_indexed_project_documents(
     current_user: UserInDB,
     reference_contract_ids: Optional[List[str]] = None,
     include_content: bool = True,
+    project_doc: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Every indexed, accessible document in the project.
 
@@ -1317,7 +1318,11 @@ def _load_indexed_project_documents(
     needs the ids was otherwise pulling the full text of every contract in the
     project out of Mongo on every message.
     """
-    project_doc = verify_project_access(project_id, current_user)
+    # `project_doc` lets a caller that has already verified access pass the
+    # project through. Re-checking costs a round trip and cannot reach a
+    # different answer within one request.
+    if project_doc is None:
+        project_doc = verify_project_access(project_id, current_user)
     project_query = build_accessible_contract_query(project_doc, current_user)
     project_filters: List[Dict[str, Any]] = [
         project_query,
@@ -2662,20 +2667,6 @@ def stream_project_agent(
         title_seed=request.message,
     )
     session_id = session["session_id"]
-    memory.append_message(
-        session_id=session_id,
-        contract_id=project_scope_id,
-        user_id=user_id_text,
-        role="user",
-        content=request.message.strip(),
-        metadata={
-            "ai_provider": request.ai_provider,
-            "reference_contract_ids": request.reference_contract_ids or [],
-            "displayed_document": request.displayed_document,
-            "attached_documents": request.attached_documents or [],
-            "scope": "project",
-        },
-    )
     memory_scope = MemoryScope(
         user_id=user_id_text,
         question=request.message.strip(),
@@ -2696,6 +2687,25 @@ def stream_project_agent(
             yield format_sse_event("session", {"session_id": session_id})
             yield format_sse_event("status", {"message": "reading the project"})
 
+            # Recording the user's turn is four round trips and nothing before
+            # the first byte needs it — only the memory composition below does,
+            # and that runs after. Ahead of the response it was a second of
+            # blank panel.
+            memory.append_message(
+                session_id=session_id,
+                contract_id=project_scope_id,
+                user_id=user_id_text,
+                role="user",
+                content=request.message.strip(),
+                metadata={
+                    "ai_provider": request.ai_provider,
+                    "reference_contract_ids": request.reference_contract_ids or [],
+                    "displayed_document": request.displayed_document,
+                    "attached_documents": request.attached_documents or [],
+                    "scope": "project",
+                },
+            )
+
             # Ids only. The deep agent reads document bodies through its own tools,
             # which load them per document as they are actually needed
             # (`_load_scoped_documents`), so pulling every body here was work whose
@@ -2705,6 +2715,7 @@ def stream_project_agent(
                 current_user=current_user,
                 reference_contract_ids=request.reference_contract_ids,
                 include_content=False,
+                project_doc=project_doc,
             )
             project_contract_ids = [str(document["_id"]) for document in project_documents]
 

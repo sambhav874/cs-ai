@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
@@ -388,9 +389,17 @@ class MemoryComposer:
         would put a second scope check in the codebase (F-09's exact shape).
         The composer owns where it ranks and what it costs, not how it is read.
         """
-        blocks: List[MemoryBlock] = []
-        blocks.extend(self._session_blocks(scope))
-        blocks.extend(self._project_blocks(scope))
+        # Conversation memory and project memory share no data and are ordered
+        # afterwards by priority, so which finishes first does not matter.
+        # Sequentially they cost the sum of two independent sets of queries.
+        sources = self._gather({
+            "session blocks": lambda: self._session_blocks(scope),
+            "project blocks": lambda: self._project_blocks(scope),
+        })
+        blocks: List[MemoryBlock] = [
+            *(sources.get("session blocks") or []),
+            *(sources.get("project blocks") or []),
+        ]
         if kpi_context.strip():
             blocks.append(
                 MemoryBlock(
@@ -452,7 +461,23 @@ class MemoryComposer:
         if not session:
             return []
 
-        recent = self._safe(lambda: self._recent_turns(scope), "recent turns") or []
+        # Recent turns, past episodes and semantic recall come from three
+        # different collections and none depends on the others.
+        fetched = self._gather({
+            "recent turns": lambda: self._recent_turns(scope),
+            "run episodes": lambda: manager.recent_episodes(
+                contract_id=scope.contract_id,
+                user_id=scope.user_id,
+                exclude_session_id=scope.session_id,
+            ),
+            "semantic recall": lambda: manager._semantic_memories(
+                contract_id=scope.contract_id,
+                user_id=scope.user_id,
+                question=scope.question,
+            ),
+        })
+
+        recent = fetched.get("recent turns") or []
         if recent:
             blocks.append(recent_turns_block(recent))
 
@@ -469,14 +494,7 @@ class MemoryComposer:
                 )
             )
 
-        episodes = self._safe(
-            lambda: manager.recent_episodes(
-                contract_id=scope.contract_id,
-                user_id=scope.user_id,
-                exclude_session_id=scope.session_id,
-            ),
-            "run episodes",
-        ) or []
+        episodes = fetched.get("run episodes") or []
         if episodes:
             blocks.append(
                 MemoryBlock(
@@ -493,14 +511,7 @@ class MemoryComposer:
                 )
             )
 
-        recalled = self._safe(
-            lambda: manager._semantic_memories(
-                contract_id=scope.contract_id,
-                user_id=scope.user_id,
-                question=scope.question,
-            ),
-            "semantic recall",
-        ) or []
+        recalled = fetched.get("semantic recall") or []
         if recalled:
             lines = [
                 "- {key}: {content}{flag}".format(
@@ -560,7 +571,16 @@ class MemoryComposer:
             return []
 
         blocks: List[MemoryBlock] = []
-        index = self._safe(lambda: manager.render_index(scope.project_id), "project index")
+        # Index, facts and notes live in three collections and none feeds the
+        # others. Rendering the facts needs the fact list, so that pair stays
+        # together inside one call rather than becoming two round trips.
+        fetched = self._gather({
+            "project index": lambda: manager.render_index(scope.project_id),
+            "project facts": lambda: self._facts_with_rendering(manager, scope.project_id),
+            "project notes": lambda: manager.get_notes(scope.project_id),
+        })
+
+        index = fetched.get("project index")
         # Matched on the renderer's own prefix rather than sniffing for its
         # "no documents" / "no project in scope" sentinels. Substring-matching
         # those would also reject a real index whose first document happens to
@@ -588,13 +608,8 @@ class MemoryComposer:
                 )
             )
 
-        facts = self._safe(lambda: manager.list_facts(scope.project_id), "project facts") or []
+        facts, rendered = fetched.get("project facts") or ([], None)
         if facts:
-            # The facts are already in hand; rendering them must not fetch them
-            # again. Callers that have not fetched can still omit the argument.
-            rendered = self._safe(
-                lambda: manager.render_facts(scope.project_id, facts), "render facts"
-            )
             if rendered:
                 needs_review = sum(1 for fact in facts if fact.get("needs_review"))
                 provenance = "project facts · recorded on request, each with its source"
@@ -611,7 +626,7 @@ class MemoryComposer:
                     )
                 )
 
-        notes = self._safe(lambda: manager.get_notes(scope.project_id), "project notes") or {}
+        notes = fetched.get("project notes") or {}
         note_text = str(notes.get("content") or "").strip()
         if note_text:
             blocks.append(
@@ -733,6 +748,48 @@ class MemoryComposer:
         return kept, dropped
 
     # ---------------------------------------------------------------- helpers
+
+    @staticmethod
+    def _facts_with_rendering(manager: Any, project_id: str):
+        """The fact list and its rendering from one read.
+
+        `render_facts` would otherwise fetch the list a second time, and the
+        composer needs both the objects (to count what needs review) and the
+        rendered text.
+        """
+        facts = manager.list_facts(project_id)
+        if not facts:
+            return [], None
+        return facts, manager.render_facts(project_id, facts)
+
+    def _gather(self, calls: Dict[str, Any]) -> Dict[str, Any]:
+        """Run independent reads at the same time instead of one after another.
+
+        Every source here is a separate Mongo collection and none of them feed
+        each other, but they were read in sequence — and against Atlas a round
+        trip costs about 200ms whatever it returns, so composing memory took as
+        long as the sum of six unrelated queries. Run together it costs as long
+        as the slowest one.
+
+        Each call keeps `_safe` semantics: a source that fails returns None and
+        the rest of the memory is still composed, which is the property that
+        makes a memory outage degrade an answer rather than fail a run.
+        """
+        if not calls:
+            return {}
+        if len(calls) == 1:
+            key, call = next(iter(calls.items()))
+            return {key: self._safe(call, key)}
+
+        results: Dict[str, Any] = {}
+        with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+            futures = {
+                pool.submit(self._safe, call, what): what
+                for what, call in calls.items()
+            }
+            for future in futures:
+                results[futures[future]] = future.result()
+        return results
 
     @staticmethod
     def _safe(call, what: str):
