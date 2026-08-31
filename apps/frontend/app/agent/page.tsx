@@ -1225,7 +1225,11 @@ export default function StandaloneAgentPage() {
                     ) : (
                       <div className="flex flex-col gap-3">
                         {/* Collapsible Agent Trace */}
-                        {(msg.currentThinking || msg._hasRedactedThinking || msg.agentTrace?.length) && (
+                        {/* Boolean(), not the raw length. `agentTrace?.length`
+                            is 0 for a message whose run produced no trace, and
+                            React renders 0 as the text "0" — a bare digit
+                            appeared in the transcript where the answer belongs. */}
+                        {Boolean(msg.currentThinking || msg._hasRedactedThinking || msg.agentTrace?.length) && (
                           <div className="flex flex-col gap-2 select-none">
 
                             {/* ── Thinking panel — uses the new component ── */}

@@ -492,6 +492,12 @@ class ContractReActRuntime:
             state.add_trace(
                 "model_step", iteration=iteration, action="tool_call",
                 tool=name or None, reason_summary="Model selected a tool call.",
+                # The arguments are what make one call distinguishable from
+                # another. Two reads of the same tool with different views are
+                # the same line without them, and the persisted trace is what a
+                # reloaded conversation renders — the live stream already sends
+                # these to the client, so this is the same data, not more of it.
+                args=args,
             )
 
             if on_event:

@@ -10,6 +10,46 @@ export interface ActivityLogProps {
   onToggleTraceExpanded: () => void;
 }
 
+// Arguments that tell one call apart from another, in the order they matter.
+// `read_schedules(view=values)` and `read_schedules(view=history)` are the same
+// line without these, and so are the four views of project_memory.
+const DISTINGUISHING_ARGS = [
+  "view",
+  "mode",
+  "schedule",
+  "as_of",
+  "document_id",
+  "section_ref",
+  "target_project_id",
+];
+
+// Rendered on their own line rather than as a chip: these carry the user's own
+// words and are worth reading in full.
+const PROSE_ARGS = ["query", "exact", "text", "instructions"];
+
+function argChips(args: Record<string, unknown> | undefined): string[] {
+  if (!args) return [];
+  const chips: string[] = [];
+  for (const key of DISTINGUISHING_ARGS) {
+    const value = args[key];
+    if (value === undefined || value === null || value === "") continue;
+    const text = String(value);
+    chips.push(`${key}=${text.length > 40 ? `${text.slice(0, 39)}…` : text}`);
+  }
+  return chips;
+}
+
+function argProse(args: Record<string, unknown> | undefined): string | null {
+  if (!args) return null;
+  for (const key of PROSE_ARGS) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  const queries = args["queries"];
+  if (Array.isArray(queries) && queries.length) return queries.map(String).join(" · ");
+  return null;
+}
+
 export function ActivityLog({
   message,
   isRunning = false,
@@ -61,19 +101,36 @@ export function ActivityLog({
           >
             {visibleEvents.map((event, eventIdx) => {
               const detail = event.detail as any;
-              if (event.event === "react_model_step" && detail?.action === "tool") {
+              // "react_model_step" is what the live stream synthesizes;
+              // "model_step" is what the run persists. A reloaded conversation
+              // showed no calls at all until both were handled here.
+              const isCall =
+                (event.event === "react_model_step" && detail?.action === "tool") ||
+                (event.event === "model_step" && detail?.action === "tool_call");
+              if (isCall) {
                 const name = detail?.tool || "tool";
-                const args = detail?.args ?? detail;
-                const query = typeof args?.query === "string" ? args.query : null;
+                const args = (detail?.args ?? {}) as Record<string, unknown>;
+                const chips = argChips(args);
+                const prose = argProse(args);
                 return (
                   <div key={eventIdx} className="flex items-start gap-2">
                     <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider bg-black/8 text-black/50 px-1.5 py-0.5 rounded">
                       call
                     </span>
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      <span className="font-semibold text-black/75">{name}</span>
-                      {query && (
-                        <span className="text-black/45 truncate max-w-xs">{query}</span>
+                    <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-semibold text-black/75">{name}</span>
+                        {chips.map((chip) => (
+                          <span
+                            key={chip}
+                            className="rounded bg-black/[0.06] px-1 py-px text-[10px] text-black/50"
+                          >
+                            {chip}
+                          </span>
+                        ))}
+                      </span>
+                      {prose && (
+                        <span className="text-black/45 break-words line-clamp-2">{prose}</span>
                       )}
                     </div>
                   </div>
@@ -84,14 +141,16 @@ export function ActivityLog({
                 return summary ? (
                   <div key={eventIdx} className="flex items-start gap-2 pl-2">
                     <span className="text-black/30 font-bold mt-0.5">↳</span>
-                    <span className="text-black/40 italic truncate max-w-xs">{summary}</span>
+                    <span className="text-black/40 italic break-words line-clamp-2 flex-1">
+                      {summary}
+                    </span>
                   </div>
                 ) : null;
               }
               if (event.event === "react_thought") {
                 const thought = detail?.thought || "";
                 return thought ? (
-                  <div key={eventIdx} className="text-black/30 italic truncate max-w-xs pl-2">
+                  <div key={eventIdx} className="text-black/30 italic break-words line-clamp-2 pl-2">
                     Thinking: {thought}
                   </div>
                 ) : null;
@@ -124,7 +183,7 @@ export function ActivityLog({
                         </div>
                       ))}
                       {Array.isArray(detail?.dropped) && detail.dropped.length ? (
-                        <span className="pl-2 text-black/30 truncate max-w-xs">
+                        <span className="pl-2 text-black/30 break-words">
                           Dropped for budget: {detail.dropped.join(", ")}
                         </span>
                       ) : null}

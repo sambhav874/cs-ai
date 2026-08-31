@@ -99,7 +99,11 @@ function AgentMessageRowComponent({
       {message.role === "agent" ? (
         <div className="flex flex-col gap-3 w-full">
           {/* Collapsible Agent Trace / Thinking */}
-          {(message.currentThinking || message.agentTrace) && (
+          {/* Length, not the array: `agentTrace` is [] for a message with no
+              trace, which is truthy, so this rendered an empty panel. Wrapped
+              in Boolean() for the same reason line 1232 of the agent page is —
+              a bare 0 otherwise reaches the transcript. */}
+          {Boolean(message.currentThinking || message.agentTrace?.length) && (
             <div className="flex flex-col gap-2 select-none">
               <ThinkingDisplay
                 thinking={message.currentThinking}
