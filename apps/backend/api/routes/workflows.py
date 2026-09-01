@@ -47,6 +47,51 @@ def _roles_for(contract: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Roles that apply to this contract, its project's defaults included."""
     return effective_roles_for_contract(contract, projects_collection)
 
+
+def _notify_role_holder(
+    user_oid: Optional[ObjectId],
+    *,
+    subject: str,
+    headline: str,
+    body: str,
+    contract: Optional[Dict[str, Any]] = None,
+    contract_id: Optional[str] = None,
+) -> None:
+    """Email whoever now has to act. Never let this break the transition.
+
+    A queued notification failing is an annoyance; an approval rolling back
+    because an email failed is a bug the user cannot work around.
+    """
+    if not isinstance(user_oid, ObjectId) or users_collection is None:
+        return
+    try:
+        user = users_collection.find_one({"_id": user_oid}, {"email": 1, "username": 1})
+        recipient = (user or {}).get("email")
+        if not recipient:
+            logger.info("No email on file for user %s; skipping workflow notification.", user_oid)
+            return
+
+        # No dedicated frontend-URL setting exists; the first allowed origin is
+        # the app the user actually browses.
+        action_url = None
+        origins = str(getattr(settings, "allowed_origins", "") or "")
+        first_origin = next((o.strip() for o in origins.split(",") if o.strip()), None)
+        if first_origin and contract_id:
+            action_url = f"{first_origin.rstrip('/')}/contracts/{contract_id}"
+
+        from worker.tasks import send_workflow_notification_task
+
+        send_workflow_notification_task.delay(
+            recipient_email=recipient,
+            subject=subject,
+            headline=headline,
+            body=body,
+            contract_name=(contract or {}).get("contract_name"),
+            action_url=action_url,
+        )
+    except Exception as exc:  # broker down, task import failure, anything
+        logger.warning("Could not queue workflow notification for %s: %s", user_oid, exc)
+
 # Forward reference / local function definitions if needed, or import get_contract from contracts.py
 # Since we need to return get_contract(...) in some routes, we can import it from api.routes.contracts
 from api.routes.contracts import get_contract
@@ -700,6 +745,15 @@ async def submit_contract_for_approval(
             }
         )
 
+        _notify_role_holder(
+            _roles_for(contract_before_submit)["approverUserId"],
+            subject="A contract is waiting for your approval",
+            headline="Waiting for your approval",
+            body=f"{current_user.username} submitted this contract for approval.",
+            contract=contract_before_submit,
+            contract_id=contract_id,
+        )
+
         logger.info(f"Contract {contract_id} successfully submitted for approval by user {user_id_str}.")
         
 
@@ -855,6 +909,15 @@ async def approve_contract(
         )
         # --- End Audit Log ---
 
+        _notify_role_holder(
+            _roles_for(contract_before)["editorUserId"],
+            subject="Your contract was approved",
+            headline="Approved",
+            body=f"{current_user.username} approved this contract.",
+            contract=contract_before,
+            contract_id=contract_id,
+        )
+
         logger.info(f"Contract {contract_id} successfully approved by user {current_user.id} ({current_user.username}).")
         
         # Return updated contract state (get_contract is async)
@@ -970,6 +1033,18 @@ async def reject_contract(
                 "newStatus": new_status_after,
                 "rejectionReason": request.reason 
             }
+        )
+
+        _notify_role_holder(
+            _roles_for(contract_before_reject)["editorUserId"],
+            subject="A contract was returned to you",
+            headline="Returned for changes",
+            body=(
+                f"{current_user.username} rejected this contract.\n\n"
+                f"Reason: {request.reason or 'No reason given.'}"
+            ),
+            contract=contract_before_reject,
+            contract_id=contract_id,
         )
 
         logger.info(f"Contract {contract_id} successfully rejected by user {user_id_str}.")
@@ -1200,6 +1275,19 @@ async def request_reedit_contract(
             account_id_override=owner_id_obj if owner_type == "team" else None,
             details=audit_details
         )
+        if new_status_after == "Pending Re-edit Approval":
+            _notify_role_holder(
+                _roles_for(contract_before)["approverUserId"],
+                subject="A re-edit request is waiting for you",
+                headline="Re-edit requested",
+                body=(
+                    f"{current_user.username} asked to reopen this approved contract.\n\n"
+                    f"Reason: {request.reason}"
+                ),
+                contract=contract_before,
+                contract_id=contract_id,
+            )
+
         logger.info(f"Contract {contract_id} re-edit request processed. New status: {new_status_after}")
         
         return await get_contract(contract_id=contract_id, current_user=current_user)
@@ -1265,6 +1353,15 @@ async def approve_reedit_request(
             details={"oldStatus": "Pending Re-edit Approval", "newStatus": "Editing"}
         )
         
+        _notify_role_holder(
+            _roles_for(contract_before)["editorUserId"],
+            subject="Your re-edit request was approved",
+            headline="Reopened for editing",
+            body=f"{current_user.username} approved your request to reopen this contract.",
+            contract=contract_before,
+            contract_id=contract_id,
+        )
+
         logger.info(f"Re-edit request for {contract_id} approved by {current_user.id}.")
         return await get_contract(contract_id=contract_id, current_user=current_user)
     except Exception as e:
@@ -1336,6 +1433,18 @@ async def deny_reedit_request(
             }
         )
         
+        _notify_role_holder(
+            _roles_for(contract_before)["editorUserId"],
+            subject="Your re-edit request was denied",
+            headline="Re-edit denied",
+            body=(
+                f"{current_user.username} denied your request to reopen this contract.\n\n"
+                f"Reason: {request.reason}"
+            ),
+            contract=contract_before,
+            contract_id=contract_id,
+        )
+
         logger.info(f"Re-edit request for {contract_id} denied by {current_user.id}. New status: {new_status_after}")
         return await get_contract(contract_id=contract_id, current_user=current_user)
     except Exception as e:
