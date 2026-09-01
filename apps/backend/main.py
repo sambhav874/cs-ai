@@ -241,9 +241,12 @@ async def startup_event():
 
     # Initialize Celery app (now using Azure Blob Storage backend)
     try:
-        if celery_app: 
-            # Verify Celery broker connection
-            celery_app.control.ping()
+        # An unreachable broker makes this ping hang rather than fail, and the
+        # app never finishes starting — the API is down because a queue is,
+        # which is not a trade the API should make. Bounded, and skipped
+        # entirely for a test/sandbox run that has no worker.
+        if celery_app and not settings.testing:
+            celery_app.control.ping(timeout=2.0)
             logger.info("Celery app initialized and broker is responsive.")
             
             # You might want to verify blob storage connectivity here if needed

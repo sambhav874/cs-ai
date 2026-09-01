@@ -27,6 +27,7 @@ from api.dependencies import (
     get_current_user_from_ticket_or_session,
     check_contract_access,
 )
+from core.cache import cache
 from utils.audit_logger import create_audit_log
 from services.workflow_roles import (
     effective_roles_for_contract,
@@ -37,6 +38,19 @@ from services.workflow_roles import (
 logger = logging.getLogger(__name__)
 
 workflows_router = APIRouter()
+
+
+def _forget_cached_contract(contract_id: str) -> None:
+    """Drop the cached contract document after a transition.
+
+    get_contract caches for five minutes. Without this, approving a contract
+    leaves every reader — the UI included — looking at the previous status
+    until the entry expires, so the action appears to have done nothing.
+    """
+    try:
+        cache.delete(f"contract:doc:{contract_id}")
+    except Exception as exc:  # a cache that is down must not fail the workflow
+        logger.warning("Could not invalidate cached contract %s: %s", contract_id, exc)
 
 
 def _roles_for(contract: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -484,6 +498,7 @@ async def submit_contract_for_approval(
         
 
         # 5. Return updated contract state
+        _forget_cached_contract(contract_id)
         return get_contract(contract_id=contract_id, current_user=current_user)
 
     except HTTPException as he:
@@ -647,6 +662,7 @@ async def approve_contract(
         logger.info(f"Contract {contract_id} successfully approved by user {current_user.id} ({current_user.username}).")
         
         # Return updated contract state (get_contract is async)
+        _forget_cached_contract(contract_id)
         return get_contract(contract_id=contract_id, current_user=current_user)
 
     except HTTPException as he:
@@ -776,6 +792,7 @@ async def reject_contract(
         logger.info(f"Contract {contract_id} successfully rejected by user {user_id_str}.")
 
         # 5. Return updated contract state
+        _forget_cached_contract(contract_id)
         return get_contract(contract_id=contract_id, current_user=current_user)
 
     except HTTPException as he:
@@ -866,6 +883,7 @@ async def complete_personal_contract(
         )
 
         logger.info(f"Personal contract {contract_id} marked as completed by user {current_user.id}")
+        _forget_cached_contract(contract_id)
         return get_contract(contract_id=contract_id, current_user=current_user)
 
     except HTTPException:
@@ -993,6 +1011,7 @@ async def request_reedit_contract(
 
         logger.info(f"Contract {contract_id} re-edit request processed. New status: {new_status_after}")
         
+        _forget_cached_contract(contract_id)
         return get_contract(contract_id=contract_id, current_user=current_user)
     except Exception as e:
         logger.exception(f"Error processing re-edit request for contract {contract_id}: {e}")
@@ -1066,6 +1085,7 @@ async def approve_reedit_request(
         )
 
         logger.info(f"Re-edit request for {contract_id} approved by {current_user.id}.")
+        _forget_cached_contract(contract_id)
         return get_contract(contract_id=contract_id, current_user=current_user)
     except Exception as e:
         logger.exception(f"Error approving re-edit for contract {contract_id}: {e}")
@@ -1149,6 +1169,7 @@ async def deny_reedit_request(
         )
 
         logger.info(f"Re-edit request for {contract_id} denied by {current_user.id}. New status: {new_status_after}")
+        _forget_cached_contract(contract_id)
         return get_contract(contract_id=contract_id, current_user=current_user)
     except Exception as e:
         logger.exception(f"Error denying re-edit for contract {contract_id}: {e}")
@@ -1184,6 +1205,7 @@ async def acknowledge_reedit_denial(
     if contract_before.get("status") != "Re-edit Denied":
         # If it's already Ingested, we don't need to do anything. Just return the contract.
         if contract_before.get("status") in ["Approved", "Completed", "Ingested"]:
+            _forget_cached_contract(contract_id)
             return get_contract(contract_id=contract_id, current_user=current_user)
         raise HTTPException(status_code=400, detail="This contract is not in a 'Re-edit Denied' state.")
 
@@ -1200,6 +1222,7 @@ async def acknowledge_reedit_denial(
         details={"oldStatus": "Re-edit Denied", "newStatus": "Approved"}
     )
     
+    _forget_cached_contract(contract_id)
     return get_contract(contract_id=contract_id, current_user=current_user)
 
 

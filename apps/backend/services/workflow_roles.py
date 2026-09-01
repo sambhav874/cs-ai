@@ -19,7 +19,18 @@ APPROVER_KEY = "approverUserId"
 
 
 def _clean(value: Any) -> Optional[ObjectId]:
-    return value if isinstance(value, ObjectId) else None
+    """Normalise a stored role id.
+
+    Contracts arrive either straight from Mongo, where these are ObjectIds, or
+    out of the response cache, where they have been through JSON and are
+    strings. Treating a cached string as "no role assigned" silently unassigns
+    everyone the moment a contract is cached.
+    """
+    if isinstance(value, ObjectId):
+        return value
+    if isinstance(value, str) and ObjectId.is_valid(value):
+        return ObjectId(value)
+    return None
 
 
 def resolve_workflow_roles(

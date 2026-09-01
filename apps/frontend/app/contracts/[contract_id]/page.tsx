@@ -1907,8 +1907,8 @@ export default function ContractView() {
   const canEdit = useMemo(() => {
     if (!contract || !currentUserId) return false;
     const currentStatus = contract?.status;
-    const editableStatusesForEditor = ["Ready to Edit", "Editing", "Rejected"];
-    const editableStatusesForPersonal = ["Ready to Edit", "Editing"];
+    const editableStatusesForEditor = ["Ingested", "Ready to Edit", "Editing", "Rejected"];
+    const editableStatusesForPersonal = ["Ingested", "Ready to Edit", "Editing"];
 
     if (isAssignedEditor && editableStatusesForEditor.includes(currentStatus || '')) {
       return true;
@@ -1922,7 +1922,12 @@ export default function ContractView() {
   const canSubmit = useMemo(() => {
     if (!contract || !currentUserId || isPersonalDoc) return false;
 
-    const allowedStatuses = ["Ready to Edit", "Editing", "Rejected"];
+    // "Ingested" is where a contract sits once the worker finishes it, and
+    // where the editor picks it up — the backend has always accepted a submit
+    // from there, but this list did not, so the Submit button never appeared
+    // on a freshly ingested contract. "Ready to Edit" is legacy: nothing has
+    // ever written it.
+    const allowedStatuses = ["Ingested", "Ready to Edit", "Editing", "Rejected"];
     if (!allowedStatuses.includes(contractStatus || '')) return false;
     if (!assignedApproverId) return false;
 
