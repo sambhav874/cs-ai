@@ -755,7 +755,7 @@ def update_contract_kpi(
 
 
 @kpis_router.post("/contracts/{contract_id}/kpis/{kpi_id}/certify")
-def certify_contract_kpi(
+async def certify_contract_kpi(
     contract_id: str,
     kpi_id: str,
     request: KPICertificationRequest = KPICertificationRequest(),
@@ -766,10 +766,13 @@ def certify_contract_kpi(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid contract ID format.")
 
-    contract = collection.find_one({"_id": contract_oid}, {"_id": 1, "ownerType": 1, "ownerId": 1})
+    contract = collection.find_one(
+        {"_id": contract_oid},
+        {"_id": 1, "ownerType": 1, "ownerId": 1, "contract_name": 1},
+    )
     check_contract_access(contract, current_user)
     try:
-        return _kpi_manager().certify_kpi(
+        result = _kpi_manager().certify_kpi(
             contract_id=contract_id,
             kpi_id=kpi_id,
             status=request.status,
@@ -778,6 +781,23 @@ def certify_contract_kpi(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+    # Certification is the claim a finance or legal reader leans on. It left no
+    # trail at all before this.
+    await create_audit_log(
+        user=current_user,
+        action="KPI_GOVERNANCE_STATUS_CHANGED",
+        contract_id=contract_oid,
+        contract_name_override=(contract or {}).get("contract_name"),
+        account_id_override=(contract or {}).get("ownerId") if (contract or {}).get("ownerType") == "team" else None,
+        details={
+            "kpiId": kpi_id,
+            "newGovernanceStatus": result.get("governance_status"),
+            "governanceVersion": result.get("governance_version"),
+            "notes": request.notes,
+        },
+    )
+    return result
 
 
 @kpis_router.get("/contracts/{contract_id}/kpis/{kpi_id}/history")

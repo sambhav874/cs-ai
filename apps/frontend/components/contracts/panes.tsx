@@ -4953,6 +4953,7 @@ export function getStatusBadgeClass(status: string | undefined): string {
     case "Editing": return "bg-zinc-100 text-zinc-800 border border-zinc-300";
     case "Pending Approval": return "bg-amber-100 text-amber-800 border border-amber-300";
     case "Rejected": return "bg-red-100 text-red-800 border border-red-300";
+    case "Approved":
     case "Completed": return "bg-green-100 text-green-800 border border-green-300";
     default: return "bg-gray-100 text-muted-foreground border border-gray-300";
   }
@@ -4968,6 +4969,7 @@ export function getStatusIcon(status: string | undefined): React.ReactNode {
     case "Editing": return <ClipboardEdit className="h-3 w-3 mr-1 inline-block" />;
     case "Pending Approval": return <Search className="h-3 w-3 mr-1 inline-block" />;
     case "Rejected": return <ClipboardX className="h-3 w-3 mr-1 inline-block" />;
+    case "Approved":
     case "Completed": return <ClipboardCheck className="h-3 w-3 mr-1 inline-block" />;
     default: return <Clock className="h-3 w-3 mr-1 inline-block" />;
   }

@@ -56,6 +56,9 @@ export function getProcessingLabel(doc: DocumentWithProgress) {
   if (doc.status === "Ready to Edit" || doc.status === "Summarized" || doc.status === "Indexed" || doc.status === "Ingested" || doc.status === "Completed") {
     return "Ingested";
   }
+  if (doc.status === "Approved") {
+    return "Approved";
+  }
   if (
     doc.status === "queued" ||
     doc.status === "pending" ||
@@ -88,6 +91,8 @@ export function statusClass(status: string) {
       return "bg-sky-50 text-sky-700 border-sky-200";
     case "Editing":
       return "bg-indigo-50 text-indigo-700 border-indigo-200";
+    case "Approved":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
     case "Pending Approval":
     case "Pending Your Approval":
       return "bg-purple-50 text-purple-700 border-purple-200";

@@ -2030,7 +2030,8 @@ export default function ContractView() {
   }, [currentUserId, contractStatus, isContractOwner, contract]);
 
   const canRequestReEdit = useMemo(() => {
-    if (!contract || !currentUserId || contract.status !== "Completed") return false;
+    // "Completed" is legacy — documents from older releases still carry it.
+    if (!contract || !currentUserId || !["Approved", "Completed"].includes(contract.status || "")) return false;
     // For personal docs, the owner can always request.
     if (isContractOwner) return true;
     // For team docs, only the assigned editor can request.
@@ -2066,7 +2067,7 @@ export default function ContractView() {
   const displayStatus = useMemo(() => {
     if (!contractStatus) return "Unknown";
     if (isPersonalDoc) {
-      if (contractStatus === "Completed") return "Completed";
+      if (contractStatus === "Approved" || contractStatus === "Completed") return "Completed";
       if (["Ready to Edit", "Editing"].includes(contractStatus)) return "Ready";
       if (["Indexing", "Summarizing", "Processing"].includes(contractStatus)) return "Processing";
       if (contractStatus === "Uploaded") return "Uploaded";

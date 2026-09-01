@@ -118,7 +118,7 @@ def _project_stats(project: Dict[str, Any], current_user: UserInDB) -> Dict[str,
                 "editing_count": {"$sum": {"$cond": [{"$eq": ["$status", "Editing"]}, 1, 0]}},
                 "pending_approval_count": {"$sum": {"$cond": [{"$eq": ["$status", "Pending Approval"]}, 1, 0]}},
                 "rejected_count": {"$sum": {"$cond": [{"$eq": ["$status", "Rejected"]}, 1, 0]}},
-                "completed_count": {"$sum": {"$cond": [{"$in": ["$status", ["Completed", "Ingested"]]}, 1, 0]}},
+                "completed_count": {"$sum": {"$cond": [{"$in": ["$status", ["Approved", "Completed", "Ingested"]]}, 1, 0]}},
                 "error_count": {
                     "$sum": {
                         "$cond": [

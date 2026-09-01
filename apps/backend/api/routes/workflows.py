@@ -172,6 +172,33 @@ async def assign_workflow_roles(
     old_editor_id_obj = old_workflow_roles_from_db.get("editorUserId")
     old_approver_id_obj = old_workflow_roles_from_db.get("approverUserId")
 
+    # One person cannot both edit and approve the same contract. A request may
+    # set only one of the two roles, so the check is against the pair that will
+    # exist after this update, not against what the request happens to carry.
+    effective_editor_oid = (
+        update_payload["workflowRoles.editorUserId"]
+        if "workflowRoles.editorUserId" in update_payload
+        else old_editor_id_obj
+    )
+    effective_approver_oid = (
+        update_payload["workflowRoles.approverUserId"]
+        if "workflowRoles.approverUserId" in update_payload
+        else old_approver_id_obj
+    )
+    if (
+        effective_editor_oid is not None
+        and effective_approver_oid is not None
+        and effective_editor_oid == effective_approver_oid
+    ):
+        logger.warning(
+            "Role assignment rejected for contract %s: user %s would hold both Editor and Approver.",
+            contract_id, effective_editor_oid,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="The same user cannot be both Editor and Approver on a contract. Assign a different approver.",
+        )
+
     # 5. Update the Contract Document
     try:
         if not update_payload: # No roles were specified in the request to change
@@ -698,6 +725,7 @@ async def approve_contract(
             "ownerId": 1, # This is an ObjectId in the DB
             "status": 1,
             "workflowRoles.approverUserId": 1,
+            "submittedBy": 1, # Needed to keep a submitter from approving their own work
             "contract_name": 1 # Important for audit log
         }
     )
@@ -738,13 +766,33 @@ async def approve_contract(
 
     if not can_approve: # Fallback check
          raise HTTPException(status_code=403, detail="Permission denied to approve this contract.")
+
+    # Approving your own submission is not a review. The assigned approver is
+    # blocked outright; the account owner may still do it — a small team can be
+    # one person — but the override is named in the audit trail rather than
+    # passing as an ordinary approval.
+    submitted_by_oid = contract_before.get("submittedBy")
+    is_self_approval = (
+        submitted_by_oid is not None and submitted_by_oid == user_id_obj_for_comparison
+    )
+    if is_self_approval and not is_owner_of_team_contract:
+        logger.warning(
+            "Approve denied for contract %s: user %s submitted it and cannot approve it.",
+            contract_id, current_user.id,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="You submitted this contract for approval. Someone else must approve it.",
+        )
     # --- End Permission Check ---
 
     # Update Database
     try:
         now = datetime.utcnow()
-        new_status_after = "Ingested"
-        
+        # A terminal state of its own. Writing "Ingested" here made an approved
+        # contract indistinguishable from one the OCR worker had just finished.
+        new_status_after = "Approved"
+
         update_payload = {
             "status": new_status_after,
             "approvedOrRejectedBy": user_id_obj_for_comparison, # Store ObjectId
@@ -773,7 +821,7 @@ async def approve_contract(
         # Call the imported async function
         await create_audit_log(
             user=current_user, # Pass the UserInDB object
-            action="CONTRACT_APPROVED",
+            action="SELF_APPROVAL_OVERRIDE" if is_self_approval else "CONTRACT_APPROVED",
             contract_id=contract_oid, # Pass ObjectId
             contract_name_override=contract_before.get("contract_name"), # Pass fetched name
             account_id_override=audit_account_id, # Pass ObjectId if team doc
@@ -781,6 +829,7 @@ async def approve_contract(
             details={
                 "oldStatus": current_status_before,
                 "newStatus": new_status_after,
+                "selfApproval": is_self_approval,
                 # Add any other relevant details, e.g., version if applicable
             }
         )
@@ -972,7 +1021,7 @@ async def complete_personal_contract(
     try:
         now = datetime.utcnow()
         update_payload = {
-            "status": "Ingested",
+            "status": "Approved",
             "updatedAt": now
         }
 
@@ -1012,7 +1061,7 @@ async def complete_personal_contract(
             contract_name_override=contract_before.get("contract_name"),
             details={
                 "oldStatus": current_status,
-                "newStatus": "Completed",
+                "newStatus": "Approved",
                 "updatedDraftReport": latest_version_with_report is not None
             }
         )
@@ -1057,7 +1106,10 @@ async def request_reedit_contract(
 
     # 1. Permission and Status Check
     current_status_before = contract_before.get("status")
-    if current_status_before != "Completed":
+    # "Completed" is legacy: no code path writes it any more, but documents from
+    # older releases still carry it, and they must stay re-editable.
+    reeditable_statuses = ("Approved", "Completed")
+    if current_status_before not in reeditable_statuses:
         logger.warning(f"Re-edit request denied for {contract_id}: Invalid status '{current_status_before}'.")
         raise HTTPException(status_code=400, detail=f"Cannot request re-edit on a contract with status '{current_status_before}'.")
 
@@ -1083,7 +1135,7 @@ async def request_reedit_contract(
         update_payload["$unset"] = {"reEditRequest": ""}
         
         audit_action = "REEDIT_BYPASSED_APPROVAL"
-        audit_details = {"oldStatus": "Completed", "newStatus": new_status_after, "reason": request.reason}
+        audit_details = {"oldStatus": current_status_before, "newStatus": new_status_after, "reason": request.reason}
 
     # --- TEAM (Pro) WORKFLOW ---
     elif owner_type == "team":
@@ -1107,7 +1159,7 @@ async def request_reedit_contract(
             }
         }
         audit_action = "REEDIT_REQUESTED"
-        audit_details = {"oldStatus": "Completed", "newStatus": new_status_after, "reason": request.reason}
+        audit_details = {"oldStatus": current_status_before, "newStatus": new_status_after, "reason": request.reason}
     
     else:
         raise HTTPException(status_code=500, detail="Invalid owner type found on contract.")
@@ -1298,21 +1350,21 @@ async def acknowledge_reedit_denial(
     # Status Check: Must be in the correct state.
     if contract_before.get("status") != "Re-edit Denied":
         # If it's already Ingested, we don't need to do anything. Just return the contract.
-        if contract_before.get("status") in ["Completed", "Ingested"]:
+        if contract_before.get("status") in ["Approved", "Completed", "Ingested"]:
             return await get_contract(contract_id=contract_id, current_user=current_user)
         raise HTTPException(status_code=400, detail="This contract is not in a 'Re-edit Denied' state.")
 
     # Update the status to 'Ingested'
     collection.update_one(
         {"_id": contract_oid},
-        {"$set": {"status": "Ingested", "updatedAt": datetime.utcnow()}}
+        {"$set": {"status": "Approved", "updatedAt": datetime.utcnow()}}
     )
     
     await create_audit_log(
         user=current_user,
         action="REEDIT_DENIAL_ACKNOWLEDGED",
         contract_id=contract_oid,
-        details={"oldStatus": "Re-edit Denied", "newStatus": "Ingested"}
+        details={"oldStatus": "Re-edit Denied", "newStatus": "Approved"}
     )
     
     return await get_contract(contract_id=contract_id, current_user=current_user)

@@ -96,6 +96,7 @@ export const ContractExplorer = memo(function ContractExplorer({
                 ) : (
                   <span className={cx("inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium", 
                     displayStatus === "Uploaded" || displayStatus === "Submitted" ? "bg-muted text-muted-foreground border-border" : 
+                    displayStatus === "Approved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
                     displayStatus === "Ready to Edit" || displayStatus === "Ingested" || displayStatus === "Indexed" ? "bg-sky-50 text-sky-700 border-sky-200" :
                     displayStatus === "Editing" ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
                     displayStatus === "Pending Approval" || displayStatus === "Pending Your Approval" ? "bg-purple-50 text-purple-700 border-purple-200" :

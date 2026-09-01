@@ -516,6 +516,18 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
     ) {
       return "Processing";
     }
+    // Workflow states are the point of the workflow — collapsing them all to
+    // "Ingested" hid where a contract actually stood.
+    if (
+      rawStatus === "Editing" ||
+      rawStatus === "Pending Approval" ||
+      rawStatus === "Approved" ||
+      rawStatus === "Rejected" ||
+      rawStatus === "Pending Re-edit Approval" ||
+      rawStatus === "Re-edit Denied"
+    ) {
+      return rawStatus;
+    }
     return "Ingested";
   }, []);
 
