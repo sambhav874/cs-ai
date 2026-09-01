@@ -112,6 +112,19 @@ class FakeCollection:
     def count_documents(self, query):
         return len([d for d in self.docs if _matches(d, query)])
 
+    def bulk_write(self, operations, ordered=False):
+        # pymongo's UpdateMany/UpdateOne carry the filter and update document on
+        # ``_filter``/``_doc``; replaying them through update_many keeps this fake
+        # honest without reimplementing the operator set twice.
+        matched = 0
+        for operation in operations or []:
+            query = getattr(operation, "_filter", None)
+            update = getattr(operation, "_doc", None)
+            if query is None or update is None:
+                continue
+            matched += self.update_many(query, update).matched_count
+        return MagicMock(matched_count=matched, modified_count=matched)
+
 
 class FakeDB:
     def __init__(self):

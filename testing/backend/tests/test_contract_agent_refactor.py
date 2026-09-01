@@ -242,7 +242,7 @@ def test_answer_agent_question_runs_bounded_tool_loop_before_synthesis(monkeypat
     rag = rag_without_init()
     monkeypatch.setattr(
         react_runtime,
-        "_build_chat_model",
+        "build_chat_model",
         lambda _state: ToolCallingFakeModel(responses=[
             AIMessage(content="", tool_calls=[
                 {"name": "search_evidence", "args": {"query": "termination written notice"}, "id": "call-search"}
