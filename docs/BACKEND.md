@@ -73,7 +73,6 @@ apps/backend/
 │   ├── helpers.py           # JobManager — job CRUD in MongoDB
 │   ├── prompts.py           # LLM prompt templates (all prompts centralised here)
 │   ├── audit_logger.py      # Structured audit event logger
-│   ├── marker_processor.py  # Local Marker PDF processor wrapper
 │   └── jsontocsv.py         # JSON → CSV conversion helper
 │
 ├── test_support/
@@ -270,7 +269,6 @@ Pydantic models returned by API endpoints. Key types:
 | `utils/helpers.py` | `JobManager` — create/update/query job documents in MongoDB |
 | `utils/prompts.py` | All LLM system and user prompts kept in a single file |
 | `utils/audit_logger.py` | Writes structured audit events to the `audit_logs` collection |
-| `utils/marker_processor.py` | Thin wrapper around the local Marker library |
 
 ---
 

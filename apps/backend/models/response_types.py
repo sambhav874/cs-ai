@@ -136,7 +136,6 @@ class ContractResponse(BaseModel):
 class IndexRequest(BaseModel):
     # file_name: str
     contract_id: str= Field(..., description="The ID of the contract to index")
-    use_local_marker: bool = Field(default=False)
     context_id: Optional[str] = None  
 
 
@@ -145,7 +144,6 @@ class ProcessRequest(BaseModel):
     questions: Optional[List[str]] = None
     categories: Optional[List[QuestionCategory]] = None
     context_id: Optional[str] = None    
-    use_local_marker: bool = Field(default=False)
     ai_provider: Optional[str] = Field(None, description="The AI provider to use for processing (e.g., 'groq', 'openai', 'auto').")
 
 

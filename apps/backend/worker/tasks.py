@@ -342,7 +342,6 @@ def retry_queued_ingestions(self):
         file_id = contract.get("file_id")
         file_name = contract.get("contract_name", f"{contract_id}.pdf")
         user_id = str(contract.get("ownerId", ""))
-        use_local_marker = (contract.get("index") or {}).get("use_local_marker", False)
 
         try:
             result = index_contract_task.delay(
@@ -350,7 +349,6 @@ def retry_queued_ingestions(self):
                 contract_oid_str=contract_id,
                 file_id_str=str(file_id),
                 file_name=file_name,
-                use_local_marker=use_local_marker,
                 user_id=user_id,
             )
             db["contracts"].update_one(
@@ -386,9 +384,14 @@ def retry_queued_ingestions(self):
 
 
 @celery_app.task(bind=True, name='index_contract_task')
-def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_str: str, 
-                       file_name: str, use_local_marker: bool, user_id: str):
-    """Celery task for contract indexing with enhanced security"""
+def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_str: str,
+                       file_name: str, user_id: str, **_legacy_kwargs):
+    """Celery task for contract indexing with enhanced security
+
+    ``_legacy_kwargs`` swallows ``use_local_marker`` from tasks enqueued before
+    that flag was removed, so a deploy does not have to drain the queue first.
+    It can go once no pre-deploy task can still be in flight.
+    """
     job_id = None 
     temp_process_dir = None
     

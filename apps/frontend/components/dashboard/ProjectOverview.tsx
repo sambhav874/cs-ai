@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { ChevronDown, FolderOpen, FolderPlus, Loader2, Search, RefreshCw, Settings } from "lucide-react";
+import { ChevronDown, FolderOpen, FolderPlus, Loader2, Search, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -25,8 +24,6 @@ export function ProjectOverview({
   onCreateProject,
   onRefresh,
   isRefreshing,
-  useLocalMarker,
-  onToggleLocalMarker,
   currentPage = 1,
   totalPages = 1,
   onPageChange,
@@ -47,8 +44,6 @@ export function ProjectOverview({
   onCreateProject: () => void;
   onRefresh?: () => void;
   isRefreshing?: boolean;
-  useLocalMarker?: boolean;
-  onToggleLocalMarker?: (checked: boolean) => void;
   currentPage?: number;
   totalPages?: number;
   onPageChange?: (page: number) => void;
@@ -70,27 +65,6 @@ export function ProjectOverview({
       <div className="mb-6 flex flex-col gap-1">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">All Projects</h1>
-          {process.env.NEXT_PUBLIC_BRANCH_ENV === "development" && onToggleLocalMarker && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 w-9 bg-card hover:bg-muted p-0" title="Settings">
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Processing Settings</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="flex items-center gap-2">
-                    <Checkbox id="use-local-marker" checked={useLocalMarker} onCheckedChange={(c) => onToggleLocalMarker(c === true)} />
-                    <Label htmlFor="use-local-marker">Use local marker for processing</Label>
-                  </div>
-                  <p className="text-sm text-muted-foreground">Local marking can be faster but may differ from the standard pipeline.</p>
-                </div>
-              </DialogContent>
-            </Dialog>
-          )}
         </div>
         <p className="text-sm text-muted-foreground">Manage your projects and access all associated documents and tools.</p>
       </div>

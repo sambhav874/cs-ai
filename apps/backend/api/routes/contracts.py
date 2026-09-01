@@ -221,7 +221,6 @@ async def upload_contract(
                         file_id=file_id,
                         file_name=file.filename,
                         user_id=str(current_user.id),
-                        use_local_marker=False,
                     )
                     ingestion_status = "queued" if ingestion_job_id else "failed_to_queue"
                 except Exception as ingestion_error:
@@ -277,7 +276,6 @@ async def index_documents(
 ) -> IndexResponse:
     logger.info(
         f"Index request for contract_id: {request.contract_id}, "
-        f"local_marker: {request.use_local_marker}, "
         f"Context: {request.context_id}, "
         f"User: {current_user.id} ({current_user.username})"
     )
@@ -419,7 +417,6 @@ async def index_documents(
                 contract_oid_str=str(contract_oid),
                 file_id_str=str(file_id),
                 file_name=file_name,
-                use_local_marker=request.use_local_marker,
                 user_id=str(current_user.id) 
             )
         celery_task_id = task.id if hasattr(task, 'id') else None
@@ -449,7 +446,6 @@ async def index_documents(
             if temp_team_doc_task: audit_log_task_account_name = temp_team_doc_task.get("name")
         
     task_initiation_details = {
-        "use_local_marker": request.use_local_marker,
         "background_task_type": "Celery"
     }
     if celery_task_id:
@@ -646,8 +642,6 @@ async def process_contract_chain_endpoint(
             )
         file_name = contract_doc.get("contract_name", f"{request.contract_id}.pdf")
 
-        use_local_marker_from_request = getattr(request, 'use_local_marker', False)
-
         await contracts_collection_async.update_one(
             {"_id": contract_oid},
             {"$set": {
@@ -669,7 +663,6 @@ async def process_contract_chain_endpoint(
                 contract_oid_str=str(contract_oid),
                 file_id_str=str(file_id),
                 file_name=file_name,
-                use_local_marker=use_local_marker_from_request,
                 user_id=str(current_user.id),
             )
             celery_ingestion_id = task.id if hasattr(task, 'id') else None
@@ -695,7 +688,6 @@ async def process_contract_chain_endpoint(
                 account_id_override=audit_log_ingestion_account_id,
                 account_name_override=audit_log_ingestion_account_name,
                 details={
-                    "use_local_marker": use_local_marker_from_request,
                     "celery_task_id": celery_ingestion_id,
                     "legacy_batch_qa_disabled": True,
                 }
@@ -710,7 +702,6 @@ async def process_contract_chain_endpoint(
                     "index.status": "queued",
                     "index.queued_at": datetime.utcnow(),
                     "index.retry_count": 0,
-                    "index.use_local_marker": use_local_marker_from_request,
                     "error_detail": "Ingestion queued — will resume when the processing service is available."
                 }}
             )
@@ -722,8 +713,7 @@ async def process_contract_chain_endpoint(
                 account_id_override=audit_log_ingestion_account_id,
                 account_name_override=audit_log_ingestion_account_name,
                 details={
-                    "error": str(celery_e),
-                    "use_local_marker": use_local_marker_from_request
+                    "error": str(celery_e)
                 }
             )
 

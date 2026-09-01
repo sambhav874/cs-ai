@@ -209,7 +209,7 @@ cd apps/backend && TESTING=true poetry run pytest ../../testing/backend/tests/te
 
 **Wire into CI** — `test_legal_chunking.py` is currently run by nothing: not in `AGENT_GATE_TESTS` (`Makefile:36-51`), and `.github/workflows/agent-eval.yml:19-33` path filter excludes both `worker/tasks.py` and `rag/segmentation.py`, so ingestion changes trigger no CI at all. Add the test to the gate list and both paths to the filter.
 
-> Before doing so, handle `apps/backend/test_fetch.py` and `apps/backend/test_test.py` — pytest-collectible names, module-level side effects, live Mongo required. They execute at import. Rename or exclude via `testpaths`.
+> `apps/backend/test_fetch.py` and `apps/backend/test_test.py` were the hazard here — pytest-collectible names, module-level side effects, live Mongo at import. Both are deleted, so the gate can be widened safely.
 
 **RAG baseline** — run `testing/backend/scripts/evaluate_contract_rag.py` (requires Mongo) **before** any change, commit as `testing/backend/baselines/rag_baseline_v2.json`. Watch `context_precision_at_6` and `term_recall_at_6`. `avg_chunk_tokens` will rise — tables are atomic now — which is intended, not a regression; record that interpretation with the baseline. Add table-targeted entries to `GOLDEN_QUERIES:30-56` with `preferred_levels: ["table"]`.
 

@@ -138,7 +138,6 @@ function DashboardContent() {
     direction: "desc",
   });
   const [needsDocumentRefresh, setNeedsDocumentRefresh] = useState(false);
-  const [useLocalMarker, setUseLocalMarker] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isProjectDialogOpen, setIsProjectDialogOpen] = useState(false);
@@ -814,7 +813,6 @@ function DashboardContent() {
 
       const requestBody = {
         contract_id: contractId,
-        use_local_marker: useLocalMarker,
       };
 
       const { data, error } = await authenticatedFetch(`${apiUrl}/index/`, {
@@ -879,7 +877,6 @@ function DashboardContent() {
     isAuthenticated,
     token,
     documents,
-    useLocalMarker,
     selectedAccountId,
     authenticatedFetch,
     apiUrl,
@@ -918,15 +915,6 @@ function DashboardContent() {
       fetchDocuments(1);
     }, 2500);
   }, [fetchProjects, fetchDocuments, fetchUserCredits, fetchProjectPortfolio]);
-
-  const handleToggleLocalMarker = useCallback((checked: boolean) => {
-    setUseLocalMarker(checked);
-    localStorage.setItem("useLocalMarker", JSON.stringify(checked));
-    toast({
-      title: checked ? "Local marking enabled" : "Local marking disabled",
-      description: checked ? "Contracts will use local marking." : "Contracts will use the standard pipeline.",
-    });
-  }, []);
 
   const handleCreateProject = useCallback(async () => {
     const name = newProjectName.trim();
@@ -1098,8 +1086,6 @@ function DashboardContent() {
   }, [documents, selectedProjectId, selectedKpiContractId]);
 
   useEffect(() => {
-    const storedMarker = localStorage.getItem("useLocalMarker");
-    setUseLocalMarker(storedMarker ? JSON.parse(storedMarker) : false);
     setHasInitialized(true);
   }, []);
 
@@ -1254,8 +1240,6 @@ function DashboardContent() {
                 onCreateProject={handleCreateProject}
                 onRefresh={fetchPaginatedProjects}
                 isRefreshing={isProjectLoading}
-                useLocalMarker={useLocalMarker}
-                onToggleLocalMarker={setUseLocalMarker}
                 currentPage={projectsPage}
                 totalPages={Math.ceil(projectsTotal / 10)}
                 onPageChange={setProjectsPage}

@@ -77,7 +77,6 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
     field: "uploaded_at",
     direction: "desc",
   });
-  const [useLocalMarker, setUseLocalMarker] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"contracts" | "timeline">("contracts");
   const [memoryRefreshKey, setMemoryRefreshKey] = useState(0);
@@ -376,7 +375,6 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
 
       const requestBody = {
         contract_id: contractId,
-        use_local_marker: useLocalMarker,
       };
 
       const { data, error } = await authenticatedFetch(`${apiUrl}/index/`, {
@@ -437,7 +435,7 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
       });
       setCurrentlyProcessing(null);
     }
-  }, [isAuthenticated, token, documents, useLocalMarker, authenticatedFetch, apiUrl, handleApiError]);
+  }, [isAuthenticated, token, documents, authenticatedFetch, apiUrl, handleApiError]);
 
   const handleManualRefresh = useCallback(async () => {
     await Promise.all([
@@ -463,11 +461,6 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
       fetchDocuments(1);
     }, 2500);
   }, [fetchDocuments, fetchUserCredits]);
-
-  useEffect(() => {
-    const storedMarker = localStorage.getItem("useLocalMarker");
-    setUseLocalMarker(storedMarker ? JSON.parse(storedMarker) : false);
-  }, []);
 
   const handleOpenReassignModal = useCallback((doc: Document) => {
     if (doc.ownerType === "user") {

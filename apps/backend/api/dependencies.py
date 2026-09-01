@@ -49,7 +49,6 @@ def queue_contract_ingestion(
     file_id: ObjectId,
     file_name: str,
     user_id: str,
-    use_local_marker: bool = False,
 ) -> Optional[str]:
     collection.update_one(
         {"_id": contract_oid},
@@ -66,7 +65,6 @@ def queue_contract_ingestion(
             contract_oid_str=str(contract_oid),
             file_id_str=str(file_id),
             file_name=file_name,
-            use_local_marker=use_local_marker,
             user_id=user_id,
         )
         return task.id if hasattr(task, "id") else None
@@ -79,7 +77,6 @@ def queue_contract_ingestion(
                 "index.status": "queued",
                 "index.queued_at": datetime.utcnow(),
                 "index.retry_count": 0,
-                "index.use_local_marker": use_local_marker,
                 "index.error": "Ingestion queued — will resume when the processing service is available.",
                 "status": "Queued",
             }}
