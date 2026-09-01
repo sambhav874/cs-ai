@@ -21,11 +21,7 @@ from models.domain import (
     ReEditRequest,
     DenyReEditRequest,
 )
-from models.response_types import (
-    ContractResponse,
-    DraftSaveRequest,
-    DraftSubmitRequest,
-)
+from models.response_types import ContractResponse
 from api.dependencies import (
     get_contract_and_verify_access,
     get_current_user_from_ticket_or_session,
@@ -359,280 +355,6 @@ async def assign_workflow_roles(
         logger.exception(f"Error updating workflow roles for contract {contract_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update workflow roles.")
 
-
-@workflows_router.put("/contracts/{contract_id}/save-draft/")
-async def save_draft(
-    contract_id: str,
-    request: DraftSaveRequest,
-    current_user: UserInDB = Depends(get_current_active_user)
-) -> ContractResponse:
-    """Saves the current state of analysis results as a draft."""
-    logger.info(f"Save draft request for contract_id: {contract_id}, User: {current_user.id}")
-
-    # Validate contract_id format
-    try:
-        contract_oid = ObjectId(contract_id)
-    except Exception:
-        logger.warning(f"Invalid contract_id format in save_draft request: {contract_id}")
-        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
-
-    # Fetch contract for access check
-    contract_for_audit = collection.find_one(
-        {"_id": contract_oid},
-        {"ownerType": 1, "ownerId": 1, "contract_name": 1, "status": 1}
-    )
-    if not contract_for_audit:
-        logger.warning(f"Contract not found for save_draft: {contract_id}")
-        raise HTTPException(status_code=404, detail="Contract not found")
-
-    # Your detailed manual access check logic
-    owner_type = contract_for_audit.get("ownerType")
-    owner_id_obj_from_db = contract_for_audit.get("ownerId")
-    user_oid = ObjectId(current_user.id)
-    user_has_access = False
-    
-    if owner_type == "user" and owner_id_obj_from_db == user_oid:
-        user_has_access = True
-    elif owner_type == "team" and owner_id_obj_from_db:
-        owner_id_str = str(owner_id_obj_from_db)
-        is_owner = current_user.ownedAccountId == owner_id_str
-        is_member = owner_id_str in (current_user.teamIds or [])
-        if is_owner or is_member:
-            user_has_access = True
-        elif teams_collection and teams_collection.find_one({"_id": owner_id_obj_from_db, "members.userId": user_oid}, {"_id": 1}):
-            user_has_access = True
-
-    if not user_has_access:
-        logger.warning(f"User {current_user.id} forbidden access to save draft for contract {contract_id}")
-        raise HTTPException(status_code=403, detail="You do not have permission to modify this contract.")
-
-    # Save Draft Logic
-    try:
-        if not request.results:
-            logger.warning(f"Empty results list received in DraftSaveRequest for contract {contract_id}.")
-            raise HTTPException(status_code=400, detail="Draft save request cannot have empty results.")
-
-        now = datetime.utcnow()
-
-        # Pydantic validation for incoming Q&A data
-        try:
-            validated_results = [QuestionAnswer.model_validate(qa) for qa in request.results]
-        except Exception as pydantic_error:
-            logger.warning(f"Pydantic validation failed for draft save: {pydantic_error}")
-            raise HTTPException(status_code=400, detail="Invalid Q&A data structure in draft.")
-        
-        # Convert back to dicts for MongoDB, ensuring all fields (including defaults) are present
-        results_to_save = [qa.model_dump(mode='json', exclude_unset=False) for qa in validated_results]
-
-        last_save_data = {
-            "results": results_to_save,
-            "categories": request.categories if request.categories else [],
-            "report_info": request.report_info if hasattr(request, "report_info") and request.report_info else None
-        }
-
-        set_operation = {
-            "process.lastSave": {
-                "data": last_save_data,
-                "savedAt": now
-            },
-            "status": "Editing",
-            "updatedAt": now
-        }
-
-        update_result = collection.update_one({"_id": contract_oid}, {"$set": set_operation})
-
-        if update_result.matched_count == 0:
-            logger.error(f"CRITICAL: Contract {contract_id} not found during draft save update.")
-            raise HTTPException(status_code=404, detail="Contract not found during draft save.")
-
-        # Your audit log logic
-        audit_account_id: Optional[ObjectId] = None
-        if owner_type == "team" and isinstance(owner_id_obj_from_db, ObjectId):
-            audit_account_id = owner_id_obj_from_db
-
-        await create_audit_log(
-            user=current_user,
-            action="DRAFT_SAVED",
-            contract_id=contract_oid,
-            contract_name_override=contract_for_audit.get("contract_name"),
-            account_id_override=audit_account_id,
-            details={
-                "previous_status": contract_for_audit.get("status"),
-                "new_status_after_save": "Editing",
-                "draft_qa_count": len(request.results),
-                "draft_category_count": len(request.categories) if request.categories else 0,
-                "has_report": bool(last_save_data.get("report_info"))
-            }
-        )
-
-        logger.info(f"Draft saved successfully for contract {contract_id}")
-        return await get_contract(contract_id=str(contract_oid), current_user=current_user)
-
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        logger.exception(f"Error saving draft {contract_id}: {e}")
-        raise HTTPException(status_code=500, detail="Error saving draft.")
-
-@workflows_router.put("/contracts/{contract_id}/submit-draft/")
-async def submit_draft(
-    contract_id: str,
-    request: DraftSubmitRequest,
-    current_user: UserInDB = Depends(get_current_active_user)
-) -> ContractResponse:
-    """Submits the saved draft, making it the latest official result."""
-    logger.info(f"Submit draft request for contract_id: {contract_id}, User: {current_user.id}")
-
-    # Validate contract_id format
-    try:
-        contract_oid = ObjectId(contract_id)
-    except Exception:
-        logger.warning(f"Invalid contract_id format in submit_draft request: {contract_id}")
-        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
-
-    # Fetch Contract document
-    contract_before_submit = collection.find_one(
-        {"_id": contract_oid},
-        {"ownerType": 1, "ownerId": 1, "contract_name": 1, "status": 1, "process.lastSave": 1, "process.results": 1}
-    )
-    if not contract_before_submit:
-        logger.warning(f"Contract not found: {contract_id}")
-        raise HTTPException(status_code=404, detail="Contract not found")
-
-    # Manual access check with proper type conversion
-    owner_type = contract_before_submit.get("ownerType")
-    owner_id_obj_from_db = contract_before_submit.get("ownerId")
-    owner_id_str = str(owner_id_obj_from_db) if isinstance(owner_id_obj_from_db, ObjectId) else None
-    user_oid = ObjectId(current_user.id)
-    user_id_str = current_user.id
-
-    user_has_access = False
-    if owner_type == "user":
-        if owner_id_obj_from_db == user_oid: user_has_access = True
-    elif owner_type == "team" and owner_id_str:
-        is_owner = current_user.ownedAccountId == owner_id_str
-        is_member = owner_id_str in (current_user.teamIds or [])
-        if is_owner or is_member: user_has_access = True
-        else:
-            if teams_collection and owner_id_obj_from_db:
-                if teams_collection.find_one({"_id": owner_id_obj_from_db, "members.userId": user_oid}, {"_id": 1}):
-                    user_has_access = True
-
-    if not user_has_access:
-        logger.warning(f"User {user_id_str} forbidden access to submit draft for contract {contract_id}")
-        raise HTTPException(status_code=403, detail="You do not have permission to modify this contract.")
-
-    # Submit Draft Logic
-    try:
-        process_data = contract_before_submit.get("process", {})
-        last_save_wrapper = process_data.get("lastSave")
-
-        if not last_save_wrapper or not isinstance(last_save_wrapper.get("data"), dict):
-            logger.warning(f"Submit failed: No valid draft found in process.lastSave for contract {contract_id}.")
-            raise HTTPException(status_code=400, detail="No valid draft found to submit. Save a draft first.")
-
-        last_save_data = last_save_wrapper["data"]
-        submitted_qas_raw = last_save_data.get("results", [])
-        submitted_categories = last_save_data.get("categories", [])
-        submitted_report_info = last_save_data.get("report_info", None)  # Include existing report_info if present
-
-        # Validate the Q&A results
-        validated_submitted_qas = []
-        try:
-            validated_submitted_qas = [QuestionAnswer.model_validate(qa) for qa in submitted_qas_raw if isinstance(qa, dict)]
-            if len(validated_submitted_qas) != len(submitted_qas_raw):
-                logger.warning(f"Some items in draft results for {contract_id} failed QuestionAnswer validation.")
-            if not validated_submitted_qas:
-                raise ValueError("Validated draft results are empty.")
-        except Exception as validation_error:
-            logger.error(f"Validation error on draft results for {contract_id}: {validation_error}")
-            raise HTTPException(status_code=400, detail="Saved draft data is invalid.")
-
-        # Validate categories if they exist
-        validated_categories = []
-        if submitted_categories:
-            try:
-                validated_categories = [Category.model_validate(cat) for cat in submitted_categories if isinstance(cat, dict)]
-                if len(validated_categories) != len(submitted_categories):
-                    logger.warning(f"Some categories in draft for {contract_id} failed validation.")
-            except Exception as cat_error:
-                logger.error(f"Category validation error for {contract_id}: {cat_error}")
-                raise HTTPException(status_code=400, detail="Invalid category data in draft.")
-
-        # Determine the next version number
-        current_process_results = process_data.get("results", [])
-        next_version = 1
-        if current_process_results and isinstance(current_process_results, list):
-            try:
-                last_result = current_process_results[-1]
-                if isinstance(last_result, dict) and isinstance(last_result.get("version"), int):
-                    next_version = last_result.get("version", 0) + 1
-            except IndexError:
-                pass
-
-        # Create the new analysis with results, categories, and existing report_info (if any)
-        new_submitted_analysis = {
-            "version": next_version,
-            "createdAt": datetime.utcnow(),
-            "results": [qa.model_dump(mode='json') for qa in validated_submitted_qas],
-            "categories": [cat.model_dump(mode='json') for cat in validated_categories]
-        }
-        if submitted_report_info:
-            new_submitted_analysis["report_info"] = submitted_report_info
-
-        update_result = collection.update_one(
-            {"_id": contract_oid},
-            {
-                "$push": {"process.results": new_submitted_analysis},
-                "$set": {
-                    "process.lastSave": None,
-                    "process.status": "Processed",
-                    "status": "Editing"
-                }
-            }
-        )
-
-        if update_result.matched_count == 0:
-            logger.error(f"CRITICAL: Contract {contract_id} not found during draft submission update.")
-            raise HTTPException(status_code=404, detail="Contract not found during draft submission.")
-        if update_result.modified_count == 0:
-            logger.error(f"Submit draft for contract {contract_id} modified 0 documents, possible DB issue.")
-            raise HTTPException(status_code=500, detail="Failed to update document during draft submission.")
-
-        # Create Audit Log
-        audit_account_id: Optional[ObjectId] = None
-        if owner_type == "team" and isinstance(owner_id_obj_from_db, ObjectId):
-            audit_account_id = owner_id_obj_from_db
-
-        num_qas_in_version = len(validated_submitted_qas)
-        num_categories_in_version = len(validated_categories)
-
-        await create_audit_log(
-            user=current_user,
-            action="NEW_VERSION_SAVED",
-            contract_id=contract_oid,
-            contract_name_override=contract_before_submit.get("contract_name"),
-            account_id_override=audit_account_id,
-            details={
-                "version_number": next_version,
-                "previous_status": contract_before_submit.get("status"),
-                "new_overall_status": "Editing",
-                "version_qa_count": num_qas_in_version,
-                "version_category_count": num_categories_in_version,
-                "has_report": bool(submitted_report_info)
-            }
-        )
-
-        logger.info(f"Draft submitted successfully for contract {contract_id}")
-        return await get_contract(contract_id=contract_id, current_user=current_user)
-
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        logger.exception(f"Error submitting draft for contract {contract_id}: {e}")
-        raise HTTPException(status_code=500, detail="An unexpected error occurred while submitting the draft.")
-        
-#endpoint to submit a contract for approval
 
 @workflows_router.post("/contracts/{contract_id}/submit", response_model=ContractResponse)
 async def submit_contract_for_approval(
@@ -1091,8 +813,6 @@ async def complete_personal_contract(
             "ownerId": 1,
             "status": 1,
             "contract_name": 1,
-            "process.results": 1,
-            "process.lastSave": 1
         }
     )
     if not contract_before:
@@ -1125,29 +845,9 @@ async def complete_personal_contract(
             "updatedAt": now
         }
 
-        # Check for draft reports in the latest version
-        process_data = contract_before.get("process", {})
-        results = process_data.get("results", [])
-        latest_version_with_report = None
-
-        # Find the latest version with a report
-        for version_data in reversed(results):
-            if version_data.get("report_info"):
-                latest_version_with_report = version_data
-                break
-
-        # Prepare update operation if we need to update a draft report
-        array_filters = None
-        if latest_version_with_report and latest_version_with_report["report_info"].get("is_draft", True):
-            version_num = latest_version_with_report["version"]
-            update_payload["process.results.$[elem].report_info.is_draft"] = False
-            array_filters = [{"elem.version": version_num}]
-
-        # Update the contract
         update_result = collection.update_one(
             {"_id": contract_oid},
             {"$set": update_payload},
-            array_filters=array_filters
         )
 
         if update_result.matched_count == 0:
@@ -1162,7 +862,6 @@ async def complete_personal_contract(
             details={
                 "oldStatus": current_status,
                 "newStatus": "Approved",
-                "updatedDraftReport": latest_version_with_report is not None
             }
         )
 

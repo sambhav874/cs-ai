@@ -86,11 +86,6 @@ def initialize_all_indexes(db=None):
         )
         _create_index_safe(
             contracts,
-            [("process.results.version", DESCENDING)],
-            "process.results.version_desc"
-        )
-        _create_index_safe(
-            contracts,
             [("file_id", ASCENDING)],
             "file_id"
         )
