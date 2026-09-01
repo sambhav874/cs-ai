@@ -101,9 +101,9 @@ workflow:
 |---|---|
 | File | On `main`? | Note |
 |---|---|---|
-| `apps/backend/import_eval_reports.py` | yes | **deleted, PR1** |
-| `apps/backend/verify_runner_endpoints.py` | yes | **deleted, PR1** |
-| `apps/backend/utils/jsontocsv.py` (36 lines) | yes | **deleted, PR1** |
+| `apps/backend/import_eval_reports.py` | yes | **deleted** |
+| `apps/backend/verify_runner_endpoints.py` | yes | **deleted** |
+| `apps/backend/utils/jsontocsv.py` (36 lines) | yes | **deleted** |
 | `apps/backend/test_test.py` (20 lines) | no — feature branch only | scratch script at backend root, not a test |
 | `apps/backend/test_fetch.py` (29 lines) | no — feature branch only | same |
 | `apps/backend/scripts/seed_iata_demo_actuals.py` | no — feature branch only | no caller |
@@ -175,10 +175,10 @@ resolve it when the role model lands.
 | 3 | A1 draft/version subsystem | medium; blocked on the Mongo count | upload → submit → approve still works; contract page renders | blocked |
 | 4 | Tier B status-literal trim, only for literals with zero documents | low | dashboard counts unchanged before/after | blocked |
 
-PRs 1, 1b and 2 are landed on branches and pushed:
-`chore/remove-orphan-modules` (off `main`) and `chore/ingestion-branch-cleanup`
-(off `feature/ingestion-markdown-tables`). Neither has an open PR yet — `gh` is
-not installed on this machine. PR 3 lands with, or just before, Phase 0a of the HITL
+Everything lands on `chore/ingestion-branch-cleanup`, off
+`feature/ingestion-markdown-tables`. The main-based branch was dropped: work
+stays in one lane, on the feature branch, and nothing is aimed at `main` or
+`dev`. No PR is open yet — `gh` is not installed on this machine. PR 3 lands with, or just before, Phase 0a of the HITL
 plan.
 
 **Lesson for the rest of this plan: every claim is branch-scoped.** The A2

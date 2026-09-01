@@ -72,8 +72,7 @@ apps/backend/
 ├── utils/
 │   ├── helpers.py           # JobManager — job CRUD in MongoDB
 │   ├── prompts.py           # LLM prompt templates (all prompts centralised here)
-│   ├── audit_logger.py      # Structured audit event logger
-│   └── jsontocsv.py         # JSON → CSV conversion helper
+│   └── audit_logger.py      # Structured audit event logger
 │
 ├── test_support/
 │   └── testing_utils.py     # Test-only routes and helpers (TESTING=true only)
