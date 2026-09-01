@@ -204,15 +204,23 @@ On `chore/ingestion-branch-cleanup`, in order:
 | Notifications on every handover | `fe80cba` |
 | Certification gated on the Approver; delegation | `9de44b1` |
 | `needs_review` triage and resolution; `Approved` backfill script | `964abb9` |
+| The draft subsystem deleted, once the data showed it held nothing | `0ffa42c` |
+| Every workflow action was returning 500 — `await` on a sync function | `dde48c7` |
+| Submit button never appeared; roles lost on cached reads; stale status after a transition | `4e9dc54` |
+| UI for project roles, delegation, and where a role came from | this branch |
 
 Correction to §3.4 above: the backend **does** have an email transport —
 Azure Communication Services, already used by the KPI alert and support tasks.
 The first pass grepped for smtplib and sendgrid and missed it. No vendor
 decision was needed.
 
-Still open from §4: role-gating `save-draft` / `submit-draft` (deliberately
-skipped — it guards code no client calls, and Phase 0a may delete it),
-multi-step approval chains, and the e-signature handoff.
+Still open from §4: multi-step approval chains and the e-signature handoff,
+both post-MVP. Role-gating `save-draft` / `submit-draft` is moot — those
+endpoints are gone.
+
+Approval covers contracts and KPI certification. Obligations and playbook
+findings still have their own statuses outside the role model; extending it to
+them is the next real piece of scope.
 
 ## 5. Open decisions
 

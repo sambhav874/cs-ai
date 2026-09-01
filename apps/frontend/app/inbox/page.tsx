@@ -7,6 +7,8 @@ import { AlertCircle, CheckCircle2, ClipboardEdit, Inbox, Loader2, RefreshCw } f
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { useAccountContext } from "@/app/context/AccountContext";
+import { DelegationPanel } from "@/components/new/DelegationPanel";
 import {
   EMPTY_REVIEW_QUEUE,
   fetchReviewQueue,
@@ -55,6 +57,7 @@ function ItemRow({ item }: { item: ReviewQueueItem }) {
 
 export default function InboxPage() {
   const { isAuthenticated } = useAuth();
+  const { selectedAccountId } = useAccountContext();
   const [queue, setQueue] = useState<ReviewQueue>(EMPTY_REVIEW_QUEUE);
   const [tab, setTab] = useState<Tab>("approvals");
   const [isLoading, setIsLoading] = useState(true);
@@ -119,6 +122,10 @@ export default function InboxPage() {
           {error}
         </div>
       )}
+
+      <div className="mb-6">
+        <DelegationPanel accountId={selectedAccountId} />
+      </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-16 text-muted-foreground">

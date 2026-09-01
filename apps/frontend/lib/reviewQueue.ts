@@ -48,3 +48,60 @@ export function waitingFor(waitingSince: string | null): string {
   const months = Math.floor(days / 30);
   return months === 1 ? "1 month" : `${months} months`;
 }
+
+export type Delegation = {
+  id: string;
+  role: "editor" | "approver";
+  delegateUserId: string;
+  delegate_name: string | null;
+  until: string | null;
+  reason: string | null;
+  createdAt: string | null;
+  revokedAt: string | null;
+  active: boolean;
+};
+
+function requireApiUrl(): string {
+  const apiUrl = process.env.NEXT_PUBLIC_EXTRACTOR_API_URL;
+  if (!apiUrl) throw new Error("The API URL is not configured.");
+  return apiUrl;
+}
+
+export async function fetchDelegations(): Promise<Delegation[]> {
+  const response = await apiFetch(`${requireApiUrl()}/me/delegations`);
+  if (!response.ok) throw new Error(`Failed to load delegations (${response.status})`);
+  const data = await response.json();
+  return (data.delegations || []) as Delegation[];
+}
+
+export async function createDelegation(input: {
+  role: "editor" | "approver";
+  delegateUserId: string;
+  until?: string | null;
+  reason?: string | null;
+}): Promise<void> {
+  const response = await apiFetch(`${requireApiUrl()}/me/delegations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      role: input.role,
+      delegateUserId: input.delegateUserId,
+      until: input.until || null,
+      reason: input.reason || null,
+    }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.detail || "Could not create the delegation.");
+  }
+}
+
+export async function revokeDelegation(delegationId: string): Promise<void> {
+  const response = await apiFetch(`${requireApiUrl()}/me/delegations/${delegationId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.detail || "Could not revoke the delegation.");
+  }
+}
