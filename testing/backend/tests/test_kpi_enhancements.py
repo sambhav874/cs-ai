@@ -331,11 +331,17 @@ def test_long_term_kpi_rule_uses_deterministic_window_aggregation():
     manager.kpis = MagicMock()
     manager.breaches = MagicMock()
     manager.actuals = MagicMock()
-    manager.actuals.find.return_value = [
+    # The window query sorts the cursor so that "latest" means the most recent
+    # actual rather than whatever order the storage engine returns. A bare list
+    # raises on .sort(), which the caller swallows — leaving the window empty
+    # and the aggregate silently equal to the single value passed in.
+    window_cursor = MagicMock()
+    window_cursor.sort.return_value = [
         {"value": 92},
         {"value": 94},
         {"value": 96},
     ]
+    manager.actuals.find.return_value = window_cursor
     manager.kpis.find_one.return_value = {
         "kpi_id": "kpi-annual",
         "contract_id": "contract-1",
@@ -414,13 +420,8 @@ def test_ingest_actuals_records_but_defers_untracked_evaluations():
         "tracking_status": "recommended",
         "is_tracked": False,
     }])
-    manager.record_actual = MagicMock(return_value={
-        "actual_id": "actual-1",
-        "kpi_id": "kpi-1",
-        "value": 90,
-        "unit": "%",
-        "source": "upload",
-    })
+    manager.actuals = MagicMock()
+    manager.actuals.find.return_value = []
     manager.evaluate_kpi = MagicMock()
 
     result = manager.ingest_actuals(
@@ -433,13 +434,16 @@ def test_ingest_actuals_records_but_defers_untracked_evaluations():
 
     assert result["count"] == 1
     assert result["breaches"] == []
-    assert result["deferred_evaluations"] == [{
-        "row": 1,
-        "kpi_id": "kpi-1",
-        "kpi_name": "On-time delivery",
-        "actual_id": "actual-1",
-        "reason": "KPI is not tracked",
-    }]
+    # The actual is still recorded — only its evaluation waits for someone to
+    # track the KPI. The id is generated per row, so this asserts that one
+    # exists rather than pinning the generator's output.
+    deferred = result["deferred_evaluations"]
+    assert len(deferred) == 1
+    assert deferred[0]["row"] == 1
+    assert deferred[0]["kpi_id"] == "kpi-1"
+    assert deferred[0]["kpi_name"] == "On-time delivery"
+    assert deferred[0]["reason"] == "KPI is not tracked"
+    assert deferred[0]["actual_id"]
     manager.evaluate_kpi.assert_not_called()
 
 
@@ -454,6 +458,9 @@ def test_tracking_kpi_backfills_deferred_actuals():
         "unit": "%",
         "tracking_status": "recommended",
         "is_tracked": False,
+        # Tracking is gated on acceptance, so a KPI nobody accepted cannot be
+        # tracked at all.
+        "status": "approved",
     }
     actual = {
         "actual_id": "actual-1",
@@ -502,6 +509,71 @@ def test_tracking_kpi_backfills_deferred_actuals():
         source="upload",
         timestamp=datetime(2026, 6, 1),
     )
+
+
+def test_a_kpi_nobody_accepted_cannot_be_tracked():
+    """Tracking drives breaches and alerts, so it waits on a human accepting
+    the extraction — otherwise the model's own guess starts raising alarms."""
+    manager = ContractKPIManager()
+    manager.kpis = MagicMock()
+    manager.actuals = MagicMock()
+    manager.breaches = MagicMock()
+    manager.kpis.find_one.return_value = {
+        "kpi_id": "kpi-1",
+        "contract_id": "contract-1",
+        "name": "On-time delivery",
+        "operator": ">=",
+        "value": 95,
+        "tracking_status": "recommended",
+        "is_tracked": False,
+        "status": "draft",
+    }
+
+    with pytest.raises(ValueError, match="must be accepted before it can be tracked"):
+        manager.update_kpi(
+            "kpi-1",
+            {"is_tracked": True},
+            user_id="user-1",
+            contract_id="contract-1",
+        )
+
+    manager.kpis.update_one.assert_not_called()
+
+
+def test_accepting_and_tracking_in_one_update_is_allowed():
+    manager = ContractKPIManager()
+    stored_kpi = {
+        "kpi_id": "kpi-1",
+        "contract_id": "contract-1",
+        "name": "On-time delivery",
+        "operator": ">=",
+        "value": 95,
+        "tracking_status": "recommended",
+        "is_tracked": False,
+        "status": "draft",
+    }
+    manager.kpis = MagicMock()
+    manager.actuals = MagicMock()
+    manager.breaches = MagicMock()
+    manager.kpis.find_one.return_value = stored_kpi
+
+    def update_kpi_doc(_query, update):
+        stored_kpi.update(update.get("$set", {}))
+        return MagicMock(matched_count=1)
+
+    manager.kpis.update_one.side_effect = update_kpi_doc
+    empty_cursor = MagicMock()
+    empty_cursor.sort.return_value = []
+    manager.actuals.find.return_value = empty_cursor
+
+    updated = manager.update_kpi(
+        "kpi-1",
+        {"is_tracked": True, "status": "approved"},
+        user_id="user-1",
+        contract_id="contract-1",
+    )
+
+    assert updated["is_tracked"] is True
 
 
 def test_validate_rule_spec_validates_tiered_range_and_budget():
