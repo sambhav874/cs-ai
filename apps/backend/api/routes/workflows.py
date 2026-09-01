@@ -44,8 +44,12 @@ workflows_router = APIRouter()
 
 
 def _roles_for(contract: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Roles that apply to this contract, its project's defaults included."""
-    return effective_roles_for_contract(contract, projects_collection)
+    """Roles that apply to this contract right now.
+
+    Contract override, else the project default, and then whoever is standing
+    in for that person while they are away.
+    """
+    return effective_roles_for_contract(contract, projects_collection, users_collection)
 
 
 def _notify_role_holder(

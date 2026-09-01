@@ -39,9 +39,12 @@ class ReviewQueueTests(unittest.TestCase):
         self.collection = MagicMock()
         self.projects = MagicMock()
         self.projects.find.return_value = []
+        self.users = MagicMock()
+        self.users.find.return_value = []
         self.patches = [
             patch.object(queue_module, "collection", self.collection),
             patch.object(queue_module, "projects_collection", self.projects),
+            patch.object(queue_module, "users_collection", self.users),
             patch.object(queue_module, "kpi_db", None),
         ]
         for p in self.patches:
@@ -150,9 +153,12 @@ class ReviewQueueKpiTests(unittest.TestCase):
         self.projects = MagicMock()
         self.projects.find.return_value = []
         self.kpi_db = MagicMock()
+        self.users = MagicMock()
+        self.users.find.return_value = []
         self.patches = [
             patch.object(queue_module, "collection", self.collection),
             patch.object(queue_module, "projects_collection", self.projects),
+            patch.object(queue_module, "users_collection", self.users),
             patch.object(queue_module, "kpi_db", self.kpi_db),
         ]
         for p in self.patches:

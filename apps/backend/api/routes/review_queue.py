@@ -10,11 +10,12 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.database import collection, kpi_db, projects_collection
+from core.database import collection, kpi_db, projects_collection, users_collection
 from core.security import get_current_active_user
-from models.domain import UserInDB
+from models.domain import DelegateWorkflowRoleRequest, UserInDB
+from utils.audit_logger import create_audit_log
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +40,42 @@ def _project_oids_for_role(user_oid: ObjectId, role_key: str) -> List[ObjectId]:
     ]
 
 
+def _delegators_to(user_oid: ObjectId, role: str) -> List[ObjectId]:
+    """Whose role is this user currently covering?"""
+    if users_collection is None:
+        return []
+    now = datetime.utcnow()
+    delegators = []
+    for user in users_collection.find(
+        {"workflowDelegations.delegateUserId": user_oid}, {"workflowDelegations": 1}
+    ):
+        for delegation in user.get("workflowDelegations") or []:
+            if (
+                delegation.get("role") == role
+                and delegation.get("delegateUserId") == user_oid
+                and not delegation.get("revokedAt")
+                and (delegation.get("until") is None or delegation["until"] > now)
+            ):
+                delegators.append(user["_id"])
+                break
+    return delegators
+
+
 def _contract_clauses(user_oid: ObjectId, role_key: str, statuses: List[str]) -> List[Dict[str, Any]]:
-    """Contracts this user holds `role_key` on — assigned here or inherited."""
+    """Contracts this user holds `role_key` on — assigned, inherited, or covered.
+
+    Someone standing in for a colleague has to see that colleague's queue, or
+    the delegation moves the permission without moving the work.
+    """
+    role = "approver" if role_key == "approverUserId" else "editor"
+    holder_oids = [user_oid] + _delegators_to(user_oid, role)
+
     clauses: List[Dict[str, Any]] = [
-        {f"workflowRoles.{role_key}": user_oid, "status": {"$in": statuses}}
+        {f"workflowRoles.{role_key}": {"$in": holder_oids}, "status": {"$in": statuses}}
     ]
-    inherited_project_oids = _project_oids_for_role(user_oid, role_key)
+    inherited_project_oids: List[ObjectId] = []
+    for holder_oid in holder_oids:
+        inherited_project_oids.extend(_project_oids_for_role(holder_oid, role_key))
     if inherited_project_oids:
         clauses.append(
             {
@@ -162,3 +193,117 @@ def get_my_review_queue(
             "total": len(approvals) + len(edits),
         },
     }
+
+
+@review_queue_router.get("/me/delegations")
+def list_my_delegations(
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Roles this user has handed to someone else, and for how long."""
+    user = users_collection.find_one(
+        {"_id": ObjectId(current_user.id)}, {"workflowDelegations": 1}
+    )
+    delegations = (user or {}).get("workflowDelegations") or []
+    now = datetime.utcnow()
+
+    delegate_oids = [
+        d["delegateUserId"] for d in delegations if isinstance(d.get("delegateUserId"), ObjectId)
+    ]
+    names = {}
+    if delegate_oids:
+        names = {
+            str(u["_id"]): u.get("username")
+            for u in users_collection.find({"_id": {"$in": delegate_oids}}, {"username": 1})
+        }
+
+    return {
+        "delegations": [
+            {
+                "id": str(d.get("_id")),
+                "role": d.get("role"),
+                "delegateUserId": str(d.get("delegateUserId")),
+                "delegate_name": names.get(str(d.get("delegateUserId"))),
+                "until": d.get("until"),
+                "reason": d.get("reason"),
+                "createdAt": d.get("createdAt"),
+                "revokedAt": d.get("revokedAt"),
+                "active": (
+                    not d.get("revokedAt")
+                    and (d.get("until") is None or d.get("until") > now)
+                ),
+            }
+            for d in delegations
+        ]
+    }
+
+
+@review_queue_router.post("/me/delegations")
+async def create_my_delegation(
+    request: DelegateWorkflowRoleRequest,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Hand one of your workflow roles to a colleague while you are away."""
+    if not ObjectId.is_valid(request.delegateUserId):
+        raise HTTPException(status_code=400, detail="Invalid delegateUserId.")
+
+    delegate_oid = ObjectId(request.delegateUserId)
+    user_oid = ObjectId(current_user.id)
+    if delegate_oid == user_oid:
+        raise HTTPException(status_code=400, detail="You cannot delegate a role to yourself.")
+
+    if request.until is not None and request.until <= datetime.utcnow():
+        raise HTTPException(status_code=400, detail="The delegation end date is already in the past.")
+
+    delegate = users_collection.find_one({"_id": delegate_oid}, {"_id": 1})
+    if not delegate:
+        raise HTTPException(status_code=404, detail="That user does not exist.")
+
+    delegation = {
+        "_id": ObjectId(),
+        "role": request.role,
+        "delegateUserId": delegate_oid,
+        "until": request.until,
+        "reason": request.reason,
+        "createdAt": datetime.utcnow(),
+        "revokedAt": None,
+    }
+    users_collection.update_one(
+        {"_id": user_oid}, {"$push": {"workflowDelegations": delegation}}
+    )
+
+    await create_audit_log(
+        user=current_user,
+        action="WORKFLOW_ROLE_DELEGATED",
+        details={
+            "role": request.role,
+            "delegateUserId": str(delegate_oid),
+            "until": request.until.isoformat() if request.until else None,
+            "reason": request.reason,
+        },
+    )
+
+    return {"message": "Delegation created.", "id": str(delegation["_id"])}
+
+
+@review_queue_router.delete("/me/delegations/{delegation_id}")
+async def revoke_my_delegation(
+    delegation_id: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Take a delegated role back before it lapses."""
+    if not ObjectId.is_valid(delegation_id):
+        raise HTTPException(status_code=400, detail="Invalid delegation id.")
+
+    result = users_collection.update_one(
+        {"_id": ObjectId(current_user.id), "workflowDelegations._id": ObjectId(delegation_id)},
+        {"$set": {"workflowDelegations.$.revokedAt": datetime.utcnow()}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Delegation not found.")
+
+    await create_audit_log(
+        user=current_user,
+        action="WORKFLOW_ROLE_DELEGATION_REVOKED",
+        details={"delegationId": delegation_id},
+    )
+    return {"message": "Delegation revoked."}

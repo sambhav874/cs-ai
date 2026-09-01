@@ -9,7 +9,8 @@ Contract-level wins whenever it is set, so an exception on a single document
 never has to be argued with the project.
 """
 
-from typing import Any, Dict, Optional
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
 
@@ -63,10 +64,19 @@ def load_project_for_contract(
 def effective_roles_for_contract(
     contract: Optional[Dict[str, Any]],
     projects_collection: Any,
+    users_collection: Any = None,
 ) -> Dict[str, Any]:
-    return resolve_workflow_roles(
+    """Who actually acts on this contract right now.
+
+    Contract override, else the project default, and then whoever is covering
+    for them.
+    """
+    roles = resolve_workflow_roles(
         contract, load_project_for_contract(contract, projects_collection)
     )
+    if users_collection is None:
+        return roles
+    return apply_delegations(roles, users_collection)
 
 
 def conflicting_role_assignment(
@@ -74,3 +84,69 @@ def conflicting_role_assignment(
 ) -> bool:
     """One person cannot both edit and approve the same work."""
     return editor is not None and approver is not None and editor == approver
+
+
+def active_delegation(
+    delegations: Optional[List[Dict[str, Any]]],
+    role_key: str,
+    now: Optional[datetime] = None,
+) -> Optional[Dict[str, Any]]:
+    """The delegation currently standing in for `role_key`, if any.
+
+    A lapsed delegation is simply ignored rather than cleaned up: nobody should
+    have to run a job for an approver's role to come back to them.
+    """
+    if not delegations:
+        return None
+    moment = now or datetime.utcnow()
+    standing = [
+        d for d in delegations
+        if d.get("role") == role_key
+        and isinstance(d.get("delegateUserId"), ObjectId)
+        and (d.get("until") is None or d.get("until") > moment)
+        and not d.get("revokedAt")
+    ]
+    if not standing:
+        return None
+    # Newest wins, so re-delegating replaces rather than stacks.
+    return max(standing, key=lambda d: d.get("createdAt") or datetime.min)
+
+
+def apply_delegations(
+    roles: Dict[str, Any], users_collection: Any, now: Optional[datetime] = None
+) -> Dict[str, Any]:
+    """Swap in whoever is covering, recording who the role really belongs to.
+
+    Delegations live on the delegating user, so the role follows the person who
+    went on leave rather than being copied onto every contract they touch.
+    """
+    resolved = dict(roles)
+    if users_collection is None:
+        return resolved
+
+    holders = {
+        role_name: resolved.get(key)
+        for role_name, key in (("editor", EDITOR_KEY), ("approver", APPROVER_KEY))
+        if isinstance(resolved.get(key), ObjectId)
+    }
+    if not holders:
+        return resolved
+
+    delegations_by_user = {
+        user["_id"]: user.get("workflowDelegations") or []
+        for user in users_collection.find(
+            {"_id": {"$in": list(set(holders.values()))}}, {"workflowDelegations": 1}
+        )
+    }
+
+    for role_name, key in (("editor", EDITOR_KEY), ("approver", APPROVER_KEY)):
+        holder = resolved.get(key)
+        if not isinstance(holder, ObjectId):
+            continue
+        delegation = active_delegation(delegations_by_user.get(holder), role_name, now)
+        if delegation is None:
+            continue
+        resolved[f"{key}DelegatedFrom"] = holder
+        resolved[key] = delegation["delegateUserId"]
+        resolved[f"{key}Source"] = "delegation"
+    return resolved
