@@ -819,6 +819,56 @@ async def certify_contract_kpi(
     return result
 
 
+@kpis_router.post("/contracts/{contract_id}/kpis/{kpi_id}/resolve-review")
+async def resolve_kpi_review_flag(
+    contract_id: str,
+    kpi_id: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Close out an extraction the model flagged for a human.
+
+    The flag was previously a dead end: it could be raised but never answered,
+    so a contract carried "needs review" forever and the signal stopped meaning
+    anything.
+    """
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+
+    contract = collection.find_one(
+        {"_id": contract_oid},
+        {"_id": 1, "ownerType": 1, "ownerId": 1, "contract_name": 1},
+    )
+    check_contract_access(contract, current_user)
+
+    now = datetime.utcnow()
+    result = _kpi_manager().kpis.update_one(
+        {"contract_id": contract_id, "kpi_id": kpi_id},
+        {
+            "$set": {
+                "needs_review": False,
+                "review_resolved_by": str(current_user.id),
+                "review_resolved_at": now,
+                "updated_at": now,
+            }
+        },
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="KPI not found.")
+
+    await create_audit_log(
+        user=current_user,
+        action="KPI_REVIEW_FLAG_RESOLVED",
+        contract_id=contract_oid,
+        contract_name_override=(contract or {}).get("contract_name"),
+        account_id_override=(contract or {}).get("ownerId") if (contract or {}).get("ownerType") == "team" else None,
+        details={"kpiId": kpi_id},
+    )
+    cache.delete(f"kpi:list:{contract_id}")
+    return {"message": "Review flag cleared.", "kpi_id": kpi_id}
+
+
 @kpis_router.get("/contracts/{contract_id}/kpis/{kpi_id}/history")
 def get_contract_kpi_history(
     contract_id: str,

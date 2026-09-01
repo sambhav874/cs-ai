@@ -63,7 +63,7 @@ class ReviewQueueTests(unittest.TestCase):
 
         self.collection.find.side_effect = find
 
-        result = queue_module.get_my_review_queue(include_kpis=False, current_user=_user())
+        result = queue_module.get_my_review_queue(include_kpis=False, include_flagged=False, current_user=_user())
 
         self.assertEqual(result["counts"], {"approvals": 1, "edits": 1, "total": 2})
         self.assertEqual(result["awaiting_my_approval"][0]["assigned_role"], "approver")
@@ -87,7 +87,7 @@ class ReviewQueueTests(unittest.TestCase):
 
         self.collection.find.side_effect = find
 
-        result = queue_module.get_my_review_queue(include_kpis=False, current_user=_user())
+        result = queue_module.get_my_review_queue(include_kpis=False, include_flagged=False, current_user=_user())
 
         self.assertEqual(
             [item["title"] for item in result["awaiting_my_approval"]],
@@ -98,7 +98,7 @@ class ReviewQueueTests(unittest.TestCase):
         self.projects.find.return_value = [{"_id": PROJECT_OID}]
         self.collection.find.return_value = []
 
-        queue_module.get_my_review_queue(include_kpis=False, current_user=_user())
+        queue_module.get_my_review_queue(include_kpis=False, include_flagged=False, current_user=_user())
 
         query = self.collection.find.call_args_list[0][0][0]
         inherited_clause = query["$or"][1]
@@ -110,7 +110,7 @@ class ReviewQueueTests(unittest.TestCase):
     def test_no_project_roles_means_no_inherited_clause(self):
         self.collection.find.return_value = []
 
-        queue_module.get_my_review_queue(include_kpis=False, current_user=_user())
+        queue_module.get_my_review_queue(include_kpis=False, include_flagged=False, current_user=_user())
 
         query = self.collection.find.call_args_list[0][0][0]
         self.assertEqual(len(query["$or"]), 1)
@@ -118,7 +118,7 @@ class ReviewQueueTests(unittest.TestCase):
     def test_an_empty_queue_reports_zero_rather_than_failing(self):
         self.collection.find.return_value = []
 
-        result = queue_module.get_my_review_queue(include_kpis=False, current_user=_user())
+        result = queue_module.get_my_review_queue(include_kpis=False, include_flagged=False, current_user=_user())
 
         self.assertEqual(result["counts"]["total"], 0)
         self.assertEqual(result["awaiting_my_approval"], [])
@@ -138,7 +138,7 @@ class ReviewQueueTests(unittest.TestCase):
 
         self.collection.find.side_effect = find
 
-        result = queue_module.get_my_review_queue(include_kpis=False, current_user=_user())
+        result = queue_module.get_my_review_queue(include_kpis=False, include_flagged=False, current_user=_user())
 
         self.assertEqual(
             result["awaiting_my_edit"][0]["note"],
@@ -178,7 +178,9 @@ class ReviewQueueKpiTests(unittest.TestCase):
             }
         ]
 
-        result = queue_module.get_my_review_queue(include_kpis=True, current_user=_user())
+        result = queue_module.get_my_review_queue(
+            include_kpis=True, include_flagged=False, current_user=_user()
+        )
 
         kpi_items = [i for i in result["awaiting_my_approval"] if i["artifact_type"] == "kpi"]
         self.assertEqual(len(kpi_items), 1)
@@ -188,13 +190,40 @@ class ReviewQueueKpiTests(unittest.TestCase):
         self.collection.find.return_value = [{"_id": ObjectId()}]
         self.kpi_db.contract_kpis.find.return_value = []
 
-        queue_module.get_my_review_queue(include_kpis=True, current_user=_user())
+        queue_module.get_my_review_queue(
+            include_kpis=True, include_flagged=False, current_user=_user()
+        )
 
         kpi_query = self.kpi_db.contract_kpis.find.call_args[0][0]
         self.assertEqual(kpi_query["governance_status"], {"$in": ["draft", "reviewed"]})
 
-    def test_opting_out_of_kpis_skips_the_kpi_database_entirely(self):
-        queue_module.get_my_review_queue(include_kpis=False, current_user=_user())
+    def test_extractions_the_model_flagged_land_in_the_edit_queue(self):
+        contract_oid = ObjectId()
+        self.collection.find.return_value = [{"_id": contract_oid}]
+        self.kpi_db.contract_kpis.find.return_value = [
+            {
+                "contract_id": str(contract_oid),
+                "kpi_id": "kpi-9",
+                "name": "Rebate threshold",
+                "needs_review": True,
+                "notes": "Threshold depends on an exhibit that is not in the sources.",
+                "updated_at": datetime.utcnow(),
+            }
+        ]
+
+        result = queue_module.get_my_review_queue(
+            include_kpis=False, include_flagged=True, current_user=_user()
+        )
+
+        flagged = [i for i in result["awaiting_my_edit"] if i["artifact_type"] == "flagged_extraction"]
+        self.assertEqual(len(flagged), 1)
+        self.assertEqual(flagged[0]["state"], "needs_review")
+        self.assertIn("exhibit", flagged[0]["note"])
+
+    def test_opting_out_skips_the_kpi_database_entirely(self):
+        queue_module.get_my_review_queue(
+            include_kpis=False, include_flagged=False, current_user=_user()
+        )
 
         self.kpi_db.contract_kpis.find.assert_not_called()
 

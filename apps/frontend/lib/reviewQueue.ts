@@ -1,7 +1,7 @@
 import { apiFetch } from "@/lib/apiClient";
 
 export type ReviewQueueItem = {
-  artifact_type: "contract" | "kpi";
+  artifact_type: "contract" | "kpi" | "flagged_extraction";
   artifact_id: string;
   title: string;
   contract_id: string | null;

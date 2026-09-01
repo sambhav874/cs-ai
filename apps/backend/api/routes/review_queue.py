@@ -162,9 +162,49 @@ def _kpi_items(user_oid: ObjectId) -> List[Dict[str, Any]]:
     return items
 
 
+def _flagged_extraction_items(user_oid: ObjectId) -> List[Dict[str, Any]]:
+    """Extractions the model flagged for a human, on contracts this user edits.
+
+    ``needs_review`` was a boolean nobody was accountable for: no queue, no
+    assignee, no way to tell a flag raised today from one raised in March.
+    """
+    if kpi_db is None:
+        return []
+    editor_contract_ids = [
+        str(doc["_id"])
+        for doc in collection.find(
+            {"$or": _contract_clauses(user_oid, "editorUserId", EDITOR_ACTIONABLE_STATUSES + ["Approved", "Pending Approval"])},
+            {"_id": 1},
+        )
+    ]
+    if not editor_contract_ids:
+        return []
+
+    items = []
+    for kpi in kpi_db.contract_kpis.find(
+        {"contract_id": {"$in": editor_contract_ids}, "needs_review": True},
+        {"contract_id": 1, "kpi_id": 1, "name": 1, "notes": 1, "updated_at": 1, "created_at": 1},
+    ):
+        items.append(
+            {
+                "artifact_type": "flagged_extraction",
+                "artifact_id": str(kpi.get("kpi_id") or kpi["_id"]),
+                "title": kpi.get("name") or "Flagged extraction",
+                "contract_id": kpi.get("contract_id"),
+                "project_id": None,
+                "state": "needs_review",
+                "assigned_role": "editor",
+                "waiting_since": kpi.get("updated_at") or kpi.get("created_at"),
+                "note": kpi.get("notes"),
+            }
+        )
+    return items
+
+
 @review_queue_router.get("/me/review-queue")
 def get_my_review_queue(
     include_kpis: bool = Query(True, description="Include KPIs awaiting certification."),
+    include_flagged: bool = Query(True, description="Include extractions the model flagged for review."),
     current_user: UserInDB = Depends(get_current_active_user),
 ) -> Dict[str, Any]:
     """Everything waiting on this user, in one list."""
@@ -174,6 +214,8 @@ def get_my_review_queue(
     edits = _contract_items(user_oid, "editor", EDITOR_ACTIONABLE_STATUSES)
     if include_kpis:
         approvals.extend(_kpi_items(user_oid))
+    if include_flagged:
+        edits.extend(_flagged_extraction_items(user_oid))
 
     # Oldest first: the thing that has been waiting longest is the thing most
     # likely to be forgotten.

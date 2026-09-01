@@ -33,6 +33,11 @@ function ItemRow({ item }: { item: ReviewQueueItem }) {
               KPI
             </Badge>
           )}
+          {item.artifact_type === "flagged_extraction" && (
+            <Badge variant="outline" className="shrink-0 border-amber-300 text-xs text-amber-700">
+              Flagged
+            </Badge>
+          )}
         </div>
         {item.state && (
           <p className="mt-1 text-sm text-muted-foreground">{item.state}</p>
