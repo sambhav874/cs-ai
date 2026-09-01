@@ -11,6 +11,7 @@ from core.database import (
     collection,
     users_collection,
     teams_collection,
+    projects_collection,
 )
 from core.security import get_current_active_user
 from models.domain import (
@@ -31,10 +32,20 @@ from api.dependencies import (
     check_contract_access,
 )
 from utils.audit_logger import create_audit_log
+from services.workflow_roles import (
+    effective_roles_for_contract,
+    load_project_for_contract,
+    resolve_workflow_roles,
+)
 
 logger = logging.getLogger(__name__)
 
 workflows_router = APIRouter()
+
+
+def _roles_for(contract: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Roles that apply to this contract, its project's defaults included."""
+    return effective_roles_for_contract(contract, projects_collection)
 
 # Forward reference / local function definitions if needed, or import get_contract from contracts.py
 # Since we need to return get_contract(...) in some routes, we can import it from api.routes.contracts
@@ -68,7 +79,7 @@ async def assign_workflow_roles(
     # 2. Fetch contract details for permission check, audit, and current roles
     contract_before_roles_update = collection.find_one(
         {"_id": contract_oid},
-        {"ownerType": 1, "ownerId": 1, "uploaded_by": 1, "contract_name": 1, "workflowRoles": 1}
+        {"ownerType": 1, "ownerId": 1, "uploaded_by": 1, "contract_name": 1, "workflowRoles": 1, "projectId": 1}
     )
     if not contract_before_roles_update:
         logger.warning(f"Contract {contract_id} not found for role assignment.")
@@ -175,16 +186,23 @@ async def assign_workflow_roles(
     # One person cannot both edit and approve the same contract. A request may
     # set only one of the two roles, so the check is against the pair that will
     # exist after this update, not against what the request happens to carry.
+    # An unset role falls through to the project default, so the pair being
+    # checked has to include what would be inherited. The fallback is the
+    # project's value alone — resolving against the contract would hand back the
+    # very role this request is clearing.
+    inherited_roles = resolve_workflow_roles(
+        None, load_project_for_contract(contract_before_roles_update, projects_collection)
+    )
     effective_editor_oid = (
         update_payload["workflowRoles.editorUserId"]
         if "workflowRoles.editorUserId" in update_payload
         else old_editor_id_obj
-    )
+    ) or inherited_roles["editorUserId"]
     effective_approver_oid = (
         update_payload["workflowRoles.approverUserId"]
         if "workflowRoles.approverUserId" in update_payload
         else old_approver_id_obj
-    )
+    ) or inherited_roles["approverUserId"]
     if (
         effective_editor_oid is not None
         and effective_approver_oid is not None
@@ -597,7 +615,8 @@ async def submit_contract_for_approval(
             "ownerType": 1,
             "ownerId": 1,
             "status": 1,
-            "workflowRoles.editorUserId": 1,
+            "workflowRoles": 1,
+            "projectId": 1,
             "contract_name": 1
         }
     ) #i hate formating code!!! specially of this type and with this type of indentation
@@ -610,7 +629,7 @@ async def submit_contract_for_approval(
     owner_id_obj_from_db = contract_before_submit.get("ownerId")
     owner_id_str = str(owner_id_obj_from_db) if isinstance(owner_id_obj_from_db, ObjectId) else None
     current_status_before = contract_before_submit.get("status")
-    editor_user_id_obj = contract_before_submit.get("workflowRoles", {}).get("editorUserId") # Might be None or ObjectId
+    editor_user_id_obj = _roles_for(contract_before_submit)["editorUserId"] # contract override, else the project default
     user_oid = ObjectId(current_user.id)
     user_id_str = current_user.id
 
@@ -724,7 +743,8 @@ async def approve_contract(
             "ownerType": 1,
             "ownerId": 1, # This is an ObjectId in the DB
             "status": 1,
-            "workflowRoles.approverUserId": 1,
+            "workflowRoles": 1,
+            "projectId": 1,
             "submittedBy": 1, # Needed to keep a submitter from approving their own work
             "contract_name": 1 # Important for audit log
         }
@@ -737,7 +757,7 @@ async def approve_contract(
     owner_type = contract_before.get("ownerType")
     owner_id_obj_from_db = contract_before.get("ownerId") # This is an ObjectId from DB
     current_status_before = contract_before.get("status")
-    approver_user_id_obj_from_db = contract_before.get("workflowRoles", {}).get("approverUserId") # ObjectId from DB
+    approver_user_id_obj_from_db = _roles_for(contract_before)["approverUserId"] # contract override, else the project default
     
     user_id_obj_for_comparison = ObjectId(current_user.id) # current_user.id is string, convert for DB comparison
 
@@ -878,7 +898,8 @@ async def reject_contract(
             "ownerType": 1,
             "ownerId": 1,
             "status": 1,
-            "workflowRoles.approverUserId": 1,
+            "workflowRoles": 1,
+            "projectId": 1,
             "contract_name": 1 
         }
     )
@@ -890,7 +911,7 @@ async def reject_contract(
     owner_id_obj_from_db = contract_before_reject.get("ownerId")
     owner_id_str = str(owner_id_obj_from_db) if isinstance(owner_id_obj_from_db, ObjectId) else None
     current_status_before = contract_before_reject.get("status")
-    approver_user_id_obj = contract_before_reject.get("workflowRoles", {}).get("approverUserId")
+    approver_user_id_obj = _roles_for(contract_before_reject)["approverUserId"]
     user_oid = ObjectId(current_user.id)
     user_id_str = current_user.id
 
@@ -1139,7 +1160,7 @@ async def request_reedit_contract(
 
     # --- TEAM (Pro) WORKFLOW ---
     elif owner_type == "team":
-        editor_user_id_obj = contract_before.get("workflowRoles", {}).get("editorUserId")
+        editor_user_id_obj = _roles_for(contract_before)["editorUserId"]
         if editor_user_id_obj != user_oid:
             raise HTTPException(status_code=403, detail="Only the assigned editor can request to re-edit this contract.")
 
@@ -1213,7 +1234,7 @@ async def approve_reedit_request(
     if contract_before.get("status") != "Pending Re-edit Approval":
         raise HTTPException(status_code=400, detail="Contract is not awaiting re-edit approval.")
 
-    approver_user_id_obj = contract_before.get("workflowRoles", {}).get("approverUserId")
+    approver_user_id_obj = _roles_for(contract_before)["approverUserId"]
     owner_id_str = str(contract_before.get("ownerId"))
     user_oid = ObjectId(current_user.id)
     is_owner = (owner_id_str == current_user.ownedAccountId)
@@ -1278,7 +1299,7 @@ async def deny_reedit_request(
     if contract_before.get("status") != "Pending Re-edit Approval":
         raise HTTPException(status_code=400, detail="Contract is not awaiting re-edit approval.")
 
-    approver_user_id_obj = contract_before.get("workflowRoles", {}).get("approverUserId")
+    approver_user_id_obj = _roles_for(contract_before)["approverUserId"]
     owner_id_str = str(contract_before.get("ownerId"))
     user_oid = ObjectId(current_user.id)
     is_owner = (owner_id_str == current_user.ownedAccountId)
@@ -1343,7 +1364,7 @@ async def acknowledge_reedit_denial(
         raise HTTPException(status_code=404, detail="Contract not found.")
 
     # Permission Check: Only the assigned editor can acknowledge.
-    editor_user_id_obj = contract_before.get("workflowRoles", {}).get("editorUserId")
+    editor_user_id_obj = _roles_for(contract_before)["editorUserId"]
     if ObjectId(current_user.id) != editor_user_id_obj:
         raise HTTPException(status_code=403, detail="Only the assigned editor can acknowledge this denial.")
 

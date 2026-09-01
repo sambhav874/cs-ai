@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 
-from core.database import collection, projects_collection, teams_collection
+from core.database import collection, projects_collection, teams_collection, users_collection
 from core.security import get_current_active_user
 from models.domain import (
     ProjectCreate,
@@ -19,7 +19,10 @@ from models.domain import (
     ProjectScratchpadUpdate,
     ScheduleLinkDecision,
     TableClassificationUpdate,
+    AssignWorkflowRolesRequest,
 )
+from services.workflow_roles import conflicting_role_assignment
+from utils.audit_logger import create_audit_log
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +177,17 @@ def assign_unprojected_contracts(owner_type: str, owner_id: ObjectId, project_id
         {"$set": {"projectId": project_id}},
     )
     return result.modified_count
+
+
+def _usernames_for(user_oids: List[Optional[ObjectId]]) -> Dict[str, str]:
+    """Map user ids to usernames so a role reads as a person, not an ObjectId."""
+    wanted = [oid for oid in user_oids if isinstance(oid, ObjectId)]
+    if not wanted or users_collection is None:
+        return {}
+    return {
+        str(user["_id"]): user.get("username")
+        for user in users_collection.find({"_id": {"$in": wanted}}, {"username": 1})
+    }
 
 
 def verify_project_access(project_id: str, current_user: UserInDB) -> Dict[str, Any]:
@@ -1017,3 +1031,120 @@ def get_project_escalation_check(
             "below_promised": sum(1 for f in findings if f["status"] == "below_promised"),
         },
     }
+
+
+@router.get("/{project_id}/roles")
+def get_project_workflow_roles(
+    project_id: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """The Editor and Approver every contract in this project inherits."""
+    project = verify_project_access(project_id, current_user)
+    roles = project.get("workflowRoles") or {}
+    editor_oid = roles.get("editorUserId")
+    approver_oid = roles.get("approverUserId")
+
+    names = _usernames_for([editor_oid, approver_oid])
+    return {
+        "editorUserId": str(editor_oid) if editor_oid else None,
+        "approverUserId": str(approver_oid) if approver_oid else None,
+        "editor_name": names.get(str(editor_oid)),
+        "approver_name": names.get(str(approver_oid)),
+    }
+
+
+@router.put("/{project_id}/roles")
+async def assign_project_workflow_roles(
+    project_id: str,
+    request: AssignWorkflowRolesRequest,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Set the project-wide Editor and Approver.
+
+    Contracts in the project inherit these unless that contract carries its own
+    assignment, so a matter can be staffed once instead of per document.
+    """
+    project = verify_project_access(project_id, current_user)
+    owner_type = project.get("ownerType")
+    owner_id_obj = project.get("ownerId")
+
+    if owner_type != "team":
+        raise HTTPException(
+            status_code=400,
+            detail="Workflow roles apply to team projects. A personal project has a single owner.",
+        )
+
+    is_account_owner = current_user.ownedAccountId == str(owner_id_obj)
+    is_creator = str(project.get("createdBy") or "") == str(current_user.id)
+    if not (is_account_owner or is_creator):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the account owner or the project creator can assign workflow roles.",
+        )
+
+    stored_roles = project.get("workflowRoles") or {}
+    update_payload: Dict[str, Any] = {}
+    assigned_oids: List[ObjectId] = []
+
+    for field, key in (("editorUserId", "editorUserId"), ("approverUserId", "approverUserId")):
+        value = getattr(request, field)
+        if value is None:  # key absent from the request: leave the stored value alone
+            continue
+        if value == "":  # explicit clear
+            update_payload[f"workflowRoles.{key}"] = None
+            continue
+        if not ObjectId.is_valid(value):
+            raise HTTPException(status_code=400, detail=f"Invalid format for {field}: {value}")
+        oid = ObjectId(value)
+        update_payload[f"workflowRoles.{key}"] = oid
+        assigned_oids.append(oid)
+
+    if not update_payload:
+        return {"message": "No role information provided to update.", "updated": False}
+
+    if assigned_oids and teams_collection is not None:
+        team = teams_collection.find_one({"_id": owner_id_obj}, {"members.userId": 1})
+        if not team:
+            raise HTTPException(status_code=404, detail="Associated account not found.")
+        member_oids = {
+            member.get("userId")
+            for member in team.get("members", [])
+            if isinstance(member.get("userId"), ObjectId)
+        }
+        for oid in assigned_oids:
+            if oid not in member_oids:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"User {oid} is not a member of this account and cannot be assigned a role.",
+                )
+
+    effective_editor = update_payload.get(
+        "workflowRoles.editorUserId", stored_roles.get("editorUserId")
+    )
+    effective_approver = update_payload.get(
+        "workflowRoles.approverUserId", stored_roles.get("approverUserId")
+    )
+    if conflicting_role_assignment(effective_editor, effective_approver):
+        raise HTTPException(
+            status_code=400,
+            detail="The same user cannot be both Editor and Approver on a project. Assign a different approver.",
+        )
+
+    update_payload["updatedAt"] = datetime.utcnow()
+    projects_collection.update_one({"_id": ObjectId(project_id)}, {"$set": update_payload})
+
+    await create_audit_log(
+        user=current_user,
+        action="PROJECT_WORKFLOW_ROLES_UPDATED",
+        account_id_override=owner_id_obj,
+        details={
+            "projectId": project_id,
+            "projectName": project.get("name"),
+            "oldEditorUserId": str(stored_roles.get("editorUserId") or "") or None,
+            "oldApproverUserId": str(stored_roles.get("approverUserId") or "") or None,
+            "newEditorUserId": str(effective_editor or "") or None,
+            "newApproverUserId": str(effective_approver or "") or None,
+        },
+    )
+
+    return {"message": "Project workflow roles updated.", "updated": True}

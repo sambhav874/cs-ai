@@ -27,6 +27,7 @@ from models.response_types import (
 )
 from core.validators import validate_pdf_upload, extract_pdf_page_count
 from api.routes.projects import verify_project_access, ensure_default_project
+from services.workflow_roles import effective_roles_for_contract, resolve_workflow_roles
 from api.dependencies import (
     deduct_credits,
     queue_contract_ingestion,
@@ -43,6 +44,36 @@ from core.cache import cache
 logger = logging.getLogger(__name__)
 
 contracts_router = APIRouter()
+
+
+def _projects_where_user_holds_a_role(user_oid, account_oid):
+    """Project ids where this user is the default Editor / Approver.
+
+    Returned separately: someone may be the editor on one matter and the
+    approver on another.
+    """
+    if projects_collection is None:
+        return [], []
+    cursor = projects_collection.find(
+        {
+            "ownerType": "team",
+            "ownerId": account_oid,
+            "$or": [
+                {"workflowRoles.editorUserId": user_oid},
+                {"workflowRoles.approverUserId": user_oid},
+            ],
+        },
+        {"workflowRoles": 1},
+    )
+    editor_oids, approver_oids = [], []
+    for project in cursor:
+        roles = project.get("workflowRoles") or {}
+        if roles.get("editorUserId") == user_oid:
+            editor_oids.append(project["_id"])
+        if roles.get("approverUserId") == user_oid:
+            approver_oids.append(project["_id"])
+    return editor_oids, approver_oids
+
 
 @contracts_router.post("/contracts/{contract_id}/ticket")
 def create_contract_download_ticket(
@@ -800,14 +831,33 @@ def list_documents(
         if not is_owner:
             active_statuses = ["Uploaded", "Processing", "Ingested", "Editing", "Pending Approval", "Approved", "Rejected", "Error"]
             
+            approver_visible_statuses = [
+                "Pending Approval", "Approved", "Ingested",
+                "Pending Re-edit Approval", "Re-edit Denied",
+            ]
             permission_clauses = [
                 {"uploaded_by": user_oid, "status": {"$in": active_statuses}},
                 {"workflowRoles.editorUserId": user_oid},
                 {
                     "workflowRoles.approverUserId": user_oid,
-                    "status": {"$in": ["Pending Approval", "Approved", "Ingested", "Pending Re-edit Approval", "Re-edit Denied"]}
+                    "status": {"$in": approver_visible_statuses}
                 }
             ]
+
+            # A role assigned on the project reaches every contract in it, so
+            # someone staffed at project level has to see that work too.
+            editor_project_oids, approver_project_oids = _projects_where_user_holds_a_role(user_oid, account_oid)
+            if editor_project_oids:
+                permission_clauses.append({
+                    "projectId": {"$in": editor_project_oids},
+                    "workflowRoles.editorUserId": None,
+                })
+            if approver_project_oids:
+                permission_clauses.append({
+                    "projectId": {"$in": approver_project_oids},
+                    "workflowRoles.approverUserId": None,
+                    "status": {"$in": approver_visible_statuses},
+                })
             query_conditions.append({"$or": permission_clauses})
     if status:
         if ',' in status:
@@ -872,6 +922,20 @@ def list_documents(
         documents_cursor = collection.find(final_query, projection).sort(sort).skip(skip).limit(per_page)
         documents_list = list(documents_cursor)
 
+        # Role defaults live on the project, so resolving them per document
+        # needs one lookup for the whole page rather than one per row.
+        page_project_oids = {
+            pid for doc in documents_list if isinstance(pid := doc.get("projectId"), ObjectId)
+        }
+        projects_by_oid = {}
+        if page_project_oids and projects_collection is not None:
+            projects_by_oid = {
+                project["_id"]: project
+                for project in projects_collection.find(
+                    {"_id": {"$in": list(page_project_oids)}}, {"workflowRoles": 1}
+                )
+            }
+
         latest_jobs_by_contract = {}
         status_needs_job_snapshot = {"processing", "pending", "queued", "Syncronizing", "Indexing", "Summarizing", "Processing"}
         document_oids = [
@@ -894,8 +958,10 @@ def list_documents(
         user_ids = set()
         for doc in documents_list:
             if isinstance(doc.get("uploaded_by"), ObjectId): user_ids.add(doc["uploaded_by"])
-            if (wf := doc.get("workflowRoles")) and isinstance(wf.get("editorUserId"), ObjectId): user_ids.add(wf["editorUserId"])
-            if (wf := doc.get("workflowRoles")) and isinstance(wf.get("approverUserId"), ObjectId): user_ids.add(wf["approverUserId"])
+            # Resolved, so an inherited assignee gets a name in the response too.
+            wf = resolve_workflow_roles(doc, projects_by_oid.get(doc.get("projectId")))
+            if isinstance(wf.get("editorUserId"), ObjectId): user_ids.add(wf["editorUserId"])
+            if isinstance(wf.get("approverUserId"), ObjectId): user_ids.add(wf["approverUserId"])
         user_map = {}
         if user_ids:
             users = list(users_collection.find({"_id": {"$in": list(user_ids)}}, {"_id": 1, "username": 1}))
@@ -903,7 +969,9 @@ def list_documents(
         
         processed_docs = []
         for doc in documents_list:
-            workflow_roles = doc.get("workflowRoles") or {}
+            workflow_roles = resolve_workflow_roles(
+                doc, projects_by_oid.get(doc.get("projectId"))
+            )
             re_edit_request = doc.get("reEditRequest") or {}
 
             processed = {
@@ -921,7 +989,10 @@ def list_documents(
                     "editorUserId": str(uid) if (uid := workflow_roles.get("editorUserId")) else None,
                     "approverUserId": str(uid) if (uid := workflow_roles.get("approverUserId")) else None,
                     "editor_name": user_map.get(str(workflow_roles.get("editorUserId"))),
-                    "approver_name": user_map.get(str(workflow_roles.get("approverUserId")))
+                    "approver_name": user_map.get(str(workflow_roles.get("approverUserId"))),
+                    # "project" means the assignment is inherited, not set here.
+                    "editorSource": workflow_roles.get("editorUserIdSource"),
+                    "approverSource": workflow_roles.get("approverUserIdSource"),
                 },
                 "rejectedReason": doc.get("rejectedReason"),
                 "reEditRequest": {
@@ -1109,12 +1180,20 @@ def get_contract(
             except Exception:
                 pass
 
+        # Resolved against the project so an inherited assignment is visible on
+        # the contract that inherits it, not only on the project that sets it.
         workflow_roles = None
-        if isinstance(contract.get("workflowRoles"), dict):
-            try:
-                workflow_roles = WorkflowRoles.model_validate(contract["workflowRoles"])
-            except Exception:
-                pass
+        try:
+            resolved_roles = effective_roles_for_contract(contract, projects_collection)
+            if resolved_roles.get("editorUserId") or resolved_roles.get("approverUserId"):
+                workflow_roles = WorkflowRoles.model_validate(
+                    {
+                        "editorUserId": resolved_roles.get("editorUserId"),
+                        "approverUserId": resolved_roles.get("approverUserId"),
+                    }
+                )
+        except Exception:
+            pass
 
         response = ContractResponse(
             _id=str(contract["_id"]),
