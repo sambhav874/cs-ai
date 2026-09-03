@@ -152,5 +152,64 @@ class ProjectRoleAssignmentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("cannot be both", raised.exception.detail)
 
 
+
+class ProjectCreationDefaultsAdminTests(unittest.TestCase):
+    """create_project used to leave createdBy and workflowRoles unset, which
+    made the "creator is the project's default admin" check silently
+    unreachable — the field it read was never written."""
+
+    def setUp(self):
+        self.projects = MagicMock()
+        inserted_id = ObjectId()
+        self.projects.insert_one.return_value = MagicMock(inserted_id=inserted_id)
+
+        def find_one(query):
+            return {**self.last_document, "_id": inserted_id}
+
+        self.projects.find_one.side_effect = find_one
+        self.teams = MagicMock()
+        self.teams.find_one.return_value = {"_id": TEAM, "_id_check": True}
+        self.collection = MagicMock()
+        self.collection.aggregate.return_value = iter([])
+
+        self.patches = [
+            patch.object(projects_module, "projects_collection", self.projects),
+            patch.object(projects_module, "teams_collection", self.teams),
+            patch.object(projects_module, "collection", self.collection),
+        ]
+        for p in self.patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in self.patches])
+
+    def _create(self, owner_id):
+        from models.domain import ProjectCreate
+
+        captured = {}
+
+        def insert_one(document):
+            captured.update(document)
+            return MagicMock(inserted_id=ObjectId())
+
+        self.projects.insert_one.side_effect = insert_one
+        self.last_document = captured
+
+        user = _user(OWNER, owns_account=True)
+        request = ProjectCreate(name="Supplier renewals", ownerId=owner_id)
+        projects_module.create_project(request=request, current_user=user)
+        return captured
+
+    def test_the_creator_becomes_the_projects_admin_on_a_team_project(self):
+        document = self._create(str(TEAM))
+
+        self.assertEqual(document["createdBy"], ObjectId(str(OWNER)))
+        self.assertEqual(document["workflowRoles"]["adminUserId"], ObjectId(str(OWNER)))
+
+    def test_a_personal_project_gets_no_admin_slot(self):
+        document = self._create(None)
+
+        self.assertEqual(document["createdBy"], ObjectId(str(OWNER)))
+        self.assertNotIn("workflowRoles", document)
+
+
 if __name__ == "__main__":
     unittest.main()

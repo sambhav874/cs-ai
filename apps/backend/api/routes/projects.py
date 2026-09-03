@@ -343,14 +343,23 @@ def create_project(
 ):
     owner_type, owner_id = _resolve_owner(current_user, request.ownerId)
     now = datetime.utcnow()
-    result = projects_collection.insert_one({
+    creator_oid = ObjectId(current_user.id)
+    document = {
         "name": request.name.strip(),
         "description": request.description,
         "ownerType": owner_type,
         "ownerId": owner_id,
+        "createdBy": creator_oid,
         "createdAt": now,
         "updatedAt": now,
-    })
+    }
+    # The creator is the project's admin by default on a team project — a
+    # personal project has no team to admin. assign_project_workflow_roles
+    # already trusted a createdBy match; this endpoint never wrote it, so that
+    # check was silently unreachable for every project made through the API.
+    if owner_type == "team":
+        document["workflowRoles"] = {"adminUserId": creator_oid}
+    result = projects_collection.insert_one(document)
     project = projects_collection.find_one({"_id": result.inserted_id})
     return _serialize_project(project, _project_stats(project, current_user))
 
