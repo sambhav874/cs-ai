@@ -328,6 +328,38 @@ def is_baltia_jfk_demo(
     return False
 
 
+REAL_EXTRACTION_ENV_VAR = "BALTIA_DEMO_REAL_EXTRACTION"
+
+
+def real_extraction_enabled() -> bool:
+    """Whether the demo contract should run the real extractor.
+
+    Off by default, so the pitch flow is untouched.  Set
+    ``BALTIA_DEMO_REAL_EXTRACTION=1`` to measure the extraction pipeline
+    against demo_data/baltia_jfk_ground_truth.json instead of serving that
+    file as the answer -- the 37 labelled obligations are the only gold set
+    in the repo, and they are worth more as a scoring target than as a
+    canned register.
+    """
+    return os.environ.get(REAL_EXTRACTION_ENV_VAR, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def use_demo_ground_truth_extraction(
+    contract_id: Optional[str] = None,
+    filename: Optional[str] = None,
+    contract_name: Optional[str] = None,
+) -> bool:
+    """The gate for *extraction only*.
+
+    Separate from :func:`is_baltia_jfk_demo` on purpose: the breach-enrichment
+    and reseed paths must keep recognising the demo contract even while the
+    extractor is being scored against it.
+    """
+    if real_extraction_enabled():
+        return False
+    return is_baltia_jfk_demo(contract_id, filename=filename, contract_name=contract_name)
+
+
 class BaltiaJfkDemoBuilder:
     def __init__(self, database):
         self.db = database

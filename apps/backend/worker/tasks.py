@@ -32,7 +32,7 @@ class JobStatus(Enum):
 from utils.helpers import JobManager
 from core.config import Settings
 from core.database import collection, db, fs, teams_collection, accounts_collection, kpi_db
-from services.baltia_jfk_demo import is_baltia_jfk_demo, BaltiaJfkDemoBuilder
+from services.baltia_jfk_demo import use_demo_ground_truth_extraction, BaltiaJfkDemoBuilder
 from services.contract_agent.rag import ContractRAGSystem
 from services.kpi_source_ingestion import KpiSourceIngestionService
 
@@ -536,7 +536,7 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                     {"_id": contract_oid},
                     {"_id": 1, "contract_name": 1, "projectId": 1},
                 )
-                if demo_contract_doc and is_baltia_jfk_demo(
+                if demo_contract_doc and use_demo_ground_truth_extraction(
                     contract_id, contract_name=demo_contract_doc.get("contract_name")
                 ):
                     BaltiaJfkDemoBuilder(kpi_db).extract_ground_truth(

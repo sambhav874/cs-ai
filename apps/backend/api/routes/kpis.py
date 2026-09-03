@@ -28,7 +28,12 @@ from services.workflow_roles import effective_roles_for_contract
 from utils.secure_logger import log_exception
 from services.kpi_manager import ContractKPIManager, USER_CONFIGURABLE_SOURCE_TYPES
 from services.kpi_source_ingestion import KpiSourceIngestionService, KpiSourceError, parse_sample_file_bytes
-from services.baltia_jfk_demo import is_baltia_jfk_demo, BaltiaJfkDemoBuilder, MANUAL_FINDING_SOURCE_DISPLAY_NAME
+from services.baltia_jfk_demo import (
+    is_baltia_jfk_demo,
+    use_demo_ground_truth_extraction,
+    BaltiaJfkDemoBuilder,
+    MANUAL_FINDING_SOURCE_DISPLAY_NAME,
+)
 from api.dependencies import check_contract_access, get_contract_and_verify_access, get_project_and_verify_access
 from api.routes.projects import verify_project_access, build_accessible_contract_query
 from core.cache import cache
@@ -709,7 +714,7 @@ def extract_contract_kpis(
         },
     )
     check_contract_access(contract, current_user)
-    if is_baltia_jfk_demo(contract_id, contract_name=contract.get("contract_name")):
+    if use_demo_ground_truth_extraction(contract_id, contract_name=contract.get("contract_name")):
         result = BaltiaJfkDemoBuilder(kpi_db).extract_ground_truth(
             contract_doc=contract,
             user_id=str(current_user.id),
