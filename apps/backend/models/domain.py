@@ -150,6 +150,9 @@ class AssignWorkflowRolesRequest(BaseModel):
     # Use Optional[str] - frontend sends string IDs, allow None to clear a role
     editorUserId: Optional[str] = Field(None, description="User ID (string) of the assigned Editor. Null to clear.")
     approverUserId: Optional[str] = Field(None, description="User ID (string) of the assigned Approver. Null to clear.")
+    # Projects only: who may staff this matter. A contract has no admin of its
+    # own — the project's admin governs its overrides too.
+    adminUserId: Optional[str] = Field(None, description="User ID (string) of the project admin. Null to clear.")
     
 class RejectContractRequest(BaseModel):
     reason: Optional[str] = Field(None, max_length=1000) # Optional reason, limit length
