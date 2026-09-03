@@ -195,6 +195,32 @@ async def logout(request: Request, response: Response):
 async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
     return current_user
 
+EVALUATION_WORKSPACE_ID = "600c00000000000000000001"
+
+# The frontend shows the Evaluations nav to these two accounts; the backend
+# now agrees with it rather than offering the workspace to everyone.
+EVALUATION_USERNAMES = {"test-uploader", "demouser"}
+
+
+def _may_use_evaluation_workspace(current_user: UserInDB) -> bool:
+    """Membership decides. The username allowlist is a fallback for
+    environments where the evaluation team document does not exist."""
+    if teams_collection is not None:
+        try:
+            if teams_collection.find_one(
+                {
+                    "_id": ObjectId(EVALUATION_WORKSPACE_ID),
+                    "members.userId": ObjectId(current_user.id),
+                },
+                {"_id": 1},
+            ):
+                return True
+        except Exception as exc:
+            logger.warning("Could not check evaluation workspace membership: %s", exc)
+
+    return (current_user.username or "") in EVALUATION_USERNAMES
+
+
 @auth_router.get("/users/me/accounts", response_model=List[AccessibleAccountInfo])
 def list_accessible_accounts(
     current_user: UserInDB = Depends(get_current_active_user)
@@ -253,13 +279,20 @@ def list_accessible_accounts(
                 type="team"
             ))
             
-    # 3. Add Evaluation Team Workspace
-    accounts.append(AccessibleAccountInfo(
-        id="600c00000000000000000001",
-        name="Evaluation Team Workspace",
-        role="owner",
-        type="team"
-    ))
+    # 3. The evaluation workspace, for the people who actually work in it.
+    #
+    # This used to be appended for every user, as "owner", whether or not they
+    # were a member — so a brand-new account saw a workspace it could not open,
+    # and selecting it returned "User is not a member of this team".
+    if _may_use_evaluation_workspace(current_user) and not any(
+        account.id == EVALUATION_WORKSPACE_ID for account in accounts
+    ):
+        accounts.append(AccessibleAccountInfo(
+            id=EVALUATION_WORKSPACE_ID,
+            name="Evaluation Team Workspace",
+            role="member",
+            type="team",
+        ))
 
     return accounts
 
@@ -272,10 +305,17 @@ async def get_account_balance(
     Fetches the account balance for either personal or team accounts.
     """
     try:
-        if context_id == "600c00000000000000000001":
+        # Same gate as the account list: this context handed unlimited credits
+        # to anyone who named it.
+        if context_id == EVALUATION_WORKSPACE_ID:
+            if not _may_use_evaluation_workspace(current_user):
+                raise HTTPException(
+                    status_code=403,
+                    detail="You are not a member of the evaluation workspace.",
+                )
             return {
                 "account_type": "team",
-                "context_id": "600c00000000000000000001",
+                "context_id": EVALUATION_WORKSPACE_ID,
                 "team_name": "Evaluation Team Workspace",
                 "page_credits": 999999,
                 "user_id": str(current_user.id),
