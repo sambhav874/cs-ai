@@ -24,6 +24,8 @@ from core.database import (
 from core.security import get_current_active_user
 from models.domain import UserInDB
 from utils.audit_logger import create_audit_log
+from core.privileges import KPI_CERTIFY
+from api.dependencies import privileges_for_contract
 from services.workflow_roles import effective_roles_for_contract
 from utils.secure_logger import log_exception
 from services.kpi_manager import ContractKPIManager, USER_CONFIGURABLE_SOURCE_TYPES
@@ -781,18 +783,17 @@ async def certify_contract_kpi(
     )
     check_contract_access(contract, current_user)
 
-    # Proposing is open to anyone who can see the contract; the certified and
-    # deprecated states are the claim a finance or legal reader relies on, so
-    # they belong to the approver — the same person who approves the contract.
+    # Proposing is open to anyone who can see the contract. Certified and
+    # deprecated are the claim a finance reader relies on, so they need
+    # kpi.certify — a privilege held positionally, not a per-contract role. It
+    # used to be gated on the contract's approver, which put a legal sign-off
+    # in charge of a financial claim.
     requested_status = str(request.status or "certified").strip().lower()
     if requested_status in {"certified", "deprecated"} and contract.get("ownerType") == "team":
-        roles = effective_roles_for_contract(contract, projects_collection)
-        approver_oid = roles.get("approverUserId")
-        is_account_owner = current_user.ownedAccountId == str(contract.get("ownerId"))
-        if not is_account_owner and approver_oid != ObjectId(current_user.id):
+        if KPI_CERTIFY not in privileges_for_contract(current_user, contract):
             raise HTTPException(
                 status_code=403,
-                detail="Only the assigned Approver or the account owner can certify a KPI.",
+                detail="Certifying a KPI needs a persona that includes it — Finance, by default.",
             )
 
     try:

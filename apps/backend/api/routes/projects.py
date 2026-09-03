@@ -21,6 +21,8 @@ from models.domain import (
     TableClassificationUpdate,
     AssignWorkflowRolesRequest,
 )
+from core.privileges import ROLES_ASSIGN_PROJECT
+from services.personas import can_hold_workflow_role, effective_privileges
 from services.workflow_roles import conflicting_role_assignment
 from utils.audit_logger import create_audit_log
 
@@ -177,6 +179,25 @@ def assign_unprojected_contracts(owner_type: str, owner_id: ObjectId, project_id
         {"$set": {"projectId": project_id}},
     )
     return result.modified_count
+
+
+def _oid(value):
+    return value if isinstance(value, ObjectId) else (
+        ObjectId(value) if isinstance(value, str) and ObjectId.is_valid(value) else None
+    )
+
+
+def _member_privileges(user_oid: ObjectId, account_oid) -> set:
+    """What another member of this account holds, for eligibility checks."""
+    from core.database import personas_collection
+
+    if not isinstance(account_oid, ObjectId):
+        return set()
+    team = teams_collection.find_one({"_id": account_oid})
+    if not team:
+        return set()
+    personas = list(personas_collection.find({"accountId": account_oid}))
+    return effective_privileges(team=team, user_id=user_oid, personas=personas)
 
 
 def _usernames_for(user_oids: List[Optional[ObjectId]]) -> Dict[str, str]:
@@ -1043,13 +1064,16 @@ def get_project_workflow_roles(
     roles = project.get("workflowRoles") or {}
     editor_oid = roles.get("editorUserId")
     approver_oid = roles.get("approverUserId")
+    admin_oid = roles.get("adminUserId")
 
-    names = _usernames_for([editor_oid, approver_oid])
+    names = _usernames_for([editor_oid, approver_oid, admin_oid])
     return {
         "editorUserId": str(editor_oid) if editor_oid else None,
         "approverUserId": str(approver_oid) if approver_oid else None,
+        "adminUserId": str(admin_oid) if admin_oid else None,
         "editor_name": names.get(str(editor_oid)),
         "approver_name": names.get(str(approver_oid)),
+        "admin_name": names.get(str(admin_oid)),
     }
 
 
@@ -1076,17 +1100,36 @@ async def assign_project_workflow_roles(
 
     is_account_owner = current_user.ownedAccountId == str(owner_id_obj)
     is_creator = str(project.get("createdBy") or "") == str(current_user.id)
-    if not (is_account_owner or is_creator):
+    # The project's own admin can staff it, which is the point of the slot; the
+    # account owner and the creator keep the access they had.
+    # Imported here: api.dependencies imports this module, so a top-level
+    # import would be circular.
+    from api.dependencies import privileges_for
+
+    caller_privileges = privileges_for(current_user, owner_id_obj)
+    is_project_admin = _oid(
+        (project.get("workflowRoles") or {}).get("adminUserId")
+    ) == ObjectId(current_user.id)
+    if not (
+        is_account_owner
+        or is_creator
+        or is_project_admin
+        or ROLES_ASSIGN_PROJECT in caller_privileges
+    ):
         raise HTTPException(
             status_code=403,
-            detail="Only the account owner or the project creator can assign workflow roles.",
+            detail="Setting a project's default roles needs the project admin, the account owner, or a persona that allows it.",
         )
 
     stored_roles = project.get("workflowRoles") or {}
     update_payload: Dict[str, Any] = {}
     assigned_oids: List[ObjectId] = []
 
-    for field, key in (("editorUserId", "editorUserId"), ("approverUserId", "approverUserId")):
+    for field, key in (
+        ("editorUserId", "editorUserId"),
+        ("approverUserId", "approverUserId"),
+        ("adminUserId", "adminUserId"),
+    ):
         value = getattr(request, field)
         if value is None:  # key absent from the request: leave the stored value alone
             continue
@@ -1117,6 +1160,17 @@ async def assign_project_workflow_roles(
                     status_code=400,
                     detail=f"User {oid} is not a member of this account and cannot be assigned a role.",
                 )
+
+    # Eligibility: the role goes to someone whose persona allows it.
+    for role_name, key in (("editor", "editorUserId"), ("approver", "approverUserId"), ("admin", "adminUserId")):
+        candidate = update_payload.get(f"workflowRoles.{key}")
+        if not isinstance(candidate, ObjectId):
+            continue
+        if not can_hold_workflow_role(_member_privileges(candidate, owner_id_obj), role_name):
+            raise HTTPException(
+                status_code=400,
+                detail=f"That person's persona does not allow them to be the {role_name} on a project.",
+            )
 
     effective_editor = update_payload.get(
         "workflowRoles.editorUserId", stored_roles.get("editorUserId")

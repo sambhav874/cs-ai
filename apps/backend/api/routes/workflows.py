@@ -23,12 +23,15 @@ from models.domain import (
 )
 from models.response_types import ContractResponse
 from api.dependencies import (
+    privileges_for,
     get_contract_and_verify_access,
     get_current_user_from_ticket_or_session,
     check_contract_access,
 )
 from core.cache import cache
 from utils.audit_logger import create_audit_log
+from core.privileges import ROLES_ASSIGN_CONTRACT
+from services.personas import can_hold_workflow_role, effective_privileges
 from services.workflow_roles import (
     effective_roles_for_contract,
     load_project_for_contract,
@@ -38,6 +41,20 @@ from services.workflow_roles import (
 logger = logging.getLogger(__name__)
 
 workflows_router = APIRouter()
+
+
+def privileges_for_user_id(user_oid: ObjectId, account_oid: Optional[ObjectId]) -> set:
+    """What some other member of this account holds — used to check whether a
+    person may be handed a role, not what the caller may do."""
+    from core.database import personas_collection
+
+    if not isinstance(account_oid, ObjectId) or teams_collection is None:
+        return set()
+    team = teams_collection.find_one({"_id": account_oid})
+    if not team:
+        return set()
+    personas = list(personas_collection.find({"accountId": account_oid}))
+    return effective_privileges(team=team, user_id=user_oid, personas=personas)
 
 
 def _forget_cached_contract(contract_id: str) -> None:
@@ -167,7 +184,13 @@ async def assign_workflow_roles(
         is_account_owner = current_user.ownedAccountId == owner_id_str_for_check
         is_contract_uploader = uploader_id_obj_from_db == user_oid_current
 
-        if is_account_owner or is_contract_uploader:
+        # The uploader shortcut predates privileges; roles.assign.contract is
+        # the real test, and the owner keeps it because their persona carries it.
+        holds_assign_privilege = ROLES_ASSIGN_CONTRACT in privileges_for(
+            current_user, owner_id_obj_from_db
+        )
+
+        if is_account_owner or is_contract_uploader or holds_assign_privilege:
             can_assign_roles = True
             logger.debug(f"Role assignment allowed for contract {contract_id}: User {current_user.id} is {'Account Owner' if is_account_owner else ''}{' and ' if is_account_owner and is_contract_uploader else ''}{'Contract Uploader' if is_contract_uploader else ''}.")
         else:
@@ -262,6 +285,22 @@ async def assign_workflow_roles(
         if "workflowRoles.approverUserId" in update_payload
         else old_approver_id_obj
     ) or inherited_roles["approverUserId"]
+    # A workflow role allocates work to someone who can do it. Assignment used
+    # to be trusted on its own, so anyone in the account could be named Approver
+    # whether or not they could approve anything.
+    for role_name, candidate in (
+        ("editor", update_payload.get("workflowRoles.editorUserId")),
+        ("approver", update_payload.get("workflowRoles.approverUserId")),
+    ):
+        if not isinstance(candidate, ObjectId):
+            continue
+        candidate_privileges = privileges_for_user_id(candidate, owner_id_obj_from_db)
+        if not can_hold_workflow_role(candidate_privileges, role_name):
+            raise HTTPException(
+                status_code=400,
+                detail=f"That person's persona does not allow them to be the {role_name} on a contract.",
+            )
+
     if (
         effective_editor_oid is not None
         and effective_approver_oid is not None

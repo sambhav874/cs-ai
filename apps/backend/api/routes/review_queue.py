@@ -13,6 +13,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core.database import collection, kpi_db, projects_collection, users_collection
+from core.privileges import KPI_CERTIFY
 from core.security import get_current_active_user
 from models.domain import DelegateWorkflowRoleRequest, UserInDB
 from utils.audit_logger import create_audit_log
@@ -124,14 +125,34 @@ def _contract_items(user_oid: ObjectId, role: str, statuses: List[str]) -> List[
     return items
 
 
-def _kpi_items(user_oid: ObjectId) -> List[Dict[str, Any]]:
-    """KPIs on contracts this user approves that nobody has certified yet."""
+def _kpi_items(user_oid: ObjectId, current_user: UserInDB) -> List[Dict[str, Any]]:
+    """Uncertified KPIs, for whoever holds kpi.certify.
+
+    Certification is positional, not per-contract: Finance holds no workflow
+    role on any contract, so keying this off the approver's contracts returned
+    an empty queue for the only people who can act on it.
+    """
     if kpi_db is None:
         return []
+
+    from api.dependencies import privileges_for
+
+    account_ids = list(current_user.teamIds or [])
+    if current_user.ownedAccountId:
+        account_ids.append(current_user.ownedAccountId)
+    certifiable_account_oids = [
+        ObjectId(str(account_id))
+        for account_id in set(str(a) for a in account_ids if a)
+        if ObjectId.is_valid(str(account_id))
+        and KPI_CERTIFY in privileges_for(current_user, ObjectId(str(account_id)))
+    ]
+    if not certifiable_account_oids:
+        return []
+
     approver_contract_ids = [
         str(doc["_id"])
         for doc in collection.find(
-            {"$or": _contract_clauses(user_oid, "approverUserId", APPROVER_ACTIONABLE_STATUSES + ["Approved"])},
+            {"ownerType": "team", "ownerId": {"$in": certifiable_account_oids}},
             {"_id": 1},
         )
     ]
@@ -213,7 +234,7 @@ def get_my_review_queue(
     approvals = _contract_items(user_oid, "approver", APPROVER_ACTIONABLE_STATUSES)
     edits = _contract_items(user_oid, "editor", EDITOR_ACTIONABLE_STATUSES)
     if include_kpis:
-        approvals.extend(_kpi_items(user_oid))
+        approvals.extend(_kpi_items(user_oid, current_user))
     if include_flagged:
         edits.extend(_flagged_extraction_items(user_oid))
 

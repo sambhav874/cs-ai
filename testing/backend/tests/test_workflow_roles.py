@@ -30,6 +30,7 @@ os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017/test")
 from fastapi import HTTPException
 
 from api.routes import workflows as workflows_module
+from core.privileges import CONTRACT_APPROVE, CONTRACT_EDIT, ROLES_ASSIGN_CONTRACT
 from models.domain import AssignWorkflowRolesRequest, ReEditRequest
 
 
@@ -86,12 +87,19 @@ class SeparationOfDutiesTests(unittest.IsolatedAsyncioTestCase):
         empty_users.find.return_value = []
         empty_projects = MagicMock()
         empty_projects.find_one.return_value = None
+        # Everyone in this fixture can do everything; eligibility has tests of
+        # its own below.
+        all_privileges = {CONTRACT_EDIT, CONTRACT_APPROVE, ROLES_ASSIGN_CONTRACT}
         self.patches = [
             patch.object(workflows_module, "collection", self.collection),
             patch.object(workflows_module, "teams_collection", self.teams_collection),
             patch.object(workflows_module, "users_collection", empty_users),
             patch.object(workflows_module, "projects_collection", empty_projects),
             patch.object(workflows_module, "create_audit_log", AsyncMock()),
+            patch.object(workflows_module, "privileges_for", MagicMock(return_value=all_privileges)),
+            patch.object(
+                workflows_module, "privileges_for_user_id", MagicMock(return_value=all_privileges)
+            ),
         ]
         for p in self.patches:
             p.start()
@@ -155,6 +163,70 @@ class SeparationOfDutiesTests(unittest.IsolatedAsyncioTestCase):
         set_payload = self.collection.update_one.call_args[0][1]["$set"]
         self.assertIsNone(set_payload["workflowRoles.editorUserId"])
         self.assertEqual(set_payload["workflowRoles.approverUserId"], EDITOR_OID)
+
+
+class EligibilityTests(unittest.IsolatedAsyncioTestCase):
+    """A workflow role goes to someone whose persona lets them exercise it."""
+
+    def setUp(self):
+        self.contract = _team_contract(status="Editing", workflowRoles={})
+        self.collection = MagicMock()
+        self.collection.find_one.return_value = self.contract
+        self.collection.update_one.return_value = MagicMock(matched_count=1, modified_count=1)
+
+        teams = MagicMock()
+        teams.find_one.return_value = {
+            "_id": TEAM_OID,
+            "members": [{"userId": EDITOR_OID}, {"userId": APPROVER_OID}, {"userId": OWNER_OID}],
+        }
+        empty_users = MagicMock()
+        empty_users.find.return_value = []
+        empty_projects = MagicMock()
+        empty_projects.find_one.return_value = None
+
+        # The candidate can edit but not approve.
+        self.candidate_privileges = {CONTRACT_EDIT}
+        self.patches = [
+            patch.object(workflows_module, "collection", self.collection),
+            patch.object(workflows_module, "teams_collection", teams),
+            patch.object(workflows_module, "users_collection", empty_users),
+            patch.object(workflows_module, "projects_collection", empty_projects),
+            patch.object(workflows_module, "create_audit_log", AsyncMock()),
+            patch.object(
+                workflows_module, "privileges_for", MagicMock(return_value={ROLES_ASSIGN_CONTRACT})
+            ),
+            patch.object(
+                workflows_module,
+                "privileges_for_user_id",
+                MagicMock(side_effect=lambda *_args, **_kwargs: self.candidate_privileges),
+            ),
+        ]
+        for p in self.patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in self.patches])
+
+    async def test_refuses_an_approver_who_cannot_approve(self):
+        with self.assertRaises(HTTPException) as raised:
+            await workflows_module.assign_workflow_roles(
+                contract_id=str(self.contract["_id"]),
+                request=AssignWorkflowRolesRequest(approverUserId=str(APPROVER_OID)),
+                current_user=_user(OWNER_OID, owns_account=True),
+            )
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("approver", raised.exception.detail)
+        self.collection.update_one.assert_not_called()
+
+    async def test_allows_an_approver_whose_persona_permits_it(self):
+        self.candidate_privileges = {CONTRACT_EDIT, CONTRACT_APPROVE}
+
+        await workflows_module.assign_workflow_roles(
+            contract_id=str(self.contract["_id"]),
+            request=AssignWorkflowRolesRequest(approverUserId=str(APPROVER_OID)),
+            current_user=_user(OWNER_OID, owns_account=True),
+        )
+
+        self.assertTrue(self.collection.update_one.called)
 
 
 class ApprovalTests(unittest.IsolatedAsyncioTestCase):

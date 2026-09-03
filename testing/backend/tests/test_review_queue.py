@@ -28,9 +28,16 @@ USER_OID = ObjectId()
 PROJECT_OID = ObjectId()
 
 
+ACCOUNT_OID = ObjectId()
+
+
 def _user():
     user = MagicMock()
     user.id = str(USER_OID)
+    # Certification is positional: the queue asks which accounts this user can
+    # certify in, so the fake needs real account ids rather than MagicMocks.
+    user.teamIds = [str(ACCOUNT_OID)]
+    user.ownedAccountId = None
     return user
 
 
@@ -155,11 +162,14 @@ class ReviewQueueKpiTests(unittest.TestCase):
         self.kpi_db = MagicMock()
         self.users = MagicMock()
         self.users.find.return_value = []
+        # Holding kpi.certify in the account is what puts KPIs in this queue.
+        self.privileges = MagicMock(return_value={"kpi.certify"})
         self.patches = [
             patch.object(queue_module, "collection", self.collection),
             patch.object(queue_module, "projects_collection", self.projects),
             patch.object(queue_module, "users_collection", self.users),
             patch.object(queue_module, "kpi_db", self.kpi_db),
+            patch("api.dependencies.privileges_for", self.privileges),
         ]
         for p in self.patches:
             p.start()
