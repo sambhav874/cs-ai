@@ -12,7 +12,7 @@ this on moves nobody's access.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
 from bson import ObjectId
@@ -25,6 +25,18 @@ from core.privileges import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def naive_utc(value: Optional[datetime]) -> Optional[datetime]:
+    """Drop the timezone from an incoming timestamp, keeping the instant.
+
+    Clients send ISO strings ending in Z, which parse as timezone-aware, while
+    everything stored and compared here is naive UTC. Comparing the two raises
+    TypeError, so an expiry date turned a grant into a 500.
+    """
+    if value is None or value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def _oid(value: Any) -> Optional[ObjectId]:

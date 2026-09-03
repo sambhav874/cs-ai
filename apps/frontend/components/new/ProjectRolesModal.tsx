@@ -25,7 +25,7 @@ import { apiFetch } from "@/lib/apiClient";
 
 const UNASSIGNED = "__unassigned__";
 
-type AccountMember = { id: string; name: string };
+type AccountMember = { id: string; name: string; privileges: string[] };
 
 type ProjectRolesModalProps = {
   isOpen: boolean;
@@ -49,6 +49,7 @@ export function ProjectRolesModal({
   const [members, setMembers] = useState<AccountMember[]>([]);
   const [editorId, setEditorId] = useState<string>(UNASSIGNED);
   const [approverId, setApproverId] = useState<string>(UNASSIGNED);
+  const [adminId, setAdminId] = useState<string>(UNASSIGNED);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,25 +59,45 @@ export function ProjectRolesModal({
     setIsLoading(true);
     setError(null);
     try {
-      const [teamResponse, rolesResponse] = await Promise.all([
+      const [teamResponse, rolesResponse, personaResponse] = await Promise.all([
         apiFetch(`${apiUrl}/teams/${accountId}`),
         apiFetch(`${apiUrl}/projects/${projectId}/roles`),
+        apiFetch(`${apiUrl}/accounts/${accountId}/personas`),
       ]);
       const teamData = await teamResponse.json();
       const rolesData = await rolesResponse.json();
       if (!teamResponse.ok) throw new Error(teamData.detail || "Could not load members.");
       if (!rolesResponse.ok) throw new Error(rolesData.detail || "Could not load current roles.");
 
+      // Someone can only hold a role their persona lets them exercise, so the
+      // picker needs to know what each member holds — offering an impossible
+      // pair and then rejecting it is worse than not offering it.
+      const personaData = personaResponse.ok ? await personaResponse.json() : { personas: [], members: [] };
+      const privilegesByPersona: Record<string, string[]> = Object.fromEntries(
+        (personaData.personas || []).map((persona: any) => [persona.id, persona.privileges || []]),
+      );
+      const privilegesByUser: Record<string, string[]> = Object.fromEntries(
+        (personaData.members || []).map((member: any) => [
+          member.userId,
+          [
+            ...(privilegesByPersona[member.personaId] || []),
+            ...(member.grants || []).map((grant: any) => grant.privilege),
+          ],
+        ]),
+      );
+
       setMembers(
         (teamData.members || [])
           .map((member: any) => ({
             id: member.userId,
             name: member.username || member.email || member.userId,
+            privileges: privilegesByUser[member.userId] || [],
           }))
           .sort((a: AccountMember, b: AccountMember) => a.name.localeCompare(b.name)),
       );
       setEditorId(rolesData.editorUserId || UNASSIGNED);
       setApproverId(rolesData.approverUserId || UNASSIGNED);
+      setAdminId(rolesData.adminUserId || UNASSIGNED);
     } catch (loadError: any) {
       setError(loadError?.message || "Could not load project roles.");
     } finally {
@@ -103,6 +124,7 @@ export function ProjectRolesModal({
         body: JSON.stringify({
           editorUserId: editorId === UNASSIGNED ? "" : editorId,
           approverUserId: approverId === UNASSIGNED ? "" : approverId,
+          adminUserId: adminId === UNASSIGNED ? "" : adminId,
         }),
       });
       const data = await response.json();
@@ -119,16 +141,22 @@ export function ProjectRolesModal({
     } finally {
       setIsSaving(false);
     }
-  }, [apiUrl, projectId, editorId, approverId, sameUserInBothRoles, onSaved, onClose]);
+  }, [apiUrl, projectId, editorId, approverId, adminId, sameUserInBothRoles, onSaved, onClose]);
 
-  const memberOptions = (
+  const optionsFor = (required: string, cannotDoIt: string) => (
     <>
       <SelectItem value={UNASSIGNED}>Nobody</SelectItem>
-      {members.map((member) => (
-        <SelectItem key={member.id} value={member.id}>
-          {member.name}
-        </SelectItem>
-      ))}
+      {members.map((member) => {
+        const eligible = member.privileges.includes(required);
+        return (
+          <SelectItem key={member.id} value={member.id} disabled={!eligible}>
+            {member.name}
+            {!eligible && (
+              <span className="ml-2 text-xs text-muted-foreground">{cannotDoIt}</span>
+            )}
+          </SelectItem>
+        );
+      })}
     </>
   );
 
@@ -158,7 +186,7 @@ export function ProjectRolesModal({
                 <SelectTrigger id="project-editor">
                   <SelectValue placeholder="Nobody" />
                 </SelectTrigger>
-                <SelectContent>{memberOptions}</SelectContent>
+                <SelectContent>{optionsFor("contract.edit", "cannot edit contracts")}</SelectContent>
               </Select>
             </div>
 
@@ -168,8 +196,21 @@ export function ProjectRolesModal({
                 <SelectTrigger id="project-approver">
                   <SelectValue placeholder="Nobody" />
                 </SelectTrigger>
-                <SelectContent>{memberOptions}</SelectContent>
+                <SelectContent>{optionsFor("contract.approve", "cannot approve contracts")}</SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="project-admin">Project admin</Label>
+              <Select value={adminId} onValueChange={setAdminId}>
+                <SelectTrigger id="project-admin">
+                  <SelectValue placeholder="Nobody" />
+                </SelectTrigger>
+                <SelectContent>{optionsFor("roles.assign.project", "cannot staff projects")}</SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Can set these roles for this project without being the account owner.
+              </p>
             </div>
 
             {sameUserInBothRoles && (

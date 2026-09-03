@@ -19,7 +19,8 @@ import {
   ChevronRight,
   ChevronLeft,
   LogOut,
-  Sparkles
+  Sparkles,
+  ShieldCheck,
 } from "lucide-react"
 import { useAccountContext } from "@/app/context/AccountContext"
 import { useAuth } from "@/hooks/useAuth"
@@ -180,6 +181,7 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
     { href: "/playbooks", label: "Playbooks", icon: BookOpen },
     ...(isTestUser ? [{ href: "/evaluations", label: "Evaluations", icon: HistoryIcon }] : []),
     { href: "/integrations", label: "Integrations", icon: Plug },
+    { href: "/personas", label: "Personas", icon: ShieldCheck },
   ]
 
   const isSettingsActive = pathname === "/account"

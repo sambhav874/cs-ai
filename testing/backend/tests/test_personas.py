@@ -5,9 +5,10 @@ import sys
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from bson import ObjectId
+from unittest.mock import patch
 
 APP_BACKEND_ROOT = Path(__file__).resolve().parents[3] / "apps" / "backend"
 sys.path.insert(0, str(APP_BACKEND_ROOT))
@@ -21,6 +22,8 @@ os.environ.setdefault("AZURE_COMMUNICATION_CONNECTION_STRING", "endpoint=https:/
 os.environ.setdefault("AZURE_SENDER_ADDRESS", "test@example.com")
 os.environ.setdefault("SECRET_KEY", "test-secret")
 os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017/test")
+
+from fastapi import HTTPException
 
 from core.privileges import (
     ACCOUNT_PERSONAS,
@@ -261,3 +264,89 @@ class ShippedBundleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CertificationGateTests(unittest.IsolatedAsyncioTestCase):
+    """Certifying is positional: it needs kpi.certify, not a workflow role.
+
+    It used to be gated on the contract's approver, which put a legal sign-off
+    in charge of a financial claim.
+    """
+
+    def setUp(self):
+        from api.routes import kpis as kpis_module
+
+        self.kpis_module = kpis_module
+        self.contract = {
+            "_id": ObjectId(),
+            "ownerType": "team",
+            "ownerId": ACCOUNT,
+            "contract_name": "Services Agreement",
+        }
+        self.collection = MagicMock()
+        self.collection.find_one.return_value = self.contract
+        self.manager = MagicMock()
+        self.manager.certify_kpi.return_value = {"governance_status": "certified", "governance_version": 2}
+        self.privileges = {KPI_CERTIFY}
+
+        self.patches = [
+            patch.object(kpis_module, "collection", self.collection),
+            patch.object(kpis_module, "check_contract_access", MagicMock()),
+            patch.object(kpis_module, "_kpi_manager", MagicMock(return_value=self.manager)),
+            patch.object(kpis_module, "create_audit_log", AsyncMock()),
+            patch.object(kpis_module, "cache", MagicMock()),
+            patch.object(
+                kpis_module,
+                "privileges_for_contract",
+                MagicMock(side_effect=lambda *_a, **_k: self.privileges),
+            ),
+        ]
+        for p in self.patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in self.patches])
+
+    async def _certify(self, status="certified"):
+        from models.domain import UserInDB  # noqa: F401  (imported for parity with the route)
+
+        user = MagicMock()
+        user.id = str(MEMBER)
+        user.username = "tester"
+        user.ownedAccountId = None
+        return await self.kpis_module.certify_contract_kpi(
+            contract_id=str(self.contract["_id"]),
+            kpi_id="kpi-1",
+            request=self.kpis_module.KPICertificationRequest(status=status),
+            current_user=user,
+        )
+
+    async def test_someone_holding_the_privilege_can_certify(self):
+        result = await self._certify()
+
+        self.assertEqual(result["governance_status"], "certified")
+
+    async def test_someone_without_it_is_refused(self):
+        self.privileges = {"contract.approve"}
+
+        with self.assertRaises(HTTPException) as raised:
+            await self._certify()
+
+        self.assertEqual(raised.exception.status_code, 403)
+        self.manager.certify_kpi.assert_not_called()
+
+    async def test_deprecating_needs_the_same_privilege(self):
+        self.privileges = set()
+
+        with self.assertRaises(HTTPException) as raised:
+            await self._certify(status="deprecated")
+
+        self.assertEqual(raised.exception.status_code, 403)
+
+    async def test_proposing_a_draft_stays_open_to_anyone_with_access(self):
+        # Proposing is not certifying; only the states a finance reader relies
+        # on are gated.
+        self.privileges = set()
+
+        result = await self._certify(status="reviewed")
+
+        self.assertTrue(self.manager.certify_kpi.called)
+        self.assertIsNotNone(result)

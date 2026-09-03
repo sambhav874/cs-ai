@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core.database import collection, kpi_db, projects_collection, users_collection
 from core.privileges import KPI_CERTIFY
+from services.personas import naive_utc
 from core.security import get_current_active_user
 from models.domain import DelegateWorkflowRoleRequest, UserInDB
 from utils.audit_logger import create_audit_log
@@ -314,7 +315,8 @@ async def create_my_delegation(
     if delegate_oid == user_oid:
         raise HTTPException(status_code=400, detail="You cannot delegate a role to yourself.")
 
-    if request.until is not None and request.until <= datetime.utcnow():
+    until = naive_utc(request.until)
+    if until is not None and until <= datetime.utcnow():
         raise HTTPException(status_code=400, detail="The delegation end date is already in the past.")
 
     delegate = users_collection.find_one({"_id": delegate_oid}, {"_id": 1})
@@ -325,7 +327,7 @@ async def create_my_delegation(
         "_id": ObjectId(),
         "role": request.role,
         "delegateUserId": delegate_oid,
-        "until": request.until,
+        "until": until,
         "reason": request.reason,
         "createdAt": datetime.utcnow(),
         "revokedAt": None,
@@ -340,7 +342,7 @@ async def create_my_delegation(
         details={
             "role": request.role,
             "delegateUserId": str(delegate_oid),
-            "until": request.until.isoformat() if request.until else None,
+            "until": until.isoformat() if until else None,
             "reason": request.reason,
         },
     )

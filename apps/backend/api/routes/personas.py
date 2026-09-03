@@ -23,7 +23,7 @@ from models.domain import (
     UserInDB,
 )
 from api.dependencies import account_id_for_context, privileges_for
-from services.personas import effective_privileges, seed_account_personas
+from services.personas import effective_privileges, naive_utc, seed_account_personas
 from utils.audit_logger import create_audit_log
 
 logger = logging.getLogger(__name__)
@@ -300,13 +300,14 @@ async def grant_privilege(
         raise HTTPException(status_code=400, detail=f"Unknown privilege: {request.privilege}")
     if not ObjectId.is_valid(user_id):
         raise HTTPException(status_code=400, detail="Invalid user id.")
-    if request.until is not None and request.until <= datetime.utcnow():
+    until = naive_utc(request.until)
+    if until is not None and until <= datetime.utcnow():
         raise HTTPException(status_code=400, detail="That expiry is already in the past.")
 
     grant = {
         "_id": ObjectId(),
         "privilege": request.privilege,
-        "until": request.until,
+        "until": until,
         "reason": request.reason,
         "grantedBy": ObjectId(current_user.id),
         "grantedAt": datetime.utcnow(),
@@ -326,7 +327,7 @@ async def grant_privilege(
         details={
             "memberUserId": user_id,
             "privilege": request.privilege,
-            "until": request.until.isoformat() if request.until else None,
+            "until": until.isoformat() if until else None,
             "reason": request.reason,
         },
     )
