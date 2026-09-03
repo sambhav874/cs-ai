@@ -27,6 +27,7 @@ from api.routes.evaluations import router as evaluations_router
 from api.routes.model_settings import router as model_settings_router
 from api.routes.preferences import router as preferences_router
 from api.routes.review_queue import review_queue_router
+from api.routes.personas import personas_router
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from core.rate_limiter import limiter
@@ -209,6 +210,7 @@ v1_router.include_router(evaluations_router, tags=["Evaluations"])
 v1_router.include_router(model_settings_router, tags=["Model Settings"])
 v1_router.include_router(preferences_router, tags=["User Preferences"])
 v1_router.include_router(review_queue_router, tags=["Review Queue"])
+v1_router.include_router(personas_router, tags=["Personas & Privileges"])
 
 if settings.testing:
     from test_support.testing_utils import testing_router

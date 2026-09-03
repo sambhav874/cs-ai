@@ -159,6 +159,32 @@ class UpdateMemberRoleRequest(BaseModel):
     new_role: Literal['admin', 'member'] = Field(description="New role to assign to the team member.")
 
 
+class PersonaCreateRequest(BaseModel):
+    """A named bundle of privileges, created by whoever holds account.personas."""
+    name: str = Field(..., min_length=1, max_length=60)
+    privileges: List[str] = Field(default_factory=list)
+
+
+class PersonaUpdateRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=60)
+    privileges: Optional[List[str]] = None
+
+
+class AssignPersonaRequest(BaseModel):
+    personaId: str = Field(..., description="The persona this member now holds.")
+
+
+class GrantPrivilegeRequest(BaseModel):
+    """A privilege for one person, outside their persona.
+
+    Exceptions are what real teams need and what quietly become permanent, so a
+    grant carries an expiry and a reason.
+    """
+    privilege: str
+    until: Optional[datetime] = None
+    reason: Optional[str] = Field(None, max_length=500)
+
+
 class DelegateWorkflowRoleRequest(BaseModel):
     """Hand one of your workflow roles to a colleague for a while.
 
