@@ -226,53 +226,6 @@ def normalize_extraction_envelope(
     return result
 
 
-def validate_records(
-    payload: Dict[str, Any],
-    *,
-    source_ids: Optional[Iterable[str]] = None,
-) -> Dict[int, List[str]]:
-    """Per-record validation errors, keyed by 1-based record index.
-
-    Structured rather than flat strings so a caller can quarantine the record
-    that is actually wrong instead of logging a line about the whole batch and
-    persisting everything anyway.
-
-    Validate BEFORE normalizing: :func:`normalize_extraction_envelope` coerces
-    an unknown ``record_type`` into a trackable obligation and stamps the
-    current ``schema_version``, so those two checks can never fire afterwards.
-    """
-    errors: Dict[int, List[str]] = {}
-    records = payload.get("records")
-    if not isinstance(records, list):
-        return errors
-
-    allowed_sources = {str(item) for item in (source_ids or []) if item}
-    for index, record in enumerate(records, start=1):
-        record_errors: List[str] = []
-        phase1 = record.get("phase1") if isinstance(record, dict) else None
-        if not isinstance(phase1, dict):
-            errors[index] = ["missing phase1"]
-            continue
-
-        raw_record_type = str(phase1.get("record_type") or "").strip().lower().replace("-", "_")
-        record_type = normalize_record_type(raw_record_type)
-        if raw_record_type not in RECORD_TYPES and raw_record_type not in LEGACY_RECORD_TYPE_MAP:
-            record_errors.append(f"unsupported record_type {phase1.get('record_type')!r}")
-        if not _text(phase1.get("name")):
-            record_errors.append("missing name")
-        if not _text(phase1.get("quote")):
-            record_errors.append("missing quote")
-        source_id = _text(phase1.get("source_id"))
-        if allowed_sources and source_id not in allowed_sources:
-            record_errors.append(f"unknown source_id {source_id!r}")
-        if record_type not in {"reference_only", "process_only"} and normalize_party_role(phase1.get("party_role")) is None:
-            record_errors.append("party_role must be supplier, client, or mutual")
-
-        if record_errors:
-            errors[index] = record_errors
-    return errors
-
-
 def validate_extraction_envelope(
     payload: Dict[str, Any],
     *,
@@ -284,11 +237,28 @@ def validate_extraction_envelope(
         return ["Extraction response must be a JSON object."]
     if payload.get("schema_version") not in {EXTRACTION_SCHEMA_VERSION, "2.0", 2, None}:
         errors.append("Unsupported extraction schema version.")
-    if not isinstance(payload.get("records"), list):
+    records = payload.get("records")
+    if not isinstance(records, list):
         errors.append("Top-level 'records' must be an array.")
         return errors
 
-    for index, record_errors in sorted(validate_records(payload, source_ids=source_ids).items()):
-        for message in record_errors:
-            errors.append(f"records[{index}] {message}.")
+    allowed_sources = {str(item) for item in (source_ids or []) if item}
+    for index, record in enumerate(records, start=1):
+        phase1 = record.get("phase1") if isinstance(record, dict) else None
+        if not isinstance(phase1, dict):
+            errors.append(f"records[{index}] is missing phase1.")
+            continue
+        raw_record_type = str(phase1.get("record_type") or "").strip().lower().replace("-", "_")
+        record_type = normalize_record_type(raw_record_type)
+        if raw_record_type not in RECORD_TYPES and raw_record_type not in LEGACY_RECORD_TYPE_MAP:
+            errors.append(f"records[{index}] has unsupported record_type '{phase1.get('record_type')}'.")
+        if not _text(phase1.get("name")):
+            errors.append(f"records[{index}] is missing name.")
+        if not _text(phase1.get("quote")):
+            errors.append(f"records[{index}] is missing quote.")
+        source_id = _text(phase1.get("source_id"))
+        if allowed_sources and source_id not in allowed_sources:
+            errors.append(f"records[{index}] references unknown source_id '{source_id}'.")
+        if record_type not in {"reference_only", "process_only"} and normalize_party_role(phase1.get("party_role")) is None:
+            errors.append(f"records[{index}] must assign party_role supplier, client, or mutual.")
     return errors

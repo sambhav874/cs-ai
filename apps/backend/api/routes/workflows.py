@@ -21,17 +21,17 @@ from models.domain import (
     ReEditRequest,
     DenyReEditRequest,
 )
-from models.response_types import ContractResponse
+from models.response_types import (
+    ContractResponse,
+    DraftSaveRequest,
+    DraftSubmitRequest,
+)
 from api.dependencies import (
-    privileges_for,
     get_contract_and_verify_access,
     get_current_user_from_ticket_or_session,
     check_contract_access,
 )
-from core.cache import cache
 from utils.audit_logger import create_audit_log
-from core.privileges import ROLES_ASSIGN_CONTRACT
-from services.personas import can_hold_workflow_role, effective_privileges
 from services.workflow_roles import (
     effective_roles_for_contract,
     load_project_for_contract,
@@ -43,85 +43,9 @@ logger = logging.getLogger(__name__)
 workflows_router = APIRouter()
 
 
-def privileges_for_user_id(user_oid: ObjectId, account_oid: Optional[ObjectId]) -> set:
-    """What some other member of this account holds — used to check whether a
-    person may be handed a role, not what the caller may do."""
-    from core.database import personas_collection
-
-    if not isinstance(account_oid, ObjectId) or teams_collection is None:
-        return set()
-    team = teams_collection.find_one({"_id": account_oid})
-    if not team:
-        return set()
-    personas = list(personas_collection.find({"accountId": account_oid}))
-    return effective_privileges(team=team, user_id=user_oid, personas=personas)
-
-
-def _forget_cached_contract(contract_id: str) -> None:
-    """Drop the cached contract document after a transition.
-
-    get_contract caches for five minutes. Without this, approving a contract
-    leaves every reader — the UI included — looking at the previous status
-    until the entry expires, so the action appears to have done nothing.
-    """
-    try:
-        cache.delete(f"contract:doc:{contract_id}")
-    except Exception as exc:  # a cache that is down must not fail the workflow
-        logger.warning("Could not invalidate cached contract %s: %s", contract_id, exc)
-
-
 def _roles_for(contract: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Roles that apply to this contract right now.
-
-    Contract override, else the project default, and then whoever is standing
-    in for that person while they are away.
-    """
-    return effective_roles_for_contract(contract, projects_collection, users_collection)
-
-
-def _notify_role_holder(
-    user_oid: Optional[ObjectId],
-    *,
-    subject: str,
-    headline: str,
-    body: str,
-    contract: Optional[Dict[str, Any]] = None,
-    contract_id: Optional[str] = None,
-) -> None:
-    """Email whoever now has to act. Never let this break the transition.
-
-    A queued notification failing is an annoyance; an approval rolling back
-    because an email failed is a bug the user cannot work around.
-    """
-    if not isinstance(user_oid, ObjectId) or users_collection is None:
-        return
-    try:
-        user = users_collection.find_one({"_id": user_oid}, {"email": 1, "username": 1})
-        recipient = (user or {}).get("email")
-        if not recipient:
-            logger.info("No email on file for user %s; skipping workflow notification.", user_oid)
-            return
-
-        # No dedicated frontend-URL setting exists; the first allowed origin is
-        # the app the user actually browses.
-        action_url = None
-        origins = str(getattr(settings, "allowed_origins", "") or "")
-        first_origin = next((o.strip() for o in origins.split(",") if o.strip()), None)
-        if first_origin and contract_id:
-            action_url = f"{first_origin.rstrip('/')}/contracts/{contract_id}"
-
-        from worker.tasks import send_workflow_notification_task
-
-        send_workflow_notification_task.delay(
-            recipient_email=recipient,
-            subject=subject,
-            headline=headline,
-            body=body,
-            contract_name=(contract or {}).get("contract_name"),
-            action_url=action_url,
-        )
-    except Exception as exc:  # broker down, task import failure, anything
-        logger.warning("Could not queue workflow notification for %s: %s", user_oid, exc)
+    """Roles that apply to this contract, its project's defaults included."""
+    return effective_roles_for_contract(contract, projects_collection)
 
 # Forward reference / local function definitions if needed, or import get_contract from contracts.py
 # Since we need to return get_contract(...) in some routes, we can import it from api.routes.contracts
@@ -184,13 +108,7 @@ async def assign_workflow_roles(
         is_account_owner = current_user.ownedAccountId == owner_id_str_for_check
         is_contract_uploader = uploader_id_obj_from_db == user_oid_current
 
-        # The uploader shortcut predates privileges; roles.assign.contract is
-        # the real test, and the owner keeps it because their persona carries it.
-        holds_assign_privilege = ROLES_ASSIGN_CONTRACT in privileges_for(
-            current_user, owner_id_obj_from_db
-        )
-
-        if is_account_owner or is_contract_uploader or holds_assign_privilege:
+        if is_account_owner or is_contract_uploader:
             can_assign_roles = True
             logger.debug(f"Role assignment allowed for contract {contract_id}: User {current_user.id} is {'Account Owner' if is_account_owner else ''}{' and ' if is_account_owner and is_contract_uploader else ''}{'Contract Uploader' if is_contract_uploader else ''}.")
         else:
@@ -285,22 +203,6 @@ async def assign_workflow_roles(
         if "workflowRoles.approverUserId" in update_payload
         else old_approver_id_obj
     ) or inherited_roles["approverUserId"]
-    # A workflow role allocates work to someone who can do it. Assignment used
-    # to be trusted on its own, so anyone in the account could be named Approver
-    # whether or not they could approve anything.
-    for role_name, candidate in (
-        ("editor", update_payload.get("workflowRoles.editorUserId")),
-        ("approver", update_payload.get("workflowRoles.approverUserId")),
-    ):
-        if not isinstance(candidate, ObjectId):
-            continue
-        candidate_privileges = privileges_for_user_id(candidate, owner_id_obj_from_db)
-        if not can_hold_workflow_role(candidate_privileges, role_name):
-            raise HTTPException(
-                status_code=400,
-                detail=f"That person's persona does not allow them to be the {role_name} on a contract.",
-            )
-
     if (
         effective_editor_oid is not None
         and effective_approver_oid is not None
@@ -408,6 +310,280 @@ async def assign_workflow_roles(
         logger.exception(f"Error updating workflow roles for contract {contract_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update workflow roles.")
 
+
+@workflows_router.put("/contracts/{contract_id}/save-draft/")
+async def save_draft(
+    contract_id: str,
+    request: DraftSaveRequest,
+    current_user: UserInDB = Depends(get_current_active_user)
+) -> ContractResponse:
+    """Saves the current state of analysis results as a draft."""
+    logger.info(f"Save draft request for contract_id: {contract_id}, User: {current_user.id}")
+
+    # Validate contract_id format
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        logger.warning(f"Invalid contract_id format in save_draft request: {contract_id}")
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+
+    # Fetch contract for access check
+    contract_for_audit = collection.find_one(
+        {"_id": contract_oid},
+        {"ownerType": 1, "ownerId": 1, "contract_name": 1, "status": 1}
+    )
+    if not contract_for_audit:
+        logger.warning(f"Contract not found for save_draft: {contract_id}")
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    # Your detailed manual access check logic
+    owner_type = contract_for_audit.get("ownerType")
+    owner_id_obj_from_db = contract_for_audit.get("ownerId")
+    user_oid = ObjectId(current_user.id)
+    user_has_access = False
+    
+    if owner_type == "user" and owner_id_obj_from_db == user_oid:
+        user_has_access = True
+    elif owner_type == "team" and owner_id_obj_from_db:
+        owner_id_str = str(owner_id_obj_from_db)
+        is_owner = current_user.ownedAccountId == owner_id_str
+        is_member = owner_id_str in (current_user.teamIds or [])
+        if is_owner or is_member:
+            user_has_access = True
+        elif teams_collection and teams_collection.find_one({"_id": owner_id_obj_from_db, "members.userId": user_oid}, {"_id": 1}):
+            user_has_access = True
+
+    if not user_has_access:
+        logger.warning(f"User {current_user.id} forbidden access to save draft for contract {contract_id}")
+        raise HTTPException(status_code=403, detail="You do not have permission to modify this contract.")
+
+    # Save Draft Logic
+    try:
+        if not request.results:
+            logger.warning(f"Empty results list received in DraftSaveRequest for contract {contract_id}.")
+            raise HTTPException(status_code=400, detail="Draft save request cannot have empty results.")
+
+        now = datetime.utcnow()
+
+        # Pydantic validation for incoming Q&A data
+        try:
+            validated_results = [QuestionAnswer.model_validate(qa) for qa in request.results]
+        except Exception as pydantic_error:
+            logger.warning(f"Pydantic validation failed for draft save: {pydantic_error}")
+            raise HTTPException(status_code=400, detail="Invalid Q&A data structure in draft.")
+        
+        # Convert back to dicts for MongoDB, ensuring all fields (including defaults) are present
+        results_to_save = [qa.model_dump(mode='json', exclude_unset=False) for qa in validated_results]
+
+        last_save_data = {
+            "results": results_to_save,
+            "categories": request.categories if request.categories else [],
+            "report_info": request.report_info if hasattr(request, "report_info") and request.report_info else None
+        }
+
+        set_operation = {
+            "process.lastSave": {
+                "data": last_save_data,
+                "savedAt": now
+            },
+            "status": "Editing",
+            "updatedAt": now
+        }
+
+        update_result = collection.update_one({"_id": contract_oid}, {"$set": set_operation})
+
+        if update_result.matched_count == 0:
+            logger.error(f"CRITICAL: Contract {contract_id} not found during draft save update.")
+            raise HTTPException(status_code=404, detail="Contract not found during draft save.")
+
+        # Your audit log logic
+        audit_account_id: Optional[ObjectId] = None
+        if owner_type == "team" and isinstance(owner_id_obj_from_db, ObjectId):
+            audit_account_id = owner_id_obj_from_db
+
+        await create_audit_log(
+            user=current_user,
+            action="DRAFT_SAVED",
+            contract_id=contract_oid,
+            contract_name_override=contract_for_audit.get("contract_name"),
+            account_id_override=audit_account_id,
+            details={
+                "previous_status": contract_for_audit.get("status"),
+                "new_status_after_save": "Editing",
+                "draft_qa_count": len(request.results),
+                "draft_category_count": len(request.categories) if request.categories else 0,
+                "has_report": bool(last_save_data.get("report_info"))
+            }
+        )
+
+        logger.info(f"Draft saved successfully for contract {contract_id}")
+        return await get_contract(contract_id=str(contract_oid), current_user=current_user)
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.exception(f"Error saving draft {contract_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error saving draft.")
+
+@workflows_router.put("/contracts/{contract_id}/submit-draft/")
+async def submit_draft(
+    contract_id: str,
+    request: DraftSubmitRequest,
+    current_user: UserInDB = Depends(get_current_active_user)
+) -> ContractResponse:
+    """Submits the saved draft, making it the latest official result."""
+    logger.info(f"Submit draft request for contract_id: {contract_id}, User: {current_user.id}")
+
+    # Validate contract_id format
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        logger.warning(f"Invalid contract_id format in submit_draft request: {contract_id}")
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+
+    # Fetch Contract document
+    contract_before_submit = collection.find_one(
+        {"_id": contract_oid},
+        {"ownerType": 1, "ownerId": 1, "contract_name": 1, "status": 1, "process.lastSave": 1, "process.results": 1}
+    )
+    if not contract_before_submit:
+        logger.warning(f"Contract not found: {contract_id}")
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    # Manual access check with proper type conversion
+    owner_type = contract_before_submit.get("ownerType")
+    owner_id_obj_from_db = contract_before_submit.get("ownerId")
+    owner_id_str = str(owner_id_obj_from_db) if isinstance(owner_id_obj_from_db, ObjectId) else None
+    user_oid = ObjectId(current_user.id)
+    user_id_str = current_user.id
+
+    user_has_access = False
+    if owner_type == "user":
+        if owner_id_obj_from_db == user_oid: user_has_access = True
+    elif owner_type == "team" and owner_id_str:
+        is_owner = current_user.ownedAccountId == owner_id_str
+        is_member = owner_id_str in (current_user.teamIds or [])
+        if is_owner or is_member: user_has_access = True
+        else:
+            if teams_collection and owner_id_obj_from_db:
+                if teams_collection.find_one({"_id": owner_id_obj_from_db, "members.userId": user_oid}, {"_id": 1}):
+                    user_has_access = True
+
+    if not user_has_access:
+        logger.warning(f"User {user_id_str} forbidden access to submit draft for contract {contract_id}")
+        raise HTTPException(status_code=403, detail="You do not have permission to modify this contract.")
+
+    # Submit Draft Logic
+    try:
+        process_data = contract_before_submit.get("process", {})
+        last_save_wrapper = process_data.get("lastSave")
+
+        if not last_save_wrapper or not isinstance(last_save_wrapper.get("data"), dict):
+            logger.warning(f"Submit failed: No valid draft found in process.lastSave for contract {contract_id}.")
+            raise HTTPException(status_code=400, detail="No valid draft found to submit. Save a draft first.")
+
+        last_save_data = last_save_wrapper["data"]
+        submitted_qas_raw = last_save_data.get("results", [])
+        submitted_categories = last_save_data.get("categories", [])
+        submitted_report_info = last_save_data.get("report_info", None)  # Include existing report_info if present
+
+        # Validate the Q&A results
+        validated_submitted_qas = []
+        try:
+            validated_submitted_qas = [QuestionAnswer.model_validate(qa) for qa in submitted_qas_raw if isinstance(qa, dict)]
+            if len(validated_submitted_qas) != len(submitted_qas_raw):
+                logger.warning(f"Some items in draft results for {contract_id} failed QuestionAnswer validation.")
+            if not validated_submitted_qas:
+                raise ValueError("Validated draft results are empty.")
+        except Exception as validation_error:
+            logger.error(f"Validation error on draft results for {contract_id}: {validation_error}")
+            raise HTTPException(status_code=400, detail="Saved draft data is invalid.")
+
+        # Validate categories if they exist
+        validated_categories = []
+        if submitted_categories:
+            try:
+                validated_categories = [Category.model_validate(cat) for cat in submitted_categories if isinstance(cat, dict)]
+                if len(validated_categories) != len(submitted_categories):
+                    logger.warning(f"Some categories in draft for {contract_id} failed validation.")
+            except Exception as cat_error:
+                logger.error(f"Category validation error for {contract_id}: {cat_error}")
+                raise HTTPException(status_code=400, detail="Invalid category data in draft.")
+
+        # Determine the next version number
+        current_process_results = process_data.get("results", [])
+        next_version = 1
+        if current_process_results and isinstance(current_process_results, list):
+            try:
+                last_result = current_process_results[-1]
+                if isinstance(last_result, dict) and isinstance(last_result.get("version"), int):
+                    next_version = last_result.get("version", 0) + 1
+            except IndexError:
+                pass
+
+        # Create the new analysis with results, categories, and existing report_info (if any)
+        new_submitted_analysis = {
+            "version": next_version,
+            "createdAt": datetime.utcnow(),
+            "results": [qa.model_dump(mode='json') for qa in validated_submitted_qas],
+            "categories": [cat.model_dump(mode='json') for cat in validated_categories]
+        }
+        if submitted_report_info:
+            new_submitted_analysis["report_info"] = submitted_report_info
+
+        update_result = collection.update_one(
+            {"_id": contract_oid},
+            {
+                "$push": {"process.results": new_submitted_analysis},
+                "$set": {
+                    "process.lastSave": None,
+                    "process.status": "Processed",
+                    "status": "Editing"
+                }
+            }
+        )
+
+        if update_result.matched_count == 0:
+            logger.error(f"CRITICAL: Contract {contract_id} not found during draft submission update.")
+            raise HTTPException(status_code=404, detail="Contract not found during draft submission.")
+        if update_result.modified_count == 0:
+            logger.error(f"Submit draft for contract {contract_id} modified 0 documents, possible DB issue.")
+            raise HTTPException(status_code=500, detail="Failed to update document during draft submission.")
+
+        # Create Audit Log
+        audit_account_id: Optional[ObjectId] = None
+        if owner_type == "team" and isinstance(owner_id_obj_from_db, ObjectId):
+            audit_account_id = owner_id_obj_from_db
+
+        num_qas_in_version = len(validated_submitted_qas)
+        num_categories_in_version = len(validated_categories)
+
+        await create_audit_log(
+            user=current_user,
+            action="NEW_VERSION_SAVED",
+            contract_id=contract_oid,
+            contract_name_override=contract_before_submit.get("contract_name"),
+            account_id_override=audit_account_id,
+            details={
+                "version_number": next_version,
+                "previous_status": contract_before_submit.get("status"),
+                "new_overall_status": "Editing",
+                "version_qa_count": num_qas_in_version,
+                "version_category_count": num_categories_in_version,
+                "has_report": bool(submitted_report_info)
+            }
+        )
+
+        logger.info(f"Draft submitted successfully for contract {contract_id}")
+        return await get_contract(contract_id=contract_id, current_user=current_user)
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.exception(f"Error submitting draft for contract {contract_id}: {e}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while submitting the draft.")
+        
+#endpoint to submit a contract for approval
 
 @workflows_router.post("/contracts/{contract_id}/submit", response_model=ContractResponse)
 async def submit_contract_for_approval(
@@ -524,21 +700,11 @@ async def submit_contract_for_approval(
             }
         )
 
-        _notify_role_holder(
-            _roles_for(contract_before_submit)["approverUserId"],
-            subject="A contract is waiting for your approval",
-            headline="Waiting for your approval",
-            body=f"{current_user.username} submitted this contract for approval.",
-            contract=contract_before_submit,
-            contract_id=contract_id,
-        )
-
         logger.info(f"Contract {contract_id} successfully submitted for approval by user {user_id_str}.")
         
 
         # 5. Return updated contract state
-        _forget_cached_contract(contract_id)
-        return get_contract(contract_id=contract_id, current_user=current_user)
+        return await get_contract(contract_id=contract_id, current_user=current_user)
 
     except HTTPException as he:
         raise he
@@ -689,20 +855,10 @@ async def approve_contract(
         )
         # --- End Audit Log ---
 
-        _notify_role_holder(
-            _roles_for(contract_before)["editorUserId"],
-            subject="Your contract was approved",
-            headline="Approved",
-            body=f"{current_user.username} approved this contract.",
-            contract=contract_before,
-            contract_id=contract_id,
-        )
-
         logger.info(f"Contract {contract_id} successfully approved by user {current_user.id} ({current_user.username}).")
         
         # Return updated contract state (get_contract is async)
-        _forget_cached_contract(contract_id)
-        return get_contract(contract_id=contract_id, current_user=current_user)
+        return await get_contract(contract_id=contract_id, current_user=current_user)
 
     except HTTPException as he:
         raise he # Re-raise HTTPExceptions
@@ -816,23 +972,10 @@ async def reject_contract(
             }
         )
 
-        _notify_role_holder(
-            _roles_for(contract_before_reject)["editorUserId"],
-            subject="A contract was returned to you",
-            headline="Returned for changes",
-            body=(
-                f"{current_user.username} rejected this contract.\n\n"
-                f"Reason: {request.reason or 'No reason given.'}"
-            ),
-            contract=contract_before_reject,
-            contract_id=contract_id,
-        )
-
         logger.info(f"Contract {contract_id} successfully rejected by user {user_id_str}.")
 
         # 5. Return updated contract state
-        _forget_cached_contract(contract_id)
-        return get_contract(contract_id=contract_id, current_user=current_user)
+        return await get_contract(contract_id=contract_id, current_user=current_user)
 
     except HTTPException as he:
         raise he
@@ -869,6 +1012,8 @@ async def complete_personal_contract(
             "ownerId": 1,
             "status": 1,
             "contract_name": 1,
+            "process.results": 1,
+            "process.lastSave": 1
         }
     )
     if not contract_before:
@@ -901,9 +1046,29 @@ async def complete_personal_contract(
             "updatedAt": now
         }
 
+        # Check for draft reports in the latest version
+        process_data = contract_before.get("process", {})
+        results = process_data.get("results", [])
+        latest_version_with_report = None
+
+        # Find the latest version with a report
+        for version_data in reversed(results):
+            if version_data.get("report_info"):
+                latest_version_with_report = version_data
+                break
+
+        # Prepare update operation if we need to update a draft report
+        array_filters = None
+        if latest_version_with_report and latest_version_with_report["report_info"].get("is_draft", True):
+            version_num = latest_version_with_report["version"]
+            update_payload["process.results.$[elem].report_info.is_draft"] = False
+            array_filters = [{"elem.version": version_num}]
+
+        # Update the contract
         update_result = collection.update_one(
             {"_id": contract_oid},
             {"$set": update_payload},
+            array_filters=array_filters
         )
 
         if update_result.matched_count == 0:
@@ -918,12 +1083,12 @@ async def complete_personal_contract(
             details={
                 "oldStatus": current_status,
                 "newStatus": "Approved",
+                "updatedDraftReport": latest_version_with_report is not None
             }
         )
 
         logger.info(f"Personal contract {contract_id} marked as completed by user {current_user.id}")
-        _forget_cached_contract(contract_id)
-        return get_contract(contract_id=contract_id, current_user=current_user)
+        return await get_contract(contract_id=contract_id, current_user=current_user)
 
     except HTTPException:
         raise
@@ -1035,23 +1200,9 @@ async def request_reedit_contract(
             account_id_override=owner_id_obj if owner_type == "team" else None,
             details=audit_details
         )
-        if new_status_after == "Pending Re-edit Approval":
-            _notify_role_holder(
-                _roles_for(contract_before)["approverUserId"],
-                subject="A re-edit request is waiting for you",
-                headline="Re-edit requested",
-                body=(
-                    f"{current_user.username} asked to reopen this approved contract.\n\n"
-                    f"Reason: {request.reason}"
-                ),
-                contract=contract_before,
-                contract_id=contract_id,
-            )
-
         logger.info(f"Contract {contract_id} re-edit request processed. New status: {new_status_after}")
         
-        _forget_cached_contract(contract_id)
-        return get_contract(contract_id=contract_id, current_user=current_user)
+        return await get_contract(contract_id=contract_id, current_user=current_user)
     except Exception as e:
         logger.exception(f"Error processing re-edit request for contract {contract_id}: {e}")
         raise HTTPException(status_code=500, detail="An error occurred during the re-edit request.")
@@ -1114,18 +1265,8 @@ async def approve_reedit_request(
             details={"oldStatus": "Pending Re-edit Approval", "newStatus": "Editing"}
         )
         
-        _notify_role_holder(
-            _roles_for(contract_before)["editorUserId"],
-            subject="Your re-edit request was approved",
-            headline="Reopened for editing",
-            body=f"{current_user.username} approved your request to reopen this contract.",
-            contract=contract_before,
-            contract_id=contract_id,
-        )
-
         logger.info(f"Re-edit request for {contract_id} approved by {current_user.id}.")
-        _forget_cached_contract(contract_id)
-        return get_contract(contract_id=contract_id, current_user=current_user)
+        return await get_contract(contract_id=contract_id, current_user=current_user)
     except Exception as e:
         logger.exception(f"Error approving re-edit for contract {contract_id}: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while approving the re-edit request.")
@@ -1195,21 +1336,8 @@ async def deny_reedit_request(
             }
         )
         
-        _notify_role_holder(
-            _roles_for(contract_before)["editorUserId"],
-            subject="Your re-edit request was denied",
-            headline="Re-edit denied",
-            body=(
-                f"{current_user.username} denied your request to reopen this contract.\n\n"
-                f"Reason: {request.reason}"
-            ),
-            contract=contract_before,
-            contract_id=contract_id,
-        )
-
         logger.info(f"Re-edit request for {contract_id} denied by {current_user.id}. New status: {new_status_after}")
-        _forget_cached_contract(contract_id)
-        return get_contract(contract_id=contract_id, current_user=current_user)
+        return await get_contract(contract_id=contract_id, current_user=current_user)
     except Exception as e:
         logger.exception(f"Error denying re-edit for contract {contract_id}: {e}")
         raise HTTPException(status_code=500, detail="An error occurred while denying the re-edit request.")
@@ -1244,8 +1372,7 @@ async def acknowledge_reedit_denial(
     if contract_before.get("status") != "Re-edit Denied":
         # If it's already Ingested, we don't need to do anything. Just return the contract.
         if contract_before.get("status") in ["Approved", "Completed", "Ingested"]:
-            _forget_cached_contract(contract_id)
-            return get_contract(contract_id=contract_id, current_user=current_user)
+            return await get_contract(contract_id=contract_id, current_user=current_user)
         raise HTTPException(status_code=400, detail="This contract is not in a 'Re-edit Denied' state.")
 
     # Update the status to 'Ingested'
@@ -1261,7 +1388,6 @@ async def acknowledge_reedit_denial(
         details={"oldStatus": "Re-edit Denied", "newStatus": "Approved"}
     )
     
-    _forget_cached_contract(contract_id)
-    return get_contract(contract_id=contract_id, current_user=current_user)
+    return await get_contract(contract_id=contract_id, current_user=current_user)
 
 

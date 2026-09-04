@@ -22,8 +22,8 @@ from core.security import get_current_active_user
 from models.domain import UserInDB, AccessibleAccountInfo
 from models.response_types import (
     ProcessResponse, IndexResponse,
-    ContractResponse, ContractAnalysis, IndexRequest, ProcessRequest, Category,
-    WorkflowRoles, JobStatusResponse
+    ContractResponse, ContractAnalysis, IndexRequest, ProcessRequest, LastSaveResponse, Category,
+    DraftSaveRequest, DraftSubmitRequest, WorkflowRoles, JobStatusResponse
 )
 from core.validators import validate_pdf_upload, extract_pdf_page_count
 from api.routes.projects import verify_project_access, ensure_default_project
@@ -194,7 +194,7 @@ async def upload_contract(
             "file_id": file_id,
             "credits_deducted": False,
             "index": {"status": "pending", "content": None, "updated_at": None},
-            "process": {"status": "pending", "updated_at": None},
+            "process": {"status": "pending", "results": [], "dynamic_results": [], "lastSave":None, "updated_at": None},
             "workflowRoles":{
                 "editorUserId": None,
                 "approverUserId": None,
@@ -680,6 +680,7 @@ async def process_contract_chain_endpoint(
                 "process.status": "pending",
                 "status": "Processing",
                 "index.started_at": datetime.utcnow(),
+                "process.lastSave": None
             }}
         )
 
@@ -1063,6 +1064,9 @@ def get_contract(
             "index.content": 1,
             "index.html_content": 1,
             "process.status": 1,
+            "process.results": {"$slice": -1},
+            "process.dynamic_results": 1,
+            "process.lastSave": 1,
         }
 
         cache_key = f"contract:doc:{contract_id}"
@@ -1144,6 +1148,37 @@ def get_contract(
                 logger.warning(f"Error batch-fetching contract user display names: {str(e)}")
 
         uploaded_by_name = user_display_map.get(str(uploaded_by_oid)) if uploaded_by_oid else None
+        main_results = []
+        
+        for item in process_data.get("results", []):
+            if isinstance(item, dict):
+                try:
+                    if 'results' in item and isinstance(item['results'], list):
+                        for qa_pair in item['results']:
+                            edited_by_user_name = None
+                            edited_by_user_id = qa_pair.get("edited_by_user_id")
+
+                            if edited_by_user_id and ObjectId.is_valid(str(edited_by_user_id)):
+                                edited_by_user_name = user_display_map.get(str(ObjectId(str(edited_by_user_id))))
+                            
+                            qa_pair["edited_by_user_name"] = edited_by_user_name
+
+                    analysis = ContractAnalysis.model_validate(item)
+                    main_results.append(analysis)
+                except Exception as e:
+                    logger.warning(f"Error processing result item: {str(e)}")
+                    continue
+
+        last_save = None
+        last_save_data = process_data.get("lastSave", {})
+        if last_save_data and isinstance(last_save_data, dict):
+            try:
+                last_save = LastSaveResponse(
+                    savedAt=last_save_data.get("savedAt", datetime.utcnow()),
+                    data=ContractAnalysis.model_validate(last_save_data["data"])
+                )
+            except Exception:
+                pass
 
         # Resolved against the project so an inherited assignment is visible on
         # the contract that inherits it, not only on the project that sets it.
@@ -1183,6 +1218,9 @@ def get_contract(
             ),
             process=ProcessResponse(
                 status=process_data.get("status", "unknown"),
+                results=main_results,
+                dynamic_results=process_data.get("dynamic_results", []),
+                lastSave=last_save,
             ),
         )
         return response

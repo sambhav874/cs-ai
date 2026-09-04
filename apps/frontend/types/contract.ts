@@ -206,7 +206,16 @@ interface ContactDetails {
     supporting_documents: SupportingDocuments;
   }
   
+  interface ContractDetailsProps {
+    contract: Contract;
+    onSubmit: (data: Contract) => void;
+    onFormSubmit: (data: Contract) => void;
+    isLatestVersion: boolean;
+    lastSave: any; // You might want to define a more specific type for lastSave
+  }
+
   export type {
+    ContractDetailsProps,
     Contract,
     BasicInfo,
     EnforceableRightsObligations,

@@ -112,25 +112,6 @@ class FakeCollection:
     def count_documents(self, query):
         return len([d for d in self.docs if _matches(d, query)])
 
-    def find_one_and_update(self, query, update, upsert=False, return_document=None, **_kwargs):
-        """Upsert-and-return, the way the alert dedupe path uses it.
-
-        $setOnInsert applies only when the document is created, $set always,
-        and $inc accumulates — which is what makes a repeated breach bump an
-        occurrence count instead of raising a second alert.
-        """
-        doc = self.find_one(query)
-        if doc is None:
-            if not upsert:
-                return None
-            doc = dict(query)
-            doc.update((update or {}).get("$setOnInsert", {}))
-            self.docs.append(doc)
-        doc.update((update or {}).get("$set", {}))
-        for key, amount in ((update or {}).get("$inc", {})).items():
-            doc[key] = (doc.get(key) or 0) + amount
-        return dict(doc)
-
     def bulk_write(self, operations, ordered=False):
         # pymongo's UpdateMany/UpdateOne carry the filter and update document on
         # ``_filter``/``_doc``; replaying them through update_many keeps this fake

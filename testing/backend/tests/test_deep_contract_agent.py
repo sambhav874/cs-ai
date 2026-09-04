@@ -223,9 +223,7 @@ def test_tool_registry_declares_read_approval_and_forbidden_boundaries():
 
     assert "search_evidence" in READ_ONLY_TOOLS
     assert "read_document" in READ_ONLY_TOOLS
-    # fetch_documents was folded into list_documents, which now both lists the
-    # scoped documents and fetches metadata for a named subset.
-    assert "list_documents" in READ_ONLY_TOOLS
+    assert "fetch_documents" in READ_ONLY_TOOLS
     assert "find_in_document" in READ_ONLY_TOOLS
     assert "create_tabular_review" in APPROVAL_REQUIRED_TOOLS
     assert "replicate_document" in APPROVAL_REQUIRED_TOOLS
@@ -425,11 +423,7 @@ def test_gemini_tool_loop_does_not_replay_function_call_history():
 
     assert response.workflow_status == AgentStatus.COMPLETED
     assert "thirty days" in response.answer
-    # The tool passes the executor its own enriched args (mode, max_chars,
-    # include_full) — what matters here is that the model's call reached the
-    # executor for that document, not the exact payload shape.
-    assert [name for name, _ in calls] == ["read_document"]
-    assert calls[0][1]["document_id"] == "507f1f77bcf86cd799439012"
+    assert calls == [("read_document", {"document_id": "507f1f77bcf86cd799439012"})]
     assert len(model.calls) == 3
     assert all(type(message).__name__ in {"SystemMessage", "HumanMessage"} for message in model.calls[1])
     assert "Observed tool results so far" in model.calls[1][1].content
@@ -469,11 +463,7 @@ def test_gemini_provider_alias_uses_safe_tool_loop():
 
     assert response.workflow_status == AgentStatus.COMPLETED
     assert "thirty days" in response.answer
-    # The tool passes the executor its own enriched args (mode, max_chars,
-    # include_full) — what matters here is that the model's call reached the
-    # executor for that document, not the exact payload shape.
-    assert [name for name, _ in calls] == ["read_document"]
-    assert calls[0][1]["document_id"] == "507f1f77bcf86cd799439012"
+    assert calls == [("read_document", {"document_id": "507f1f77bcf86cd799439012"})]
     assert all(type(message).__name__ in {"SystemMessage", "HumanMessage"} for message in model.calls[1])
 
 
@@ -506,11 +496,7 @@ def test_gemini_thought_signature_error_retries_without_function_call_history():
     assert response.workflow_status == AgentStatus.COMPLETED
     assert "thirty days" in response.answer
     assert "thought_signature" not in response.answer
-    # The tool passes the executor its own enriched args (mode, max_chars,
-    # include_full) — what matters here is that the model's call reached the
-    # executor for that document, not the exact payload shape.
-    assert [name for name, _ in calls] == ["read_document"]
-    assert calls[0][1]["document_id"] == "507f1f77bcf86cd799439012"
+    assert calls == [("read_document", {"document_id": "507f1f77bcf86cd799439012"})]
     assert all(type(message).__name__ in {"SystemMessage", "HumanMessage"} for call in model.calls for message in call)
 
 
@@ -639,6 +625,41 @@ def test_runtime_parses_and_resolves_markdown_citations_block():
     ]
 
 
+def test_runtime_self_verification_can_correct_final_answer():
+    state = AgentRunState(user_id="user-1", message="What are the payment terms?")
+    state.react_scratchpad.append({
+        "tool": "search_evidence",
+        "observation": {
+            "matches": [
+                {
+                    "document_id": "doc-1",
+                    "filename": "Services.pdf",
+                    "page": 2,
+                    "quote": "Customer shall pay invoices within thirty days.",
+                }
+            ]
+        },
+    })
+    model = StreamingFakeModel(
+        [],
+        verification_response="FIXED: Customer shall pay invoices within thirty days.\n\n**Confidence:** high",
+    )
+
+    finished = ContractReActRuntime(model=model)._verified_finish(
+        state,
+        answer="Customer shall pay invoices within thirty days and receives a 5% discount.",
+        model=model,
+        reason="unit test",
+    )
+
+    assert finished.status == AgentStatus.COMPLETED
+    assert "5% discount" not in finished.answer
+    assert finished.confidence == "high"
+    assert any(trace.event == "verification" and trace.detail["result"] == "corrected" for trace in finished.traces)
+    verification_prompt = model.calls[0][1].content
+    assert "Customer shall pay invoices within thirty days." in verification_prompt
+
+
 def test_runtime_preflight_adds_inline_marker_from_observed_evidence():
     state = AgentRunState(user_id="user-1", message="What are the payment terms?")
     state.react_scratchpad.append({
@@ -676,39 +697,41 @@ def test_runtime_preflight_adds_inline_marker_from_observed_evidence():
     assert "Preflight issues:" in model.calls[0][1].content
 
 
-def test_runtime_user_message_includes_document_inventory_and_memory():
-    """The per-turn message is gone: routing policy is stated once in the
-    system prompt and tool descriptions rather than restated every iteration,
-    and the model keeps its own tool history. What the turn message still has
-    to carry is the document inventory and the conversation memory."""
+def test_runtime_turn_message_includes_inventory_memory_and_prior_tools():
     state = AgentRunState(
         user_id="user-1",
-        message="What are the payment terms?",
-        memory_context="User cares about invoice deadlines",
+        message="Summarize payment terms.",
+        memory_context="Prior conversation summary: User cares about invoice deadlines.\n\nRecent turns:\n- hi",
         context=AgentContext(
-            surface="contract",
-            contract_id="507f1f77bcf86cd799439012",
+            surface="project",
+            project_id="project-1",
+            selected_document_ids=["doc-1"],
             attached_documents=[
                 {"document_id": "doc-1", "filename": "Services.pdf"},
-                {"document_id": "doc-2", "filename": "Amendment.pdf"},
+                {"id": "doc-2", "name": "Amendment.pdf"},
             ],
         ),
     )
+    state.tools.append(ToolCallRecord(
+        name="search_evidence",
+        args={"query": "payment terms"},
+        status="done",
+        observation={"summary": "Found payment evidence."},
+    ))
 
-    message = ContractReActRuntime(model=StreamingFakeModel([]))._build_user_message(state)
+    turn = ContractReActRuntime(model=StreamingFakeModel([]))._build_turn_message(state, iteration=2, max_iterations=5)
 
-    assert "Services.pdf (ID: doc-1)" in message
-    assert "Amendment.pdf (ID: doc-2)" in message
-    assert "User cares about invoice deadlines" in message
-    assert "What are the payment terms?" in message
+    assert "Services.pdf (ID: doc-1)" in turn
+    assert "Amendment.pdf (ID: doc-2)" in turn
+    assert "User cares about invoice deadlines" in turn
+    assert "search_evidence({'query': 'payment terms'}) → done" in turn
+    assert "Observed tool results so far (step 2 of 5)" in turn
 
 
 def test_runtime_model_failure_answer_distinguishes_step_limit_errors():
     runtime = ContractReActRuntime(model=StreamingFakeModel([]))
 
-    # There is no special-cased wording per failure any more; the answer names
-    # the cause so a user can tell a step limit from a provider outage.
-    assert "recursion limit reached" in runtime._model_failure_answer(RuntimeError("recursion limit reached"))
+    assert "ReAct step limit" in runtime._model_failure_answer(RuntimeError("recursion limit reached"))
     assert "provider unavailable" in runtime._model_failure_answer(RuntimeError("provider unavailable"))
 
 
@@ -1239,13 +1262,11 @@ def test_edited_contract_copy_applies_agreement_number_change_and_starts_contrac
 def test_contractsense_react_prompt_ports_governed_system_rules():
     prompt_text = LANGGRAPH_REACT_SYSTEM_PROMPT
 
-    # The prompt has been rewritten more than once. What it has to establish
-    # is who the agent is and that its tools come in two classes — pinning the
-    # exact copy just breaks on every edit.
     assert "ContractSense" in prompt_text
     assert "read-only tools" in prompt_text
     assert "approval-gated tools" in prompt_text
-    assert "Do not narrate your" in prompt_text
+    assert "Reflect" in prompt_text
+    assert "Anticipate" not in prompt_text
 
 
 def test_runtime_prompt_includes_actual_tool_catalog():
@@ -1257,12 +1278,13 @@ def test_runtime_prompt_includes_actual_tool_catalog():
 
     prompt_text = langgraph_react_system_prompt_for_tools(build_langchain_tools(state=state))
 
-    # The catalog is what matters: the agent has to be told the tools it
-    # actually has, by the names the runtime will accept.
+    assert "## Tools" in prompt_text
+    assert "untrusted data" in prompt_text
     assert "search_evidence" in prompt_text
     assert "read_document" in prompt_text
     assert "extract_kpis" in prompt_text
-    assert "read-only tools" in prompt_text
+    assert "not a fixed script" in prompt_text
+    assert "Do not add extra recommendations" in prompt_text
 
 
 def test_classic_react_agent_executor_is_retired():
@@ -1294,13 +1316,8 @@ def test_middleware_descriptors_label_runtime_and_enforcement():
         assert descriptors[name].enforced is True
         assert name in loaded_names
 
-    # PII redaction is enforced by the langchain runtime now rather than only
-    # traced, which is the difference between recording that a redaction was
-    # needed and actually redacting.
-    assert descriptors["PIIMiddleware"].runtime == "langchain"
-    assert descriptors["PIIMiddleware"].enforced is True
-
     for name in {
+        "PIIMiddleware",
         "ScopeGuardMiddleware",
         "ConfidentialityGuardMiddleware",
         "BudgetMiddleware",
@@ -1478,11 +1495,7 @@ def test_runner_accepts_native_langgraph_tool_calls():
     response = DeepContractAgentRunner(tool_executor=fake_tool_executor, model=model).run(state)
 
     assert response.workflow_status == AgentStatus.COMPLETED
-    # The tool passes the executor its own enriched args (mode, max_chars,
-    # include_full) — what matters here is that the model's call reached the
-    # executor for that document, not the exact payload shape.
-    assert [name for name, _ in calls] == ["read_document"]
-    assert calls[0][1]["document_id"] == "507f1f77bcf86cd799439012"
+    assert calls == [("read_document", {"document_id": "507f1f77bcf86cd799439012"})]
     assert state.react_iterations == 2
     assert "net thirty days" in response.answer
 
@@ -1596,6 +1609,33 @@ def test_checkpoint_thread_id_sanitizes_review_playbook_and_surface_scopes():
     assert runner.checkpoint_thread_id(surface_state) == (
         f"contract-agent:user-3:dashboard:{surface_state.workflow_id}"
     )
+
+
+def test_conversation_summary_from_memory_is_traced_by_answer_guard():
+    memory = (
+        "Prior conversation summary: User is comparing invoice timing across suppliers.\n"
+        "They already rejected a broad summary.\n\n"
+        "Recent turns:\n- User asked about payment."
+    )
+    state = AgentRunState(
+        user_id="user-1",
+        message="What are the payment terms?",
+        memory_context=memory,
+    )
+    state.answer = "Payment terms are not available.\n\n**Confidence:** low"
+    state.status = AgentStatus.COMPLETED
+
+    ActiveMiddlewareEngine().answer_guard(state)
+
+    summary = middleware_module._conversation_summary_from_memory(memory)
+    assert summary == "User is comparing invoice timing across suppliers. They already rejected a broad summary."
+    assert any(
+        trace.event == "middleware:SummarizationMiddleware"
+        and trace.detail["enabled"] is True
+        and trace.detail["summary"] == summary
+        for trace in state.traces
+    )
+    assert middleware_module._conversation_summary_from_memory("Recent turns only") == ""
 
 
 def test_runner_executes_bounded_react_loop_with_tool_observations():

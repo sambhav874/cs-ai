@@ -150,9 +150,6 @@ class AssignWorkflowRolesRequest(BaseModel):
     # Use Optional[str] - frontend sends string IDs, allow None to clear a role
     editorUserId: Optional[str] = Field(None, description="User ID (string) of the assigned Editor. Null to clear.")
     approverUserId: Optional[str] = Field(None, description="User ID (string) of the assigned Approver. Null to clear.")
-    # Projects only: who may staff this matter. A contract has no admin of its
-    # own — the project's admin governs its overrides too.
-    adminUserId: Optional[str] = Field(None, description="User ID (string) of the project admin. Null to clear.")
     
 class RejectContractRequest(BaseModel):
     reason: Optional[str] = Field(None, max_length=1000) # Optional reason, limit length
@@ -160,47 +157,6 @@ class RejectContractRequest(BaseModel):
 
 class UpdateMemberRoleRequest(BaseModel):
     new_role: Literal['admin', 'member'] = Field(description="New role to assign to the team member.")
-
-
-class PersonaCreateRequest(BaseModel):
-    """A named bundle of privileges, created by whoever holds account.personas."""
-    name: str = Field(..., min_length=1, max_length=60)
-    privileges: List[str] = Field(default_factory=list)
-
-
-class PersonaUpdateRequest(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=60)
-    privileges: Optional[List[str]] = None
-
-
-class AssignPersonaRequest(BaseModel):
-    personaId: str = Field(..., description="The persona this member now holds.")
-
-
-class GrantPrivilegeRequest(BaseModel):
-    """A privilege for one person, outside their persona.
-
-    Exceptions are what real teams need and what quietly become permanent, so a
-    grant carries an expiry and a reason.
-    """
-    privilege: str
-    until: Optional[datetime] = None
-    reason: Optional[str] = Field(None, max_length=500)
-
-
-class DelegateWorkflowRoleRequest(BaseModel):
-    """Hand one of your workflow roles to a colleague for a while.
-
-    Someone on leave should not stall every contract they approve, and the
-    alternative — reassigning the role and remembering to put it back — is how
-    an approver quietly stays wrong for a month.
-    """
-    role: Literal['editor', 'approver'] = Field(description="Which of your roles to delegate.")
-    delegateUserId: str = Field(description="User ID of the colleague taking it on.")
-    until: Optional[datetime] = Field(
-        None, description="When the delegation lapses. Open-ended if omitted."
-    )
-    reason: Optional[str] = Field(None, max_length=500)
 
 
 class CreditPurchaseRequest(BaseModel):

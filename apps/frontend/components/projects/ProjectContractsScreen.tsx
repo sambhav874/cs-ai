@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, FolderOpen, History, RefreshCw, Search, Users, X, UploadCloud } from "lucide-react";
+import { ChevronDown, FolderOpen, History, RefreshCw, Search, X, UploadCloud } from "lucide-react";
 import { useBreadcrumbs } from "@/app/context/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,11 +19,6 @@ const FileUploadModal = dynamic(
 
 const RoleReassignmentModal = dynamic(
   () => import("@/components/new/RoleReassignmentModal").then((mod) => mod.RoleReassignmentModal),
-  { ssr: false, loading: () => null }
-);
-
-const ProjectRolesModal = dynamic(
-  () => import("@/components/new/ProjectRolesModal").then((mod) => mod.ProjectRolesModal),
   { ssr: false, loading: () => null }
 );
 
@@ -83,7 +78,6 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
     direction: "desc",
   });
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [isProjectRolesOpen, setIsProjectRolesOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"contracts" | "timeline">("contracts");
   const [memoryRefreshKey, setMemoryRefreshKey] = useState(0);
   
@@ -552,17 +546,6 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
               {project.ownerType === "team" ? "Team Project" : "Personal Project"}
             </span>
           )}
-          {project?.ownerType === "team" && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="ml-auto h-8 gap-2"
-              onClick={() => setIsProjectRolesOpen(true)}
-            >
-              <Users className="h-3.5 w-3.5" />
-              Workflow roles
-            </Button>
-          )}
         </div>
         {project?.description && (
           <p className="mt-1 text-sm text-muted-foreground pl-[30px]">{project.description}</p>
@@ -738,17 +721,6 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
           onUploadSuccess={handleUploadSuccess}
           userCredits={userCredits?.page_credits || 0}
           projectId={projectId}
-        />
-      )}
-
-      {isProjectRolesOpen && selectedAccountId && (
-        <ProjectRolesModal
-          isOpen={isProjectRolesOpen}
-          onClose={() => setIsProjectRolesOpen(false)}
-          onSaved={() => fetchDocuments(pagination.currentPage)}
-          projectId={projectId}
-          projectName={project?.name || "this project"}
-          accountId={selectedAccountId}
         />
       )}
 

@@ -3,7 +3,7 @@ import { AnimatedUploadIcon } from "@/components/animation/animatedUpload"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LogOut, Menu, CreditCard, Loader2, Instagram, Facebook, ChevronDown, ChevronRight, Inbox } from "lucide-react"
+import { LogOut, Menu, CreditCard, Loader2, Instagram, Facebook, ChevronDown, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useRouter } from "next/navigation"
@@ -12,7 +12,6 @@ import AccountSwitcher from "../layout/AccountSwitcher"
 import { useAccountContext } from "@/app/context/AccountContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useBreadcrumbs } from "@/app/context/BreadcrumbContext"
-import { fetchReviewQueue } from "@/lib/reviewQueue"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,7 +63,6 @@ export function ColabsHeader({ onMobileMenuClick, onUploadSuccess, isExpanded = 
   const pathname = usePathname()
   const authPages = ["/signin", "/signup"]
   const isDashboardPage = pathname === "/dashboard"
-  const [reviewQueueCount, setReviewQueueCount] = useState(0)
   const isAuthPage = authPages.includes(pathname)
   const [isMobile, setIsMobile] = useState(false)
   const [isSmallScreen, setIsSmallScreen] = useState(false)
@@ -162,23 +160,6 @@ export function ColabsHeader({ onMobileMenuClick, onUploadSuccess, isExpanded = 
     const idleId = scheduleIdle(() => preloadFileUploadModal())
     return () => cancelIdle(idleId as number)
   }, [mounted, isAuthenticated, isDashboardPage])
-
-  // The badge is the only place a role becomes visible without opening
-  // documents one at a time, so it loads on every authenticated page.
-  useEffect(() => {
-    if (!mounted || !isAuthenticated) return
-    let cancelled = false
-    fetchReviewQueue()
-      .then((queue) => {
-        if (!cancelled) setReviewQueueCount(queue.counts.total)
-      })
-      .catch(() => {
-        if (!cancelled) setReviewQueueCount(0)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [mounted, isAuthenticated, pathname])
 
   useEffect(() => {
     if (mounted && isAuthenticated) {
@@ -303,18 +284,6 @@ export function ColabsHeader({ onMobileMenuClick, onUploadSuccess, isExpanded = 
                   </DropdownMenu>
                 </div>
               )}
-
-              {/* What is waiting on this user */}
-              <Link href="/inbox" title="Waiting on you">
-                <Button variant="outline" size="sm" className="relative h-9 gap-2 border-gray-200 bg-white">
-                  <Inbox className="h-4 w-4" />
-                  {reviewQueueCount > 0 && (
-                    <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-xs font-medium text-primary-foreground">
-                      {reviewQueueCount > 99 ? "99+" : reviewQueueCount}
-                    </span>
-                  )}
-                </Button>
-              </Link>
 
               {/* Account switcher (hidden on mobile) */}
               <div className="hidden sm:block">

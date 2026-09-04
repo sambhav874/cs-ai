@@ -59,7 +59,6 @@ contract_roles_collection = core_db["contract_roles"]
 teams_collection = core_db["teams"]
 audit_logs_collection = core_db["audit_logs"]
 projects_collection = core_db["projects"]
-personas_collection = core_db["personas"]
 
 eval_runs_collection = eval_db["evaluation_runs"]
 eval_attempts_collection = eval_db["evaluation_attempts"]

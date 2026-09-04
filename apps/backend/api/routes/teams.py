@@ -45,29 +45,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- Create FastAPI Router ---
-
-def _may_manage_members(current_user, team_oid, members, current_user_oid) -> bool:
-    """Whether this person may add, remove or re-role members.
-
-    account.members is the real test. team_role is still honoured as a
-    fallback so an account whose personas have not been seeded yet — or one
-    where seeding failed — keeps working exactly as it did.
-    """
-    from api.dependencies import privileges_for
-    from core.privileges import ACCOUNT_MEMBERS
-
-    try:
-        if ACCOUNT_MEMBERS in privileges_for(current_user, team_oid):
-            return True
-    except Exception as exc:  # never let a lookup failure lock an admin out
-        logger.warning("Privilege lookup failed for account %s: %s", team_oid, exc)
-
-    return any(
-        member.get("userId") == current_user_oid and member.get("team_role") == "admin"
-        for member in members or []
-    )
-
-
 team_sub_router = APIRouter(
     prefix="/teams",  # <<< CHANGED from "/api/teams"
     tags=["Teams"] # We can apply tags when including it
@@ -395,13 +372,13 @@ async def add_team_member(
         team_name_for_audit = team_doc_initial.get("name", f"Team {team_id}")
         team_members_list_initial = team_doc_initial.get("members", [])
 
-        # 2. Authorization: managing members is a privilege now. team_role is
-        # still read as a fallback, so an account whose personas have not been
-        # seeded yet keeps working exactly as before.
-        is_performing_user_admin = _may_manage_members(
-            current_user, team_oid, team_members_list_initial, current_admin_oid
-        )
-
+        # 2. Authorization: Check if current_user is an admin of this team
+        is_performing_user_admin = False
+        for member_in_list in team_members_list_initial:
+            if member_in_list.get("userId") == current_admin_oid and member_in_list.get("team_role") == 'admin':
+                is_performing_user_admin = True
+                break
+        
         if not is_performing_user_admin:
             logger.warning(f"User {action_by_username} (not an admin) attempted to add member to team {team_id}.")
             raise HTTPException(status_code=403, detail="Only team admins can add members.")
@@ -606,11 +583,13 @@ async def remove_team_member(
         team_name_for_audit = team_doc.get("name", f"Team {team_id}")
 
 
-        # Authorization: same privilege as adding, same fallback.
-        is_performing_user_admin = _may_manage_members(
-            current_user, team_oid, team_members_list, current_admin_oid
-        )
-
+        # Authorization: Check if current_user is an admin of this team
+        is_performing_user_admin = False
+        for member_in_list in team_members_list:
+            if member_in_list.get("userId") == current_admin_oid and member_in_list.get("team_role") == 'admin':
+                is_performing_user_admin = True
+                break
+        
         if not is_performing_user_admin:
             logger.warning(f"User {action_by_username} (not an admin) attempted to remove member from team {team_id}.")
             raise HTTPException(status_code=403, detail="Only team admins can remove members.")
@@ -760,11 +739,13 @@ async def update_team_member_role(
     team_name_for_audit = team_doc.get("name", f"account {team_id}")
     team_creator_oid = team_doc.get("creatorId") # This is an ObjectId 
 
-    # Authorization: same privilege again.
-    is_current_user_admin = _may_manage_members(
-        current_user, team_oid, team_members_list, current_admin_oid
-    )
-
+    # Authorization: Check if current_user is an admin of this account
+    is_current_user_admin = False
+    for member_in_list in team_members_list:
+        if member_in_list.get("userId") == current_admin_oid and member_in_list.get("team_role") == "admin":
+            is_current_user_admin = True
+            break
+    
     if not is_current_user_admin:
         logger.warning(f"User {action_by_username} (not an admin) attempted to change role in account {team_id}.")
         raise HTTPException(status_code=403, detail="You do not have permission to change member roles in this account.")

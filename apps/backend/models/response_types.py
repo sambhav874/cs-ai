@@ -54,6 +54,12 @@ class IndexResponse(BaseModel):
     job_id: Optional[str] = None
 
 
+class LastSaveResponse(BaseModel):
+    savedAt: datetime
+    data: ContractAnalysis = Field(
+        description="Includes confidence scores in analysis results"
+    )
+
 class ContractActionRequest(BaseModel):
     contract_id: str = Field(..., description="The unique identifier of the target contract.")
 
@@ -71,6 +77,12 @@ class JobStatusResponse(BaseModel):
 class ProcessResponse(BaseModel):
     status: str = Field(default="success")
     contract_name: Optional[str] = None
+    results: List[ContractAnalysis] = Field(
+        default_factory=list,
+        description="Analyses with confidence-annotated results"
+    )
+    dynamic_results: List[Any] = Field(default_factory=list)
+    lastSave: Optional[LastSaveResponse] = None
     process: Optional["ProcessResponse"] = None
     think: Optional[str] = None
     job_id: Optional[str] = None
@@ -155,6 +167,17 @@ class ProcessAllRequest(BaseModel):
 
 class ProcessEditRequest(BaseModel):
     results: List[ContractAnalysis]
+
+
+class DraftSaveRequest(BaseModel):
+    results: List[Dict[str, Any]]
+    categories: Optional[List[Dict]] = None
+    report_info: Optional[Dict[str, Any]] = None
+
+class DraftSubmitRequest(BaseModel):
+    results: List[Dict[str, Any]]
+
+
 
 
 
