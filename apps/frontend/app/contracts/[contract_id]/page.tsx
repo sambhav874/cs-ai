@@ -179,20 +179,6 @@ const renderPlainTextWithHighlights = (
   return html.replace(/\r?\n/g, "<br />");
 };
 
-interface ContractAnalysisFromAPI {
-  version: number | "Last Saved Draft" | "Last Saved";
-  createdAt: string;
-  results: QuestionAnswerFromAPI[];
-  categories?: { name: string; questions: string[]; }[];
-  isLastSave?: boolean;
-  report_info?: {
-    generated_by: string;
-    report_content: any;
-    is_draft?: boolean;
-    generated_at: string;
-  };
-}
-
 interface WorkflowRoles {
   editorUserId: string | null;
   approverUserId: string | null;
@@ -232,12 +218,6 @@ interface FullContractData {
   summarize?: { status: string; summary?: string; updated_at?: string; contract_name?: string; };
   process?: {
     status: string;
-    results: ContractAnalysisFromAPI[];
-    dynamic_results?: any[];
-    lastSave?: {
-      savedAt: string;
-      data: ContractAnalysisFromAPI;
-    } | null;
     updated_at?: string;
   };
   contract_think?: string | null;
@@ -765,8 +745,6 @@ export default function ContractView() {
   const [loadingUser, setLoadingUser] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [selectedVersionIndex, setSelectedVersionIndex] = useState(0);
-  const [latestVersionNum, setLatestVersionNum] = useState(0);
   const [isClientLoaded, setIsClientLoaded] = useState(false);
 
   const [searchValue, setSearchValue] = useState("");
@@ -783,8 +761,6 @@ export default function ContractView() {
   const [currentHighlightIndex, setCurrentHighlightIndex] = useState<number>(0);
   const [activeHighlightIndex, setActiveHighlightIndex] = useState<number | null>(null);
 
-  const [isSavingDraft, setIsSavingDraft] = useState(false);
-  const [isSubmittingVersion, setIsSubmittingVersion] = useState(false);
   const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
@@ -935,16 +911,6 @@ export default function ContractView() {
     }
   }, []);
 
-  useEffect(() => {
-    if (contract?.process?.results || contract?.process?.lastSave?.data) {
-      const versions = [...(contract.process.results || [])];
-      if (contract.process.lastSave?.data) {
-        versions.push(contract.process.lastSave.data);
-      }
-    }
-  }, [contract]);
-
-
 
   const fetchCurrentUser = useCallback(async () => {
     setToken("cookie");
@@ -996,34 +962,6 @@ export default function ContractView() {
 
       setContract(data as FullContractData);
 
-      const latestNum = versions.filter((v: any) => typeof v?.version === 'number')
-        .reduce((maxV: number, curr: any) => Math.max(maxV, curr.version), 0);
-      setLatestVersionNum(latestNum);
-
-      const allVersions = [...versions];
-      if (lastSave?.data) {
-        allVersions.push({
-          ...lastSave.data,
-          version: "Last Saved Draft",
-          isLastSave: true,
-          createdAt: lastSave.savedAt || new Date().toISOString()
-        });
-      }
-
-      let initialIndex = allVersions.length > 0 ? allVersions.length - 1 : 0;
-      const lastSaveIndex = allVersions.findIndex(v => v.isLastSave);
-
-      if (lastSaveIndex !== -1) {
-        initialIndex = lastSaveIndex;
-      } else {
-        for (let i = versions.length - 1; i >= 0; i--) {
-          if (versions[i]?.version === latestNum) {
-            initialIndex = i;
-            break;
-          }
-        }
-      }
-      setSelectedVersionIndex(initialIndex);
     } catch (err: any) {
       setError(err.message);
       setContract(null);
@@ -1942,24 +1880,6 @@ export default function ContractView() {
     setHighlightedRawContent(doc.body.innerHTML);
   }, [contract?.index?.html_content, contract?.index?.content, rawSearchValue, activeTab, activeHighlightIndex]);
 
-  const versions = contract?.process?.results || [];
-  const lastSave = contract?.process?.lastSave;
-  const allVersionsForDropdown = [...versions];
-  if (lastSave?.data) {
-    allVersionsForDropdown.push({
-      ...lastSave.data,
-      version: "Last Saved Draft",
-      isLastSave: true,
-      createdAt: lastSave.savedAt || new Date().toISOString()
-    });
-  }
-
-  const currentDisplayVersionIndex = Math.min(
-    selectedVersionIndex,
-    allVersionsForDropdown.length > 0 ? allVersionsForDropdown.length - 1 : 0
-  );
-  const currentDisplayData = allVersionsForDropdown.length > 0 ? allVersionsForDropdown[currentDisplayVersionIndex] : null;
-  const isViewingLastSave = !!currentDisplayData?.isLastSave;
 
   const currentUserId = currentUserInfo?._id;
   const contractStatus = contract?.status;
@@ -1987,8 +1907,8 @@ export default function ContractView() {
   const canEdit = useMemo(() => {
     if (!contract || !currentUserId) return false;
     const currentStatus = contract?.status;
-    const editableStatusesForEditor = ["Ready to Edit", "Editing", "Rejected"];
-    const editableStatusesForPersonal = ["Ready to Edit", "Editing"];
+    const editableStatusesForEditor = ["Ingested", "Ready to Edit", "Editing", "Rejected"];
+    const editableStatusesForPersonal = ["Ingested", "Ready to Edit", "Editing"];
 
     if (isAssignedEditor && editableStatusesForEditor.includes(currentStatus || '')) {
       return true;
@@ -2001,14 +1921,18 @@ export default function ContractView() {
 
   const canSubmit = useMemo(() => {
     if (!contract || !currentUserId || isPersonalDoc) return false;
-    if (isViewingLastSave) return false;
 
-    const allowedStatuses = ["Ready to Edit", "Editing", "Rejected"];
+    // "Ingested" is where a contract sits once the worker finishes it, and
+    // where the editor picks it up — the backend has always accepted a submit
+    // from there, but this list did not, so the Submit button never appeared
+    // on a freshly ingested contract. "Ready to Edit" is legacy: nothing has
+    // ever written it.
+    const allowedStatuses = ["Ingested", "Ready to Edit", "Editing", "Rejected"];
     if (!allowedStatuses.includes(contractStatus || '')) return false;
     if (!assignedApproverId) return false;
 
     return isAssignedEditor;
-  }, [contract, currentUserId, isPersonalDoc, contractStatus, isAssignedEditor, assignedApproverId, isViewingLastSave]);
+  }, [contract, currentUserId, isPersonalDoc, contractStatus, isAssignedEditor, assignedApproverId]);
 
   const canApprove = useMemo(() => {
     if (!contract || !currentUserId || isPersonalDoc) return false;
@@ -2024,7 +1948,6 @@ export default function ContractView() {
 
   const canMarkComplete = useMemo(() => {
     if (!contract || !currentUserId) return false;
-    if (contract.process?.lastSave) return false;
     const allowedStatuses = ["Ready to Edit", "Editing"];
     return isContractOwner && allowedStatuses.includes(contractStatus || '');
   }, [currentUserId, contractStatus, isContractOwner, contract]);
@@ -2098,125 +2021,11 @@ export default function ContractView() {
     return Boolean(indexedContent && indexedContent !== "*No raw content*");
   }, [contract?.index?.html_content, contract?.index?.content]);
 
-  const isUnprocessed = useMemo(() =>
-    !hasIndexedContent && (
-      !contract?.process?.results ||
-      contract.process.results.length === 0 ||
-      contract.status === "Uploaded"
-    ),
-    [contract?.process?.results, contract?.status, hasIndexedContent]);
-
-  const handleSaveDraft = async (dataFromContractDetails: any) => {
-    if (!dataFromContractDetails || !Array.isArray(dataFromContractDetails.results)) {
-      console.error("handleSaveDraft received invalid data:", dataFromContractDetails);
-      toast({ title: "Error", description: "Invalid data format received for saving draft.", variant: "destructive" });
-      return;
-    }
-
-    if (!canEdit) {
-      toast({
-        title: "Permission Denied",
-        description: "Cannot save draft in current state.",
-        variant: "destructive"
-      });
-      return;
-    }
-    if (!contract?._id || !token || !apiUrl) {
-      toast({ title: "Cannot Save Draft", variant: "destructive" });
-      return;
-    }
-    setIsSavingDraft(true);
-    setError(null);
-    try {
-      const payload = dataFromContractDetails;
-      const response = await apiFetch(`${apiUrl}/contracts/${contract._id}/save-draft/`, {
-        method: "PUT",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || "Failed to save draft");
-      if (!result?._id && !result?.id) throw new Error("Save draft response missing ID.");
-
-      setContract(result as FullContractData);
-      const updatedVersions = result.process?.results || [];
-      const updatedLastSave = result.process?.lastSave;
-      const updatedAllVersionsForDropdown = [...updatedVersions];
-
-      if (updatedLastSave?.data) {
-        updatedAllVersionsForDropdown.push({
-          ...updatedLastSave.data,
-          version: "Last Saved Draft",
-          isLastSave: true,
-          createdAt: updatedLastSave.savedAt || new Date().toISOString()
-        });
-      }
-
-      const draftIndex = updatedAllVersionsForDropdown.findIndex(v => v.isLastSave);
-
-      if (draftIndex !== -1) {
-        setSelectedVersionIndex(draftIndex);
-      } else {
-        setSelectedVersionIndex(updatedVersions.length > 0 ? updatedVersions.length - 1 : 0);
-      }
-
-      toast({ title: "Success", description: "Draft saved." });
-    } catch (error: any) {
-      setError(error.message);
-      toast({ title: "Error Saving Draft", description: error.message, variant: "destructive" });
-    } finally {
-      setIsSavingDraft(false);
-    }
-  };
-
-  const handleSubmitDraft = async (data: any) => {
-    if (!canEdit) {
-      toast({ title: "Permission Denied", description: "Cannot save new version.", variant: "destructive" });
-      return;
-    }
-    if (!contract || !token || !apiUrl || !contract._id) {
-      toast({ title: "Cannot Save Version", variant: "destructive" });
-      return;
-    }
-
-    setIsSubmittingVersion(true);
-    setError(null);
-    try {
-      const numericVersions = contract.process?.results?.filter(v => typeof v.version === 'number').map(v => v.version) || [];
-      const latestVersionNumLocal = Math.max(...numericVersions.filter((v): v is number => typeof v === 'number'), 0);
-
-      const response = await apiFetch(`${apiUrl}/contracts/${contract._id}/submit-draft/`, {
-        method: "PUT",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ results: [data] })
-      });
-
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || "Failed to save new version");
-      if (!result?._id && !result?.id) throw new Error("Save version response missing ID.");
-
-      setContract(result as FullContractData);
-      setLatestVersionNum(latestVersionNumLocal + 1);
-      setSelectedVersionIndex((result.process?.results?.length || 1) - 1);
-
-      toast({
-        title: "Success",
-        description: `Version ${latestVersionNumLocal + 1} saved.`
-      });
-    } catch (error: any) {
-      setError(error.message);
-      toast({
-        title: "Error Saving Version",
-        description: error.message,
-        variant: "destructive"
-      });
-    } finally {
-      setIsSubmittingVersion(false);
-    }
-  };
+  // Citations need indexed text; nothing else about the contract makes them
+  // available.
+  const isUnprocessed = useMemo(
+    () => !hasIndexedContent || contract?.status === "Uploaded",
+    [contract?.status, hasIndexedContent]);
 
   const handleSubmitForApproval = async () => {
     if (!canSubmit || !contract?._id || !token || !apiUrl) return;
@@ -2824,19 +2633,10 @@ export default function ContractView() {
                   {!canDecideOnReEdit && contractStatus !== 'Re-edit Denied' && (
                     <>
                       {canSubmit && (
-                        <TooltipProvider delayDuration={100}>
-                          <Tooltip open={isViewingLastSave ? undefined : false}>
-                            <TooltipTrigger asChild>
-                              <span tabIndex={0} className="hidden lg:inline-flex">
-                                <Button size="sm" onClick={handleSubmitForApproval} disabled={isSubmittingApproval || isSavingDraft || isSubmittingVersion || !canSubmit} className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
-                                  {isSubmittingApproval && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                  <Send className="mr-1 h-4 w-4" /> Submit
-                                </Button>
-                              </span>
-                            </TooltipTrigger>
-                            {isViewingLastSave && (<TooltipContent><p>Please save this draft as a new version first.</p></TooltipContent>)}
-                          </Tooltip>
-                        </TooltipProvider>
+                        <Button size="sm" onClick={handleSubmitForApproval} disabled={isSubmittingApproval || !canSubmit} className="hidden bg-primary text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 lg:inline-flex">
+                          {isSubmittingApproval && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          <Send className="mr-1 h-4 w-4" /> Submit
+                        </Button>
                       )}
 
                       {canApprove && (

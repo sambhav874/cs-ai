@@ -24,6 +24,7 @@ from core.database import (
 from core.security import get_current_active_user
 from models.domain import UserInDB
 from utils.audit_logger import create_audit_log
+from services.workflow_roles import effective_roles_for_contract
 from utils.secure_logger import log_exception
 from services.kpi_manager import ContractKPIManager, USER_CONFIGURABLE_SOURCE_TYPES
 from services.kpi_source_ingestion import KpiSourceIngestionService, KpiSourceError, parse_sample_file_bytes
@@ -768,9 +769,27 @@ async def certify_contract_kpi(
 
     contract = collection.find_one(
         {"_id": contract_oid},
-        {"_id": 1, "ownerType": 1, "ownerId": 1, "contract_name": 1},
+        {
+            "_id": 1, "ownerType": 1, "ownerId": 1, "contract_name": 1,
+            "workflowRoles": 1, "projectId": 1,
+        },
     )
     check_contract_access(contract, current_user)
+
+    # Proposing is open to anyone who can see the contract; the certified and
+    # deprecated states are the claim a finance or legal reader relies on, so
+    # they belong to the approver — the same person who approves the contract.
+    requested_status = str(request.status or "certified").strip().lower()
+    if requested_status in {"certified", "deprecated"} and contract.get("ownerType") == "team":
+        roles = effective_roles_for_contract(contract, projects_collection)
+        approver_oid = roles.get("approverUserId")
+        is_account_owner = current_user.ownedAccountId == str(contract.get("ownerId"))
+        if not is_account_owner and approver_oid != ObjectId(current_user.id):
+            raise HTTPException(
+                status_code=403,
+                detail="Only the assigned Approver or the account owner can certify a KPI.",
+            )
+
     try:
         result = _kpi_manager().certify_kpi(
             contract_id=contract_id,
@@ -798,6 +817,56 @@ async def certify_contract_kpi(
         },
     )
     return result
+
+
+@kpis_router.post("/contracts/{contract_id}/kpis/{kpi_id}/resolve-review")
+async def resolve_kpi_review_flag(
+    contract_id: str,
+    kpi_id: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Close out an extraction the model flagged for a human.
+
+    The flag was previously a dead end: it could be raised but never answered,
+    so a contract carried "needs review" forever and the signal stopped meaning
+    anything.
+    """
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+
+    contract = collection.find_one(
+        {"_id": contract_oid},
+        {"_id": 1, "ownerType": 1, "ownerId": 1, "contract_name": 1},
+    )
+    check_contract_access(contract, current_user)
+
+    now = datetime.utcnow()
+    result = _kpi_manager().kpis.update_one(
+        {"contract_id": contract_id, "kpi_id": kpi_id},
+        {
+            "$set": {
+                "needs_review": False,
+                "review_resolved_by": str(current_user.id),
+                "review_resolved_at": now,
+                "updated_at": now,
+            }
+        },
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="KPI not found.")
+
+    await create_audit_log(
+        user=current_user,
+        action="KPI_REVIEW_FLAG_RESOLVED",
+        contract_id=contract_oid,
+        contract_name_override=(contract or {}).get("contract_name"),
+        account_id_override=(contract or {}).get("ownerId") if (contract or {}).get("ownerType") == "team" else None,
+        details={"kpiId": kpi_id},
+    )
+    cache.delete(f"kpi:list:{contract_id}")
+    return {"message": "Review flag cleared.", "kpi_id": kpi_id}
 
 
 @kpis_router.get("/contracts/{contract_id}/kpis/{kpi_id}/history")
@@ -1346,7 +1415,8 @@ def list_project_kpi_alerts(
 
 
 def _serialize_project_contract_summary(doc: Dict[str, Any], user_map: Dict[str, str]) -> Dict[str, Any]:
-    workflow_roles = doc.get("workflowRoles") or {}
+    # Resolved, so a project-level assignment shows on the contracts it governs.
+    workflow_roles = effective_roles_for_contract(doc, projects_collection)
     return {
         "_id": str(doc["_id"]),
         "contract_name": doc.get("contract_name", "Unknown"),

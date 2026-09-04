@@ -241,29 +241,51 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
   const saveAllRoles = useCallback(async () => {
     const entries = Object.entries(contractRoles).filter(([, r]) => r.status !== 'done')
     const incomplete = entries.filter(([, r]) => !r.editorUserId || !r.approverUserId)
+    // The backend refuses one person in both roles; catching it here says why,
+    // instead of a row-by-row "Failed".
+    const conflicted = entries.filter(
+      ([, r]) => r.editorUserId && r.editorUserId === r.approverUserId,
+    )
+    if (conflicted.length > 0) {
+      const message = `One person cannot both edit and approve the same contract. Fix ${conflicted.length} contract${conflicted.length === 1 ? "" : "s"} before saving.`
+      setRoleValidationMessage(message)
+      toast({ title: "Same person in both roles", description: message, variant: "destructive" })
+      return
+    }
     if (entries.length === 0) {
       const message = "There are no contracts waiting for role assignment."
       setRoleValidationMessage(message)
       toast({ title: "Nothing to save", description: message, variant: "destructive" })
       return
     }
+    // A blank role is no longer a mistake: the contract inherits its project's
+    // editor or approver. Only worth saying so, in case the project has none.
     if (incomplete.length > 0) {
-      const message = `Select both editor and approver for ${incomplete.length} contract${incomplete.length === 1 ? "" : "s"} before saving.`
-      setRoleValidationMessage(message)
-      toast({ title: "Roles missing", description: message, variant: "destructive" })
-      return
+      setRoleValidationMessage(
+        `${incomplete.length} contract${incomplete.length === 1 ? "" : "s"} left a role blank — those inherit the project's roles.`,
+      )
+    } else {
+      setRoleValidationMessage(null)
     }
-    setRoleValidationMessage(null)
 
     let ok = 0
     for (const [cid, roles] of entries) {
+      if (!roles.editorUserId && !roles.approverUserId) {
+        // Nothing to assign — the project's roles apply as they are.
+        setContractRoles(prev => ({ ...prev, [cid]: { ...prev[cid], status: 'done' } }))
+        ok++
+        continue
+      }
       setContractRoles(prev => ({ ...prev, [cid]: { ...prev[cid], status: 'saving' } }))
       try {
         const res = await apiFetch(`${apiUrl}/contracts/${cid}/roles`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ editorUserId: roles.editorUserId, approverUserId: roles.approverUserId })
         })
-        if (!res.ok) throw new Error('Failed')
+        if (!res.ok) {
+          const detail = await res.json().catch(() => ({}))
+          throw new Error(detail.detail || `Failed (${res.status})`)
+        }
         setContractRoles(prev => ({ ...prev, [cid]: { ...prev[cid], status: 'done' } }))
         ok++
       } catch (e: any) {
@@ -355,7 +377,7 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
                       <Users className="h-3.5 w-3.5 text-gray-500" />
                       <span className="text-xs font-medium text-gray-700">Default roles for this batch</span>
                     </div>
-                    <span className="text-[10px] text-gray-400">Applicable to all contracts</span>
+                    <span className="text-[10px] text-gray-400">Optional — otherwise the project&apos;s roles apply</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -379,6 +401,12 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
                       </Select>
                     </div>
                   </div>
+                  {bulkEditorUserId && bulkEditorUserId === bulkApproverUserId && (
+                    <p className="mt-2 text-[11px] text-red-600">
+                      One person cannot both edit and approve the same contract. Pick a
+                      different approver, or leave these blank to inherit the project&apos;s roles.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -491,7 +519,7 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
                  </div>
                  <div>
                     <h3 className="text-sm font-semibold text-green-900">Upload Complete</h3>
-                    <p className="text-xs text-green-700">Successfully uploaded {uploadedCount} contract{uploadedCount !== 1 ? 's' : ''}. Please assign workflow roles below.</p>
+                    <p className="text-xs text-green-700">Successfully uploaded {uploadedCount} contract{uploadedCount !== 1 ? 's' : ''}. Assign roles below, or leave them blank to use the project&apos;s.</p>
                  </div>
               </div>
 

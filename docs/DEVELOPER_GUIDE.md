@@ -49,8 +49,7 @@ apps/backend/
 ├── utils/               # Helpers and cross-cutting utilities
 │   ├── helpers.py       # JobManager and shared helpers (was utils.py)
 │   ├── audit_logger.py
-│   ├── prompts.py
-│   └── jsontocsv.py
+│   └── prompts.py
 │
 ├── test_support/        # Testing-only app routes/helpers
 │   └── testing_utils.py
@@ -91,7 +90,6 @@ All files were renamed and moved. Use this table if you're looking for something
 | `audit_logger.py` | `utils/audit_logger.py` |
 | `prompts.py` | `utils/prompts.py` |
 | `testing_utils.py` | `test_support/testing_utils.py` |
-| `jsontocsv.py` | `utils/jsontocsv.py` |
 | `endpoints.py` | `api/routes/endpoints.py` |
 | `team_routes.py` | `api/routes/teams.py` |
 | `categories_route.py` | `api/routes/categories.py` |

@@ -3,6 +3,10 @@ export interface WorkflowRoles {
   approverUserId: string | null;
   editor_name?: string | null;
   approver_name?: string | null;
+  /** Where the role came from: set on this contract, inherited from the
+   * project, or standing in for someone who delegated it. */
+  editorSource?: "contract" | "project" | "delegation" | null;
+  approverSource?: "contract" | "project" | "delegation" | null;
 }
 
 export interface JobStatusResponse {

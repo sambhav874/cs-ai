@@ -6924,7 +6924,6 @@ class ContractKPIManager:
                     "parties": 1,
                     "contacts": 1,
                     "index.content": 1,
-                    "process.results": 1,
                     "contract_name": 1,
                 })
             except Exception as exc:

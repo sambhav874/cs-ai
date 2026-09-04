@@ -159,6 +159,21 @@ class UpdateMemberRoleRequest(BaseModel):
     new_role: Literal['admin', 'member'] = Field(description="New role to assign to the team member.")
 
 
+class DelegateWorkflowRoleRequest(BaseModel):
+    """Hand one of your workflow roles to a colleague for a while.
+
+    Someone on leave should not stall every contract they approve, and the
+    alternative — reassigning the role and remembering to put it back — is how
+    an approver quietly stays wrong for a month.
+    """
+    role: Literal['editor', 'approver'] = Field(description="Which of your roles to delegate.")
+    delegateUserId: str = Field(description="User ID of the colleague taking it on.")
+    until: Optional[datetime] = Field(
+        None, description="When the delegation lapses. Open-ended if omitted."
+    )
+    reason: Optional[str] = Field(None, max_length=500)
+
+
 class CreditPurchaseRequest(BaseModel):
     """Model for credit purchase requests"""
     page_quantity: int = Field(..., gt=0, description="Number of pages to purchase")

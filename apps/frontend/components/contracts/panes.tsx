@@ -183,20 +183,6 @@ const renderPlainTextWithHighlights = (
   return html.replace(/\r?\n/g, "<br />");
 };
 
-interface ContractAnalysisFromAPI {
-  version: number | "Last Saved Draft" | "Last Saved";
-  createdAt: string;
-  results: QuestionAnswerFromAPI[];
-  categories?: { name: string; questions: string[]; }[];
-  isLastSave?: boolean;
-  report_info?: {
-    generated_by: string;
-    report_content: any;
-    is_draft?: boolean;
-    generated_at: string;
-  };
-}
-
 interface WorkflowRoles {
   editorUserId: string | null;
   approverUserId: string | null;
@@ -236,12 +222,6 @@ interface FullContractData {
   summarize?: { status: string; summary?: string; updated_at?: string; contract_name?: string; };
   process?: {
     status: string;
-    results: ContractAnalysisFromAPI[];
-    dynamic_results?: any[];
-    lastSave?: {
-      savedAt: string;
-      data: ContractAnalysisFromAPI;
-    } | null;
     updated_at?: string;
   };
   contract_think?: string | null;

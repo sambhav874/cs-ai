@@ -6,10 +6,14 @@ import { cx, formatDate, truncateMiddle } from "./utils";
 import type { Document, DocumentWithProgress, UserInDB } from "./types";
 import { ProcessingPill } from "./ProcessingPill";
 
-function RolePill({ label }: { label: string }) {
+function RolePill({ label, source }: { label: string; source?: string | null }) {
+  // A role can be set here, inherited from the project, or covered for someone
+  // who is away — worth saying which, so nobody wonders why they hold it.
+  const note = source === "project" ? "via project" : source === "delegation" ? "covering" : null;
   return (
     <span className="inline-flex items-center rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
       {label}
+      {note && <span className="ml-1 text-muted-foreground/70">· {note}</span>}
     </span>
   );
 }
@@ -110,8 +114,8 @@ export const ContractExplorer = memo(function ContractExplorer({
               </div>
               <div className="flex gap-1.5 flex-wrap">
                 {isUploader && <RolePill label="Uploader" />}
-                {isEditor && <RolePill label="Editor" />}
-                {isApprover && <RolePill label="Approver" />}
+                {isEditor && <RolePill label="Editor" source={doc.workflowRoles?.editorSource} />}
+                {isApprover && <RolePill label="Approver" source={doc.workflowRoles?.approverSource} />}
                 {!isUploader && !isEditor && !isApprover && doc.ownerType === "team" && (
                   <span className="text-xs text-muted-foreground/80">Team contract</span>
                 )}

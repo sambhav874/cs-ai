@@ -505,6 +505,23 @@ def test_agent_harness_requires_all_small_compare_documents():
     assert decision.metadata["selected_document_count"] == 2
 
 
+def _loop_planning(rag, tool_name: str, args=None):
+    """An evidence loop whose planner answers without touching the network.
+
+    query_tool_action attempts a real structured LLM call and only falls back
+    to the plain-markdown path these tests stub. Left alone, the tests pass or
+    fail on whether that live call happens to fail — which is why they passed
+    in isolation, slowly, and failed in a full run.
+    """
+    loop = ContractEvidenceLoop(rag, max_steps=2)
+    loop.llm_client.query_tool_action = lambda _prompt: {
+        "thought": "stubbed planner",
+        "tool": tool_name,
+        "args": args or {},
+    }
+    return loop
+
+
 def test_evidence_loop_rejects_premature_final_answer_for_multi_document_compare():
     rag = rag_without_init()
 
@@ -533,7 +550,7 @@ def test_evidence_loop_rejects_premature_final_answer_for_multi_document_compare
         section_path="Termination",
     )
 
-    result = ContractEvidenceLoop(rag, max_steps=2).run(
+    result = _loop_planning(rag, "final_answer").run(
         question="Compare termination rights across contracts",
         task_type=ContractTaskType.COMPARE,
         all_segments=[initial_segment, second_segment],
@@ -587,7 +604,7 @@ def test_evidence_loop_fills_missing_compare_document_coverage():
         ),
     ]
 
-    result = ContractEvidenceLoop(rag, max_steps=2).run(
+    result = _loop_planning(rag, "final_answer").run(
         question="Compare termination rights across all contracts",
         task_type=ContractTaskType.COMPARE,
         all_segments=segments,

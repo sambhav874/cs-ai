@@ -82,10 +82,15 @@ class SeparationOfDutiesTests(unittest.IsolatedAsyncioTestCase):
             ],
         }
 
+        empty_users = MagicMock()
+        empty_users.find.return_value = []
+        empty_projects = MagicMock()
+        empty_projects.find_one.return_value = None
         self.patches = [
             patch.object(workflows_module, "collection", self.collection),
             patch.object(workflows_module, "teams_collection", self.teams_collection),
-            patch.object(workflows_module, "users_collection", MagicMock()),
+            patch.object(workflows_module, "users_collection", empty_users),
+            patch.object(workflows_module, "projects_collection", empty_projects),
             patch.object(workflows_module, "create_audit_log", AsyncMock()),
         ]
         for p in self.patches:
@@ -158,11 +163,17 @@ class ApprovalTests(unittest.IsolatedAsyncioTestCase):
         self.collection.update_one.return_value = MagicMock(matched_count=1, modified_count=1)
         self.audit = AsyncMock()
 
+        empty_users = MagicMock()
+        empty_users.find.return_value = []
+        empty_projects = MagicMock()
+        empty_projects.find_one.return_value = None
         self.patches = [
             patch.object(workflows_module, "collection", self.collection),
             patch.object(workflows_module, "teams_collection", MagicMock()),
+            patch.object(workflows_module, "users_collection", empty_users),
+            patch.object(workflows_module, "projects_collection", empty_projects),
             patch.object(workflows_module, "create_audit_log", self.audit),
-            patch.object(workflows_module, "get_contract", AsyncMock(return_value={"ok": True})),
+            patch.object(workflows_module, "get_contract", MagicMock(return_value={"ok": True})),
         ]
         for p in self.patches:
             p.start()
@@ -226,10 +237,16 @@ class ReEditEntryTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.collection = MagicMock()
         self.collection.update_one.return_value = MagicMock(matched_count=1, modified_count=1)
+        empty_users = MagicMock()
+        empty_users.find.return_value = []
+        empty_projects = MagicMock()
+        empty_projects.find_one.return_value = None
         self.patches = [
             patch.object(workflows_module, "collection", self.collection),
+            patch.object(workflows_module, "users_collection", empty_users),
+            patch.object(workflows_module, "projects_collection", empty_projects),
             patch.object(workflows_module, "create_audit_log", AsyncMock()),
-            patch.object(workflows_module, "get_contract", AsyncMock(return_value={"ok": True})),
+            patch.object(workflows_module, "get_contract", MagicMock(return_value={"ok": True})),
         ]
         for p in self.patches:
             p.start()

@@ -2204,3 +2204,66 @@ def _run_single_evaluation_suite(self, params: dict):
         )
         raise e
 
+
+
+@celery_app.task(bind=True, name="tasks.send_workflow_notification", max_retries=3)
+def send_workflow_notification_task(
+    self,
+    recipient_email: str,
+    subject: str,
+    headline: str,
+    body: str,
+    contract_name: Optional[str] = None,
+    action_url: Optional[str] = None,
+):
+    """Tell someone that a contract is now waiting on them.
+
+    An approver used to learn that work had arrived by refreshing a dashboard,
+    which meant an assignment could sit for days. Failures here are logged and
+    retried but never surfaced to the caller: a notification that does not send
+    must not roll back an approval that did.
+    """
+    recipient = (recipient_email or "").strip()
+    if not recipient:
+        return {"status": "skipped", "reason": "No recipient supplied"}
+
+    try:
+        email_client = EmailClient.from_connection_string(settings.azure_communication_connection_string)
+        safe_headline = html.escape(headline or subject or "ContractSense")
+        safe_body = html.escape(body or "").replace("\n", "<br />")
+        safe_contract = html.escape(contract_name or "")
+
+        action_markup = ""
+        if action_url:
+            safe_url = html.escape(action_url, quote=True)
+            action_markup = (
+                f'<p style="margin: 24px 0;">'
+                f'<a href="{safe_url}" style="background:#111827;color:#ffffff;padding:10px 18px;'
+                f'border-radius:6px;text-decoration:none;font-size:14px;">Open in ContractSense</a></p>'
+            )
+
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.5;">
+          <h2 style="margin: 0 0 12px;">{safe_headline}</h2>
+          {f'<p style="margin:0 0 8px;color:#374151;"><strong>{safe_contract}</strong></p>' if safe_contract else ''}
+          <p>{safe_body}</p>
+          {action_markup}
+          <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+          <p style="font-size: 13px; color: #6b7280;">You are receiving this because you hold a workflow role on this contract.</p>
+        </div>
+        """
+        message_payload = {
+            "content": {"subject": subject, "html": html_content},
+            "recipients": {"to": [{"address": recipient}]},
+            "senderAddress": settings.azure_sender_address,
+        }
+        poller = email_client.begin_send(message_payload)
+        send_result = poller.result()
+        message_id = send_result.get("id")
+        if message_id:
+            logger.info("Sent workflow notification to %s. Message ID: %s", recipient, message_id)
+            return {"status": "success", "message_id": message_id}
+        raise Exception("Azure email send operation failed to return a message ID.")
+    except Exception as exc:
+        logger.error("Failed to send workflow notification to %s: %s", recipient, exc)
+        raise self.retry(exc=exc, countdown=60)

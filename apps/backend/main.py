@@ -26,6 +26,7 @@ from api.routes.agent import router as agent_router
 from api.routes.evaluations import router as evaluations_router
 from api.routes.model_settings import router as model_settings_router
 from api.routes.preferences import router as preferences_router
+from api.routes.review_queue import review_queue_router
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from core.rate_limiter import limiter
@@ -207,6 +208,7 @@ v1_router.include_router(agent_router, tags=["ContractSense Agent"])
 v1_router.include_router(evaluations_router, tags=["Evaluations"])
 v1_router.include_router(model_settings_router, tags=["Model Settings"])
 v1_router.include_router(preferences_router, tags=["User Preferences"])
+v1_router.include_router(review_queue_router, tags=["Review Queue"])
 
 if settings.testing:
     from test_support.testing_utils import testing_router
@@ -239,9 +241,12 @@ async def startup_event():
 
     # Initialize Celery app (now using Azure Blob Storage backend)
     try:
-        if celery_app: 
-            # Verify Celery broker connection
-            celery_app.control.ping()
+        # An unreachable broker makes this ping hang rather than fail, and the
+        # app never finishes starting — the API is down because a queue is,
+        # which is not a trade the API should make. Bounded, and skipped
+        # entirely for a test/sandbox run that has no worker.
+        if celery_app and not settings.testing:
+            celery_app.control.ping(timeout=2.0)
             logger.info("Celery app initialized and broker is responsive.")
             
             # You might want to verify blob storage connectivity here if needed
