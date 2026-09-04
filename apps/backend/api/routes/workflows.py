@@ -29,11 +29,7 @@ from api.dependencies import (
 )
 from core.cache import cache
 from utils.audit_logger import create_audit_log
-from services.workflow_roles import (
-    effective_roles_for_contract,
-    load_project_for_contract,
-    resolve_workflow_roles,
-)
+from services.workflow_roles import effective_roles_for_contract
 
 logger = logging.getLogger(__name__)
 
@@ -241,40 +237,6 @@ async def assign_workflow_roles(
     old_workflow_roles_from_db = contract_before_roles_update.get("workflowRoles", {})
     old_editor_id_obj = old_workflow_roles_from_db.get("editorUserId")
     old_approver_id_obj = old_workflow_roles_from_db.get("approverUserId")
-
-    # One person cannot both edit and approve the same contract. A request may
-    # set only one of the two roles, so the check is against the pair that will
-    # exist after this update, not against what the request happens to carry.
-    # An unset role falls through to the project default, so the pair being
-    # checked has to include what would be inherited. The fallback is the
-    # project's value alone — resolving against the contract would hand back the
-    # very role this request is clearing.
-    inherited_roles = resolve_workflow_roles(
-        None, load_project_for_contract(contract_before_roles_update, projects_collection)
-    )
-    effective_editor_oid = (
-        update_payload["workflowRoles.editorUserId"]
-        if "workflowRoles.editorUserId" in update_payload
-        else old_editor_id_obj
-    ) or inherited_roles["editorUserId"]
-    effective_approver_oid = (
-        update_payload["workflowRoles.approverUserId"]
-        if "workflowRoles.approverUserId" in update_payload
-        else old_approver_id_obj
-    ) or inherited_roles["approverUserId"]
-    if (
-        effective_editor_oid is not None
-        and effective_approver_oid is not None
-        and effective_editor_oid == effective_approver_oid
-    ):
-        logger.warning(
-            "Role assignment rejected for contract %s: user %s would hold both Editor and Approver.",
-            contract_id, effective_editor_oid,
-        )
-        raise HTTPException(
-            status_code=400,
-            detail="The same user cannot be both Editor and Approver on a contract. Assign a different approver.",
-        )
 
     # 5. Update the Contract Document
     try:

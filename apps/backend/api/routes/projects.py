@@ -21,7 +21,6 @@ from models.domain import (
     TableClassificationUpdate,
     AssignWorkflowRolesRequest,
 )
-from services.workflow_roles import conflicting_role_assignment
 from utils.audit_logger import create_audit_log
 
 logger = logging.getLogger(__name__)
@@ -1124,11 +1123,6 @@ async def assign_project_workflow_roles(
     effective_approver = update_payload.get(
         "workflowRoles.approverUserId", stored_roles.get("approverUserId")
     )
-    if conflicting_role_assignment(effective_editor, effective_approver):
-        raise HTTPException(
-            status_code=400,
-            detail="The same user cannot be both Editor and Approver on a project. Assign a different approver.",
-        )
 
     update_payload["updatedAt"] = datetime.utcnow()
     projects_collection.update_one({"_id": ObjectId(project_id)}, {"$set": update_payload})

@@ -241,17 +241,6 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
   const saveAllRoles = useCallback(async () => {
     const entries = Object.entries(contractRoles).filter(([, r]) => r.status !== 'done')
     const incomplete = entries.filter(([, r]) => !r.editorUserId || !r.approverUserId)
-    // The backend refuses one person in both roles; catching it here says why,
-    // instead of a row-by-row "Failed".
-    const conflicted = entries.filter(
-      ([, r]) => r.editorUserId && r.editorUserId === r.approverUserId,
-    )
-    if (conflicted.length > 0) {
-      const message = `One person cannot both edit and approve the same contract. Fix ${conflicted.length} contract${conflicted.length === 1 ? "" : "s"} before saving.`
-      setRoleValidationMessage(message)
-      toast({ title: "Same person in both roles", description: message, variant: "destructive" })
-      return
-    }
     if (entries.length === 0) {
       const message = "There are no contracts waiting for role assignment."
       setRoleValidationMessage(message)
@@ -401,12 +390,6 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
                       </Select>
                     </div>
                   </div>
-                  {bulkEditorUserId && bulkEditorUserId === bulkApproverUserId && (
-                    <p className="mt-2 text-[11px] text-red-600">
-                      One person cannot both edit and approve the same contract. Pick a
-                      different approver, or leave these blank to inherit the project&apos;s roles.
-                    </p>
-                  )}
                 </div>
               )}
 

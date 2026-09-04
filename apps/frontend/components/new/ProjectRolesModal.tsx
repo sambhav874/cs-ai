@@ -88,11 +88,8 @@ export function ProjectRolesModal({
     if (isOpen) void load();
   }, [isOpen, load]);
 
-  const sameUserInBothRoles =
-    editorId !== UNASSIGNED && editorId === approverId;
-
   const save = useCallback(async () => {
-    if (!apiUrl || sameUserInBothRoles) return;
+    if (!apiUrl) return;
     setIsSaving(true);
     setError(null);
     try {
@@ -119,7 +116,7 @@ export function ProjectRolesModal({
     } finally {
       setIsSaving(false);
     }
-  }, [apiUrl, projectId, editorId, approverId, sameUserInBothRoles, onSaved, onClose]);
+  }, [apiUrl, projectId, editorId, approverId, onSaved, onClose]);
 
   const memberOptions = (
     <>
@@ -172,14 +169,6 @@ export function ProjectRolesModal({
               </Select>
             </div>
 
-            {sameUserInBothRoles && (
-              <p className="flex items-start gap-2 text-sm text-destructive">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                One person cannot both edit and approve the same contract. Pick a
-                different approver.
-              </p>
-            )}
-
             {error && (
               <p className="flex items-start gap-2 text-sm text-destructive">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -193,7 +182,7 @@ export function ProjectRolesModal({
           <Button variant="outline" onClick={onClose} disabled={isSaving}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={isSaving || isLoading || sameUserInBothRoles}>
+          <Button onClick={save} disabled={isSaving || isLoading}>
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save roles
           </Button>

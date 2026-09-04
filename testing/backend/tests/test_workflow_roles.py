@@ -62,7 +62,7 @@ def _team_contract(**overrides):
 
 
 class SeparationOfDutiesTests(unittest.IsolatedAsyncioTestCase):
-    """One user cannot hold both roles on the same contract."""
+    """One user can hold both roles on the same contract — no separation-of-duties gate."""
 
     def setUp(self):
         self.contract = _team_contract(status="Editing")
@@ -97,37 +97,33 @@ class SeparationOfDutiesTests(unittest.IsolatedAsyncioTestCase):
             p.start()
         self.addCleanup(lambda: [p.stop() for p in self.patches])
 
-    async def test_rejects_assigning_one_user_to_both_roles(self):
+    async def test_allows_assigning_one_user_to_both_roles(self):
         request = AssignWorkflowRolesRequest(
             editorUserId=str(EDITOR_OID), approverUserId=str(EDITOR_OID)
         )
 
-        with self.assertRaises(HTTPException) as raised:
-            await workflows_module.assign_workflow_roles(
-                contract_id=self.contract_id,
-                request=request,
-                current_user=_user(OWNER_OID, owns_account=True),
-            )
+        result = await workflows_module.assign_workflow_roles(
+            contract_id=self.contract_id,
+            request=request,
+            current_user=_user(OWNER_OID, owns_account=True),
+        )
 
-        self.assertEqual(raised.exception.status_code, 400)
-        self.assertIn("cannot be both Editor and Approver", raised.exception.detail)
-        self.collection.update_one.assert_not_called()
+        self.assertTrue(self.collection.update_one.called)
+        self.assertIn("message", result)
 
-    async def test_rejects_a_partial_update_that_collides_with_the_stored_role(self):
-        # Only the approver is being set, and it collides with the editor already
-        # on the contract — the check has to look at the resulting pair, not at
-        # whichever role the request happens to carry.
+    async def test_allows_a_partial_update_that_collides_with_the_stored_role(self):
+        # Only the approver is being set, and it matches the editor already on
+        # the contract — no separation-of-duties gate to trip.
         request = AssignWorkflowRolesRequest(approverUserId=str(EDITOR_OID))
 
-        with self.assertRaises(HTTPException) as raised:
-            await workflows_module.assign_workflow_roles(
-                contract_id=self.contract_id,
-                request=request,
-                current_user=_user(OWNER_OID, owns_account=True),
-            )
+        result = await workflows_module.assign_workflow_roles(
+            contract_id=self.contract_id,
+            request=request,
+            current_user=_user(OWNER_OID, owns_account=True),
+        )
 
-        self.assertEqual(raised.exception.status_code, 400)
-        self.collection.update_one.assert_not_called()
+        self.assertTrue(self.collection.update_one.called)
+        self.assertIn("message", result)
 
     async def test_allows_distinct_editor_and_approver(self):
         request = AssignWorkflowRolesRequest(
