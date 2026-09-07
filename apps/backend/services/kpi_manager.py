@@ -105,7 +105,88 @@ CONTRACTSENSE_ALERT_TYPES = {
 }
 
 
+class ClauseLedger:
+    """Accounts for every clause that enters extraction.
+
+    Without this, a clause that the Stage-1 screen accepted as a genuine
+    obligation candidate and that then produced no record is indistinguishable
+    from one that was dropped by a truncated batch, a parse failure, or a
+    provider 429 — the run reports `status: completed` either way.
+
+    Measured on the fixtures before this existed: 17.3% of accepted clauses
+    produced nothing on an 18k contract, 34.1% on a 62k one, and 49.5% on a
+    duties-heavy 14k DPA. Span coverage stayed near 97% throughout, because one
+    record's quote can carry several spans — which is why loss needs its own
+    accounting rather than being inferred from a coverage score.
+
+    States:
+        pending    accepted by Stage 1, not yet resolved
+        extracted  produced at least one record
+        rejected   Stage 1 judged it non-operative (an explicit decision)
+        lost       still pending when the run finished — nobody decided
+    """
+
+    __slots__ = ("_state", "_reasons", "_lock")
+
+    def __init__(self) -> None:
+        self._state: Dict[str, str] = {}
+        self._reasons: Dict[str, str] = {}
+        self._lock = threading.Lock()
+
+    def accept(self, source_ids: Iterable[str]) -> None:
+        with self._lock:
+            for source_id in source_ids:
+                self._state[str(source_id)] = "pending"
+
+    def reject(self, source_ids: Iterable[str], reason: str = "stage1_non_operative") -> None:
+        with self._lock:
+            for source_id in source_ids:
+                key = str(source_id)
+                self._state[key] = "rejected"
+                self._reasons[key] = reason
+
+    def mark_extracted(self, source_ids: Iterable[str]) -> None:
+        with self._lock:
+            for source_id in source_ids:
+                key = str(source_id)
+                if key in self._state:
+                    self._state[key] = "extracted"
+
+    def note(self, source_ids: Iterable[str], reason: str) -> None:
+        """Record *why* a clause may not have resolved, without deciding its state."""
+        with self._lock:
+            for source_id in source_ids:
+                self._reasons.setdefault(str(source_id), reason)
+
+    def finalize(self) -> Dict[str, Any]:
+        """Turn everything still pending into `lost` and return the tally."""
+        with self._lock:
+            for key, state in self._state.items():
+                if state == "pending":
+                    self._state[key] = "lost"
+            counts = Counter(self._state.values())
+            lost_ids = sorted(k for k, v in self._state.items() if v == "lost")
+            accounted = counts["extracted"] + counts["rejected"]
+            total = len(self._state)
+            return {
+                "total": total,
+                "extracted": counts["extracted"],
+                "rejected": counts["rejected"],
+                "lost": counts["lost"],
+                "accounted_ratio": round(accounted / total, 4) if total else 1.0,
+                "lost_source_ids": lost_ids[:200],
+                "lost_reasons": dict(Counter(
+                    self._reasons.get(key, "unexplained") for key in lost_ids
+                )),
+            }
+
+
 class ContractKPIManager:
+    # Bumped whenever the extraction prompt changes in a way that could move
+    # results. Stamped on every record so a regression can be tied to a prompt
+    # revision instead of being attributed by guesswork.
+    EXTRACTION_PROMPT_VERSION = "2.0+retry-only-2026-09-07"
+
     """Extracts and stores a reviewable KPI register for contracts/projects.
 
     The extractor is intentionally deterministic-first: it uses the legal-aware
@@ -2355,17 +2436,11 @@ class ContractKPIManager:
         }
         self.extraction_runs.insert_one(run_doc)
 
-        if replace_drafts:
-            # V2 stores governance state under governance.status.  Include
-            # both representations so re-extraction actually replaces prior
-            # draft candidates without touching approved records.
-            self.kpis.delete_many({
-                "contract_id": contract_id,
-                "$or": [
-                    {"status": {"$in": ["draft", "ignored"]}},
-                    {"governance.status": {"$in": ["draft", "ignored"]}},
-                ],
-            })
+        # Drafts are NOT deleted here.  Deleting before extraction meant a run
+        # that then failed left the contract with zero obligations and nothing
+        # to restore — destructive before verify.  The delete now happens after
+        # a successful extraction, immediately before the replacements are
+        # written, so a failed run leaves the previous register intact.
 
         candidates = self._load_candidate_chunks(contract_doc)
         if not candidates and contract_doc.get("body_text"):
@@ -2386,6 +2461,7 @@ class ContractKPIManager:
 
         extraction_method = "hybrid_llm"
         llm_error: Optional[str] = None
+        ledger = ClauseLedger()
         extracted = self._extract_kpis_with_llm(
             candidates,
             contract_id=contract_id,
@@ -2394,11 +2470,25 @@ class ContractKPIManager:
             user_id=user_id,
             run_id=run_id,
             provider=provider,
+            ledger=ledger,
         )
 
         if not extracted:
+            # Whole-contract regex extraction is a last resort, not a silent
+            # substitute.  Measured on real runs: 12% of them took this branch
+            # and reported `completed` with a plausible count, so a contract
+            # could be entirely regex-derived without anyone being told.  It is
+            # now labelled on the run and every record it produces.
             extraction_method = "deterministic_fallback"
-            llm_error = "LLM extraction returned no valid KPI rows; running fallback deterministic extraction."
+            llm_error = (
+                "LLM extraction produced no records for any batch; the entire contract was "
+                "extracted deterministically. Treat these records as degraded and review them."
+            )
+            logger.error(
+                "Extraction run %s for %s fell back to whole-contract deterministic extraction",
+                run_id,
+                contract_name,
+            )
             extracted = self._extract_kpis_from_candidates(
                 candidates,
                 contract_id=contract_id,
@@ -2407,18 +2497,49 @@ class ContractKPIManager:
                 user_id=user_id,
                 run_id=run_id,
             )
-        else:
-            # Stage 2: Deterministic Canonical Deduplication & Multi-Tier Linking
-            extracted = self._consolidate_and_group_kpis(extracted)
-            # Post-extraction consolidation is deterministic.  Keeping a
-            # second LLM pass here made duplicate/merge outcomes vary between
-            # runs and violated the phase-1 AI boundary.
+            for item in extracted:
+                item["extraction_degraded"] = True
+                item["needs_review"] = True
 
+        # Consolidation is deterministic and runs exactly once.  It used to run
+        # three times per extraction, and each pass merges records, so repeats
+        # compounded the loss without adding information.
         extracted = self._consolidate_and_group_kpis(extracted)
         extracted = self._reconcile_primary_measurements(extracted)
         extracted = self._reconcile_schedule_b_consequences(extracted)
         extracted = self._classify_record_roles(extracted)
         coverage = self._build_extraction_coverage(candidates, extracted)
+        clause_ledger = ledger.finalize()
+        if clause_ledger["lost"]:
+            logger.warning(
+                "Extraction run %s for %s left %d of %d accepted clauses unaccounted for (%s)",
+                run_id,
+                contract_name,
+                clause_ledger["lost"],
+                clause_ledger["total"],
+                clause_ledger["lost_reasons"] or "unexplained",
+            )
+
+        # ── Staging swap (P3) ──────────────────────────────────────────────
+        # Only now, with a real result in hand, is it safe to clear the previous
+        # draft register. Deleting before extraction meant a failed or empty run
+        # left the contract with nothing and no way back. If extraction produced
+        # nothing at all, the existing register is left untouched.
+        if replace_drafts and extracted:
+            self.kpis.delete_many({
+                "contract_id": contract_id,
+                "$or": [
+                    {"status": {"$in": ["draft", "ignored"]}},
+                    {"governance.status": {"$in": ["draft", "ignored"]}},
+                ],
+            })
+        elif replace_drafts and not extracted:
+            logger.error(
+                "Extraction run %s for %s produced no records; keeping the existing draft register",
+                run_id,
+                contract_name,
+            )
+            llm_error = (llm_error or "") + " Existing drafts were preserved because this run produced nothing."
 
         # ── Bulk upsert: replace N sequential round-trips with 2 total ──────────
         # 1) Prefetch all existing KPI statuses in a single query.
@@ -2477,6 +2598,7 @@ class ContractKPIManager:
                     "extraction_method": extraction_method,
                     "llm_error": llm_error,
                     "coverage": coverage,
+                    "clause_ledger": clause_ledger,
                     "record_role_counts": role_counts,
                 }
             },
@@ -2494,6 +2616,7 @@ class ContractKPIManager:
             "extraction_method": extraction_method,
             "llm_error": llm_error,
             "coverage": coverage,
+            "clause_ledger": clause_ledger,
             "record_role_counts": role_counts,
             "summary": self.summarize_kpis(contract_kpis),
             "kpis": contract_kpis,
@@ -4676,7 +4799,12 @@ class ContractKPIManager:
         if not records:
             return []
 
-        batch_size = 15
+        # Stage 1 returns one boolean per clause — roughly 30 output tokens each —
+        # so its batch size was never bound by the model, only by the old 8192
+        # output cap that no longer applies. At 15 it cost 14 calls per contract
+        # for ~450 tokens of actual output each. At 100 it is ~3,000 output tokens per
+        # call against an 8192 cap, and costs 2 calls per contract.
+        batch_size = 100
         batches = [records[i:i + batch_size] for i in range(0, len(records), batch_size)]
         verified_records: List[Dict[str, Any]] = []
         record_map = {r["source_id"]: r for r in records}
@@ -4700,7 +4828,7 @@ class ContractKPIManager:
             )
 
             try:
-                res = self._query_kpi_llm_json(prompt, provider=provider, max_tokens_override=4096)
+                res = self._query_kpi_llm_json(prompt, provider=provider, max_tokens_override=8192)
                 cands = res.get("candidates") if isinstance(res, dict) else None
                 if isinstance(cands, list):
                     return [
@@ -4790,6 +4918,63 @@ class ContractKPIManager:
         record_lookup = {record["source_id"]: record for record in batch}
         return rows if isinstance(rows, list) else [], record_lookup
 
+    _NO_OBLIGATION_TYPES = {"no_obligation", "none", "not_applicable", "n/a"}
+
+    def _rows_are_accounted(self, rows: List[Dict[str, Any]]) -> set:
+        """source_ids the model actually answered for, verdict either way.
+
+        A `no_obligation` verdict is an answer — the clause was considered and
+        declined — so it counts as accounted even though it yields no record.
+        """
+        accounted = set()
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            source_id = row.get("source_id") or (row.get("phase1") or {}).get("source_id")
+            if source_id:
+                accounted.add(str(source_id))
+        return accounted
+
+    def _extract_batch_complete(
+        self,
+        batch: List[Dict[str, Any]],
+        contract_name: str,
+        provider: str,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]], set]:
+        """Extract a batch, then re-prompt once for whatever it silently skipped.
+
+        Measured across three fixtures before this existed: 93% of all clause
+        loss was clauses the model passed over *inside a batch it answered
+        successfully*. The call returned 200, the JSON parsed, rows came back —
+        and most clauses simply had no row. Nothing in the pipeline could see it.
+
+        The retry is scoped to the gap, so a batch the model answered fully
+        costs nothing extra.
+        """
+        rows, record_lookup = self._extract_batch_llm_rows(batch, contract_name, provider)
+        batch_ids = {record["source_id"] for record in batch}
+        missing = batch_ids - self._rows_are_accounted(rows)
+
+        if missing and len(missing) < len(batch_ids):
+            # Only worth retrying when the model demonstrably engaged with the
+            # batch. A wholly empty response is a different failure (parse or
+            # truncation) and is handled by _extract_batch_llm_rows' own retry.
+            retry_batch = [record for record in batch if record["source_id"] in missing]
+            logger.info(
+                "Re-prompting %d of %d clauses the model omitted from an answered batch",
+                len(retry_batch),
+                len(batch_ids),
+            )
+            retry_rows, retry_lookup = self._extract_batch_llm_rows(
+                retry_batch, contract_name, provider
+            )
+            if retry_rows:
+                rows = list(rows) + list(retry_rows)
+                record_lookup = {**record_lookup, **retry_lookup}
+                missing = batch_ids - self._rows_are_accounted(rows)
+
+        return rows, record_lookup, missing
+
     def _extract_kpis_with_llm(
         self,
         candidates: List[Dict[str, Any]],
@@ -4800,6 +4985,7 @@ class ContractKPIManager:
         user_id: str,
         run_id: str,
         provider: str,
+        ledger: Optional["ClauseLedger"] = None,
     ) -> List[Dict[str, Any]]:
         if not self._llm_provider_available(provider):
             logger.info("Skipping LLM KPI extraction because provider %s is not configured.", provider)
@@ -4811,6 +4997,13 @@ class ContractKPIManager:
 
         # Stage 1: High-Recall LLM Candidate Verification Pass
         records = self._filter_kpi_candidates_with_llm(raw_records, provider=provider)
+        if ledger is not None:
+            kept_ids = {record["source_id"] for record in records}
+            ledger.accept(kept_ids)
+            ledger.reject(
+                record["source_id"] for record in raw_records
+                if record["source_id"] not in kept_ids
+            )
         if not records:
             return []
 
@@ -4821,15 +5014,34 @@ class ContractKPIManager:
 
         max_workers = min(len(batches), 6) if len(batches) > 1 else 1
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_batch = {
-                executor.submit(self._extract_batch_llm_rows, batch, contract_name, provider): batch
+            futures = [
+                executor.submit(self._extract_batch_complete, batch, contract_name, provider)
                 for batch in batches
-            }
-            for future in as_completed(future_to_batch):
+            ]
+            future_to_batch = dict(zip(futures, batches))
+            # Consume in submission order, not completion order.  Batches still
+            # run concurrently — `.result()` simply blocks until each one in turn
+            # is ready.  With `as_completed` the merge order followed thread
+            # timing, and because the dedup guard and the consolidation
+            # tie-breaks are first-wins, the stored record for a metric depended
+            # on which batch happened to return first.  Demonstrated on fixture
+            # 01: identical model, byte-identical cached responses, and
+            # `KPI-1: On-Time Pickup Performance` kept a different quote on a
+            # cold run (real API latency) than on a warm one (instant cache
+            # reads).  Submission order is derived from document order, so the
+            # earlier clause now wins deterministically.
+            for future in futures:
                 try:
-                    rows, record_lookup = future.result()
+                    rows, record_lookup, still_missing = future.result()
                     for row in rows:
                         if not isinstance(row, dict):
+                            continue
+                        if str(row.get("record_type") or "").strip().lower() in self._NO_OBLIGATION_TYPES:
+                            # An explicit "nothing here" verdict. The clause was
+                            # considered and declined; record that decision and
+                            # emit no KPI for it.
+                            if ledger is not None and row.get("source_id"):
+                                ledger.reject([row["source_id"]], "model_no_obligation")
                             continue
                         item = self._kpi_from_llm_row(
                             row=row,
@@ -4850,17 +5062,108 @@ class ContractKPIManager:
                         name_hash = hashlib.md5((item.get("name") or "").strip().lower().encode()).hexdigest()[:12]
                         signature = f"{clause_ref}:{quote_hash}:{name_hash}"
                         
+                        # Mark before the dedup guard. A row that dedupes away
+                        # still means its clause was processed and yielded a
+                        # record — it merely duplicated one already held. Marking
+                        # only the survivor counts the duplicate's clause as lost,
+                        # which overstated loss on every fixture (62 vs 23 on 01).
+                        if ledger is not None and item.get("source_id"):
+                            ledger.mark_extracted([item["source_id"]])
+
                         with dedup_lock:
                             if signature in seen:
                                 continue
                             seen.add(signature)
                             extracted.append(item)
+                    if ledger is not None:
+                        batch_ids = {record["source_id"] for record in future_to_batch[future]}
+                        if not rows:
+                            # Batch came back empty: either an honest "nothing
+                            # here" or a parse failure/truncation that
+                            # _extract_batch_llm_rows swallowed after two attempts.
+                            ledger.note(batch_ids, "empty_batch_response")
+                        elif still_missing:
+                            # Survived the completeness retry and is still
+                            # unanswered — the model will not account for it.
+                            ledger.note(still_missing, "omitted_after_completeness_retry")
+                        else:
+                            # The batch answered, but did it answer for every
+                            # clause it was given?  A row cites the source_id it
+                            # came from; clauses with no row are ones the model
+                            # silently passed over inside a response that looked
+                            # successful.  This is invisible to every other
+                            # signal — the call succeeded, the JSON parsed, rows
+                            # came back — and it is the largest single source of
+                            # `unexplained` loss.
+                            cited = {
+                                str(row.get("source_id"))
+                                for row in rows
+                                if isinstance(row, dict) and row.get("source_id")
+                            }
+                            ledger.note(batch_ids - cited, "omitted_within_answered_batch")
                 except Exception as exc:
+                    if ledger is not None:
+                        ledger.note(
+                            (record["source_id"] for record in future_to_batch[future]),
+                            f"worker_error:{type(exc).__name__}",
+                        )
                     logger.warning("Batch LLM extraction worker failed: %s", exc)
 
+        extracted = self._drop_renamed_duplicates(extracted)
         extracted = self._consolidate_and_group_kpis(extracted)
         extracted.sort(key=lambda item: (item.get("page_start") or 100000, item.get("kpi_type") or "", item.get("name") or ""))
         return extracted
+
+    def _drop_renamed_duplicates(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Collapse records that quote the same clause under different names.
+
+        The completeness contract requires a verdict for every source_id. Asked
+        about a clause whose duty it has already emitted, the model tends to
+        invent a differently-named record rather than decline — three separate
+        records for one termination clause, or a "Critical Lane Performance:
+        97.0%-98.99% Range" record quoting a row containing $15,000 and binding
+        nothing. Measured against a labelled set, that cost 12 points of
+        threshold accuracy while adding no obligations.
+
+        Instructing the model not to do it made it worse (83 records to 95), so
+        this is enforced here instead: same quote, keep the record that actually
+        binds values. Deterministic, no model judgement.
+        """
+        if not items:
+            return []
+
+        def binding_strength(item: Dict[str, Any]) -> tuple:
+            measurement = item.get("measurement") if isinstance(item.get("measurement"), dict) else {}
+            bound = sum(1 for value in (
+                item.get("value"), item.get("value_min"), item.get("value_max"),
+                item.get("consequence_value"), measurement.get("threshold"),
+            ) if value is not None)
+            return (
+                bound,
+                1 if item.get("target_schedule") else 0,
+                1 if item.get("unit") else 0,
+                float(item.get("confidence") or 0),
+            )
+
+        best_by_quote: Dict[str, Dict[str, Any]] = {}
+        order: List[str] = []
+        for item in items:
+            key = self._normalize_clause(item.get("quote") or "")[:400]
+            if not key:
+                key = f"__nokey__{len(order)}"
+            if key not in best_by_quote:
+                best_by_quote[key] = item
+                order.append(key)
+            elif binding_strength(item) > binding_strength(best_by_quote[key]):
+                best_by_quote[key] = item
+
+        deduped = [best_by_quote[key] for key in order]
+        if len(deduped) < len(items):
+            logger.info(
+                "Dropped %d records that re-quoted an already-extracted clause under a new name",
+                len(items) - len(deduped),
+            )
+        return deduped
 
     def _llm_provider_available(self, provider: str) -> bool:
         if provider == "groq":
@@ -4871,7 +5174,22 @@ class ContractKPIManager:
             return bool(self.openai_api_key)
         return False
 
-    def _batch_clause_records(self, records: List[Dict[str, Any]], *, char_budget: int = 8000, max_records: int = 10) -> List[List[Dict[str, Any]]]:
+    def _batch_clause_records(
+        self,
+        records: List[Dict[str, Any]],
+        *,
+        char_budget: int = 20000,
+        max_records: int = 24,
+    ) -> List[List[Dict[str, Any]]]:
+        """Group clauses into extraction batches.
+
+        These budgets were sized for an 8192-token output cap. With
+        EXTRACTION_MAX_TOKENS at 32000 the binding constraint moved, and 8000
+        chars / 10 records left the model with ~3,500 tokens of output work per
+        call — 15 Stage-2 calls per contract where 7 suffice. 24 records is
+        ~8,400 output tokens, comfortably inside the cap while leaving room for
+        a reasoning model to think first.
+        """
         batches: List[List[Dict[str, Any]]] = []
         current: List[Dict[str, Any]] = []
         current_chars = 0
@@ -5108,6 +5426,14 @@ class ContractKPIManager:
             logger.warning("Hybrid KPI LLM extraction failed with provider %s: %s", provider, exc)
         return {}
 
+    # Extraction returns nested JSON for a whole batch, and a reasoning model
+    # spends part of this budget thinking before it emits any of it. Measured
+    # 2026-09-07 on gemini-3.8-flash with the real 10-clause prompt: 6000 tokens
+    # returned unparseable output on 128 of 148 batches, while 32000 returned
+    # valid rows from the identical prompt. A cap tuned for non-reasoning models
+    # silently reads as "the model found nothing".
+    EXTRACTION_MAX_TOKENS = 32000
+
     @staticmethod
     def _kpi_max_tokens(provider: str, override: Optional[int]) -> int:
         """Per-provider output cap, preserving the limits the raw HTTP calls used.
@@ -5116,11 +5442,13 @@ class ContractKPIManager:
         KPI object on some models and a short dedup verdict on others; an
         override from the caller always wins.
         """
+        if override:
+            return override
+        configured = getattr(settings, "extraction_max_tokens", None) or ContractKPIManager.EXTRACTION_MAX_TOKENS
         if provider == "groq":
-            return min(override or 8192, 8192)
-        if provider == "openai":
-            return override or max(4096, min(getattr(settings, "max_tokens", 4096) or 4096, 8192))
-        return override or max(int(getattr(settings, "max_tokens", 4096) or 4096), 1024)
+            # Groq refuses requests above its own completion ceiling.
+            return min(configured, 8192)
+        return configured
 
     def _parse_json_object(self, content: str) -> Dict[str, Any]:
         cleaned = clean_text_encoding(content or "").strip()
@@ -5837,7 +6165,18 @@ class ContractKPIManager:
                     quotes.append(q)
 
             parent["name"] = clean_base_title
-            parent["kpi_id"] = f"kpi_sch_{hashlib.md5(clean_base_title.encode()).hexdigest()[:12]}"
+            # The id must be contract-scoped.  `kpi_id` carries a globally unique
+            # index and the bulk upsert filters on it alone, so seeding this hash
+            # with the title only made two contracts that each produce a
+            # similarly-titled schedule collide: the second extraction $set its
+            # whole document — contract_id included — over the first one's.
+            # Mirrors _stable_kpi_id, which has always scoped by contract.
+            schedule_contract_id = str(
+                parent.get("contract_id")
+                or next((it.get("contract_id") for it in group if it.get("contract_id")), "")
+            )
+            schedule_seed = f"{schedule_contract_id}:{clean_base_title}"
+            parent["kpi_id"] = f"kpi_sch_{hashlib.md5(schedule_seed.encode()).hexdigest()[:12]}"
             parent["value"] = None
             parent["unit"] = parent.get("unit") or "SEK"
             parent["target_type"] = "lookup_table"
@@ -6046,7 +6385,16 @@ class ContractKPIManager:
             return None
 
         source_text = str(record.get("text") or "")
-        quote = self._validated_quote(str(row.get("quote") or ""), source_text)
+        raw_quote = str(row.get("quote") or "")
+        quote = self._validated_quote(raw_quote, source_text)
+        quarantine_reasons: List[str] = []
+        if quote is None:
+            # The model cited text that is not in its own source clause. Keep
+            # the record so a reviewer can see what happened, but mark it — this
+            # is the one signal that catches a fabricated citation, and it used
+            # to be erased by substituting the source clause.
+            quarantine_reasons.append("quote_not_verbatim_in_source")
+            quote = self._quote_text(raw_quote)
         # Keep evidence bounded and contiguous for auditable source linking.
         quote = " ".join(quote.split()[:45])
         if len(quote) < 25:
@@ -6218,7 +6566,18 @@ class ContractKPIManager:
             "char_end": record.get("char_end"),
             "confidence": confidence,
             "confidence_reason": f"LLM structured extraction via {provider}.",
-            "needs_review": needs_review,
+            "needs_review": needs_review or bool(quarantine_reasons),
+            # ── Provenance (P5) ────────────────────────────────────────────
+            # Stamped on every record so a quality movement is attributable to a
+            # specific run, model and prompt rather than guessed at. Their
+            # absence is what allowed an entire analysis to be built on demo
+            # records that were indistinguishable from pipeline output.
+            "run_id": run_id,
+            "extraction_model": getattr(settings, "model_name", None),
+            "extraction_prompt_version": self.EXTRACTION_PROMPT_VERSION,
+            "extraction_method": "hybrid_llm",
+            "quarantined": bool(quarantine_reasons),
+            "quarantine_reasons": quarantine_reasons or None,
             **recommendation,
             "status": "draft",
             "remediation": remediation,
@@ -6307,7 +6666,16 @@ class ContractKPIManager:
             return role
         return None
 
-    def _validated_quote(self, quote: str, source_text: str) -> str:
+    def _validated_quote(self, quote: str, source_text: str) -> Optional[str]:
+        """Return the model's quote only if it is genuinely in the source.
+
+        This used to fall back to returning the *whole source clause* when the
+        model's quote could not be found. That silently rewrote a fabricated
+        citation into one that looks perfectly grounded, which made quote
+        hallucination undetectable by construction — grounding scores could
+        never drop. Returning None instead lets the caller quarantine the
+        record for review.
+        """
         source = self._quote_text(source_text)
         candidate = self._quote_text(quote)
         if candidate and candidate in source:
@@ -6316,7 +6684,7 @@ class ContractKPIManager:
         normalized_source = self._normalize_clause(source)
         if normalized_candidate and normalized_candidate in normalized_source:
             return candidate
-        return source
+        return None
 
     def _clean_optional_string(self, value: Any) -> Optional[str]:
         if value is None:
@@ -7252,8 +7620,17 @@ class ContractKPIManager:
         text = re.sub(r"\s+", " ", clean_text_encoding(text or "")).strip()
         return text[:1200]
 
+    # Markdown emphasis and the several Unicode dashes are presentation, not
+    # content. A model quoting "Penalty Structure:" from source that reads
+    # "**Penalty Structure:**", or "seven-day" from "seven\u2011day", is quoting
+    # correctly; comparing raw strings marked 20 such records as unverifiable.
+    _MARKDOWN_NOISE = re.compile(r"[*_`~]+")
+    _DASHES = dict.fromkeys(map(ord, "\u2010\u2011\u2012\u2013\u2014\u2015\u2212"), "-")
+
     def _normalize_clause(self, text: str) -> str:
-        return re.sub(r"\s+", " ", clean_text_encoding(text or "").lower()).strip()
+        cleaned = clean_text_encoding(text or "").lower().translate(self._DASHES)
+        cleaned = self._MARKDOWN_NOISE.sub("", cleaned)
+        return re.sub(r"\s+", " ", cleaned).strip()
 
     def _strip_embedding_context(self, text: str) -> str:
         lines = text.splitlines()

@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     groq_reasoning_effort: str = Field(default="medium", env="GROQ_REASONING_EFFORT")
     use_gpu: bool = Field(default=False, env="USE_GPU")
     max_tokens: int = Field(default=2048, env="MAX_TOKENS")
+    # Obligation extraction returns nested JSON for a whole batch, and a
+    # reasoning model spends part of its output budget thinking first. The
+    # general max_tokens is far too small for it: 6000 produced unparseable
+    # output on gemini-3.8-flash where 32000 produced valid rows.
+    extraction_max_tokens: int = Field(default=32000, env="EXTRACTION_MAX_TOKENS")
     temperature: float = Field(default=0.1, env="TEMPERATURE")
     top_p: float = Field(default=0.95, env="TOP_P")
     frequency_penalty: float = Field(default=1.15, env="FREQUENCY_PENALTY")
