@@ -5298,12 +5298,17 @@ class ContractKPIManager:
         record_lookup = {
             str(c.get("segment_id") or c.get("source_id")): c for c in candidates
         }
-        required_classes = []
-        if pack_resolution and pack_resolution.pack:
+        # Only classes the pack says a register of this family must contain, and
+        # only those the pack still declares. Reading these off coverage.yaml
+        # alone used to raise a deficit for every required class on every run —
+        # no record carried `obligation_class`, so `present` was always empty.
+        required_classes: List[str] = []
+        if pack_resolution and pack_resolution.pack and pack_resolution.pack.classes:
+            declared = {c.id for c in pack_resolution.pack.classes}
             required_classes = [
                 str(entry.get("id"))
                 for entry in (pack_resolution.pack.coverage.get("required_obligation_classes") or [])
-                if isinstance(entry, dict) and entry.get("id")
+                if isinstance(entry, dict) and str(entry.get("id") or "") in declared
             ]
 
         def repair(deficit) -> List[Dict[str, Any]]:
@@ -5934,7 +5939,10 @@ class ContractKPIManager:
             "• Mark clean, monitorable KPIs as recommended in notes; mark background/reference-only items by omitting them.\n"
             "• Never infer a measurement threshold from a dollar penalty, credit, fee, or consequence appearing elsewhere in the quote. A number belongs in measurement only when the contract explicitly bounds the named metric.\n"
             "• Preserve lookup tables, formulas, tier schedules, notice/cure preconditions, recovery mechanisms, evidence hypotheses, and data questions even when they cannot yet be evaluated.\n"
-            "• Deduplicate by metric identity, not by quote. Keep all supporting source references in the record.\n\n"
+            "• Deduplicate by metric identity, not by quote. Keep all supporting source references in the record.\n"
+            "• obligation_class: when the contract-type pack below lists obligation classes, set "
+            "obligation_class to exactly one id from that list, or null if none fits. Never invent "
+            "an id and never reword one.\n\n"
             f"Contract: {contract_name}\n\n"
             # The family pack sits between the rules and the clauses: after
             # everything it may not override, before the evidence it describes.
@@ -7239,6 +7247,12 @@ class ContractKPIManager:
             # The resolved family, not the model's guess at one.  A pack that
             # influenced this record is named on it, so a recall movement is
             # attributable to a pack version rather than inferred.
+            # Validated against the resolved pack's declared classes. An id the
+            # pack does not declare is dropped rather than stored: a free-text
+            # class is the failure the enum exists to prevent, where the same
+            # class arrives as "nil_charge_service", "Nil Charge" and "free
+            # service" and nothing downstream can count it.
+            "obligation_class": self._validated_obligation_class(row, pack_resolution),
             "contract_family": (pack_resolution.stamp["contract_family"] if pack_resolution else None)
             or row.get("contract_family"),
             "pack_id": pack_resolution.stamp["pack_id"] if pack_resolution else None,
@@ -7297,6 +7311,19 @@ class ContractKPIManager:
         if role:
             return role
         return None
+
+    @staticmethod
+    def _validated_obligation_class(
+        row: Dict[str, Any], pack_resolution: Optional["PackResolution"]
+    ) -> Optional[str]:
+        """The model's class choice, only if the pack actually declares it."""
+        raw = str(row.get("obligation_class") or "").strip().lower()
+        if not raw:
+            return None
+        pack = pack_resolution.pack if pack_resolution else None
+        if not pack or not pack.classes:
+            return None
+        return raw if raw in {c.id for c in pack.classes} else None
 
     def _validated_quote(self, quote: str, source_text: str) -> Optional[str]:
         """Return the model's quote only if it is genuinely in the source.

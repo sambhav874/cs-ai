@@ -703,7 +703,7 @@ class KPISchemaV1toV2Migrator:
             "blackout_windows", "severity_grace_periods", "reporting_lock", "missing_data_policy",
             "error_budget", "section_tags",
             "record_id", "record_type", "record_role", "contract_family", "contract_type",
-            "pack_id", "pack_version",
+            "pack_id", "pack_version", "obligation_class",
             "canonical_metric_key", "target_type", "reference", "lookup_table",
             "composite", "measurement", "recovery", "precondition", "cadence",
             "evidence_hypothesis", "workshop_input", "evidence_flags",
@@ -743,7 +743,7 @@ class KPISchemaV1toV2Migrator:
         # source-linking services can use the richer record.
         for phase_key in (
             "record_id", "record_type", "record_role", "contract_family", "contract_type",
-            "pack_id", "pack_version",
+            "pack_id", "pack_version", "obligation_class",
             "canonical_metric_key", "target_type", "reference", "lookup_table",
             "composite", "measurement", "recovery", "precondition", "cadence",
             "evidence_hypothesis", "workshop_input", "evidence_flags",
@@ -892,7 +892,7 @@ def flatten_for_legacy_frontend(v2_doc: Dict[str, Any]) -> Dict[str, Any]:
 
     for phase_key in (
         "record_id", "record_type", "record_role", "contract_family", "contract_type",
-        "pack_id", "pack_version",
+        "pack_id", "pack_version", "obligation_class",
         "canonical_metric_key", "target_type", "reference", "lookup_table",
         "composite", "measurement", "recovery", "precondition", "cadence",
         "evidence_hypothesis", "workshop_input", "evidence_flags",

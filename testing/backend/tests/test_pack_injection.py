@@ -79,3 +79,37 @@ def test_shipped_pack_costs_less_than_a_tenth_of_a_batch(family):
     pack = load_pack(family)
 
     assert len(render_pack_block(pack)) < 0.5 * 20000
+
+
+def test_an_invented_class_id_is_dropped_not_stored():
+    """A free-text class is the failure the enum exists to prevent: the same
+    class arriving as 'nil_charge_service', 'Nil Charge' and 'free service',
+    with nothing downstream able to count it."""
+    from services.obligation_packs import PackResolution, load_pack
+
+    manager = _manager()
+    resolution = PackResolution(load_pack("iata_ground_handling"), 0.9, [], "test")
+
+    assert manager._validated_obligation_class(
+        {"obligation_class": "nil_charge_service"}, resolution) == "nil_charge_service"
+    assert manager._validated_obligation_class(
+        {"obligation_class": "Nil Charge Service"}, resolution) is None
+    assert manager._validated_obligation_class(
+        {"obligation_class": "free_stuff"}, resolution) is None
+    assert manager._validated_obligation_class({"obligation_class": ""}, resolution) is None
+
+
+def test_without_a_pack_no_class_is_recorded():
+    """Nothing declares the vocabulary, so nothing can validate against it."""
+    manager = _manager()
+
+    assert manager._validated_obligation_class({"obligation_class": "anything"}, None) is None
+
+
+def test_the_prompt_tells_the_model_the_field_is_closed():
+    manager = _manager()
+
+    prompt = manager._build_kpi_llm_prompt(contract_name="C", records=_records())
+
+    assert "obligation_class" in prompt
+    assert "Never invent" in prompt

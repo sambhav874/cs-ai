@@ -342,3 +342,108 @@ def test_logistics_pack_carries_scored_floors():
     assert coverage["grounding_floor"] >= 0.9
     assert coverage["anchor_recall_floor"] == 1.0
     assert {entry["id"] for entry in coverage["required_obligation_classes"]}
+
+
+# ── structured obligation classes ──────────────────────────────────────────
+
+
+def _pack_with_classes(root, classes_yaml, coverage=None):
+    _write_pack(
+        root,
+        "classy",
+        manifest="id: classy\nversion: 1\ndisplay_name: Classy\n" + classes_yaml,
+        sections={"taxonomy": "# t\n- why this family is like this\n", "conventions": "# c\n- per shift\n"},
+        coverage=coverage,
+    )
+    return load_pack("classy", root=root)
+
+
+VALID_CLASSES = """
+classes:
+  - id: nil_charge_service
+    label: Service at no charge
+    modality: obligation
+    party: supplier
+    carries_measurement: false
+    description: A service listed FREE or at cost. A duty with no price is a duty.
+  - id: rate_row
+    label: Rate row
+    description: A priced line item.
+"""
+
+
+def test_classes_are_structured_data_not_prose(pack_root):
+    """Listing a pack's classes used to mean regexing bold markers out of English,
+    which returned 'priced' — a word in a sentence, not a class."""
+    pack = _pack_with_classes(pack_root, VALID_CLASSES)
+
+    assert pack.class_ids == ["nil_charge_service", "rate_row"]
+    assert pack.classes[0].carries_measurement is False
+    assert pack.classes[1].modality == "obligation", "defaults applied"
+    assert pack.classes[1].party == "unresolved", "party is never assumed"
+
+
+def test_a_class_without_a_description_is_rejected(pack_root):
+    """The model reads the description to decide whether a clause is this class."""
+    with pytest.raises(PackError, match="no description"):
+        _pack_with_classes(pack_root, "classes:\n  - id: bare_class\n    label: Bare\n")
+
+
+@pytest.mark.parametrize(
+    "bad,message",
+    [
+        ("    modality: suggestion\n", "modality"),
+        ("    party: whoever\n", "party"),
+        ("    carries_measurement: sometimes\n", "carries_measurement"),
+        ("    unknown_key: x\n", "unsupported key"),
+    ],
+)
+def test_class_fields_are_closed(pack_root, bad, message):
+    yaml_block = "classes:\n  - id: some_class\n    description: A thing.\n" + bad
+    with pytest.raises(PackError, match=message):
+        _pack_with_classes(pack_root, yaml_block)
+
+
+def test_duplicate_class_ids_are_rejected(pack_root):
+    duplicated = ("classes:\n  - id: same_id\n    description: One.\n"
+                  "  - id: same_id\n    description: Two.\n")
+    with pytest.raises(PackError, match="repeats the id"):
+        _pack_with_classes(pack_root, duplicated)
+
+
+def test_coverage_cannot_require_a_class_the_pack_does_not_declare(pack_root):
+    """A typo here used to be silent — nothing could enumerate the prose taxonomy."""
+    with pytest.raises(PackError, match="does not declare"):
+        _pack_with_classes(
+            pack_root, VALID_CLASSES,
+            coverage="required_obligation_classes:\n  - id: nil_charge_servcie\n",
+        )
+
+
+def test_the_class_list_reaches_the_model_as_a_closed_vocabulary(pack_root):
+    from services.obligation_packs import render_classes
+
+    block = render_pack_block(_pack_with_classes(pack_root, VALID_CLASSES))
+
+    assert "exactly one id from this list" in block
+    assert "`nil_charge_service`" in block
+    assert "often carries NO number" in block, "the classes coverage cannot see are marked"
+    assert "Do not invent an id" in block
+
+
+def test_a_pack_with_no_classes_still_loads(pack_root):
+    """Classes are optional: an older pack keeps working."""
+    pack = load_pack("widget_msa", root=pack_root)
+
+    assert pack.classes == ()
+    assert render_pack_block(pack)
+
+
+def test_every_shipped_pack_declares_classes():
+    for family_id in available_families():
+        pack = load_pack(family_id)
+        assert pack.classes, f"{family_id} declares no obligation classes"
+        assert any(not c.carries_measurement for c in pack.classes), (
+            f"{family_id} marks no class as carrying no number — those are the ones "
+            "quantitative coverage cannot see, and every family has some"
+        )

@@ -236,6 +236,10 @@ def main() -> int:
                              "there is no way to tell a value the document states in prose from a "
                              "value the model invented.")
     parser.add_argument("--show-unsupported", type=int, default=8)
+    parser.add_argument("--gate", metavar="FAMILY",
+                        help="fail (exit 1) if the run misses that pack's coverage.yaml floors. "
+                             "The floors have been declared in every pack since they shipped and "
+                             "read by nothing, so a pack has never been able to fail.")
     args = parser.parse_args()
 
     payload = json.loads(args.records.read_text(encoding="utf-8"))
@@ -276,6 +280,26 @@ def main() -> int:
         print(f"\nungrounded records (first {args.show_unsupported}):")
         for entry in precision["ungrounded_examples"][: args.show_unsupported]:
             print(f"  {str(entry['name'])[:44]:46} value={entry['value']}  {entry['quote'][:50]}")
+
+    if args.gate:
+        sys.path.insert(0, str(REPO / "apps" / "backend"))
+        from services.obligation_packs import load_pack
+
+        floors = load_pack(args.gate).coverage
+        checks = [
+            ("span_coverage_floor", result["scoreable_recall"], "row recall"),
+            ("grounding_floor", precision["value_precision"], "value precision"),
+        ]
+        breaches = [
+            f"{label} {actual * 100:.1f}% < {floors[key] * 100:.0f}% floor"
+            for key, actual, label in checks
+            if key in floors and actual < float(floors[key])
+        ]
+        print()
+        if breaches:
+            print("GATE FAILED: " + "; ".join(breaches))
+            return 1
+        print(f"gate          : {args.gate} floors met")
 
     if result["missed"] and args.show_missed:
         print(f"\nmissed rows (first {args.show_missed}):")

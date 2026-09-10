@@ -22,3 +22,148 @@ match:
 
 budget:
   max_context_tokens: 2400
+
+classes:
+  - id: turn_time_commitment
+    label: Turn time commitment
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      Elapsed days or hours to return a unit, by check type or component class.
+      The clock's start event is stated separately from the duration; capture
+      both or the commitment is unmeasurable.
+    expect: "one record per check or component class, start event preserved"
+  - id: aog_response_commitment
+    label: AOG response commitment
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      Response, dispatch or replacement time for an aircraft on ground, tiered
+      by severity or station. Its own clock and premium, apart from turn time.
+  - id: labour_rate
+    label: Labour rate
+    modality: obligation
+    party: client
+    carries_measurement: true
+    description: >
+      An hourly shop or line rate, often by trade, shift or licence class.
+  - id: material_handling_markup
+    label: Material handling markup
+    modality: obligation
+    party: client
+    carries_measurement: true
+    description: >
+      A percentage added to parts cost, sometimes capped per unit or per event.
+      A rate on another party's price plus a ceiling — one record, two parts.
+  - id: flight_hour_rate
+    label: Flight hour rate
+    modality: obligation
+    party: client
+    carries_measurement: true
+    description: >
+      Power-by-the-hour or per-cycle charge, with a minimum utilisation
+      assumption and a reconciliation mechanic.
+  - id: workscope_and_exclusion_rule
+    label: Workscope exclusion
+    modality: obligation
+    party: client
+    carries_measurement: false
+    description: >
+      What a quoted price covers and what is billed above it — beyond economic
+      repair, corrosion, foreign object damage, life-limited parts. Each
+      exclusion converts a fixed price into time and material.
+    expect: ">=1 record per exclusion"
+  - id: findings_and_approval_duty
+    label: Findings and approval duty
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      A duty to stop, report a finding and obtain written approval before
+      exceeding a quoted amount. Carries both a money threshold and a notice
+      window; both are easy to lose in one prose paragraph.
+    expect: "1 record carrying both the money threshold and the notice window"
+  - id: certification_and_release_duty
+    label: Certification and release
+    modality: obligation
+    party: supplier
+    carries_measurement: false
+    description: >
+      Release to service on the required certificate under the governing
+      approval. No number, and a real obligation.
+  - id: airworthiness_and_records_duty
+    label: Airworthiness records duty
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      Maintenance records, traceability to origin, retention period. Mostly
+      qualitative with a retention period attached.
+  - id: warranty_obligation
+    label: Warranty
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      A period or usage window during which rework is free, with its own
+      exclusions and a claim-notice deadline separate from the general notice
+      article.
+  - id: spares_pool_availability
+    label: Spares pool availability
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      A fill rate or availability percentage for pooled inventory, and the
+      credit when it is missed.
+  - id: reliability_target
+    label: Reliability target
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      Removal rate or mean time between failures, usually per 1,000 flight
+      hours over a rolling window.
+  - id: customer_furnished_obligation
+    label: Customer furnished obligation
+    modality: obligation
+    party: client
+    carries_measurement: true
+    description: >
+      Client duties — supplying parts, records, access, tooling, or the
+      aircraft in a stated condition by a stated date. Routinely missed because
+      extraction looks for supplier duties.
+    expect: ">=1 record; these are owed the other way"
+  - id: price_escalation_rule
+    label: Price escalation
+    modality: obligation
+    party: mutual
+    carries_measurement: true
+    description: >
+      Indexation of labour and material rates on an anniversary, against a
+      published index with a floor or cap.
+  - id: liability_cap
+    label: Liability cap
+    modality: obligation
+    party: mutual
+    carries_measurement: true
+    description: >
+      An aggregate ceiling per contract year, with carve-outs.
+  - id: insurance_floor
+    label: Insurance floor
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      Minimum products liability coverage, often in a different currency from
+      the rate schedule.
+  - id: termination_trigger
+    label: Termination trigger
+    modality: permission
+    party: mutual
+    carries_measurement: true
+    description: >
+      A ground for termination — uncured breach, or loss of the governing
+      approval.

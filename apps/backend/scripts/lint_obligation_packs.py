@@ -68,6 +68,19 @@ def main() -> int:
         # anything. The declaration is loud on purpose: it has to be visible
         # every time the linter runs, not buried in a comment.
         unvalidated = bool(pack.coverage.get("unvalidated"))
+        # Classes are data now, so coverage entries can be checked against them.
+        # A typo in a required class id used to be silent because nothing could
+        # enumerate what the taxonomy prose declared.
+        declared = {c.id for c in pack.classes}
+        for entry in pack.coverage.get("required_obligation_classes") or []:
+            wanted = str((entry or {}).get("id") if isinstance(entry, dict) else entry or "")
+            if declared and wanted and wanted not in declared:
+                failures.append(
+                    f"{family_id}: coverage.yaml requires class '{wanted}', which pack.yaml "
+                    "does not declare"
+                )
+                status = "BAD CLASS REF"
+
         missing = [key for key in REQUIRED_COVERAGE_KEYS if key not in pack.coverage]
         if unvalidated:
             status = f"UNVALIDATED — {pack.coverage.get('unvalidated_reason') or 'no reason given'}"
@@ -82,7 +95,8 @@ def main() -> int:
             failures.append(f"{family_id}: fixture '{pack.fixture}' does not exist")
             status = "NO FIXTURE"
 
-        print(f"  {family_id:28} v{pack.version}  {tokens:>5} tok / {pack.max_context_tokens}  {status}")
+        print(f"  {family_id:28} v{pack.version}  {tokens:>5} tok / {pack.max_context_tokens}  "
+              f"{len(pack.classes):>2} classes  {status}")
 
     if failures:
         print("\nFAILED:")
