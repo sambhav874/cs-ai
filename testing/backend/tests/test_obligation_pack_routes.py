@@ -423,3 +423,38 @@ def test_disabling_a_builtin_covers_personal_and_account_contracts(client):
         [{"ownerType": "team", "ownerId": ObjectId(FakeUser.ownedAccountId)}],
     ):
         assert "iata_ground_handling" not in {p.id for p in packs_for_owner(scope)}, scope
+
+
+# ── run trail ──────────────────────────────────────────────────────────────
+
+
+def _run_trail_source() -> str:
+    """The route's source, read rather than imported.
+
+    `api.routes.kpis` pulls the whole web stack; these assertions are about what
+    the trail exposes, which does not need the app running.
+    """
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[3] / "apps" / "backend" / "api" / "routes" / "kpis.py").read_text()
+    start = text.index("def get_extraction_run_trail(")
+    return text[start : text.index("\n@kpis_router", start)]
+
+
+def test_the_run_trail_reports_losses_not_just_successes():
+    """A trail that only shows what worked is marketing. The value of this
+    surface is that a reader can see how many clauses were read, how many were
+    declined, and how many were never reached."""
+    source = _run_trail_source()
+
+    for field in ("unaccounted", "why_unaccounted", "declined", "repair_loop"):
+        assert field in source, f"the trail must expose {field}"
+
+
+def test_the_trail_reads_only_recorded_state():
+    """Nothing here may be reconstructed or asserted after the fact — every field
+    is written by the pipeline as it runs, or it is not evidence."""
+    source = _run_trail_source()
+
+    assert "extraction_runs.find_one" in source
+    assert 'sort=[("started_at", -1)]' in source, "the latest run, not an arbitrary one"

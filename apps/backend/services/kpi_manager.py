@@ -2697,7 +2697,13 @@ class ContractKPIManager:
                     "pack_id": pack_resolution.stamp["pack_id"],
                     "pack_version": pack_resolution.stamp["pack_version"],
                     "pack_confidence": pack_resolution.confidence,
+                    "pack_reason": pack_resolution.reason,
                     "pack_origin": pack_resolution.pack.origin if pack_resolution.pack else None,
+                    # The repair loop's own account of what it attempted and what
+                    # that recovered. Computed since the loop shipped and kept
+                    # only on the instance, so the one record of the agent's
+                    # second pass died with the process.
+                    "repair_loop": getattr(self, "_last_repair_report", None),
                     **self._meter_snapshot(),
                     "pack_reason": pack_resolution.reason,
                 }

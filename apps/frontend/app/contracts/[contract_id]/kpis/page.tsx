@@ -1249,6 +1249,19 @@ export type RecoveryReminderAction = {
 
 
 
+type RunTrail = {
+  status?: string;
+  run_id?: string;
+  seconds?: number | null;
+  model?: { provider?: string; name?: string | null; prompt_version?: string | null; method?: string | null };
+  pack?: { family?: string | null; id?: string | null; version?: number | null; confidence?: number | null; why?: string | null; origin?: string | null };
+  clauses?: { considered?: number; extracted?: number; declined?: number; unaccounted?: number; accounted_ratio?: number; why_unaccounted?: Record<string, number> | null };
+  repair_loop?: { rounds?: number; attempted?: Record<string, number>; repaired?: Record<string, number>; added_records?: number; stopped_because?: string } | null;
+  cost?: { llm_calls?: number | null; input_tokens?: number | null; output_tokens?: number | null };
+  obligations?: number;
+  error?: string | null;
+};
+
 type ExtractionStatus = {
   status: "not_run" | "queued" | "running" | "success" | "degraded" | "error";
   count?: number | null;
@@ -1302,6 +1315,7 @@ export default function ContractKpiManagementPage() {
   const [isKpiDataPending, setIsKpiDataPending] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionStatus, setExtractionStatus] = useState<ExtractionStatus | null>(null);
+  const [runTrail, setRunTrail] = useState<RunTrail | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingSource, setIsSavingSource] = useState(false);
   const [runningSourceIds, setRunningSourceIds] = useState<Set<string>>(new Set());
@@ -1608,6 +1622,13 @@ export default function ContractKpiManagementPage() {
       if (!extractionResult.error) {
         setExtractionStatus((extractionResult.data as ExtractionStatus) ?? null);
       }
+      // The run's own account of what it did. Fetched alongside the register so
+      // the two are always read together — a register without its provenance is
+      // a table that appeared from nowhere.
+      const trailResult = await authenticatedFetch(
+        `${apiUrl}/contracts/${contractId}/kpis/run-trail`,
+      );
+      if (!trailResult.error) setRunTrail((trailResult.data as RunTrail) ?? null);
       const firstError = [
         contractResult,
         kpiResult,
@@ -2672,6 +2693,8 @@ export default function ContractKpiManagementPage() {
         </div>
       ) : null}
 
+      {runTrail && runTrail.run_id ? <ExtractionTrail trail={runTrail} /> : null}
+
       <header className="border-b border-gray-200 bg-white">
         <div className="px-4 py-4 md:px-8">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -3077,6 +3100,115 @@ function Pill({
     >
       {children}
     </span>
+  );
+}
+
+function ExtractionTrail({ trail }: { trail: RunTrail }) {
+  const clauses = trail.clauses || {};
+  const pack = trail.pack || {};
+  const model = trail.model || {};
+  const cost = trail.cost || {};
+  const loop = trail.repair_loop;
+  const considered = clauses.considered ?? 0;
+  const pct = (n?: number) => (considered ? Math.round(((n ?? 0) / considered) * 100) : 0);
+  const degraded = model.method === "deterministic_fallback";
+
+  return (
+    <details className="mx-4 mb-4 rounded-lg border border-gray-200 bg-white md:mx-8" open={false}>
+      <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-gray-900">
+        How these obligations were extracted
+        <span className="ml-2 font-normal text-gray-500">
+          {considered} clauses read · {trail.obligations ?? 0} obligations
+          {trail.seconds ? ` · ${trail.seconds}s` : ""}
+          {cost.llm_calls ? ` · ${cost.llm_calls} model calls` : ""}
+        </span>
+      </summary>
+
+      <div className="space-y-4 border-t border-gray-100 px-4 py-4 text-xs">
+        {degraded ? (
+          <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+            The model produced nothing usable on this contract, so these records came from a
+            pattern scan. Review every one.
+          </p>
+        ) : null}
+
+        {/* Every clause is accounted for: extracted, declined, or explicitly not
+            reached. The last number is the honest one — a trail that only showed
+            successes would be marketing. */}
+        <div>
+          <p className="mb-1 font-medium text-gray-900">Every clause is accounted for</p>
+          <div className="flex h-2 w-full overflow-hidden rounded bg-gray-100">
+            <div className="bg-emerald-500" style={{ width: `${pct(clauses.extracted)}%` }} />
+            <div className="bg-gray-400" style={{ width: `${pct(clauses.declined)}%` }} />
+            <div className="bg-red-400" style={{ width: `${pct(clauses.unaccounted)}%` }} />
+          </div>
+          <p className="mt-1.5 text-gray-600">
+            <span className="text-emerald-700">{clauses.extracted ?? 0} produced a record</span>
+            {" · "}
+            <span className="text-gray-600">{clauses.declined ?? 0} read and declined</span>
+            {clauses.unaccounted ? (
+              <>
+                {" · "}
+                <span className="text-red-600">{clauses.unaccounted} not reached</span>
+              </>
+            ) : null}
+          </p>
+          {clauses.why_unaccounted && Object.keys(clauses.why_unaccounted).length ? (
+            <p className="mt-1 font-mono text-[11px] text-gray-500">
+              {Object.entries(clauses.why_unaccounted).map(([k, v]) => `${k}: ${v}`).join(" · ")}
+            </p>
+          ) : null}
+        </div>
+
+        {loop && loop.rounds ? (
+          <div>
+            <p className="mb-1 font-medium text-gray-900">Second pass over what was missed</p>
+            <p className="text-gray-600">
+              {loop.rounds} round{loop.rounds === 1 ? "" : "s"}
+              {loop.repaired && Object.keys(loop.repaired).length
+                ? ` · recovered ${Object.entries(loop.repaired).map(([k, v]) => `${v} ${k.replace(/_/g, " ")}`).join(", ")}`
+                : " · recovered nothing"}
+              {loop.added_records ? ` · +${loop.added_records} records` : ""}
+            </p>
+            <p className="mt-0.5 text-gray-500">Stopped: {loop.stopped_because}</p>
+          </div>
+        ) : null}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <p className="mb-1 font-medium text-gray-900">Contract type</p>
+            {pack.id ? (
+              <p className="text-gray-600">
+                <span className="font-mono">{pack.id}</span> v{pack.version}
+                {pack.confidence != null ? ` · confidence ${pack.confidence.toFixed(2)}` : ""}
+                {pack.origin === "uploaded" ? " · your pack" : ""}
+                <br />
+                <span className="text-gray-500">{pack.why}</span>
+              </p>
+            ) : (
+              <p className="text-gray-600">
+                No contract-type pack matched, so extraction used the general baseline.
+              </p>
+            )}
+          </div>
+          <div>
+            <p className="mb-1 font-medium text-gray-900">Model</p>
+            <p className="font-mono text-[11px] text-gray-600">
+              {model.name || model.provider || "unknown"}
+              {model.prompt_version ? <><br />prompt {model.prompt_version}</> : null}
+              {cost.input_tokens ? (
+                <><br />{cost.input_tokens.toLocaleString()} in / {(cost.output_tokens ?? 0).toLocaleString()} out</>
+              ) : null}
+            </p>
+          </div>
+        </div>
+
+        <p className="border-t border-gray-100 pt-3 text-[11px] text-gray-500">
+          Run {trail.run_id}. Every record carries this run id, the model and the pack version that
+          produced it, so any obligation can be traced back to exactly this pass.
+        </p>
+      </div>
+    </details>
   );
 }
 

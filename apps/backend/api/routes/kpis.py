@@ -815,6 +815,78 @@ def get_extraction_status(
     }
 
 
+@kpis_router.get("/contracts/{contract_id}/kpis/run-trail")
+def get_extraction_run_trail(
+    contract_id: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """What the extraction actually did, from the run's own accounting.
+
+    Every field here is recorded by the pipeline as it runs — not reconstructed
+    afterwards and not asserted. It exists so a register can be read as the
+    output of a specific model, prompt version and family pack that considered a
+    known number of clauses and lost a known number, rather than as a table that
+    appeared. The losses are included deliberately: a trail that only shows
+    successes is marketing.
+    """
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+
+    contract = collection.find_one(
+        {"_id": contract_oid},
+        {"_id": 1, "ownerType": 1, "ownerId": 1, "projectId": 1, "obligations": 1},
+    )
+    check_contract_access(contract, current_user)
+
+    run = _kpi_manager().extraction_runs.find_one(
+        {"contract_id": contract_id}, sort=[("started_at", -1)]
+    )
+    if not run:
+        return {"contract_id": contract_id, "status": "not_run"}
+
+    ledger = run.get("clause_ledger") or {}
+    started, finished = run.get("started_at"), run.get("finished_at")
+    return {
+        "contract_id": contract_id,
+        "run_id": run.get("run_id"),
+        "status": run.get("status"),
+        "seconds": round((finished - started).total_seconds(), 1) if started and finished else None,
+        "model": {
+            "provider": run.get("ai_provider"),
+            "name": run.get("extraction_model"),
+            "prompt_version": run.get("extraction_prompt_version"),
+            "method": run.get("extraction_method"),
+        },
+        "pack": {
+            "family": run.get("contract_family"),
+            "id": run.get("pack_id"),
+            "version": run.get("pack_version"),
+            "confidence": run.get("pack_confidence"),
+            "why": run.get("pack_reason"),
+            "origin": run.get("pack_origin"),
+        },
+        "clauses": {
+            "considered": ledger.get("total"),
+            "extracted": ledger.get("extracted"),
+            "declined": ledger.get("rejected"),
+            "unaccounted": ledger.get("lost"),
+            "accounted_ratio": ledger.get("accounted_ratio"),
+            "why_unaccounted": ledger.get("lost_reasons"),
+        },
+        "repair_loop": run.get("repair_loop"),
+        "cost": {
+            "llm_calls": run.get("llm_calls"),
+            "input_tokens": run.get("llm_input_tokens"),
+            "output_tokens": run.get("llm_output_tokens"),
+        },
+        "obligations": run.get("kpi_count"),
+        "roles": run.get("record_role_counts"),
+        "error": run.get("llm_error"),
+    }
+
+
 @kpis_router.patch("/contracts/{contract_id}/kpis/{kpi_id}")
 def update_contract_kpi(
     contract_id: str,
