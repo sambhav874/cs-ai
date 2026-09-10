@@ -5002,7 +5002,18 @@ class ContractKPIManager:
         records: List[Dict[str, Any]] = []
         seen: set[str] = set()
         for candidate_index, candidate in enumerate(candidates):
-            for clause_index, clause in enumerate(self._clause_units(candidate.get("text") or "")):
+            # A table row is already the unit. Splitting it into clauses undoes
+            # the reason it was built: the caption and header become their own
+            # candidate obligations ("DESCRIPTION | UNIT | PRICE" arrived as a
+            # clause needing a verdict), and the row loses the header it was
+            # deliberately given — a price means nothing without "PRICE".
+            # Measured: 82 row candidates became 184 clauses, roughly half of
+            # them captions and headers, each one spending a verdict.
+            if candidate.get("chunk_level") == "table_row":
+                clause_units = [candidate.get("text") or ""]
+            else:
+                clause_units = self._clause_units(candidate.get("text") or "")
+            for clause_index, clause in enumerate(clause_units):
                 quote = self._quote_text(clause)
                 normalized = self._normalize_clause(quote)
                 if not normalized or len(normalized) < 25:

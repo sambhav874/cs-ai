@@ -123,3 +123,57 @@ def test_records_binding_nothing_are_left_alone():
     items = [{"name": "Records retention duty", "value": None, "measurement": None} for _ in range(3)]
 
     assert len(manager._drop_duplicate_table_rows(items)) == 3
+
+
+TABLE_SENTINEL = '''<!--TABLE:START sig=abc type="Rate Schedule" rows=2 cols=4 caption="RAMP SERVICES"-->
+| DESCRIPTION | UNIT | PRICE | SGHA 2018 |
+|---|---|---|---|
+| MARSHALLING | PER FLIGHT | FREE | 3.2.1(a) |
+| GPU (GROUND POWER UNIT) | PER HOUR | 45.00 EUR | 3.6.1(a) |
+<!--TABLE:END-->'''
+
+
+def test_a_table_row_is_one_clause_not_three():
+    """`_clause_units` used to split each row candidate on newlines, so the
+    caption and header became their own candidate obligations — "DESCRIPTION |
+    UNIT | PRICE" arrived as a clause needing a verdict — and the row lost the
+    header it was deliberately given. Measured: 82 row candidates became 184
+    clauses, roughly half captions and headers, each spending a verdict.
+    """
+    manager = _manager()
+    rows = manager._table_row_candidates({"_id": "c1", "index": {"content": TABLE_SENTINEL}})
+
+    records = manager._candidate_clause_records(rows)
+
+    assert len(rows) == 2
+    assert len(records) == 2, "one row in, one clause out"
+    for record in records:
+        assert "PRICE" in record["text"], "the header stays attached to its row"
+
+
+def test_prose_is_still_split_into_clauses():
+    """Only table rows are atomic. Prose is still split — on blank lines, which
+    is how `_clause_units` separates paragraphs."""
+    manager = _manager()
+    prose = [{
+        "text": "The Handler shall provide marshalling at no charge for every flight.\n\n"
+                "Payment of each monthly invoice is due within thirty (30) calendar days.\n\n"
+                "The Airline shall confirm the schedule 24 hours before departure.",
+        "segment_id": "c1:prose_0",
+    }]
+
+    assert len(manager._candidate_clause_records(prose)) > 1
+
+
+def test_the_table_classification_reaches_the_prompt():
+    """The row's type is the strongest prior available — a Rate Schedule row and
+    an SLA row want different records — and it is useless if it stops at the
+    candidate."""
+    manager = _manager()
+    rows = manager._table_row_candidates({"_id": "c1", "index": {"content": TABLE_SENTINEL}})
+    records = manager._candidate_clause_records(rows)
+
+    prompt = manager._build_kpi_llm_prompt(contract_name="X", records=records)
+
+    assert "TAGS: table, Rate Schedule" in prompt
+    assert "SECTION: RAMP SERVICES" in prompt
