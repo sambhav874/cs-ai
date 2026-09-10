@@ -1,0 +1,24 @@
+id: iata_ground_handling
+version: 1
+display_name: IATA Standard Ground Handling Agreement (AHM 810 / SGHA)
+extends: _base
+fixture: sample_projects/corpus/ground_truth.json
+
+match:
+  # Both vocabularies: an SGHA calls the supplier "Handler" or "Handling
+  # Company" and the client "Airline" or "Carrier" depending on the drafter, and
+  # the family's own documents in this repo disagree with each other. Deliberately
+  # excludes "station", "carrier" and "annex a" — all three are common in
+  # logistics and transit contracts, which is where this pack would misfire.
+  title_patterns: ["ground handling agreement", "standard ground handling", "sgha", "annex b"]
+  body_markers: ["ground handling", "handler", "airline", "aircraft", "turnaround",
+                 "sgha", "ahm 810", "on-chocks", "off-blocks", "handling company",
+                 "ramp services", "pushback", "de-icing", "mtow", "load sheet",
+                 "ground power", "annex b"]
+  structure: ["annex_b_rate_schedule", "sgha_reference_column", "mtow_banded_pricing"]
+
+budget:
+  # 1800 dropped sweep.md — the file carrying this family's scatter
+  # patterns, and the reason the pack exists. Shipping a pack whose
+  # highest-value section never renders costs more than the tokens do.
+  max_context_tokens: 2400

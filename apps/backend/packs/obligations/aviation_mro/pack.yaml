@@ -1,0 +1,24 @@
+id: aviation_mro
+version: 1
+display_name: Aviation Maintenance, Repair and Overhaul Agreement
+extends: _base
+
+# No fixture. Unlike the other packs in this directory, this one was not derived
+# from a document in the repository — there is no MRO contract here to read. Its
+# classes and locations come from the structure this family generally takes, so
+# treat it as a starting point to be corrected against a real contract, not as
+# measured knowledge. Run scripts/pack_dryrun.py against your own MRO agreement
+# and edit sweep.md from what it misses.
+notes: unvalidated — no fixture, no ablation; expect to revise against a real agreement
+
+match:
+  title_patterns: ["maintenance repair and overhaul", "maintenance agreement",
+                   "component support agreement", "total support agreement"]
+  body_markers: ["airworthiness", "turn time", "turnaround time", "workscope",
+                 "part-145", "easa form 1", "8130-3", "shop visit", "component pool",
+                 "aircraft on ground", "beyond economic repair", "flight hour",
+                 "life-limited part", "serviceable", "check package"]
+  structure: ["workscope_exhibit", "labour_and_material_rate_schedule", "tat_table"]
+
+budget:
+  max_context_tokens: 2400

@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
+  Package,
   Plug,
   Settings,
   Table2,
@@ -178,6 +179,7 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
     { href: "/agent", label: "AI Agent", icon: Sparkles },
     { href: "/tabular-reviews", label: "Reviews", icon: Table2 },
     { href: "/playbooks", label: "Playbooks", icon: BookOpen },
+    { href: "/obligation-packs", label: "Packs", icon: Package },
     ...(isTestUser ? [{ href: "/evaluations", label: "Evaluations", icon: HistoryIcon }] : []),
     { href: "/integrations", label: "Integrations", icon: Plug },
   ]

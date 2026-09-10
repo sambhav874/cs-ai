@@ -32,6 +32,22 @@ class Settings(BaseSettings):
     # general max_tokens is far too small for it: 6000 produced unparseable
     # output on gemini-3.8-flash where 32000 produced valid rows.
     extraction_max_tokens: int = Field(default=32000, env="EXTRACTION_MAX_TOKENS")
+    # Obligations are extracted automatically when a contract finishes
+    # ingesting. Off is a real choice: extraction is ~9 LLM calls per contract,
+    # so an account bulk-loading an archive pays for every one of them.
+    auto_extract_obligations: bool = Field(default=True, env="AUTO_EXTRACT_OBLIGATIONS")
+
+    # The Baltia/Swissport JFK demo intercepts extraction by *contract name*
+    # (>=2 of "baltia"/"swissport"/"jfk"/"gha"). A real customer agreement called
+    # "Swissport JFK Ground Handling Agreement" matches three of them and would
+    # be served seeded demo obligations instead of its own. Off unless a demo
+    # environment turns it on.
+    enable_demo_contracts: bool = Field(default=False, env="ENABLE_DEMO_CONTRACTS")
+
+    # The deficit repair loop. On by default: it only ever touches clauses the
+    # ledger proved got no verdict, and tables that produced nothing, so its
+    # cost scales with what actually failed rather than with document size.
+    enable_repair_loop: bool = Field(default=True, env="ENABLE_REPAIR_LOOP")
     temperature: float = Field(default=0.1, env="TEMPERATURE")
     top_p: float = Field(default=0.95, env="TOP_P")
     frequency_penalty: float = Field(default=1.15, env="FREQUENCY_PENALTY")

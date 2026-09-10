@@ -224,7 +224,70 @@ invariants in code, and use the prompt to describe the task rather than to polic
 | 5 | P5 provenance stamping | every record attributable |
 | 6 | #7 async runs, run-status endpoint, ledger metrics | no HTTP timeout; loss visible in production |
 | 7 | #10, #11 remove demo short-circuit and domain hardcodes | neutrality tests green |
-| 8 | Packs, one family at a time | each pack shows a measured gain |
+| 8 | Pack machinery — loader, linter, budget, resolver, stamping, injection | shipped 2026-09-08; 35 tests; `_base` + `logistics_msa` |
+| 9 | Packs, one family at a time | each pack shows a measured gain in an ablation |
+
+### Step 8 — what shipped, and what it deliberately does not claim
+
+`services/obligation_packs.py` loads a family pack, merges `_base` into it, lints it, budgets it,
+renders it into one `<CONTRACT_TYPE_PACK>` block, and stamps `contract_family` / `pack_id` /
+`pack_version` on the run and on every record. Family resolution is deterministic — a scored match
+against each pack's `match` block, zero model calls — and falls back to `_base` alone when the best
+score is below the floor or two families are within 0.05 of each other. On the eight fixtures it
+scores 0.82 on fixture 01 and no higher than 0.13 on the other seven.
+
+Three things are enforced in code rather than trusted to authors, because each is how the IATA/SEK
+hardcodes would come back with a version number on them:
+
+- a pack that instructs ("assume", "default to", "if unclear, use", "you must") fails to load;
+- a pack that declares a currency fails to load;
+- a pack over `max_context_tokens` drops `examples`, then `sweep`; `taxonomy` and `conventions` are
+  never truncated, and a core that overruns ships over budget with a warning instead.
+
+### Uploaded packs — the trust model changes
+
+Packs are a customer-facing upload, so pack text is untrusted input that lands in an extraction
+prompt above the contract's own clauses. `services/obligation_pack_store.py` stores them per
+workspace, `api/routes/obligation_packs.py` accepts a five-file zip, and the controls follow from
+the threat rather than from tidiness:
+
+| Control | The failure it prevents |
+|---|---|
+| Prompt delimiters rejected on upload **and** neutralised at render | text after `</CONTRACT_TYPE_PACK>` escapes the block and reads as top-level instruction |
+| Prompt-override phrasing rejected (`ignore the above`, `output only`, `act as`, `system prompt`) | a pack that is trying to be a prompt |
+| `taxonomy` + `conventions` must fit the budget at upload; render caps and marks a cut | the never-truncate promise made an unbounded protected section shippable on every batch |
+| Two distinct marker hits, 4-char minimum, ≥2 markers | one common word claiming every contract in a workspace |
+| Candidate pack list passed in by the caller, scoped to the *contract's* owner | one tenant's pack reaching another tenant's contracts |
+| Zip checked against its header — entry count, flat paths, declared size, compression ratio | zip bomb, path traversal, a zipped-up parent folder |
+| Built-in family ids reserved | a record's `pack_id` meaning two different texts |
+| `origin` stamped alongside `pack_id`/`pack_version` | a reviewed pack and an uploaded one being indistinguishable after the fact |
+| Re-validation on read, not only on write | a pack stored before a rule existed slipping past it |
+
+`_base` is merged into every pack rather than replaced by it, so an upload cannot delete a baseline
+rule by omission. Format and rules for authors: `docs/obligation-pack-format.md`.
+
+### Routing had to be measured, not reasoned about
+
+Three packs ship: `logistics_msa`, `iata_ground_handling` (both grounded in repo documents) and
+`aviation_mro` (declared `unvalidated` — no MRO contract exists here to read). Building the IATA one
+against real SGHA documents broke the resolver three ways, none of which a unit test would have
+caught:
+
+| Defect | Consequence | Fix |
+|---|---|---|
+| Score was *fraction of declared markers hit* | A thorough marker list scored **lower**; the IATA pack scored 0.10–0.35 on IATA documents against a 0.45 floor and would never have applied to its own family | Saturating in the hit **count**, `hits/(hits+k)` |
+| Markers used one vocabulary | The corpus says *handling company*, the agreement says *Handler* — a family's own documents disagree | Markers carry both, and drop terms shared with other families (`station`, `carrier`) |
+| Floor sat inside the positive range | Short amendments never matched | Floor 0.35, in the measured gap: 0.26 highest non-match, 0.43 lowest match, across 27 repo documents |
+
+`test_pack_routing_corpus.py` runs every contract document in the repository and fails if that gap
+closes. Budgets went 1800 → 2400 because at 1800 both real packs dropped `sweep.md`.
+
+**What is not claimed:** that the `logistics_msa` pack improves extraction. That requires the
+ablation in `obligation-pack-authoring.md` §7 — `_base` vs `_base + pack`, three runs each,
+temperature 0, promote only if class recall moves beyond run-to-run variance *and* grounding holds —
+which needs LLM calls that have not been run. `--pack {none,auto,<family>}` on
+`extract_fixture_baseline.py` is the switch that runs both arms. Until those numbers exist the pack
+is machinery with a fixture, not a measured gain.
 
 Steps 1–2 address 93% of measured loss and the 12% fallback. Step 3 is what makes every later step
 verifiable. Nothing after step 3 should be judged on span coverage alone.

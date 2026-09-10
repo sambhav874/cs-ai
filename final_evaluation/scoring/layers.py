@@ -181,7 +181,14 @@ def score_tools_case(case: EvalCase, observation: EvalObservation, thresholds: D
     metrics["source_contract_immutability"] = 1.0 if "mutate_source_contract" not in observed_tool_names and "apply_redline_to_original" not in observed_tool_names else 0.0
 
     if case.expected_workflow == "kpi_extraction":
-        metrics["kpi_candidate_recall"] = _kpi_candidate_score(answer, case)
+        # `kpi_candidate_recall` was published here. It counted how many of nine
+        # English words appeared in the agent's chat reply and never compared
+        # anything to a gold obligation, yet reported 1.0 across the board in
+        # final_evaluation/reports/kpi_results.csv — a number that looked like
+        # recall, was read as recall, and measured vocabulary. Real recall comes
+        # from testing/backend/scripts/score_obligation_correctness.py against
+        # the labelled fixture; it is deliberately not faked here.
+        metrics["kpi_answer_vocabulary"] = _kpi_candidate_score(answer, case)
         metrics["kpi_field_f1"] = _kpi_field_score(answer, case)
         metrics["kpi_citation_precision"] = _citation_precision(case, observation.citations, gold_spans)
     if "calculate" in case.task_type or "calculation" in case.metadata:
@@ -497,6 +504,13 @@ def _tool_sequence_score(tools: Sequence[dict]) -> float:
 
 
 def _kpi_candidate_score(answer: str, case: EvalCase) -> float:
+    """Fraction of nine KPI words present in the reply, capped at 1.0.
+
+    A vocabulary check on prose, nothing more. It is NOT recall: it never sees a
+    gold obligation, so it cannot tell an answer that found every duty from one
+    that used the right words. Named `kpi_answer_vocabulary` in the metrics for
+    that reason.
+    """
     if case.task_type != "kpi":
         return 1.0
     terms = ("threshold", "deadline", "notice", "remedy", "service level", "payment", "audit", "termination", "cure")

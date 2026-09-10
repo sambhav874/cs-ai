@@ -1,0 +1,18 @@
+id: logistics_msa
+version: 1
+display_name: Logistics Master Services Agreement
+extends: _base
+fixture: final_evaluation/datasets/kpi_contracts/01_global_logistics_master_services_agreement.md
+
+match:
+  # Advisory signals. The classifier scores; nothing here hard-matches.
+  title_patterns: ["master services agreement", "logistics", "transportation services", "freight"]
+  body_markers: ["on-time delivery", "on-time pickup", "EDI 214", "Critical Lane", "accessorial",
+                 "Peak Season", "carrier", "lane", "demurrage", "detention"]
+  structure: ["per_kpi_section_blocks", "band_table_with_consequence_column"]
+
+budget:
+  # 1800 dropped sweep.md — the file carrying this family's scatter
+  # patterns, and the reason the pack exists. Shipping a pack whose
+  # highest-value section never renders costs more than the tokens do.
+  max_context_tokens: 2400

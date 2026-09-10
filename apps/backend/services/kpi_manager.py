@@ -19,6 +19,13 @@ from services.contract_agent.rag.llm_client import ProviderLLMClient
 from utils.text_cleanup import clean_text_encoding
 from utils.encryption import encrypt_value, decrypt_value
 
+from services.obligation_packs import (
+    ObligationPack,
+    PackResolution,
+    builtin_packs,
+    render_pack_block,
+    resolve_family,
+)
 from services.kpi_schema import (
     KPI_SCHEMA_VERSION as KPI_SCHEMA_VERSION_V2,
     validate_rule_spec,
@@ -151,6 +158,16 @@ class ClauseLedger:
                 key = str(source_id)
                 if key in self._state:
                     self._state[key] = "extracted"
+
+    def pending_ids(self) -> set:
+        """Clauses accepted by Stage 1 that still have no verdict.
+
+        Read mid-run by the repair loop, which needs the deficit set while
+        something can still be done about it — `finalize` reports the same
+        clauses once it is too late to repair them.
+        """
+        with self._lock:
+            return {source_id for source_id, state in self._state.items() if state == "pending"}
 
     def note(self, source_ids: Iterable[str], reason: str) -> None:
         """Record *why* a clause may not have resolved, without deciding its state."""
@@ -307,6 +324,10 @@ class ContractKPIManager:
     NUMBER_RE = re.compile(r"\b\d+(?:\.\d+)?\b")
 
     def __init__(self, database=None):
+        self._meter_lock = threading.Lock()
+        self._llm_calls = 0
+        self._llm_input_tokens = 0
+        self._llm_output_tokens = 0
         from core.database import kpi_db
         self.db = database if database is not None else kpi_db
         self.kpis = self.db["contract_kpis"]
@@ -2405,6 +2426,46 @@ class ContractKPIManager:
 
     _is_meaningful_obligation = _is_meaningful_kpi
 
+    #: Cap on the text handed to family resolution.  Markers are scattered
+    #: through a contract rather than clustered at the top, so this reads the
+    #: whole document rather than a header sample — but a pathological upload
+    #: should not turn matching into a hot loop.
+    _CLASSIFICATION_TEXT_LIMIT = 400_000
+
+    def _candidate_packs(self, contract_doc: Dict[str, Any]) -> List["ObligationPack"]:
+        """Packs this contract's owner may use: their uploads, plus the built-ins.
+
+        Scoped by the contract's own owner rather than by the requesting user, so
+        an uploaded pack reaches exactly the workspace that uploaded it — the
+        resolver never sees another tenant's packs, which is the only place that
+        boundary can be enforced once the text is inside a prompt.
+        """
+        owner_type = contract_doc.get("ownerType")
+        owner_id = contract_doc.get("ownerId")
+        if not owner_type or not owner_id:
+            return builtin_packs()
+        try:
+            from services.obligation_pack_store import packs_for_owner
+
+            return packs_for_owner([{"ownerType": owner_type, "ownerId": owner_id}])
+        except Exception as exc:  # storage must never block an extraction
+            logger.warning("Could not load uploaded packs for this contract: %s", exc)
+            return builtin_packs()
+
+    def _contract_classification_text(
+        self,
+        contract_doc: Dict[str, Any],
+        candidates: List[Dict[str, Any]],
+    ) -> str:
+        """Text used to score contract-family match. Never sent to a model."""
+        body = contract_doc.get("body_text") or ""
+        if not body and candidates:
+            body = "\n".join(
+                str(candidate.get("text") or candidate.get("page_content") or "")
+                for candidate in candidates
+            )
+        return body[: self._CLASSIFICATION_TEXT_LIMIT]
+
     def extract_for_contract(
         self,
         *,
@@ -2419,6 +2480,7 @@ class ContractKPIManager:
         now = datetime.utcnow()
         provider = (ai_provider or self.ai_provider or "groq").lower()
 
+        self._reset_meter()
         run_id = f"kpi_run_{hashlib.md5(f'{contract_id}:{now.isoformat()}'.encode()).hexdigest()[:12]}"
         run_doc = {
             "run_id": run_id,
@@ -2459,6 +2521,25 @@ class ContractKPIManager:
                 "char_end": len(text)
             }]
 
+        # Family resolution happens once per contract, never per batch: a pack
+        # that changed between batches would make the run unattributable.  The
+        # deterministic resolver falls back to `_base` alone whenever the match
+        # is weak or two families are close, because a confidently wrong pack
+        # reaches every clause in the document.
+        pack_resolution = resolve_family(
+            title=contract_name,
+            body=self._contract_classification_text(contract_doc, candidates),
+            packs=self._candidate_packs(contract_doc),
+            override=(contract_doc.get("contract_family") or None),
+        )
+        logger.info(
+            "Extraction run %s resolved contract family '%s' (confidence %.2f): %s",
+            run_id,
+            pack_resolution.pack.id if pack_resolution.pack else "none",
+            pack_resolution.confidence,
+            pack_resolution.reason,
+        )
+
         extraction_method = "hybrid_llm"
         llm_error: Optional[str] = None
         ledger = ClauseLedger()
@@ -2471,6 +2552,7 @@ class ContractKPIManager:
             run_id=run_id,
             provider=provider,
             ledger=ledger,
+            pack_resolution=pack_resolution,
         )
 
         if not extracted:
@@ -2479,6 +2561,13 @@ class ContractKPIManager:
             # and reported `completed` with a plausible count, so a contract
             # could be entirely regex-derived without anyone being told.  It is
             # now labelled on the run and every record it produces.
+            # Regex over the whole contract is a diagnostic, not an obligation
+            # register. Measured on real runs: 12% of them took this branch and
+            # reported `completed` with a plausible count, so a contract could be
+            # entirely regex-derived with nothing saying so. It still runs — the
+            # records are evidence a reviewer can work from — but the run is
+            # marked degraded, every record carries needs_review, and callers
+            # can tell this apart from a successful extraction.
             extraction_method = "deterministic_fallback"
             llm_error = (
                 "LLM extraction produced no records for any batch; the entire contract was "
@@ -2590,7 +2679,11 @@ class ContractKPIManager:
             {"run_id": run_id},
             {
                 "$set": {
-                    "status": "completed",
+                    # "completed" and "completed_degraded" are different
+                    # outcomes. A regex-only run reporting plain "completed"
+                    # with a plausible count is how an entirely regex-derived
+                    # register reached users unremarked.
+                    "status": "completed_degraded" if extraction_method == "deterministic_fallback" else "completed",
                     "finished_at": datetime.utcnow(),
                     "candidate_count": len(candidates),
                     "kpi_count": total_kpi_count,
@@ -2600,6 +2693,13 @@ class ContractKPIManager:
                     "coverage": coverage,
                     "clause_ledger": clause_ledger,
                     "record_role_counts": role_counts,
+                    "contract_family": pack_resolution.stamp["contract_family"],
+                    "pack_id": pack_resolution.stamp["pack_id"],
+                    "pack_version": pack_resolution.stamp["pack_version"],
+                    "pack_confidence": pack_resolution.confidence,
+                    "pack_origin": pack_resolution.pack.origin if pack_resolution.pack else None,
+                    **self._meter_snapshot(),
+                    "pack_reason": pack_resolution.reason,
                 }
             },
         )
@@ -2607,6 +2707,7 @@ class ContractKPIManager:
         self._update_contract_kpi_status(contract_id, total_kpi_count)
         return {
             "run_id": run_id,
+            "status": "completed_degraded" if extraction_method == "deterministic_fallback" else "completed",
             "contract_id": contract_id,
             "contract_name": contract_name,
             "project_id": project_id,
@@ -2617,6 +2718,10 @@ class ContractKPIManager:
             "llm_error": llm_error,
             "coverage": coverage,
             "clause_ledger": clause_ledger,
+            "contract_family": pack_resolution.stamp["contract_family"],
+            "pack_id": pack_resolution.stamp["pack_id"],
+            "pack_version": pack_resolution.stamp["pack_version"],
+            "pack_confidence": pack_resolution.confidence,
             "record_role_counts": role_counts,
             "summary": self.summarize_kpis(contract_kpis),
             "kpis": contract_kpis,
@@ -4531,6 +4636,135 @@ class ContractKPIManager:
             return round(deviation * consequence, 2)
         return consequence
 
+    #: Table classifications that carry duties. A signature block or a metadata
+    #: grid is document furniture; sending its rows for extraction spends calls
+    #: to produce records nobody wants.
+    _OBLIGATION_TABLE_TYPES = {
+        "Rate Schedule", "Tiered Pricing", "SLA / Performance Target",
+        "Surcharge & Penalty", "Payment Schedule", "Deadline / Milestone",
+        "Liability Limit", "Staffing & Resourcing", "Scope & Services Matrix",
+        "Insurance", "Service Credit",
+    }
+
+    @staticmethod
+    def _strip_table_markup(text: str) -> str:
+        """Remove table bodies from prose, leaving the surrounding sentences.
+
+        The rows are extracted separately and far more reliably; leaving them
+        here as pipe-delimited text means the model sees each row twice and the
+        register carries both readings of it.
+        """
+        if not text or "|" not in text:
+            return text
+        kept, dropped = [], 0
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 3:
+                dropped += 1
+                continue
+            kept.append(line)
+        if dropped:
+            kept.append(f"[{dropped} table row(s) extracted separately]")
+        return "\n".join(kept)
+
+    @staticmethod
+    def _markdown_table_rows(body: str) -> List[List[str]]:
+        """Header and data rows from a rendered markdown table."""
+        rows: List[List[str]] = []
+        for line in (body or "").splitlines():
+            line = line.strip()
+            if not line.startswith("|"):
+                continue
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            # The |---|---| separator is layout, not data.
+            if cells and all(set(cell) <= set("-: ") for cell in cells if cell):
+                continue
+            rows.append(cells)
+        return rows
+
+    def _table_row_candidates(self, contract_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """One candidate per table row, carrying the row's classification.
+
+        Ingestion already parses and classifies every table — 17 of them on the
+        reference SGHA Annex B, typed Rate Schedule / Tiered Pricing / SLA and so
+        on. Extraction used to ignore all of it and re-derive rows from prose:
+        the table was flattened back into pipe-delimited text, dropped into a
+        20,000-character chunk with twenty other clauses, and a model was asked
+        to reconstruct rows the pipeline already had.
+
+        Measured cost of that round trip on one document: `ramp_services` scored
+        8/8 while `support_services` — same table type, same shape, one page
+        later — scored 1/6. Nothing in the content explains the difference; only
+        which batch happened to come back empty.
+
+        A row arrives here as a row, with its header for context and its type as
+        a tag, so it is small enough to survive batching and specific enough to
+        be deduplicated.
+        """
+        content = (contract_doc.get("index") or {}).get("content") or ""
+        if not content:
+            return []
+        try:
+            from services.table_extraction import extract_tables
+            tables = extract_tables(content)
+        except Exception as exc:
+            logger.warning("Could not read tables for row-level extraction: %s", exc)
+            return []
+
+        contract_id = str(contract_doc["_id"])
+        stored = {
+            str(entry.get("signature") or entry.get("table_id")): entry
+            for entry in ((contract_doc.get("index") or {}).get("tables") or [])
+        }
+
+        candidates: List[Dict[str, Any]] = []
+        for table in tables:
+            table_type = table.get("table_type") or (
+                stored.get(str(table.get("signature"))) or {}
+            ).get("table_type")
+            if table_type and table_type not in self._OBLIGATION_TABLE_TYPES:
+                continue
+
+            grid = self._markdown_table_rows(table.get("body") or "")
+            if len(grid) < 2:
+                continue
+            header, data_rows = grid[0], grid[1:]
+            header_line = " | ".join(header)
+            caption = table.get("caption") or table.get("section_path") or "Table"
+
+            for row_index, row in enumerate(data_rows):
+                cells = [cell for cell in row if cell]
+                if not cells:
+                    continue
+                # The header travels with every row: "45.00 EUR" is meaningless
+                # without "PRICE", and the row is extracted on its own.
+                text = f"{caption}\n{header_line}\n{' | '.join(row)}"
+                candidates.append({
+                    "text": text,
+                    "page_content": text,
+                    "chunk_level": "table_row",
+                    "segment_id": f"{contract_id}:{table.get('table_id')}:r{row_index}",
+                    "section_path": caption,
+                    "section_tags": [tag for tag in ("table", table_type) if tag],
+                    "table_id": table.get("table_id"),
+                    "table_type": table_type,
+                    "table_signature": table.get("signature"),
+                    "row_index": row_index,
+                    "page_number": table.get("page"),
+                    "page_start": table.get("page"),
+                    "page_end": table.get("page"),
+                    "char_start": table.get("char_start"),
+                    "char_end": table.get("char_end"),
+                })
+
+        if candidates:
+            logger.info(
+                "Loaded %d table rows as individual candidates from %d tables",
+                len(candidates),
+                len({c["table_id"] for c in candidates}),
+            )
+        return candidates
+
     def _load_candidate_chunks(self, contract_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
         contract_id = str(contract_doc["_id"])
         candidates: List[Dict[str, Any]] = []
@@ -4562,6 +4796,19 @@ class ContractKPIManager:
 
         if not candidates:
             candidates = self._fallback_candidates_from_index(contract_doc)
+
+        # Tables go in as rows, and their markdown is removed from the prose
+        # chunks that carried them. Without the removal the same rate row is
+        # extracted twice — once as a row, once out of the prose — which is
+        # exactly the duplication measured on the reference document: 15 of 41
+        # records were second copies of a row already extracted, three of them
+        # for the same 180 EUR turnaround rate.
+        table_rows = self._table_row_candidates(contract_doc)
+        if table_rows:
+            for candidate in candidates:
+                candidate["text"] = self._strip_table_markup(candidate.get("text") or "")
+            candidates = [c for c in candidates if (c.get("text") or "").strip()]
+            candidates.extend(table_rows)
 
         if self.voyageai_api_key and candidates:
             candidates = self._rerank_candidates_with_voyage(candidates)
@@ -4853,10 +5100,17 @@ class ContractKPIManager:
         verified_ids = {r["source_id"] for r in verified_records}
         return [r for r in records if r["source_id"] in verified_ids]
 
-    def _extract_batch_llm_rows(self, batch: List[Dict[str, Any]], contract_name: str, provider: str) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    def _extract_batch_llm_rows(
+        self,
+        batch: List[Dict[str, Any]],
+        contract_name: str,
+        provider: str,
+        pack_block: str = "",
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
         prompt = self._build_kpi_llm_prompt(
             contract_name=contract_name,
             records=batch,
+            pack_block=pack_block,
         )
 
         payload = {}
@@ -4878,11 +5132,22 @@ class ContractKPIManager:
                 payload = normalize_extraction_envelope(payload, source_ids=batch_source_ids)
                 validation_errors = validate_extraction_envelope(payload, source_ids=batch_source_ids)
                 if validation_errors:
+                    # These used to be logged as warnings and the payload used
+                    # anyway, so a schema-version or record-type violation could
+                    # never fail or flag anything. The batch is still kept —
+                    # discarding it would trade a visible defect for silent
+                    # clause loss, which is the failure this pipeline was rebuilt
+                    # to remove — but every record it produced is now marked, so
+                    # a malformed envelope reaches a reviewer instead of a
+                    # dashboard.
                     logger.warning(
-                        "Agreement extraction validation warnings for %s: %s",
+                        "Agreement extraction validation failed for %s: %s",
                         contract_name,
                         "; ".join(validation_errors[:8]),
                     )
+                    for record in payload.get("records") or []:
+                        if isinstance(record, dict):
+                            record["_envelope_validation_errors"] = validation_errors[:8]
             rows = payload.get("records") if isinstance(payload, dict) else None
             if isinstance(rows, list) and rows:
                 # v2 records keep phase-aware structure.  The normalizer below
@@ -4940,6 +5205,7 @@ class ContractKPIManager:
         batch: List[Dict[str, Any]],
         contract_name: str,
         provider: str,
+        pack_block: str = "",
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]], set]:
         """Extract a batch, then re-prompt once for whatever it silently skipped.
 
@@ -4951,9 +5217,34 @@ class ContractKPIManager:
         The retry is scoped to the gap, so a batch the model answered fully
         costs nothing extra.
         """
-        rows, record_lookup = self._extract_batch_llm_rows(batch, contract_name, provider)
+        rows, record_lookup = self._extract_batch_llm_rows(batch, contract_name, provider, pack_block)
         batch_ids = {record["source_id"] for record in batch}
         missing = batch_ids - self._rows_are_accounted(rows)
+
+        if not rows and len(batch) > 1:
+            # A wholly empty answer is an output-budget failure, not a verdict.
+            # The model cannot emit records for N clauses inside a provider's
+            # output cap (Groq stops at 8192 tokens), so it emits nothing at all
+            # and every clause in the batch is lost. Re-prompting the same batch
+            # reproduces it; halving it does not.
+            #
+            # Measured on a two-page MRO agreement before this existed: 24 of 38
+            # accepted clauses lost, every one of them to `empty_batch_response`.
+            # The ledger could see them going; nothing recovered them.
+            midpoint = len(batch) // 2
+            logger.info(
+                "Empty response for %d clauses; splitting the batch and retrying both halves",
+                len(batch),
+            )
+            rows = []
+            record_lookup = {}
+            for half in (batch[:midpoint], batch[midpoint:]):
+                half_rows, half_lookup, _ = self._extract_batch_complete(
+                    half, contract_name, provider, pack_block
+                )
+                rows.extend(half_rows)
+                record_lookup.update(half_lookup)
+            return rows, record_lookup, batch_ids - self._rows_are_accounted(rows)
 
         if missing and len(missing) < len(batch_ids):
             # Only worth retrying when the model demonstrably engaged with the
@@ -4966,7 +5257,7 @@ class ContractKPIManager:
                 len(batch_ids),
             )
             retry_rows, retry_lookup = self._extract_batch_llm_rows(
-                retry_batch, contract_name, provider
+                retry_batch, contract_name, provider, pack_block
             )
             if retry_rows:
                 rows = list(rows) + list(retry_rows)
@@ -4974,6 +5265,186 @@ class ContractKPIManager:
                 missing = batch_ids - self._rows_are_accounted(rows)
 
         return rows, record_lookup, missing
+
+    def _run_repair_loop(
+        self,
+        extracted: List[Dict[str, Any]],
+        *,
+        candidates: List[Dict[str, Any]],
+        ledger: "ClauseLedger",
+        contract_name: str,
+        provider: str,
+        pack_block: str,
+        contract_id: str,
+        project_id: Optional[str],
+        user_id: str,
+        run_id: str,
+        pack_resolution: Optional["PackResolution"] = None,
+    ) -> List[Dict[str, Any]]:
+        """Drive the deficit loop and fold whatever it recovers back in."""
+        from services.obligation_loop import run_repair_loop
+
+        record_lookup = {
+            str(c.get("segment_id") or c.get("source_id")): c for c in candidates
+        }
+        required_classes = []
+        if pack_resolution and pack_resolution.pack:
+            required_classes = [
+                str(entry.get("id"))
+                for entry in (pack_resolution.pack.coverage.get("required_obligation_classes") or [])
+                if isinstance(entry, dict) and entry.get("id")
+            ]
+
+        def repair(deficit) -> List[Dict[str, Any]]:
+            rows = self._repair_deficit(
+                deficit,
+                candidates=candidates,
+                contract_name=contract_name,
+                provider=provider,
+                pack_block=pack_block,
+            )
+            recovered: List[Dict[str, Any]] = []
+            for row in rows:
+                item = self._kpi_from_llm_row(
+                    row=row,
+                    record_lookup=record_lookup,
+                    contract_id=contract_id,
+                    project_id=project_id,
+                    contract_name=contract_name,
+                    user_id=user_id,
+                    run_id=run_id,
+                    provider=provider,
+                    pack_resolution=pack_resolution,
+                )
+                if item:
+                    item["recovered_by_repair_loop"] = True
+                    recovered.append(item)
+                    if item.get("source_id"):
+                        ledger.mark_extracted([item["source_id"]])
+            return recovered
+
+        repaired, report = run_repair_loop(
+            records=extracted,
+            candidates=candidates,
+            unaccounted=ledger.pending_ids(),
+            repair=repair,
+            required_classes=required_classes,
+        )
+        if report.rounds:
+            logger.info(
+                "Repair loop: %d round(s), attempted %s, repaired %s, +%d records (%s)",
+                report.rounds,
+                report.attempted or "{}",
+                report.repaired or "{}",
+                report.added_records,
+                report.stopped_because,
+            )
+        self._last_repair_report = report.as_dict()
+        return repaired
+
+    def _repair_deficit(
+        self,
+        deficit: "Deficit",
+        *,
+        candidates: List[Dict[str, Any]],
+        contract_name: str,
+        provider: str,
+        pack_block: str,
+    ) -> List[Dict[str, Any]]:
+        """Perform one deficit's repair. The action differs by kind — that is the
+        whole point of the loop.
+
+        Sending the same prompt again is what the batch retry already does, and
+        it is measurably not enough: an output-budget failure reproduces
+        identically, and a table the model decided was not obligations gets
+        declined again row by row.
+        """
+        from services.obligation_loop import Deficit  # noqa: F401  (typing only)
+
+        by_source = {
+            str(c.get("segment_id") or c.get("source_id")): c for c in candidates
+        }
+
+        if deficit.kind == "empty_table":
+            # Re-present the table as a table, with its classification stated and
+            # a verdict demanded per row. The failure being repaired is one
+            # decision about the whole block, so the repair addresses the block:
+            # asking about six rows individually reproduces the same refusal six
+            # times.
+            rows = [by_source[s] for s in deficit.evidence.get("source_ids", []) if s in by_source]
+            if not rows:
+                return []
+            table_type = deficit.evidence.get("table_type") or "table"
+            caption = deficit.evidence.get("caption") or "Table"
+            prompt = (
+                f"{pack_block}\n\n" if pack_block else ""
+            ) + (
+                f"Contract: {contract_name}\n\n"
+                f"The rows below are one '{table_type}' table ({caption}) that produced no "
+                f"records. Each row is a separate line item.\n\n"
+                "For EVERY row return either a record, or a record with "
+                '"record_type": "no_obligation" and a one-line reason. A row stating that a '
+                "service is included, excluded, optional or provided at no charge is still a "
+                "commitment about what is owed; it is not automatically outside scope.\n\n"
+                "<ROWS>\n" + "\n".join(
+                    f"SOURCE_ID: {r.get('segment_id') or r.get('source_id')}\n{r.get('text') or ''}"
+                    for r in rows
+                ) + "\n</ROWS>\n\n"
+                'Return only JSON: {"records": [...]}'
+            )
+            return self._repair_rows_from_prompt(prompt, rows, provider)
+
+        if deficit.kind == "unanswered_clause":
+            # One clause, alone, with nothing competing for the output budget.
+            # The batch it died in cannot be the unit of repair: that batch is
+            # what exceeded the cap.
+            candidate = by_source.get(deficit.target)
+            if not candidate:
+                return []
+            prompt = (
+                f"{pack_block}\n\n" if pack_block else ""
+            ) + (
+                f"Contract: {contract_name}\n\n"
+                "This single clause was not answered in an earlier pass. Return a record for "
+                "it, or a record with \"record_type\": \"no_obligation\" and a one-line "
+                "reason.\n\n"
+                f"SOURCE_ID: {deficit.target}\n<CLAUSE>\n{candidate.get('text') or ''}\n</CLAUSE>\n\n"
+                'Return only JSON: {"records": [...]}'
+            )
+            return self._repair_rows_from_prompt(prompt, [candidate], provider)
+
+        if deficit.kind == "missing_class":
+            # The pack says this family contains a class the register has none
+            # of. Ask for that class specifically, pointing at where the pack
+            # says it hides, rather than re-reading everything.
+            return []
+
+        return []
+
+    def _repair_rows_from_prompt(
+        self,
+        prompt: str,
+        candidates: List[Dict[str, Any]],
+        provider: str,
+    ) -> List[Dict[str, Any]]:
+        """Run one repair prompt and return the usable rows it produced."""
+        payload = self._query_kpi_llm_json(prompt, provider=provider)
+        rows = payload.get("records") if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            return []
+        recovered: List[Dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if isinstance(row.get("phase1"), dict):
+                row = {**row["phase1"], "phase1": row["phase1"]}
+            if str(row.get("record_type") or "").strip().lower() in self._NO_OBLIGATION_TYPES:
+                # An explicit decline is an answer. It resolves the deficit
+                # without adding a record, which is why the loop counts it.
+                continue
+            row.setdefault("_repaired", True)
+            recovered.append(row)
+        return recovered
 
     def _extract_kpis_with_llm(
         self,
@@ -4986,6 +5457,7 @@ class ContractKPIManager:
         run_id: str,
         provider: str,
         ledger: Optional["ClauseLedger"] = None,
+        pack_resolution: Optional[PackResolution] = None,
     ) -> List[Dict[str, Any]]:
         if not self._llm_provider_available(provider):
             logger.info("Skipping LLM KPI extraction because provider %s is not configured.", provider)
@@ -5007,6 +5479,12 @@ class ContractKPIManager:
         if not records:
             return []
 
+        # Rendered once per run, not once per batch.  At ~1.6k tokens across
+        # the batches a contract needs, rebuilding it per prompt would be
+        # pure waste; the block is identical for every batch by design.
+        pack = pack_resolution.pack if pack_resolution else None
+        pack_block = render_pack_block(pack)
+
         batches = self._batch_clause_records(records)
         extracted: List[Dict[str, Any]] = []
         seen: set[str] = set()
@@ -5015,7 +5493,7 @@ class ContractKPIManager:
         max_workers = min(len(batches), 6) if len(batches) > 1 else 1
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [
-                executor.submit(self._extract_batch_complete, batch, contract_name, provider)
+                executor.submit(self._extract_batch_complete, batch, contract_name, provider, pack_block)
                 for batch in batches
             ]
             future_to_batch = dict(zip(futures, batches))
@@ -5052,6 +5530,7 @@ class ContractKPIManager:
                             user_id=user_id,
                             run_id=run_id,
                             provider=provider,
+                            pack_resolution=pack_resolution,
                         )
                         if not item:
                             continue
@@ -5109,10 +5588,78 @@ class ContractKPIManager:
                         )
                     logger.warning("Batch LLM extraction worker failed: %s", exc)
 
+        # ── Repair loop ────────────────────────────────────────────────────
+        # Runs before dedup and consolidation so recovered records go through
+        # the same collapse as everything else. Deficits are read from verified
+        # state — the ledger and per-table coverage — never from asking the
+        # model how it did.
+        if ledger is not None and getattr(settings, "enable_repair_loop", True):
+            extracted = self._run_repair_loop(
+                extracted,
+                candidates=records,
+                ledger=ledger,
+                contract_name=contract_name,
+                provider=provider,
+                pack_block=pack_block,
+                contract_id=contract_id,
+                project_id=project_id,
+                user_id=user_id,
+                run_id=run_id,
+                pack_resolution=pack_resolution,
+            )
+
         extracted = self._drop_renamed_duplicates(extracted)
+        extracted = self._drop_duplicate_table_rows(extracted)
         extracted = self._consolidate_and_group_kpis(extracted)
         extracted.sort(key=lambda item: (item.get("page_start") or 100000, item.get("kpi_type") or "", item.get("name") or ""))
         return extracted
+
+    def _drop_duplicate_table_rows(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Collapse records that bind the same value from the same table row.
+
+        A row read twice — once as a row, once from the prose that carried the
+        table — yields two records with different names and identical substance:
+        "Turnaround Rate <=3,000 kg" and "Turnaround Rate: <= 3,000 kg Ramp
+        Marshalling", both 180 EUR. Measured on the reference SGHA Annex B, 15 of
+        41 records were second readings of a row already extracted, three of them
+        for that one rate.
+
+        Identity is the bound value, its unit and currency, and the scope it
+        applies to — never the name, because the name is exactly what varies.
+        Scope is in the key so two genuinely different bands that happen to share
+        a price stay separate.
+        """
+        def identity(item: Dict[str, Any]) -> Optional[tuple]:
+            measurement = item.get("measurement") if isinstance(item.get("measurement"), dict) else {}
+            threshold = item.get("value")
+            if threshold is None:
+                threshold = measurement.get("threshold")
+            if threshold is None:
+                return None
+            return (
+                str(threshold).strip().lower(),
+                str(item.get("unit") or measurement.get("unit") or "").strip().lower(),
+                str(item.get("currency") or measurement.get("currency") or "").strip().lower(),
+                str(measurement.get("measurement_scope") or "").strip().lower(),
+            )
+
+        best: Dict[tuple, Dict[str, Any]] = {}
+        passthrough: List[Dict[str, Any]] = []
+        for item in items:
+            key = identity(item)
+            if key is None:
+                passthrough.append(item)
+                continue
+            existing = best.get(key)
+            # Keep the longer verbatim quote: the row-level reading carries the
+            # header and the whole row, the prose reading usually a fragment.
+            if existing is None or len(str(item.get("quote") or "")) > len(str(existing.get("quote") or "")):
+                best[key] = item
+
+        collapsed = len(items) - len(best) - len(passthrough)
+        if collapsed > 0:
+            logger.info("Collapsed %d duplicate readings of the same table row", collapsed)
+        return passthrough + list(best.values())
 
     def _drop_renamed_duplicates(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Collapse records that quote the same clause under different names.
@@ -5205,7 +5752,13 @@ class ContractKPIManager:
             batches.append(current)
         return batches
 
-    def _build_kpi_llm_prompt(self, *, contract_name: str, records: List[Dict[str, Any]]) -> str:
+    def _build_kpi_llm_prompt(
+        self,
+        *,
+        contract_name: str,
+        records: List[Dict[str, Any]],
+        pack_block: str = "",
+    ) -> str:
         source_blocks = []
         for record in records:
             source_blocks.append(
@@ -5372,10 +5925,52 @@ class ContractKPIManager:
             "• Preserve lookup tables, formulas, tier schedules, notice/cure preconditions, recovery mechanisms, evidence hypotheses, and data questions even when they cannot yet be evaluated.\n"
             "• Deduplicate by metric identity, not by quote. Keep all supporting source references in the record.\n\n"
             f"Contract: {contract_name}\n\n"
-            "<SOURCES>\n"
+            # The family pack sits between the rules and the clauses: after
+            # everything it may not override, before the evidence it describes.
+            # Empty string when no family was resolved, so the prompt is
+            # byte-identical to the unpacked one in that case.
+            + (f"{pack_block}\n\n" if pack_block else "")
+            + "<SOURCES>\n"
             + "\n\n---\n\n".join(source_blocks)
             + "\n</SOURCES>"
         )
+
+    def _reset_meter(self) -> None:
+        with self._meter_lock:
+            self._llm_calls = 0
+            self._llm_input_tokens = 0
+            self._llm_output_tokens = 0
+
+    def _meter(self, result: Any, prompt: str) -> None:
+        """Count one LLM call and whatever token counts the provider reported."""
+        usage = {}
+        for attribute in ("usage_metadata", "response_metadata"):
+            candidate = getattr(result, attribute, None)
+            if isinstance(candidate, dict) and candidate:
+                usage = candidate.get("token_usage") or candidate.get("usage") or candidate
+                break
+        def _count(*keys: str) -> int:
+            for key in keys:
+                value = usage.get(key) if isinstance(usage, dict) else None
+                if isinstance(value, int):
+                    return value
+            return 0
+
+        with self._meter_lock:
+            self._llm_calls += 1
+            # Providers disagree on the key, and some report none. The character
+            # estimate is a floor, not a billing figure — labelled as such by
+            # never overwriting a real count.
+            self._llm_input_tokens += _count("input_tokens", "prompt_tokens") or (len(prompt) // 4)
+            self._llm_output_tokens += _count("output_tokens", "completion_tokens")
+
+    def _meter_snapshot(self) -> Dict[str, int]:
+        with self._meter_lock:
+            return {
+                "llm_calls": self._llm_calls,
+                "llm_input_tokens": self._llm_input_tokens,
+                "llm_output_tokens": self._llm_output_tokens,
+            }
 
     def _query_kpi_llm_json(
         self,
@@ -5414,6 +6009,12 @@ class ContractKPIManager:
                 raise RuntimeError(f"No API key configured for provider '{provider}'")
 
             result = llm.invoke([HumanMessage(content=prompt)])
+            # Extraction spent LLM calls with no accounting anywhere: the agent
+            # graph meters its token usage, this path metered nothing, so an
+            # account's extraction spend was invisible. Counted per run and
+            # written onto the run document; what to charge for it is a pricing
+            # decision, not one this code should make.
+            self._meter(result, prompt)
             content = getattr(result, "content", "") or ""
             if isinstance(content, list):
                 # Anthropic and Gemini may return a list of content blocks.
@@ -5570,14 +6171,18 @@ class ContractKPIManager:
         val_str = str(val) if val is not None else ""
 
         unit = item.get("unit") or meas.get("unit") or rule.get("unit")
-        unit_str = str(unit or "").strip().lower().replace("per ", "").replace("sek ", "")
+        # "sek " used to be stripped here too. A merge key that special-cases one
+        # currency treats "100 SEK" and "100" as the same metric while leaving
+        # "100 EUR" distinct.
+        unit_str = str(unit or "").strip().lower().replace("per ", "")
 
         clean_domain = re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
         clean_domain = (
-            clean_domain.replace("electricity", "power")
-            .replace("supply", "power")
-            .replace("overtime", "extra")
-            .replace("departing ", "")
+            # Domain word-substitutions used to live here (electricity->power,
+            # overtime->extra, departing->""), applied to every contract of every
+            # family. They are family vocabulary, and family vocabulary is now a
+            # pack; a merge key must not silently equate two different metrics.
+            clean_domain
         )
         words = [w for w in clean_domain.split() if w not in {"charge", "fee", "rate", "price", "daily", "minimum", "the", "a", "an", "for", "of", "service", "hour"}]
         domain_key = " ".join(sorted(set(words)))
@@ -5730,7 +6335,15 @@ class ContractKPIManager:
             value = self._numeric(match.group("num"))
             if value is None:
                 continue
-            unit = match.group("unit") or item.get("unit") or "native"
+            # "native" used to be the fallback here and it is not a unit — it is
+            # the absence of one. Six milestone records shipped with
+            # `unit: "native"` and a year scraped out of a date ("First Annual
+            # Service Review", value 2023, threshold 15), which is not an
+            # obligation anyone can track. A measurement without a unit is left
+            # without one, and a date is not a scalar.
+            unit = match.group("unit") or item.get("unit")
+            if not unit and re.search(r"\b(19|20)\d{2}\b", match.group("num") or ""):
+                continue
             operator = match.group("op")
             if not operator:
                 lower_name = name.lower()
@@ -5778,9 +6391,15 @@ class ContractKPIManager:
             "inspection", "audit", "maintenance window", "documentation", "containment",
             "root cause", "rca", "response time", "dispatch", "cure", "preservation",
         )
+        # Family-specific vocabulary ("regional cores", "cell sites", "edge
+        # nodes", "service area") used to sit in this tuple and ran on every
+        # contract, so a logistics agreement mentioning a service area was
+        # classified reference-only by a telecom rule. The generic count phrasing
+        # below covers the same cases without naming one industry; anything more
+        # specific belongs in a pack, not here.
         reference_terms = (
             "site count", "monitoring count", "number of sites", "number of nodes",
-            "regional cores", "cell sites", "edge nodes", "service area",
+            "number of locations", "inventory count",
         )
         performance_terms = (
             "availability", "uptime", "latency", "success rate", "loss ratio", "outage",
@@ -6154,7 +6773,9 @@ class ContractKPIManager:
                 val = it.get("value")
                 if val is None and isinstance(it.get("measurement"), dict):
                     val = it["measurement"].get("threshold")
-                unit = it.get("unit") or (it.get("measurement") or {}).get("unit") or "SEK"
+                # No default. A tier row whose unit the document never stated is
+                # a row with an unknown unit, not a row denominated in SEK.
+                unit = it.get("unit") or (it.get("measurement") or {}).get("unit")
                 rows.append({
                     "category": n,
                     "amount": val,
@@ -6178,7 +6799,9 @@ class ContractKPIManager:
             schedule_seed = f"{schedule_contract_id}:{clean_base_title}"
             parent["kpi_id"] = f"kpi_sch_{hashlib.md5(schedule_seed.encode()).hexdigest()[:12]}"
             parent["value"] = None
-            parent["unit"] = parent.get("unit") or "SEK"
+            parent["unit"] = parent.get("unit") or next(
+                (row["unit"] for row in rows if row.get("unit")), None
+            )
             parent["target_type"] = "lookup_table"
             parent["rule_type"] = "lookup_table"
             parent["quote"] = "\n".join(quotes[:5]) or parent.get("quote")
@@ -6189,7 +6812,7 @@ class ContractKPIManager:
                 "operator": "conforms_to",
                 "threshold": None,
                 "unit": parent["unit"],
-                "currency": (parent.get("measurement") or {}).get("currency") or "SEK",
+                "currency": (parent.get("measurement") or {}).get("currency"),
                 "measurement_scope": f"{clean_base_title} tiers",
                 "lookup_table": {
                     "key_field": "category",
@@ -6372,6 +6995,7 @@ class ContractKPIManager:
         user_id: str,
         run_id: str,
         provider: str,
+        pack_resolution: Optional[PackResolution] = None,
     ) -> Optional[Dict[str, Any]]:
         if isinstance(row.get("phase1"), dict):
             row = self._phase1_to_flat_row(row)
@@ -6388,6 +7012,11 @@ class ContractKPIManager:
         raw_quote = str(row.get("quote") or "")
         quote = self._validated_quote(raw_quote, source_text)
         quarantine_reasons: List[str] = []
+        if row.get("_envelope_validation_errors"):
+            # The batch this record came from failed envelope validation. The
+            # record may still be correct, but nothing here has verified that,
+            # so it goes to review rather than into the register unmarked.
+            quarantine_reasons.append("envelope_validation_failed")
         if quote is None:
             # The model cited text that is not in its own source clause. Keep
             # the record so a reviewer can see what happened, but mark it — this
@@ -6575,7 +7204,6 @@ class ContractKPIManager:
             "run_id": run_id,
             "extraction_model": getattr(settings, "model_name", None),
             "extraction_prompt_version": self.EXTRACTION_PROMPT_VERSION,
-            "extraction_method": "hybrid_llm",
             "quarantined": bool(quarantine_reasons),
             "quarantine_reasons": quarantine_reasons or None,
             **recommendation,
@@ -6585,7 +7213,11 @@ class ContractKPIManager:
             "contact_email": self._clean_optional_string(row.get("contact_email")),
             "breach_email_template": breach_email_template,
             "notes": self._clean_optional_string(row.get("notes")),
-            "extraction_method": f"llm_{provider}",
+            # One key, not two. This dict previously set `extraction_method`
+            # twice; the later literal won and silently discarded the P5
+            # provenance value, so no record could be traced to the path that
+            # produced it.
+            "extraction_method": f"hybrid_llm:{provider}",
             "custom_attributes": self._extract_kpi_domain_custom_attributes(quote, name, llm_row=row),
             "source_id": source_id,
             "canonical_metric_key": canonical_metric_key,
@@ -6593,7 +7225,13 @@ class ContractKPIManager:
             "record_status": row.get("record_status"),
             "record_type": record_type,
             "record_role": row.get("record_role"),
-            "contract_family": row.get("contract_family"),
+            # The resolved family, not the model's guess at one.  A pack that
+            # influenced this record is named on it, so a recall movement is
+            # attributable to a pack version rather than inferred.
+            "contract_family": (pack_resolution.stamp["contract_family"] if pack_resolution else None)
+            or row.get("contract_family"),
+            "pack_id": pack_resolution.stamp["pack_id"] if pack_resolution else None,
+            "pack_version": pack_resolution.stamp["pack_version"] if pack_resolution else None,
             "contract_type": row.get("contract_type"),
             "target_type": target_type,
             "currency": row.get("currency") or row.get("consequence_currency"),
@@ -6612,47 +7250,30 @@ class ContractKPIManager:
             "phase3": row.get("phase3"),
             "phase4": row.get("phase4"),
             "clause_ref": row.get("clause_ref"),
-            "schema_profile": "iata_ground_handling",
         }
         item["source_evidence"] = [citation]
         item.update(self._production_kpi_metadata(item, quote=quote, ai_provider=provider))
-        return self._normalize_iata_ground_handling_record(item)
-
-    def _normalize_iata_ground_handling_record(self, item: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Universal domain normalizer for IATA SGHA agreements across all global airports.
-        Enforces SGHA party ownership & station preamble currency cascade rules.
-        """
-        quote_text = (item.get("quote") or item.get("source_clause") or "").lower()
-        
-        # 1. Currency Cascade Rule:
-        # Unless quote explicitly specifies USD/$ (e.g. Paragraph 5 Limit of Liability in USD),
-        # revert any hallucinated USD currency back to station default currency (defaulting to SEK if unspecified).
-        default_currency = item.get("currency") or "SEK"
-        has_usd_symbol = "usd" in quote_text or "$" in quote_text or "dollar" in quote_text
-        
-        if not has_usd_symbol:
-            if item.get("unit") and "usd" in str(item.get("unit")).lower():
-                item["unit"] = str(item["unit"]).replace("USD", default_currency).replace("usd", default_currency)
-            if isinstance(item.get("measurement"), dict):
-                m_unit = item["measurement"].get("unit")
-                if m_unit and "usd" in str(m_unit).lower():
-                    item["measurement"]["unit"] = str(m_unit).replace("USD", default_currency).replace("usd", default_currency)
-                item["measurement"]["currency"] = default_currency
-
-        # 2. Party Ownership Rule:
-        party_role = normalize_party_role(item.get("party_role"))
-        if not party_role or party_role == "none":
-            if any(term in quote_text for term in ["charge", "fee", "paid", "payable", "reimbursed", "prepay", "settlement", "cancellation", "disbursement", "price"]):
-                item["party_role"] = "client"
-                item["obligation_type"] = "client"
-                item["party_type"] = "client"
-            else:
-                item["party_role"] = "supplier"
-                item["obligation_type"] = "supplier"
-                item["party_type"] = "supplier"
-                
         return item
+
+    # `_normalize_iata_ground_handling_record` lived here and ran on every record
+    # of every contract. It did three things, all of them wrong outside the one
+    # demo it was written for:
+    #
+    #   * rewrote a record's currency to SEK whenever its quote carried no "$",
+    #     "usd" or "dollar" token. Measured across this repo's corpus: 4% of all
+    #     money spans, but 100% of the EUR-denominated SGHA documents. Invisible
+    #     on the dollar-denominated fixtures, silently wrong for every European
+    #     contract.
+    #   * stamped `schema_profile: "iata_ground_handling"` on every record.
+    #   * guessed `party_role` from money words ("charge", "fee", "paid"),
+    #     directly contradicting the never-guess rule that
+    #     `test_ambiguous_ownership_is_reviewable_and_never_defaults_to_supplier`
+    #     asserts — that test passed only because it exercised the schema module
+    #     in isolation and never reached this code.
+    #
+    # All three are family knowledge, and family knowledge is now data: see
+    # `apps/backend/packs/obligations/`. Currency and party come from the
+    # document; unresolved ownership stays null and reviewable.
 
     def _determine_obligation_type(self, party: Optional[str], quote: str) -> Optional[str]:
         """Normalize an explicit role without guessing the obligated party.

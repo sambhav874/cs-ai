@@ -413,7 +413,7 @@ Metrics:
 - `forbidden_tool_block_rate`
 - `approval_required_action_rate`
 - `workflow_completion`
-- `kpi_candidate_recall`
+- `kpi_answer_vocabulary` (a word-presence check on the reply, **not** recall — obligation recall is measured by `testing/backend/scripts/score_obligation_correctness.py` against labelled fixtures)
 - `kpi_field_f1`
 - `kpi_citation_precision`
 - `calculation_accuracy`

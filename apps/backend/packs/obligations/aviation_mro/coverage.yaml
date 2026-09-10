@@ -1,0 +1,19 @@
+# No floors, deliberately. This pack has no fixture in the repository, so any
+# number here would be written from ambition rather than measurement — and a
+# floor you cannot pass on day one is a broken build, not a gate.
+#
+# To retire this flag: put an MRO contract in the corpus, point `fixture:` at it,
+# run the _base-only and _base+pack arms, and write the floors from what the
+# pack actually achieves.
+unvalidated: true
+unvalidated_reason: no MRO contract in the corpus; classes and locations are from family structure
+
+required_obligation_classes:
+  - id: workscope_and_exclusion_rule
+    expect: ">=1 record per exclusion; each converts a fixed price to time-and-material"
+  - id: customer_furnished_obligation
+    expect: ">=1 record; client duties are owed the other way and are routinely missed"
+  - id: findings_and_approval_duty
+    expect: "1 record carrying both the money threshold and the notice window"
+  - id: turn_time_commitment
+    expect: "one record per check or component class, start event preserved"

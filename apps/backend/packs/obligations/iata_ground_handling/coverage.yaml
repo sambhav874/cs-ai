@@ -1,0 +1,21 @@
+# Floors are unset until an ablation runs on this family: a floor written from
+# ambition fails the build without measuring anything.
+span_coverage_floor: 0.85
+anchor_recall_floor: 1.0
+grounding_floor: 0.9
+
+required_obligation_classes:
+  - id: nil_charge_service
+    expect: ">=1 record for each FREE / at-cost / on-request line in the rate schedules"
+  - id: per_unit_service_rate
+    expect: "one record per rate row, each carrying its own currency and basis"
+  - id: labour_rate_matrix
+    expect: "one record per position, multipliers preserved"
+  - id: pass_through_disbursement
+    expect: ">=1 record; currency read from the row, not from the document"
+  - id: service_credit_for_breach
+    expect: "one record per breach row, linked to its target"
+  - id: liability_cap
+    expect: "one record per aircraft band"
+  - id: rate_escalation_rule
+    expect: "1 record; every rate record is subject to it"

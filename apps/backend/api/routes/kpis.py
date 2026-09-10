@@ -685,6 +685,12 @@ async def ingest_contract_kpi_source_webhook(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+#: How long a queued or running extraction is believed before a retry is
+#: allowed. Longer than the slowest observed run (~200s) by a wide margin, short
+#: enough that a lost task does not strand a contract for a working day.
+EXTRACTION_STALE_MINUTES = 30
+
+
 @kpis_router.post("/contracts/{contract_id}/kpis/extract")
 def extract_contract_kpis(
     contract_id: str,
@@ -706,6 +712,7 @@ def extract_contract_kpis(
             "contract_name": 1,
             "index.status": 1,
             "index.content": 1,
+            "obligations": 1,
         },
     )
     check_contract_access(contract, current_user)
@@ -715,15 +722,97 @@ def extract_contract_kpis(
             user_id=str(current_user.id),
             replace_drafts=request.replace_drafts,
         )
-    else:
-        result = _kpi_manager().extract_for_contract(
-            contract_doc=contract,
+        cache.delete(f"kpi:list:{contract_id}")
+        return result
+
+    # Extraction is 60-200 seconds of LLM calls. Running it here held a
+    # threadpool worker for the whole time and raced the proxy's 300s timeout —
+    # a run that completed after the client gave up wrote its records anyway,
+    # with nothing to tell the user it had. It is queued now, and
+    # `obligations.status` on the contract carries the outcome.
+    # A "queued" or "running" status is only a reason to refuse while it is
+    # plausibly true. A task can be lost — a worker deployed before the API
+    # knows the task name and drops it, a worker killed mid-run — and without a
+    # staleness window the contract is then permanently un-extractable, because
+    # the guard keeps refusing a retry on the strength of a run that will never
+    # finish. Observed exactly that way: a stale worker rejected the task with
+    # KeyError and the contract sat at "queued" with the UI polling forever.
+    obligations = contract.get("obligations") or {}
+    started = obligations.get("started_at") or obligations.get("queued_at")
+    stale_after = datetime.utcnow() - timedelta(minutes=EXTRACTION_STALE_MINUTES)
+    in_flight = obligations.get("status") in {"queued", "running"} and (
+        started is None or started > stale_after
+    )
+    if in_flight:
+        raise HTTPException(
+            status_code=409,
+            detail="Obligation extraction is already running for this contract.",
+        )
+
+    collection.update_one(
+        {"_id": contract_oid},
+        {"$set": {"obligations.status": "queued", "obligations.queued_at": datetime.utcnow()}},
+    )
+    try:
+        from worker.tasks import extract_obligations_task
+
+        task = extract_obligations_task.delay(
+            contract_id=contract_id,
             user_id=str(current_user.id),
             replace_drafts=request.replace_drafts,
             ai_provider=request.ai_provider,
         )
+        task_id = getattr(task, "id", None)
+    except Exception as exc:
+        collection.update_one(
+            {"_id": contract_oid},
+            {"$set": {"obligations.status": "error", "obligations.error": str(exc)[:500]}},
+        )
+        raise HTTPException(status_code=503, detail="Extraction queue is unavailable.")
+
     cache.delete(f"kpi:list:{contract_id}")
-    return result
+    return {"contract_id": contract_id, "status": "queued", "task_id": task_id}
+
+
+@kpis_router.get("/contracts/{contract_id}/kpis/extraction-status")
+def get_extraction_status(
+    contract_id: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Dict[str, Any]:
+    """Where this contract's obligation extraction has got to.
+
+    Extraction is queued, so "the register is empty" and "extraction has not
+    finished" and "extraction failed" are three different states that used to
+    render identically as an empty table.
+    """
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid contract ID format.")
+
+    contract = collection.find_one(
+        {"_id": contract_oid},
+        {"_id": 1, "ownerType": 1, "ownerId": 1, "projectId": 1, "obligations": 1},
+    )
+    check_contract_access(contract, current_user)
+    obligations = contract.get("obligations") or {}
+    return {
+        "contract_id": contract_id,
+        # "not_run" rather than null: a contract ingested before automatic
+        # extraction existed has genuinely never been through it, and saying so
+        # is more useful than an absent field.
+        "status": obligations.get("status") or "not_run",
+        "count": obligations.get("count"),
+        "run_id": obligations.get("run_id"),
+        "extraction_method": obligations.get("extraction_method"),
+        "contract_family": obligations.get("contract_family"),
+        "pack_id": obligations.get("pack_id"),
+        "pack_version": obligations.get("pack_version"),
+        "error": obligations.get("error") or obligations.get("llm_error"),
+        "queued_at": obligations.get("queued_at"),
+        "started_at": obligations.get("started_at"),
+        "finished_at": obligations.get("finished_at"),
+    }
 
 
 @kpis_router.patch("/contracts/{contract_id}/kpis/{kpi_id}")

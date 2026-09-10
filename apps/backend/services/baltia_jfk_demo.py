@@ -17,6 +17,8 @@ register and the "Recent Connections" integration profiles.
 """
 
 import json
+
+from core.config import settings
 import logging
 import os
 from datetime import datetime, timedelta
@@ -321,6 +323,12 @@ def is_baltia_jfk_demo(
     unrelated single-word filename (mirrors the retired airport-charges
     demo's normalize-compare pattern, generalized to two signals)."""
     del contract_id
+    # Name matching alone is not enough to hand someone demo data. The hints are
+    # ordinary words in this industry, and this gate diverts extraction, so a
+    # genuine ground-handling agreement would silently receive the demo's
+    # obligations instead of its own.
+    if not getattr(settings, "enable_demo_contracts", False):
+        return False
     haystacks = [str(v).lower() for v in (filename, contract_name) if v]
     for text in haystacks:
         if sum(1 for hint in FILENAME_HINTS if hint in text) >= 2:

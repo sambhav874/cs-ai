@@ -42,7 +42,7 @@ def test_omitted_clauses_are_re_prompted_and_recovered(monkeypatch):
     batch = _batch("s1", "s2", "s3")
     calls = []
 
-    def fake_extract(sub_batch, contract_name, provider):
+    def fake_extract(sub_batch, contract_name, provider, pack_block=""):
         calls.append([r["source_id"] for r in sub_batch])
         if len(calls) == 1:
             return [{"source_id": "s1", "name": "found"}], {r["source_id"]: r for r in sub_batch}
@@ -65,7 +65,7 @@ def test_a_fully_answered_batch_costs_no_retry(monkeypatch):
     batch = _batch("s1", "s2")
     calls = []
 
-    def fake_extract(sub_batch, contract_name, provider):
+    def fake_extract(sub_batch, contract_name, provider, pack_block=""):
         calls.append(1)
         return ([{"source_id": r["source_id"]} for r in sub_batch], {})
 
@@ -76,26 +76,33 @@ def test_a_fully_answered_batch_costs_no_retry(monkeypatch):
     assert missing == set()
 
 
-def test_a_wholly_empty_response_is_not_retried_here(monkeypatch):
-    """That is a parse/truncation failure, handled by the inner retry."""
-    manager = _manager()
-    calls = []
+def test_an_unanswerable_batch_is_split_down_to_clauses_before_being_reported_lost(monkeypatch):
+    """This used to assert the opposite: that a wholly empty answer was left to
+    the inner retry and otherwise abandoned. Measured on a real MRO agreement,
+    that lost 24 of 38 accepted clauses in one run — the inner retry re-sends
+    the identical prompt, so an output-budget failure reproduces exactly.
 
-    def fake_extract(sub_batch, contract_name, provider):
-        calls.append(1)
+    A batch that cannot be answered is now halved until it can be, and only a
+    single clause that still returns nothing is reported lost.
+    """
+    manager = _manager()
+    sizes = []
+
+    def fake_extract(sub_batch, contract_name, provider, pack_block=""):
+        sizes.append(len(sub_batch))
         return ([], {})
 
     monkeypatch.setattr(manager, "_extract_batch_llm_rows", fake_extract)
     _rows, _lookup, missing = manager._extract_batch_complete(_batch("s1", "s2"), "c", "groq")
 
-    assert len(calls) == 1
+    assert sizes == [2, 1, 1], "the batch is halved before its clauses are given up on"
     assert missing == {"s1", "s2"}
 
 
 def test_still_missing_after_retry_is_reported(monkeypatch):
     manager = _manager()
 
-    def fake_extract(sub_batch, contract_name, provider):
+    def fake_extract(sub_batch, contract_name, provider, pack_block=""):
         return ([{"source_id": "s1"}], {})
 
     monkeypatch.setattr(manager, "_extract_batch_llm_rows", fake_extract)
@@ -250,3 +257,60 @@ def test_batch_output_stays_within_the_extraction_cap():
     estimated_output_tokens = largest * 350
 
     assert estimated_output_tokens < ContractKPIManager.EXTRACTION_MAX_TOKENS * 0.6
+
+
+def test_the_family_pack_reaches_the_retry_as_well_as_the_first_attempt(monkeypatch):
+    """A retry prompted without the pack would extract under different context
+    than the attempt it is repairing, so the two halves of a batch would not be
+    comparable."""
+    manager = _manager()
+    seen_blocks = []
+
+    def fake_extract(sub_batch, contract_name, provider, pack_block=""):
+        seen_blocks.append(pack_block)
+        if len(seen_blocks) == 1:
+            return [{"source_id": "s1"}], {r["source_id"]: r for r in sub_batch}
+        return [{"source_id": "s2"}], {r["source_id"]: r for r in sub_batch}
+
+    monkeypatch.setattr(manager, "_extract_batch_llm_rows", fake_extract)
+    manager._extract_batch_complete(_batch("s1", "s2"), "c", "groq", "<CONTRACT_TYPE_PACK>x</CONTRACT_TYPE_PACK>")
+
+    assert seen_blocks == ["<CONTRACT_TYPE_PACK>x</CONTRACT_TYPE_PACK>"] * 2
+
+
+def test_an_empty_batch_is_split_rather_than_abandoned(monkeypatch):
+    """A wholly empty answer is an output-budget failure, not a verdict.
+
+    Measured on a two-page MRO agreement: 24 of 38 accepted clauses lost, every
+    one to `empty_batch_response`. Re-prompting the same batch reproduces it;
+    halving it fits the provider's output cap.
+    """
+    manager = _manager()
+    batch = _batch("s1", "s2", "s3", "s4")
+    calls = []
+
+    def fake_extract(sub_batch, contract_name, provider, pack_block=""):
+        ids = [r["source_id"] for r in sub_batch]
+        calls.append(ids)
+        if len(ids) > 2:
+            return [], {r["source_id"]: r for r in sub_batch}       # too big to answer
+        return [{"source_id": sid} for sid in ids], {r["source_id"]: r for r in sub_batch}
+
+    monkeypatch.setattr(manager, "_extract_batch_llm_rows", fake_extract)
+    rows, _lookup, missing = manager._extract_batch_complete(batch, "c", "groq")
+
+    assert calls[0] == ["s1", "s2", "s3", "s4"]
+    assert ["s1", "s2"] in calls and ["s3", "s4"] in calls
+    assert missing == set(), "every clause is recovered by splitting"
+    assert len(rows) == 4
+
+
+def test_a_single_clause_that_returns_nothing_is_not_split_forever():
+    """The recursion has to bottom out, or one unanswerable clause hangs a run."""
+    manager = _manager()
+    manager._extract_batch_llm_rows = lambda *a, **k: ([], {a[0][0]["source_id"]: a[0][0]})
+
+    rows, _lookup, missing = manager._extract_batch_complete(_batch("s1"), "c", "groq")
+
+    assert rows == []
+    assert missing == {"s1"}

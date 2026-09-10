@@ -160,6 +160,11 @@ def main() -> int:
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--provider", default=None, help="default: the configured provider")
     parser.add_argument("--level", default=None, help="restrict to one chunk level, e.g. meso (D2)")
+    parser.add_argument("--pack", default="none",
+                        help="contract-family pack: 'none' (the _base-only arm of an ablation), "
+                             "'auto' (resolve from the document, production behaviour), or a "
+                             "family id to pin. Changing this changes the prompt, so each arm "
+                             "has its own cache entries.")
     parser.add_argument("--cache-dir", type=Path,
                         default=REPO / ".extraction_cache",
                         help="LLM response cache; delete it to force fresh calls")
@@ -167,6 +172,7 @@ def main() -> int:
 
     from core.config import settings
     from services.kpi_manager import ClauseLedger, ContractKPIManager
+    from services.obligation_packs import PackResolution, load_pack, resolve_family
 
     provider = (args.provider or getattr(settings, "ai_provider", None) or "groq").lower()
     text = args.fixture.read_text(encoding="utf-8")
@@ -180,6 +186,13 @@ def main() -> int:
     install_cache(manager, args.cache_dir, provider, stats)
     install_stage1_probe(manager, stats)
 
+    if args.pack == "none":
+        pack_resolution = None
+    elif args.pack == "auto":
+        pack_resolution = resolve_family(title=contract_name, body=text)
+    else:
+        pack_resolution = PackResolution(load_pack(args.pack), 1.0, ["pinned"], "pinned on the command line")
+
     candidates = build_candidates(text, contract_id, contract_name, args.level)
     print(f"fixture      : {args.fixture.name}")
     # Report the model the factory will actually resolve for this provider, not
@@ -189,6 +202,11 @@ def main() -> int:
     resolved_model = _resolve_model_name(provider, lightweight=False, overrides=None)
     print(f"provider     : {provider}  model: {resolved_model}")
     print(f"chunk level  : {args.level or 'all (production behaviour)'}")
+    if pack_resolution and pack_resolution.pack:
+        print(f"pack         : {pack_resolution.pack.id} v{pack_resolution.pack.version} "
+              f"(confidence {pack_resolution.confidence:.2f}) — {pack_resolution.reason}")
+    else:
+        print("pack         : none (_base-only arm)")
     print(f"candidates   : {len(candidates)}")
     print("running extraction ...", flush=True)
 
@@ -203,6 +221,7 @@ def main() -> int:
         run_id="baseline_run",
         provider=provider,
         ledger=ledger,
+        pack_resolution=pack_resolution,
     )
     elapsed = time.time() - started
     clause_ledger = ledger.finalize()
@@ -212,6 +231,16 @@ def main() -> int:
         "provider": provider,
         "model": getattr(settings, "model_name", None),
         "chunk_level": args.level,
+        "pack": (
+            {
+                "id": pack_resolution.pack.id,
+                "version": pack_resolution.pack.version,
+                "confidence": pack_resolution.confidence,
+                "reason": pack_resolution.reason,
+            }
+            if pack_resolution and pack_resolution.pack
+            else None
+        ),
         "candidate_count": len(candidates),
         "elapsed_seconds": round(elapsed, 1),
         "stats": stats,

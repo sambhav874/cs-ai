@@ -383,6 +383,94 @@ def retry_queued_ingestions(self):
     }
 
 
+@celery_app.task(bind=True, name="extract_obligations_task", max_retries=1)
+def extract_obligations_task(
+    self,
+    contract_id: str,
+    user_id: str,
+    replace_drafts: bool = True,
+    ai_provider: Optional[str] = None,
+):
+    """Extract obligations for a freshly ingested contract.
+
+    Queued by ingestion rather than run inside it. Extraction is minutes of LLM
+    calls; holding the contract at "Processing" for that long would make a
+    perfectly usable document look stuck, and a failure here would then fail the
+    ingestion that produced it. The contract flips to "Ingested" as soon as its
+    text is available, and `obligations.status` tracks this separately so the
+    KPI page can show progress instead of an empty register.
+    """
+    from services.kpi_manager import ContractKPIManager
+
+    try:
+        contract_oid = ObjectId(contract_id)
+    except Exception:
+        logger.error("extract_obligations_task called with an invalid contract id: %s", contract_id)
+        return {"status": "error", "reason": "invalid contract id"}
+
+    contract_doc = collection.find_one(
+        {"_id": contract_oid},
+        {
+            "_id": 1,
+            "contract_name": 1,
+            "projectId": 1,
+            "ownerType": 1,
+            "ownerId": 1,
+            "contract_family": 1,
+            "index.content": 1,
+        },
+    )
+    if not contract_doc:
+        return {"status": "error", "reason": "contract not found"}
+
+    collection.update_one(
+        {"_id": contract_oid},
+        {"$set": {"obligations.status": "running", "obligations.started_at": datetime.utcnow()}},
+    )
+
+    try:
+        result = ContractKPIManager(kpi_db).extract_for_contract(
+            contract_doc=contract_doc,
+            user_id=user_id,
+            replace_drafts=replace_drafts,
+            ai_provider=ai_provider,
+        )
+    except Exception as exc:
+        log_exception(logger, f"Automatic obligation extraction failed for contract {contract_id}", exc)
+        collection.update_one(
+            {"_id": contract_oid},
+            {"$set": {
+                "obligations.status": "error",
+                "obligations.error": str(exc)[:500],
+                "obligations.finished_at": datetime.utcnow(),
+            }},
+        )
+        return {"status": "error", "contract_id": contract_id}
+
+    collection.update_one(
+        {"_id": contract_oid},
+        {"$set": {
+            # A regex-only run is not a success. Surfacing it as one is how a
+            # degraded register reached the KPI page indistinguishable from a
+            # real extraction.
+            "obligations.status": "degraded" if result.get("extraction_method") == "deterministic_fallback" else "success",
+            "obligations.llm_error": result.get("llm_error"),
+            "obligations.finished_at": datetime.utcnow(),
+            "obligations.run_id": result.get("run_id"),
+            "obligations.count": result.get("kpi_count"),
+            "obligations.extraction_method": result.get("extraction_method"),
+            # The family the packs resolved, stored on the contract so the KPI
+            # page can say which pack produced this register without reading a
+            # record.
+            "obligations.contract_family": result.get("contract_family"),
+            "obligations.pack_id": result.get("pack_id"),
+            "obligations.pack_version": result.get("pack_version"),
+            "obligations.error": None,
+        }},
+    )
+    return {"status": "success", "contract_id": contract_id, "kpi_count": result.get("kpi_count")}
+
+
 @celery_app.task(bind=True, name='index_contract_task')
 def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_str: str,
                        file_name: str, user_id: str, **_legacy_kwargs):
@@ -614,6 +702,34 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                 project_id=project_id_str,
                 content=index_content,
             )
+
+            # Obligations for every contract, not just the demo. Queued, not
+            # run inline: extraction is minutes of LLM calls, and the contract
+            # is already usable. `obligations.status` is set to "queued" here so
+            # the KPI page can distinguish "nothing found" from "not run yet" —
+            # an empty register with no status was indistinguishable from a
+            # contract with no obligations in it.
+            if getattr(settings, "auto_extract_obligations", True) and not is_baltia_jfk_demo(
+                contract_id, contract_name=sanitized_filename
+            ):
+                try:
+                    collection.update_one(
+                        {"_id": contract_oid},
+                        {"$set": {
+                            "obligations.status": "queued",
+                            "obligations.queued_at": datetime.utcnow(),
+                        }},
+                    )
+                    extract_obligations_task.delay(contract_id=contract_id, user_id=user_id)
+                except Exception as queue_exc:
+                    # A broker outage must not fail an ingestion that succeeded.
+                    # The status stays "queued" so it is visibly pending rather
+                    # than silently absent.
+                    log_exception(
+                        logger,
+                        f"Could not queue obligation extraction for contract {contract_id}",
+                        queue_exc,
+                    )
 
             job_manager.update_job_status(
                 job_id=job_id,

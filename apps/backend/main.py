@@ -21,6 +21,7 @@ from api.routes.tasks import router as task_router
 from api.routes.edits import router as edit_router
 from api.routes.projects import router as projects_router
 from api.routes.tabular_reviews import router as tabular_reviews_router
+from api.routes.obligation_packs import obligation_packs_router
 from api.routes.playbooks import router as playbooks_router
 from api.routes.agent import router as agent_router
 from api.routes.evaluations import router as evaluations_router
@@ -204,6 +205,7 @@ v1_router.include_router(edit_router, tags=["Edit Utils"])
 v1_router.include_router(projects_router, tags=["Projects"])
 v1_router.include_router(tabular_reviews_router, tags=["Tabular Reviews"])
 v1_router.include_router(playbooks_router, tags=["Playbooks"])
+v1_router.include_router(obligation_packs_router, tags=["Obligation Packs"])
 v1_router.include_router(agent_router, tags=["ContractSense Agent"])
 v1_router.include_router(evaluations_router, tags=["Evaluations"])
 v1_router.include_router(model_settings_router, tags=["Model Settings"])

@@ -1249,6 +1249,15 @@ export type RecoveryReminderAction = {
 
 
 
+type ExtractionStatus = {
+  status: "not_run" | "queued" | "running" | "success" | "degraded" | "error";
+  count?: number | null;
+  error?: string | null;
+  pack_id?: string | null;
+  pack_version?: number | null;
+  contract_family?: string | null;
+};
+
 export default function ContractKpiManagementPage() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const router = useRouter();
@@ -1292,6 +1301,7 @@ export default function ContractKpiManagementPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isKpiDataPending, setIsKpiDataPending] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [extractionStatus, setExtractionStatus] = useState<ExtractionStatus | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingSource, setIsSavingSource] = useState(false);
   const [runningSourceIds, setRunningSourceIds] = useState<Set<string>>(new Set());
@@ -1579,6 +1589,7 @@ export default function ContractKpiManagementPage() {
         actualResult,
         breachResult,
         sourceResult,
+        extractionResult,
       ] = await Promise.all([
         authenticatedFetch(`${apiUrl}/contracts/${contractId}`),
         authenticatedFetch(`${apiUrl}/contracts/${contractId}/kpis`),
@@ -1587,7 +1598,16 @@ export default function ContractKpiManagementPage() {
         authenticatedFetch(
           `${apiUrl}/contracts/${contractId}/kpis/source-configs`,
         ),
+        // Fetched on load, not only after clicking Extract: automatic
+        // extraction on ingest means a run is usually already in flight by the
+        // time anyone opens this page.
+        authenticatedFetch(
+          `${apiUrl}/contracts/${contractId}/kpis/extraction-status`,
+        ),
       ]);
+      if (!extractionResult.error) {
+        setExtractionStatus((extractionResult.data as ExtractionStatus) ?? null);
+      }
       const firstError = [
         contractResult,
         kpiResult,
@@ -1773,6 +1793,25 @@ export default function ContractKpiManagementPage() {
     return updated;
   };
 
+  // Extraction is queued on the server, not run on the request. Polling the
+  // status is what keeps "still running" distinguishable from "nothing found" —
+  // the two rendered identically as an empty table while a run was in flight.
+  const pollExtraction = async (): Promise<Record<string, unknown> | null> => {
+    const deadline = Date.now() + 15 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+      const poll = await authenticatedFetch(
+        `${apiUrl}/contracts/${contractId}/kpis/extraction-status`,
+      );
+      const status = (poll.data as Record<string, unknown> | undefined)?.status;
+      setExtractionStatus((poll.data as ExtractionStatus) ?? null);
+      if (status && !["queued", "running"].includes(String(status))) {
+        return poll.data as Record<string, unknown>;
+      }
+    }
+    return null;
+  };
+
   const extractKpis = async () => {
     if (!apiUrl) return;
     setIsExtracting(true);
@@ -1784,19 +1823,50 @@ export default function ContractKpiManagementPage() {
         body: JSON.stringify({ replace_drafts: true, ai_provider: "groq" }),
       },
     );
-    setIsExtracting(false);
     if (result.error) {
+      setIsExtracting(false);
       toast({
-        title: "Could not extract KPIs",
+        title: "Could not start extraction",
         description: result.error,
         variant: "destructive",
       });
       return;
     }
+
     toast({
-      title: "KPIs extracted",
-      description: `${result.data?.kpi_count ?? result.data?.kpis?.length ?? 0} KPI candidates ready.`,
+      title: "Extraction started",
+      description: "Obligations are being extracted. This usually takes a few minutes.",
     });
+
+    const final = await pollExtraction();
+    setIsExtracting(false);
+
+    if (!final) {
+      toast({
+        title: "Still running",
+        description: "Extraction has not finished yet. The page will show the result once it does.",
+      });
+    } else if (final.status === "error") {
+      toast({
+        title: "Extraction failed",
+        description: String(final.error ?? "No obligations were extracted."),
+        variant: "destructive",
+      });
+    } else if (final.status === "degraded") {
+      toast({
+        title: "Extracted, but degraded",
+        description:
+          "The model produced nothing usable, so these records came from a pattern scan. Review every one.",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Obligations extracted",
+        description: `${final.count ?? 0} obligations ready${
+          final.pack_id ? ` (pack: ${final.pack_id} v${final.pack_version})` : ""
+        }.`,
+      });
+    }
     await loadWorkspace();
   };
 
@@ -2562,6 +2632,45 @@ export default function ContractKpiManagementPage() {
           if (files && files.length) void uploadActuals(files);
         }}
       />
+
+      {/* An empty register has several causes and they are not interchangeable:
+          extraction still running, extraction failed, a pattern-scan fallback,
+          or a contract that genuinely has no obligations. Saying which is the
+          difference between a user waiting and a user concluding the product
+          found nothing. */}
+      {extractionStatus && extractionStatus.status !== "success" ? (
+        <div
+          className={`border-b px-4 py-3 text-sm md:px-8 ${
+            extractionStatus.status === "error"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : extractionStatus.status === "degraded"
+                ? "border-amber-200 bg-amber-50 text-amber-900"
+                : "border-blue-200 bg-blue-50 text-blue-900"
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span>
+              {extractionStatus.status === "queued" || extractionStatus.status === "running"
+                ? "Extracting obligations from this contract. This usually takes a few minutes — the register below is incomplete until it finishes."
+                : extractionStatus.status === "degraded"
+                  ? "These obligations came from a pattern scan, not the model — the extraction produced nothing usable. Review every record before relying on it."
+                  : extractionStatus.status === "error"
+                    ? `Obligation extraction failed: ${extractionStatus.error ?? "no reason recorded"}.`
+                    : "Obligations have not been extracted from this contract yet."}
+            </span>
+            {extractionStatus.status === "queued" || extractionStatus.status === "running" ? null : (
+              <button
+                type="button"
+                onClick={() => void extractKpis()}
+                disabled={isExtracting}
+                className="rounded-md border border-current px-3 py-1 text-xs font-semibold disabled:opacity-50"
+              >
+                {isExtracting ? "Extracting…" : "Extract obligations"}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       <header className="border-b border-gray-200 bg-white">
         <div className="px-4 py-4 md:px-8">
