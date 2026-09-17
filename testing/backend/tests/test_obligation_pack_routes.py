@@ -447,7 +447,7 @@ def test_the_run_trail_reports_losses_not_just_successes():
     declined, and how many were never reached."""
     source = _run_trail_source()
 
-    for field in ("unaccounted", "why_unaccounted", "declined", "repair_loop"):
+    for field in ("unaccounted", "why_unaccounted", "declined"):
         assert field in source, f"the trail must expose {field}"
 
 

@@ -159,16 +159,6 @@ class ClauseLedger:
                 if key in self._state:
                     self._state[key] = "extracted"
 
-    def pending_ids(self) -> set:
-        """Clauses accepted by Stage 1 that still have no verdict.
-
-        Read mid-run by the repair loop, which needs the deficit set while
-        something can still be done about it — `finalize` reports the same
-        clauses once it is too late to repair them.
-        """
-        with self._lock:
-            return {source_id for source_id, state in self._state.items() if state == "pending"}
-
     def note(self, source_ids: Iterable[str], reason: str) -> None:
         """Record *why* a clause may not have resolved, without deciding its state."""
         with self._lock:
@@ -2395,6 +2385,141 @@ class ContractKPIManager:
 
         return [k for k in kpis if self._is_meaningful_kpi(k)]
 
+    # Steps the agent writes while it runs, so the page can show the work in
+    # progress rather than a spinner and a count that appears at the end. They
+    # are appended to the run document, which is the same place the rest of the
+    # trail lives -- a step recorded here survives the process, unlike anything
+    # held on the instance.
+    _MAX_RUN_STEPS = 60
+
+    def _step(
+        self,
+        run_id: Optional[str],
+        label: str,
+        detail: str = "",
+        *,
+        state: str = "done",
+    ) -> None:
+        if not run_id:
+            return
+        # A "running" step that is never closed keeps pulsing in the trail long
+        # after the run finished, so any completed step retires the ones still
+        # in flight. This is its own try: an arrayFilters update against a run
+        # that has no steps array yet raises, and sharing a try with the push
+        # below meant the first two steps of every run were dropped.
+        if state == "done":
+            try:
+                self.extraction_runs.update_one(
+                    {"run_id": run_id},
+                    {"$set": {"steps.$[flight].state": "done"}},
+                    array_filters=[{"flight.state": "running"}],
+                )
+            except Exception:
+                pass
+        try:
+            self.extraction_runs.update_one(
+                {"run_id": run_id},
+                {"$push": {
+                    "steps": {
+                        "$each": [{
+                            "at": datetime.utcnow(),
+                            "label": label[:80],
+                            "detail": detail[:220],
+                            "state": state,
+                        }],
+                        "$slice": -self._MAX_RUN_STEPS,
+                    }
+                }},
+            )
+        except Exception as exc:  # a trail must never break the run it traces
+            logger.debug("Could not record run step %r: %s", label, exc)
+
+    def _fold_rate_ladders(
+        self,
+        extracted: List[Dict[str, Any]],
+        *,
+        contract_doc: Dict[str, Any],
+        contract_name: str,
+        provider: str,
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Fold each table's rows back into one tiered obligation.
+
+        Grouping is deterministic — rows of one table, identified by the
+        `table_N:rM` chunk id that `_table_row_candidates` stamps on them, so a
+        prose clause listing four fees is never touched. The judgement is the
+        model's: four labour rates by grade are one rate card, four
+        pass-through fees are four obligations, and nothing in the row shape
+        separates them.
+
+        Failure here is non-fatal by design. A run that cannot reach the model
+        keeps the unrolled rows, which is the register users have today.
+        """
+        try:
+            from services.obligation_tiering import (
+                apply_ladders,
+                find_ladder_groups,
+                parse_decisions,
+                render_adjudication_prompt,
+            )
+        except Exception as exc:
+            logger.warning("Rate-ladder folding unavailable: %s", exc)
+            return extracted, []
+
+        tables = ((contract_doc.get("index") or {}).get("tables") or [])
+        groups = find_ladder_groups(extracted, tables)
+        if not groups:
+            return extracted, []
+
+        contract_id = str(contract_doc["_id"])
+        prompt = render_adjudication_prompt(groups, contract_name)
+        try:
+            # Each verdict carries a name, a banding dimension and a
+            # one-sentence reason. Budgeting 120 tokens per table truncated
+            # the response on a 13-table contract, and a truncated JSON body
+            # parses to {} -- which reads exactly like "no table was a
+            # ladder". Every ladder on the reference document was silently
+            # lost that way.
+            payload = self._query_kpi_llm_json(
+                prompt,
+                provider=provider,
+                max_tokens_override=min(6000, max(1200, len(groups) * 260)),
+            )
+        except Exception as exc:
+            logger.warning("Rate-ladder adjudication failed, keeping rows unrolled: %s", exc)
+            return extracted, [{
+                "table_id": group.table_id,
+                "rows": group.size,
+                "collapsed": False,
+                "reason": f"adjudication failed: {exc}",
+            } for group in groups]
+
+        decisions = parse_decisions(payload, groups)
+        if not decisions:
+            # Distinguishable in the log from "the model reviewed them and
+            # said no", which is the same shape but a different fact.
+            logger.warning(
+                "Rate-ladder adjudication returned no usable verdicts for %d table(s); "
+                "rows stay unrolled",
+                len(groups),
+            )
+        folded, trail = apply_ladders(
+            extracted, groups, decisions, contract_id=contract_id,
+        )
+        collapsed = [entry for entry in trail if entry.get("collapsed")]
+        if collapsed:
+            logger.info(
+                "Folded %d rate ladder(s) into tiered obligations: %s (%d records -> %d)",
+                len(collapsed),
+                ", ".join(f"{e['table_id']}={e['rows']} rows" for e in collapsed),
+                len(extracted),
+                len(folded),
+            )
+        else:
+            logger.info(
+                "Reviewed %d multi-row table(s); none were rate ladders", len(groups)
+            )
+        return folded, trail
+
     def _is_meaningful_kpi(self, item: Dict[str, Any]) -> bool:
         """Retain actionable obligations and measurements, not static references."""
         record_type = normalize_record_type(item.get("record_type") or item.get("kpi_type"))
@@ -2540,6 +2665,26 @@ class ContractKPIManager:
             pack_resolution.reason,
         )
 
+        table_row_count = sum(
+            1 for candidate in candidates if candidate.get("chunk_level") == "table_row"
+        )
+        self._step(
+            run_id,
+            "Read the document",
+            f"{len(candidates)} clauses, {table_row_count} of them table rows",
+        )
+        self._step(
+            run_id,
+            "Identified the contract type",
+            (
+                f"{pack_resolution.pack.id} (confidence {pack_resolution.confidence:.2f}) — "
+                f"{pack_resolution.reason}"
+                if pack_resolution.pack
+                else "no family pack matched; using the general baseline"
+            ),
+        )
+        self._step(run_id, "Extracting obligations", "reading each clause", state="running")
+
         extraction_method = "hybrid_llm"
         llm_error: Optional[str] = None
         ledger = ClauseLedger()
@@ -2593,10 +2738,42 @@ class ContractKPIManager:
         # Consolidation is deterministic and runs exactly once.  It used to run
         # three times per extraction, and each pass merges records, so repeats
         # compounded the loss without adding information.
+        self._step(
+            run_id,
+            "Extracted obligations",
+            f"{len(extracted)} records before consolidation",
+        )
         extracted = self._consolidate_and_group_kpis(extracted)
         extracted = self._reconcile_primary_measurements(extracted)
         extracted = self._reconcile_schedule_b_consequences(extracted)
         extracted = self._classify_record_roles(extracted)
+        # Rows were extracted one per row on purpose; folding them back into
+        # their ladder is a presentation decision made once, at the end, with
+        # the whole table visible.
+        self._step(
+            run_id,
+            "Reviewing rate tables",
+            "deciding which multi-row tables are one obligation with bands",
+            state="running",
+        )
+        before_fold = len(extracted)
+        extracted, ladder_trail = self._fold_rate_ladders(
+            extracted,
+            contract_doc=contract_doc,
+            contract_name=contract_name,
+            provider=provider,
+        )
+        folded_entries = [entry for entry in ladder_trail if entry.get("collapsed")]
+        if ladder_trail:
+            self._step(
+                run_id,
+                "Reviewed rate tables",
+                (
+                    f"{len(ladder_trail)} tables read · "
+                    f"{len(folded_entries)} folded into tiered obligations "
+                    f"({before_fold} records → {len(extracted)})"
+                ),
+            )
         coverage = self._build_extraction_coverage(candidates, extracted)
         clause_ledger = ledger.finalize()
         if clause_ledger["lost"]:
@@ -2699,11 +2876,7 @@ class ContractKPIManager:
                     "pack_confidence": pack_resolution.confidence,
                     "pack_reason": pack_resolution.reason,
                     "pack_origin": pack_resolution.pack.origin if pack_resolution.pack else None,
-                    # The repair loop's own account of what it attempted and what
-                    # that recovered. Computed since the loop shipped and kept
-                    # only on the instance, so the one record of the agent's
-                    # second pass died with the process.
-                    "repair_loop": getattr(self, "_last_repair_report", None),
+                    "rate_ladders": ladder_trail,
                     **self._meter_snapshot(),
                     "pack_reason": pack_resolution.reason,
                 }
@@ -5066,8 +5239,10 @@ class ContractKPIManager:
         # Stage 1 returns one boolean per clause — roughly 30 output tokens each —
         # so its batch size was never bound by the model, only by the old 8192
         # output cap that no longer applies. At 15 it cost 14 calls per contract
-        # for ~450 tokens of actual output each. At 100 it is ~3,000 output tokens per
-        # call against an 8192 cap, and costs 2 calls per contract.
+        # for ~450 tokens of actual output each. At 100 it is ~3,000 output tokens
+        # of verdicts per call, and costs 2 calls per contract. A reasoning model
+        # thinks on top of that — up to 15k tokens per batch on gemini-2.5-pro —
+        # so the call takes the provider's full extraction cap.
         batch_size = 100
         batches = [records[i:i + batch_size] for i in range(0, len(records), batch_size)]
         verified_records: List[Dict[str, Any]] = []
@@ -5092,7 +5267,14 @@ class ContractKPIManager:
             )
 
             try:
-                res = self._query_kpi_llm_json(prompt, provider=provider, max_tokens_override=8192)
+                # No override: the provider's extraction cap applies (8192 on
+                # Groq, EXTRACTION_MAX_TOKENS elsewhere). A fixed 8192 here was
+                # tuned for Groq and starved reasoning models — gemini-2.5-pro
+                # spent 6.2–7.2k of it thinking on the NHS Service Conditions,
+                # hit MAX_TOKENS on 4 of 5 batches, and kept 3 of 405 clauses.
+                # With the default cap the same batches finished at 9.3–18.1k
+                # tokens and kept 339.
+                res = self._query_kpi_llm_json(prompt, provider=provider)
                 cands = res.get("candidates") if isinstance(res, dict) else None
                 if isinstance(cands, list):
                     return [
@@ -5103,7 +5285,17 @@ class ContractKPIManager:
             except Exception as exc:
                 logger.warning("Stage 1 LLM candidate verification batch failed (fallback to keep): %s", exc)
                 return batch_records
-            return []
+            # No usable verdict list — truncated, unparseable or empty output.
+            # That is a failed call, not a verdict of "nothing here", so it fails
+            # open like the exception path above. Returning [] rejected the whole
+            # batch, and the ledger then reported every clause as declined.
+            logger.warning(
+                "Stage 1 candidate verification returned no usable verdicts for %d clauses "
+                "(provider %s); keeping the batch",
+                len(batch_records),
+                provider,
+            )
+            return batch_records
 
         max_workers = min(len(batches), 6) if len(batches) > 1 else 1
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -5283,191 +5475,6 @@ class ContractKPIManager:
 
         return rows, record_lookup, missing
 
-    def _run_repair_loop(
-        self,
-        extracted: List[Dict[str, Any]],
-        *,
-        candidates: List[Dict[str, Any]],
-        ledger: "ClauseLedger",
-        contract_name: str,
-        provider: str,
-        pack_block: str,
-        contract_id: str,
-        project_id: Optional[str],
-        user_id: str,
-        run_id: str,
-        pack_resolution: Optional["PackResolution"] = None,
-    ) -> List[Dict[str, Any]]:
-        """Drive the deficit loop and fold whatever it recovers back in."""
-        from services.obligation_loop import run_repair_loop
-
-        record_lookup = {
-            str(c.get("segment_id") or c.get("source_id")): c for c in candidates
-        }
-        # Only classes the pack says a register of this family must contain, and
-        # only those the pack still declares. Reading these off coverage.yaml
-        # alone used to raise a deficit for every required class on every run —
-        # no record carried `obligation_class`, so `present` was always empty.
-        required_classes: List[str] = []
-        if pack_resolution and pack_resolution.pack and pack_resolution.pack.classes:
-            declared = {c.id for c in pack_resolution.pack.classes}
-            required_classes = [
-                str(entry.get("id"))
-                for entry in (pack_resolution.pack.coverage.get("required_obligation_classes") or [])
-                if isinstance(entry, dict) and str(entry.get("id") or "") in declared
-            ]
-
-        def repair(deficit) -> List[Dict[str, Any]]:
-            rows = self._repair_deficit(
-                deficit,
-                candidates=candidates,
-                contract_name=contract_name,
-                provider=provider,
-                pack_block=pack_block,
-            )
-            recovered: List[Dict[str, Any]] = []
-            for row in rows:
-                item = self._kpi_from_llm_row(
-                    row=row,
-                    record_lookup=record_lookup,
-                    contract_id=contract_id,
-                    project_id=project_id,
-                    contract_name=contract_name,
-                    user_id=user_id,
-                    run_id=run_id,
-                    provider=provider,
-                    pack_resolution=pack_resolution,
-                )
-                if item:
-                    item["recovered_by_repair_loop"] = True
-                    recovered.append(item)
-                    if item.get("source_id"):
-                        ledger.mark_extracted([item["source_id"]])
-            return recovered
-
-        repaired, report = run_repair_loop(
-            records=extracted,
-            candidates=candidates,
-            unaccounted=ledger.pending_ids(),
-            repair=repair,
-            required_classes=required_classes,
-        )
-        if report.rounds:
-            logger.info(
-                "Repair loop: %d round(s), attempted %s, repaired %s, +%d records (%s)",
-                report.rounds,
-                report.attempted or "{}",
-                report.repaired or "{}",
-                report.added_records,
-                report.stopped_because,
-            )
-        self._last_repair_report = report.as_dict()
-        return repaired
-
-    def _repair_deficit(
-        self,
-        deficit: "Deficit",
-        *,
-        candidates: List[Dict[str, Any]],
-        contract_name: str,
-        provider: str,
-        pack_block: str,
-    ) -> List[Dict[str, Any]]:
-        """Perform one deficit's repair. The action differs by kind — that is the
-        whole point of the loop.
-
-        Sending the same prompt again is what the batch retry already does, and
-        it is measurably not enough: an output-budget failure reproduces
-        identically, and a table the model decided was not obligations gets
-        declined again row by row.
-        """
-        from services.obligation_loop import Deficit  # noqa: F401  (typing only)
-
-        by_source = {
-            str(c.get("segment_id") or c.get("source_id")): c for c in candidates
-        }
-
-        if deficit.kind == "empty_table":
-            # Re-present the table as a table, with its classification stated and
-            # a verdict demanded per row. The failure being repaired is one
-            # decision about the whole block, so the repair addresses the block:
-            # asking about six rows individually reproduces the same refusal six
-            # times.
-            rows = [by_source[s] for s in deficit.evidence.get("source_ids", []) if s in by_source]
-            if not rows:
-                return []
-            table_type = deficit.evidence.get("table_type") or "table"
-            caption = deficit.evidence.get("caption") or "Table"
-            prompt = (
-                f"{pack_block}\n\n" if pack_block else ""
-            ) + (
-                f"Contract: {contract_name}\n\n"
-                f"The rows below are one '{table_type}' table ({caption}) that produced no "
-                f"records. Each row is a separate line item.\n\n"
-                "For EVERY row return either a record, or a record with "
-                '"record_type": "no_obligation" and a one-line reason. A row stating that a '
-                "service is included, excluded, optional or provided at no charge is still a "
-                "commitment about what is owed; it is not automatically outside scope.\n\n"
-                "<ROWS>\n" + "\n".join(
-                    f"SOURCE_ID: {r.get('segment_id') or r.get('source_id')}\n{r.get('text') or ''}"
-                    for r in rows
-                ) + "\n</ROWS>\n\n"
-                'Return only JSON: {"records": [...]}'
-            )
-            return self._repair_rows_from_prompt(prompt, rows, provider)
-
-        if deficit.kind == "unanswered_clause":
-            # One clause, alone, with nothing competing for the output budget.
-            # The batch it died in cannot be the unit of repair: that batch is
-            # what exceeded the cap.
-            candidate = by_source.get(deficit.target)
-            if not candidate:
-                return []
-            prompt = (
-                f"{pack_block}\n\n" if pack_block else ""
-            ) + (
-                f"Contract: {contract_name}\n\n"
-                "This single clause was not answered in an earlier pass. Return a record for "
-                "it, or a record with \"record_type\": \"no_obligation\" and a one-line "
-                "reason.\n\n"
-                f"SOURCE_ID: {deficit.target}\n<CLAUSE>\n{candidate.get('text') or ''}\n</CLAUSE>\n\n"
-                'Return only JSON: {"records": [...]}'
-            )
-            return self._repair_rows_from_prompt(prompt, [candidate], provider)
-
-        if deficit.kind == "missing_class":
-            # The pack says this family contains a class the register has none
-            # of. Ask for that class specifically, pointing at where the pack
-            # says it hides, rather than re-reading everything.
-            return []
-
-        return []
-
-    def _repair_rows_from_prompt(
-        self,
-        prompt: str,
-        candidates: List[Dict[str, Any]],
-        provider: str,
-    ) -> List[Dict[str, Any]]:
-        """Run one repair prompt and return the usable rows it produced."""
-        payload = self._query_kpi_llm_json(prompt, provider=provider)
-        rows = payload.get("records") if isinstance(payload, dict) else None
-        if not isinstance(rows, list):
-            return []
-        recovered: List[Dict[str, Any]] = []
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            if isinstance(row.get("phase1"), dict):
-                row = {**row["phase1"], "phase1": row["phase1"]}
-            if str(row.get("record_type") or "").strip().lower() in self._NO_OBLIGATION_TYPES:
-                # An explicit decline is an answer. It resolves the deficit
-                # without adding a record, which is why the loop counts it.
-                continue
-            row.setdefault("_repaired", True)
-            recovered.append(row)
-        return recovered
-
     def _extract_kpis_with_llm(
         self,
         candidates: List[Dict[str, Any]],
@@ -5609,26 +5616,6 @@ class ContractKPIManager:
                             f"worker_error:{type(exc).__name__}",
                         )
                     logger.warning("Batch LLM extraction worker failed: %s", exc)
-
-        # ── Repair loop ────────────────────────────────────────────────────
-        # Runs before dedup and consolidation so recovered records go through
-        # the same collapse as everything else. Deficits are read from verified
-        # state — the ledger and per-table coverage — never from asking the
-        # model how it did.
-        if ledger is not None and getattr(settings, "enable_repair_loop", True):
-            extracted = self._run_repair_loop(
-                extracted,
-                candidates=records,
-                ledger=ledger,
-                contract_name=contract_name,
-                provider=provider,
-                pack_block=pack_block,
-                contract_id=contract_id,
-                project_id=project_id,
-                user_id=user_id,
-                run_id=run_id,
-                pack_resolution=pack_resolution,
-            )
 
         extracted = self._drop_renamed_duplicates(extracted)
         extracted = self._drop_duplicate_table_rows(extracted)
@@ -6047,7 +6034,22 @@ class ContractKPIManager:
                     block.get("text", "") if isinstance(block, dict) else str(block)
                     for block in content
                 )
-            return self._parse_json_object(str(content))
+            parsed = self._parse_json_object(str(content))
+            if not parsed:
+                # A response cut off by the output cap parses to {} and is
+                # otherwise indistinguishable from "the model found nothing".
+                metadata = getattr(result, "response_metadata", None) or {}
+                finish = str(metadata.get("finish_reason") or metadata.get("stop_reason") or "")
+                if finish.upper() in {"MAX_TOKENS", "LENGTH", "MAX_OUTPUT_TOKENS"}:
+                    usage = getattr(result, "usage_metadata", None) or {}
+                    logger.warning(
+                        "KPI LLM response truncated by the output cap (provider %s, finish %s, "
+                        "%s output tokens); returning no payload",
+                        provider,
+                        finish,
+                        usage.get("output_tokens"),
+                    )
+            return parsed
         except Exception as exc:
             logger.warning("Hybrid KPI LLM extraction failed with provider %s: %s", provider, exc)
         return {}

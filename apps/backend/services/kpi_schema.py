@@ -491,8 +491,19 @@ class KPISchemaV1toV2Migrator:
             rule = dict(v2_copy.get("rule") or {})
             spec = dict(rule.get("spec") or {})
 
+            # A folded rate ladder was assembled from N table rows, each with
+            # its own quote. Re-parsing one member's clause_text would find at
+            # most that row's own band and silently replace the whole ladder,
+            # so the stored schedule wins on these records.
+            was_folded = bool(
+                v2_copy.get("collapsed_from") or cattr.get("collapsed_from")
+            )
             # Always attempt a fresh parse so stale DB values are never shown
-            fresh_tiers = KPISchemaV1toV2Migrator._extract_tiers_from_clause(clause_text) if clause_text else []
+            fresh_tiers = (
+                []
+                if was_folded
+                else (KPISchemaV1toV2Migrator._extract_tiers_from_clause(clause_text) if clause_text else [])
+            )
             stale_tiers = spec.get("tiers") or v2_copy.get("target_schedule") or cattr.get("target_schedule") or []
             # Prefer fresh parse; fall back to stale only when fresh yields nothing
             tiers = fresh_tiers if fresh_tiers else stale_tiers
@@ -708,7 +719,9 @@ class KPISchemaV1toV2Migrator:
             "composite", "measurement", "recovery", "precondition", "cadence",
             "evidence_hypothesis", "workshop_input", "evidence_flags",
             "phase1", "phase2", "phase3", "phase4", "record_status",
-            "clause_ref", "source_evidence", "coverage"
+            "clause_ref", "source_evidence", "coverage",
+            "collapsed_from", "collapsed_row_count", "collapsed_table_id",
+            "collapsed_reason", "collapsed_dimension"
             ,"obligation", "obligation_action", "trigger", "scope", "acceptance_criteria",
             "dependencies", "exceptions", "dependency_status", "dependency_owner", "dependency_party_role",
             "trackability", "trackability_status", "schema_profile", "notes"
@@ -753,6 +766,16 @@ class KPISchemaV1toV2Migrator:
             "dependencies", "exceptions", "dependency_status", "dependency_owner", "dependency_party_role",
             "trackability", "trackability_status", "schema_profile", "notes",
             "tracking_readiness",
+            # run_id is listed in standard_v1_keys, so it is not swept into
+            # custom_attributes, and it was in no explicit v2 field either --
+            # every record written since the run trail shipped carried no run
+            # id at all, and the trail panel's "every record carries this run
+            # id" was false for all 86 of them.
+            "run_id",
+            # A folded rate ladder is one record standing in for N rows. The
+            # row ids are the only way back to what it replaced.
+            "collapsed_from", "collapsed_row_count", "collapsed_table_id",
+            "collapsed_reason", "collapsed_dimension",
         ):
             if phase_key in v1_doc:
                 v2_doc[phase_key] = v1_doc[phase_key]
@@ -897,7 +920,9 @@ def flatten_for_legacy_frontend(v2_doc: Dict[str, Any]) -> Dict[str, Any]:
         "composite", "measurement", "recovery", "precondition", "cadence",
         "evidence_hypothesis", "workshop_input", "evidence_flags",
         "phase1", "phase2", "phase3", "phase4", "record_status",
-        "clause_ref", "source_evidence", "coverage",
+        "clause_ref", "source_evidence", "coverage", "run_id",
+        "collapsed_from", "collapsed_row_count", "collapsed_table_id",
+        "collapsed_reason", "collapsed_dimension",
     ):
         if phase_key in v2_doc:
             flat_doc[phase_key] = v2_doc[phase_key]

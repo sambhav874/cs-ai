@@ -47,7 +47,6 @@ class Settings(BaseSettings):
     # The deficit repair loop. On by default: it only ever touches clauses the
     # ledger proved got no verdict, and tables that produced nothing, so its
     # cost scales with what actually failed rather than with document size.
-    enable_repair_loop: bool = Field(default=True, env="ENABLE_REPAIR_LOOP")
     temperature: float = Field(default=0.1, env="TEMPERATURE")
     top_p: float = Field(default=0.95, env="TOP_P")
     frequency_penalty: float = Field(default=1.15, env="FREQUENCY_PENALTY")

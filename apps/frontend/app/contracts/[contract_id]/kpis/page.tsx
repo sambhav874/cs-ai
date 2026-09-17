@@ -713,7 +713,30 @@ const formatKpiValue = (kpi: ContractKPI) => {
     ruleType === "lookup_table" ||
     tiers.length > 0
   ) {
-    return `Tiered schedule · ${tiers.length} tier${tiers.length === 1 ? "" : "s"}`;
+    // "Tiered schedule · 4 tiers" told a reader nothing they could act on.
+    // A folded ladder replaces four rows that each showed their own number,
+    // so the row has to carry the span those numbers covered.
+    const amounts = tiers
+      .map((tier) =>
+        toNumber(tier.value ?? tier.amount ?? tier.rate ?? tier.penalty_amount ?? tier.credit_pct),
+      )
+      .filter((n): n is number => n != null && Number.isFinite(n));
+    const currency =
+      (kpi as any).currency ||
+      (kpi as any).measurement?.currency ||
+      tiers.find((tier) => tier.currency)?.currency ||
+      "";
+    const bands = `${tiers.length} band${tiers.length === 1 ? "" : "s"}`;
+    if (amounts.length >= 2) {
+      const lo = Math.min(...amounts);
+      const hi = Math.max(...amounts);
+      const span =
+        lo === hi
+          ? lo.toLocaleString()
+          : `${lo.toLocaleString()}–${hi.toLocaleString()}`;
+      return `${span}${currency ? ` ${currency}` : ""} · ${bands}`;
+    }
+    return `Tiered schedule · ${bands}`;
   }
 
   const val =
@@ -1256,14 +1279,32 @@ type RunTrail = {
   model?: { provider?: string; name?: string | null; prompt_version?: string | null; method?: string | null };
   pack?: { family?: string | null; id?: string | null; version?: number | null; confidence?: number | null; why?: string | null; origin?: string | null };
   clauses?: { considered?: number; extracted?: number; declined?: number; unaccounted?: number; accounted_ratio?: number; why_unaccounted?: Record<string, number> | null };
-  repair_loop?: { rounds?: number; attempted?: Record<string, number>; repaired?: Record<string, number>; added_records?: number; stopped_because?: string } | null;
+  steps?: RunStep[];
   cost?: { llm_calls?: number | null; input_tokens?: number | null; output_tokens?: number | null };
+  rate_ladders?: Array<{
+    table_id?: string;
+    caption?: string;
+    table_type?: string;
+    rows?: number;
+    collapsed?: boolean;
+    name?: string;
+    dimension?: string;
+    reason?: string;
+  }>;
   obligations?: number;
   error?: string | null;
 };
 
+type RunStep = {
+  label?: string;
+  detail?: string;
+  state?: string;
+  at?: string | null;
+};
+
 type ExtractionStatus = {
   status: "not_run" | "queued" | "running" | "success" | "degraded" | "error";
+  steps?: RunStep[];
   count?: number | null;
   error?: string | null;
   pack_id?: string | null;
@@ -1832,6 +1873,32 @@ export default function ContractKpiManagementPage() {
     }
     return null;
   };
+
+  // Extraction is queued at ingestion, so a user can arrive on this page with a
+  // run already in flight that they never started here. Without this the steps
+  // only ever appeared for someone who pressed the button.
+  const extractionInFlight =
+    extractionStatus?.status === "queued" || extractionStatus?.status === "running";
+  useEffect(() => {
+    if (!apiUrl || !contractId || !extractionInFlight || isExtracting) return;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      const poll = await authenticatedFetch(
+        `${apiUrl}/contracts/${contractId}/kpis/extraction-status`,
+      );
+      if (cancelled || poll.error) return;
+      const next = (poll.data as ExtractionStatus) ?? null;
+      setExtractionStatus(next);
+      if (next && !["queued", "running"].includes(String(next.status))) {
+        void loadWorkspace({ showLoading: false });
+      }
+    }, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiUrl, contractId, extractionInFlight, isExtracting]);
 
   const extractKpis = async () => {
     if (!apiUrl) return;
@@ -2690,6 +2757,34 @@ export default function ContractKpiManagementPage() {
               </button>
             )}
           </div>
+
+          {/* The agent's own steps, written as it runs. A spinner says only
+              that something is happening; this says what, and the last line
+              is what it is doing right now. */}
+          {(extractionStatus.steps || []).length ? (
+            <ol className="mt-3 space-y-1.5 border-t border-current/15 pt-3">
+              {(extractionStatus.steps || []).map((step, stepIndex) => {
+                const running = step.state === "running";
+                return (
+                  <li key={`${step.label}-${stepIndex}`} className="flex items-start gap-2 text-xs">
+                    <span className="mt-[3px] shrink-0">
+                      {running ? (
+                        <span className="block h-2 w-2 animate-pulse rounded-full bg-current opacity-70" />
+                      ) : (
+                        <CheckCircle2 className="h-3 w-3" />
+                      )}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="font-medium">{step.label}</span>
+                      {step.detail ? (
+                        <span className="opacity-75"> — {step.detail}</span>
+                      ) : null}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : null}
         </div>
       ) : null}
 
@@ -3108,13 +3203,14 @@ function ExtractionTrail({ trail }: { trail: RunTrail }) {
   const pack = trail.pack || {};
   const model = trail.model || {};
   const cost = trail.cost || {};
-  const loop = trail.repair_loop;
+  const ladders = trail.rate_ladders || [];
+  const foldedLadders = ladders.filter((entry) => entry.collapsed);
   const considered = clauses.considered ?? 0;
   const pct = (n?: number) => (considered ? Math.round(((n ?? 0) / considered) * 100) : 0);
   const degraded = model.method === "deterministic_fallback";
 
   return (
-    <details className="mx-4 mb-4 rounded-lg border border-gray-200 bg-white md:mx-8" open={false}>
+    <details className="mx-4 mb-4 rounded-lg border border-gray-200 bg-white md:mx-8" open>
       <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-gray-900">
         How these obligations were extracted
         <span className="ml-2 font-normal text-gray-500">
@@ -3130,6 +3226,25 @@ function ExtractionTrail({ trail }: { trail: RunTrail }) {
             The model produced nothing usable on this contract, so these records came from a
             pattern scan. Review every one.
           </p>
+        ) : null}
+
+        {/* What the agent did, in the order it did it. Written during the run,
+            not reconstructed after it. */}
+        {(trail.steps || []).length ? (
+          <div>
+            <p className="mb-1.5 font-medium text-gray-900">What the agent did</p>
+            <ol className="space-y-1">
+              {(trail.steps || []).map((step, stepIndex) => (
+                <li key={`${step.label}-${stepIndex}`} className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-300" />
+                  <span className="min-w-0 text-gray-700">
+                    <span className="font-medium text-gray-900">{step.label}</span>
+                    {step.detail ? <span className="text-gray-500"> — {step.detail}</span> : null}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
         ) : null}
 
         {/* Every clause is accounted for: extracted, declined, or explicitly not
@@ -3160,17 +3275,60 @@ function ExtractionTrail({ trail }: { trail: RunTrail }) {
           ) : null}
         </div>
 
-        {loop && loop.rounds ? (
+        {/* The agent's own reading of every multi-row table. A rate card is one
+            obligation with bands or several unrelated charges, and nothing in
+            the row shape decides it — so the verdict and the reason are shown
+            for the tables it kept apart as well as the ones it folded. */}
+        {ladders.length ? (
           <div>
-            <p className="mb-1 font-medium text-gray-900">Second pass over what was missed</p>
-            <p className="text-gray-600">
-              {loop.rounds} round{loop.rounds === 1 ? "" : "s"}
-              {loop.repaired && Object.keys(loop.repaired).length
-                ? ` · recovered ${Object.entries(loop.repaired).map(([k, v]) => `${v} ${k.replace(/_/g, " ")}`).join(", ")}`
-                : " · recovered nothing"}
-              {loop.added_records ? ` · +${loop.added_records} records` : ""}
+            <p className="mb-1 font-medium text-gray-900">
+              Rate tables the agent read
+              <span className="ml-2 font-normal text-gray-500">
+                {foldedLadders.length} folded into tiered obligations ·{" "}
+                {ladders.length - foldedLadders.length} kept as separate records
+              </span>
             </p>
-            <p className="mt-0.5 text-gray-500">Stopped: {loop.stopped_because}</p>
+            <div className="mt-1.5 space-y-1">
+              {ladders.map((entry) => (
+                <div
+                  key={entry.table_id}
+                  className="flex items-start gap-2 rounded border border-gray-100 bg-gray-50 px-2.5 py-1.5"
+                >
+                  <span
+                    className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                      entry.collapsed
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-gray-200 text-gray-700"
+                    }`}
+                  >
+                    {entry.collapsed ? `${entry.rows} rows → 1` : `${entry.rows} kept`}
+                  </span>
+                  <span className="min-w-0 text-gray-700">
+                    <span className="font-mono text-[11px] text-gray-500">
+                      {entry.table_id}
+                    </span>
+                    {entry.table_type ? (
+                      <span className="text-gray-500"> · {entry.table_type}</span>
+                    ) : null}
+                    {entry.collapsed && entry.name ? (
+                      <>
+                        <br />
+                        <span className="font-medium text-gray-900">{entry.name}</span>
+                        {entry.dimension ? (
+                          <span className="text-gray-500"> — banded by {entry.dimension}</span>
+                        ) : null}
+                      </>
+                    ) : null}
+                    {entry.reason ? (
+                      <>
+                        <br />
+                        <span className="text-gray-500">{entry.reason}</span>
+                      </>
+                    ) : null}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
 
@@ -4023,6 +4181,17 @@ function ReviewPanel({
                         >
                           {tracked ? "Tracked" : "Deferred"}
                         </span>
+                        {Number((kpi as any).collapsed_row_count) > 1 && (
+                          <span
+                            className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800"
+                            title={
+                              (kpi as any).collapsed_reason ||
+                              "Rows of one rate table folded into a single tiered obligation"
+                            }
+                          >
+                            {(kpi as any).collapsed_row_count} rows folded
+                          </span>
+                        )}
                         {isKpiRecommended(kpi) && !tracked && (
                           <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-700">
                             Recommended

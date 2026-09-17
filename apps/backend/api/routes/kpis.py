@@ -796,8 +796,24 @@ def get_extraction_status(
     )
     check_contract_access(contract, current_user)
     obligations = contract.get("obligations") or {}
+    # The steps the agent has written so far. Polled while a run is in
+    # flight, so the page can show the work as it happens instead of a
+    # spinner and a count that appears at the end.
+    steps: List[Dict[str, Any]] = []
+    run = _kpi_manager().extraction_runs.find_one(
+        {"contract_id": contract_id}, sort=[("started_at", -1)], projection={"steps": 1, "run_id": 1}
+    )
+    if run:
+        for entry in run.get("steps") or []:
+            steps.append({
+                "label": entry.get("label"),
+                "detail": entry.get("detail"),
+                "state": entry.get("state"),
+                "at": entry.get("at").isoformat() if entry.get("at") else None,
+            })
     return {
         "contract_id": contract_id,
+        "steps": steps,
         # "not_run" rather than null: a contract ingested before automatic
         # extraction existed has genuinely never been through it, and saying so
         # is more useful than an absent field.
@@ -875,7 +891,18 @@ def get_extraction_run_trail(
             "accounted_ratio": ledger.get("accounted_ratio"),
             "why_unaccounted": ledger.get("lost_reasons"),
         },
-        "repair_loop": run.get("repair_loop"),
+        "steps": [
+            {
+                "label": entry.get("label"),
+                "detail": entry.get("detail"),
+                "state": entry.get("state"),
+                "at": entry.get("at").isoformat() if entry.get("at") else None,
+            }
+            for entry in (run.get("steps") or [])
+        ],
+        # What the agent did with each multi-row table: folded into one tiered
+        # obligation, or deliberately kept apart, with its reason either way.
+        "rate_ladders": run.get("rate_ladders") or [],
         "cost": {
             "llm_calls": run.get("llm_calls"),
             "input_tokens": run.get("llm_input_tokens"),
