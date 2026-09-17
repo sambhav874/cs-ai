@@ -1,0 +1,864 @@
+{
+  "contract_id": "full_eval_global_logistics",
+  "contract_file": "01_global_logistics_master_services_agreement.md",
+  "label_version": 2,
+  "labelled_on": "2026-09-07",
+  "status": "second_pass_unreviewed",
+  "provenance": "Enumerated by reading the contract end to end (v1, 68), then extended (v2, +17) by reviewing every grounded record from two different models that v1 did not cover and verifying each against the contract text. NOT independently reviewed by a second labeller. Known bias: the v2 additions were surfaced by model output, so an obligation that BOTH models and the original reading missed is still invisible here. Pure definitions and scope prose were deliberately excluded.",
+  "party_vocabulary": {
+    "supplier": "Northstar Freight & Fulfillment",
+    "client": "Titan Retail Group"
+  },
+  "obligations": [
+    {
+      "id": "L01",
+      "section": "2.01",
+      "party": "supplier",
+      "action": "route shipments through approved carriers",
+      "operator": ">=",
+      "threshold": 85,
+      "unit": "%",
+      "anchor": "85% of all monthly truckload"
+    },
+    {
+      "id": "L02",
+      "section": "2.01",
+      "party": "supplier",
+      "action": "not use carriers with impaired safety ratings",
+      "operator": null,
+      "threshold": null,
+      "unit": null,
+      "anchor": "safety rating is conditional"
+    },
+    {
+      "id": "L03",
+      "section": "2.03",
+      "party": "supplier",
+      "action": "identify missing trade documents before departure",
+      "operator": null,
+      "threshold": null,
+      "unit": null,
+      "anchor": "identify missing trade documents before departure"
+    },
+    {
+      "id": "L04",
+      "section": "2.04",
+      "party": "supplier",
+      "action": "use active telemetry on Critical Lanes",
+      "operator": null,
+      "threshold": null,
+      "unit": null,
+      "anchor": "active telemetry for Critical Lanes"
+    },
+    {
+      "id": "L05",
+      "section": "2.04",
+      "party": "supplier",
+      "action": "preserve telemetry records",
+      "operator": ">=",
+      "threshold": 7,
+      "unit": "years",
+      "anchor": "preserve telemetry records for seven years"
+    },
+    {
+      "id": "L06",
+      "section": "2.05",
+      "party": "supplier",
+      "action": "reconcile return authorization data",
+      "operator": "recurring",
+      "threshold": null,
+      "unit": "weekly",
+      "anchor": "reconciled weekly against Titan's order management"
+    },
+    {
+      "id": "L07",
+      "section": "3.01",
+      "party": "client",
+      "action": "pay monthly management fee",
+      "operator": "==",
+      "threshold": 450000,
+      "unit": "USD",
+      "anchor": "Monthly Management Fee | $450,000"
+    },
+    {
+      "id": "L08",
+      "section": "3.01",
+      "party": "client",
+      "action": "pay freight audit fee per shipment",
+      "operator": "==",
+      "threshold": 1.25,
+      "unit": "USD per shipment",
+      "anchor": "Freight Audit Fee | $1.25 per shipment"
+    },
+    {
+      "id": "L09",
+      "section": "3.01",
+      "party": "client",
+      "action": "pay cross-border document fee",
+      "operator": "==",
+      "threshold": 18.0,
+      "unit": "USD per border shipment",
+      "anchor": "$18.00 per border shipment"
+    },
+    {
+      "id": "L10",
+      "section": "3.01",
+      "party": "client",
+      "action": "pay cold chain monitoring fee",
+      "operator": "==",
+      "threshold": 22.0,
+      "unit": "USD per monitored shipment",
+      "anchor": "$22.00 per monitored shipment"
+    },
+    {
+      "id": "L11",
+      "section": "3.01",
+      "party": "client",
+      "action": "pay peak season control tower fee",
+      "operator": "==",
+      "threshold": 95000,
+      "unit": "USD per Peak Season month",
+      "anchor": "$95,000 per Peak Season month"
+    },
+    {
+      "id": "L12",
+      "section": "3.02",
+      "party": "supplier",
+      "action": "submit monthly invoices",
+      "operator": "no_later_than",
+      "threshold": 5,
+      "unit": "business days",
+      "anchor": "invoices by the fifth business day"
+    },
+    {
+      "id": "L13",
+      "section": "3.02",
+      "party": "client",
+      "action": "pay undisputed amounts",
+      "operator": "no_later_than",
+      "threshold": 30,
+      "unit": "days",
+      "anchor": "undisputed amounts within thirty days"
+    },
+    {
+      "id": "L14",
+      "section": "3.02",
+      "party": "mutual",
+      "action": "resolve disputed amounts",
+      "operator": "no_later_than",
+      "threshold": 15,
+      "unit": "business days",
+      "anchor": "resolved within fifteen business days"
+    },
+    {
+      "id": "L15",
+      "section": "3.03",
+      "party": "supplier",
+      "action": "not bill accessorials without time-stamped records and approved exception codes",
+      "operator": null,
+      "threshold": null,
+      "unit": null,
+      "anchor": "unless supported by time-stamped carrier records"
+    },
+    {
+      "id": "L16",
+      "section": "3.04",
+      "party": "mutual",
+      "action": "renegotiate rates when management fee exceeds benchmark median",
+      "operator": ">",
+      "threshold": 8,
+      "unit": "%",
+      "anchor": "more than 8% above benchmark median"
+    },
+    {
+      "id": "L17",
+      "section": "4.02",
+      "party": "supplier",
+      "action": "meet on-time pickup performance",
+      "operator": ">=",
+      "threshold": 98.0,
+      "unit": "%",
+      "anchor": "At least 98.0% on-time pickup"
+    },
+    {
+      "id": "L18",
+      "section": "4.02",
+      "party": "supplier",
+      "action": "pay tier 1 service credit per tenth below 96.5%",
+      "operator": "==",
+      "threshold": 3000,
+      "unit": "USD per tenth of a percentage point",
+      "anchor": "$3,000 per tenth of a percentage point below 96.5%"
+    },
+    {
+      "id": "L19",
+      "section": "4.02",
+      "party": "supplier",
+      "action": "pay tier 2 service credit per tenth below 94.0% and provide a corrective action plan",
+      "operator": "==",
+      "threshold": 7500,
+      "unit": "USD per tenth of a percentage point",
+      "anchor": "$7,500 per tenth of a percentage point below 94.0%"
+    },
+    {
+      "id": "L20",
+      "section": "4.03",
+      "party": "supplier",
+      "action": "meet on-time delivery performance",
+      "operator": ">=",
+      "threshold": 97.5,
+      "unit": "%",
+      "anchor": "At least 97.5% on-time delivery"
+    },
+    {
+      "id": "L21",
+      "section": "4.03",
+      "party": "supplier",
+      "action": "meet Critical Lane on-time delivery",
+      "operator": ">=",
+      "threshold": 99.0,
+      "unit": "%",
+      "anchor": "At least 99.0% on-time delivery for Critical Lanes"
+    },
+    {
+      "id": "L22",
+      "section": "4.03",
+      "party": "supplier",
+      "action": "pay standard shipment credit in the 95.0-97.49% band",
+      "operator": "==",
+      "threshold": 4000,
+      "unit": "USD per tenth",
+      "anchor": "$4,000 per tenth below 97.5%"
+    },
+    {
+      "id": "L23",
+      "section": "4.03",
+      "party": "supplier",
+      "action": "pay standard shipment credit below 95.0%",
+      "operator": "==",
+      "threshold": 9000,
+      "unit": "USD per tenth",
+      "anchor": "$9,000 per tenth below 95.0%"
+    },
+    {
+      "id": "L24",
+      "section": "4.03",
+      "party": "supplier",
+      "action": "pay Critical Lane credit in the 97.0-98.99% band",
+      "operator": "==",
+      "threshold": 15000,
+      "unit": "USD per tenth",
+      "anchor": "$15,000 per tenth below 99.0%"
+    },
+    {
+      "id": "L25",
+      "section": "4.03",
+      "party": "supplier",
+      "action": "pay Critical Lane credit below 97.0% plus executive review",
+      "operator": "==",
+      "threshold": 30000,
+      "unit": "USD per tenth",
+      "anchor": "$30,000 per tenth below 97.0%"
+    },
+    {
+      "id": "L26",
+      "section": "4.04",
+      "party": "supplier",
+      "action": "transmit EDI 214 status messages on time",
+      "operator": ">=",
+      "threshold": 99.2,
+      "unit": "%",
+      "anchor": "99.2% timely EDI 214"
+    },
+    {
+      "id": "L27",
+      "section": "4.04",
+      "party": "supplier",
+      "action": "pay per late or missing EDI 214 message after 20 monthly exceptions",
+      "operator": "==",
+      "threshold": 250,
+      "unit": "USD per message",
+      "anchor": "$250 per late or missing required EDI 214"
+    },
+    {
+      "id": "L28",
+      "section": "4.04",
+      "party": "supplier",
+      "action": "pay data integrity credit when monthly performance falls below 96.0%",
+      "operator": "==",
+      "threshold": 35000,
+      "unit": "USD",
+      "anchor": "$35,000 data integrity credit"
+    },
+    {
+      "id": "L29",
+      "section": "4.05",
+      "party": "supplier",
+      "action": "keep damaged or lost units within limit",
+      "operator": "<=",
+      "threshold": 0.15,
+      "unit": "%",
+      "anchor": "No more than 0.15% damaged or lost"
+    },
+    {
+      "id": "L30",
+      "section": "4.05",
+      "party": "supplier",
+      "action": "credit per 0.01% above the damage threshold",
+      "operator": "==",
+      "threshold": 12500,
+      "unit": "USD",
+      "anchor": "each 0.01% above 0.15%, Northstar shall credit $12,500"
+    },
+    {
+      "id": "L31",
+      "section": "4.06",
+      "party": "supplier",
+      "action": "meet customs document accuracy",
+      "operator": ">=",
+      "threshold": 99.5,
+      "unit": "%",
+      "anchor": "99.5% document accuracy"
+    },
+    {
+      "id": "L32",
+      "section": "4.06",
+      "party": "supplier",
+      "action": "pay per shipment delayed over four hours by document error",
+      "operator": "==",
+      "threshold": 1000,
+      "unit": "USD per shipment",
+      "anchor": "$1,000 for each shipment delayed more than four hours"
+    },
+    {
+      "id": "L33",
+      "section": "4.06",
+      "party": "supplier",
+      "action": "pay per shipment held over twenty-four hours",
+      "operator": "==",
+      "threshold": 10000,
+      "unit": "USD per shipment",
+      "anchor": "$10,000 for each shipment held more than twenty-four hours"
+    },
+    {
+      "id": "L34",
+      "section": "4.07",
+      "party": "supplier",
+      "action": "meet no-excursion rate for cold chain shipments",
+      "operator": ">=",
+      "threshold": 99.8,
+      "unit": "%",
+      "anchor": "99.8% no-excursion rate"
+    },
+    {
+      "id": "L35",
+      "section": "4.07",
+      "party": "supplier",
+      "action": "pay per excursion event plus replacement cost",
+      "operator": "==",
+      "threshold": 5000,
+      "unit": "USD per event",
+      "anchor": "$5,000 per Excursion Event"
+    },
+    {
+      "id": "L36",
+      "section": "4.08",
+      "party": "supplier",
+      "action": "meet carrier acceptance rate",
+      "operator": ">=",
+      "threshold": 98.5,
+      "unit": "%",
+      "anchor": "98.5% carrier acceptance"
+    },
+    {
+      "id": "L37",
+      "section": "4.08",
+      "party": "supplier",
+      "action": "pay per percentage point below the carrier acceptance target",
+      "operator": "==",
+      "threshold": 2500,
+      "unit": "USD per percentage point",
+      "anchor": "$2,500 per percentage point below 98.5%"
+    },
+    {
+      "id": "L38",
+      "section": "4.09",
+      "party": "supplier",
+      "action": "provide documented recovery plans for exceptions",
+      "operator": ">=",
+      "threshold": 95.0,
+      "unit": "%",
+      "anchor": "95.0% of exceptions have timely recovery plans"
+    },
+    {
+      "id": "L39",
+      "section": "4.09",
+      "party": "supplier",
+      "action": "pay per exception without a timely plan",
+      "operator": "==",
+      "threshold": 500,
+      "unit": "USD per exception",
+      "anchor": "$500 per exception without a timely plan"
+    },
+    {
+      "id": "L40",
+      "section": "5.01",
+      "party": "supplier",
+      "action": "submit daily control tower report",
+      "operator": "no_later_than",
+      "threshold": null,
+      "unit": "8:00 AM Central Time",
+      "anchor": "daily control tower report by 8:00 AM Central"
+    },
+    {
+      "id": "L41",
+      "section": "5.02",
+      "party": "supplier",
+      "action": "submit weekly trend report",
+      "operator": "no_later_than",
+      "threshold": null,
+      "unit": "Monday 12:00 PM Central Time",
+      "anchor": "Every Monday by 12:00 PM Central"
+    },
+    {
+      "id": "L42",
+      "section": "5.03",
+      "party": "supplier",
+      "action": "conduct monthly business review",
+      "operator": "no_later_than",
+      "threshold": 10,
+      "unit": "business days",
+      "anchor": "monthly business review by the tenth business day"
+    },
+    {
+      "id": "L43",
+      "section": "5.04",
+      "party": "mutual",
+      "action": "hold quarterly executive review",
+      "operator": "recurring",
+      "threshold": null,
+      "unit": "quarterly",
+      "anchor": "Each quarter, senior executives from both Parties"
+    },
+    {
+      "id": "L44",
+      "section": "5.05",
+      "party": "client",
+      "action": "audit records on notice",
+      "operator": ">=",
+      "threshold": 10,
+      "unit": "business days",
+      "anchor": "on ten business days' notice"
+    },
+    {
+      "id": "L45",
+      "section": "5.05",
+      "party": "supplier",
+      "action": "retain records after expiration or termination",
+      "operator": ">=",
+      "threshold": 7,
+      "unit": "years",
+      "anchor": "retain records for seven years"
+    },
+    {
+      "id": "L46",
+      "section": "6.01",
+      "party": "supplier",
+      "action": "provide root cause analysis when a corrective action plan is triggered",
+      "operator": "no_later_than",
+      "threshold": 5,
+      "unit": "business days",
+      "anchor": "root cause analysis within five business days"
+    },
+    {
+      "id": "L47",
+      "section": "6.01",
+      "party": "supplier",
+      "action": "provide corrective actions",
+      "operator": "no_later_than",
+      "threshold": 10,
+      "unit": "business days",
+      "anchor": "corrective actions within ten business days"
+    },
+    {
+      "id": "L48",
+      "section": "6.02",
+      "party": "supplier",
+      "action": "aggregate monthly service credits are capped",
+      "operator": "<=",
+      "threshold": 18,
+      "unit": "% of monthly management fees",
+      "anchor": "capped at 18% of monthly management fees"
+    },
+    {
+      "id": "L49",
+      "section": "6.03",
+      "party": "client",
+      "action": "pay quarterly bonus when all KPIs meet target and cost per shipment improves",
+      "operator": "<=",
+      "threshold": 75000,
+      "unit": "USD",
+      "anchor": "quarterly bonus of up to $75,000"
+    },
+    {
+      "id": "L50",
+      "section": "7.01",
+      "party": "supplier",
+      "action": "maintain SOC 2 Type II controls, MFA, encryption, scanning and penetration testing",
+      "operator": null,
+      "threshold": null,
+      "unit": null,
+      "anchor": "SOC 2 Type II controls"
+    },
+    {
+      "id": "L51",
+      "section": "7.02",
+      "party": "supplier",
+      "action": "notify of unauthorized access",
+      "operator": "no_later_than",
+      "threshold": 4,
+      "unit": "hours",
+      "anchor": "notify Titan within four hours"
+    },
+    {
+      "id": "L52",
+      "section": "7.02",
+      "party": "supplier",
+      "action": "submit written incident report",
+      "operator": "no_later_than",
+      "threshold": 72,
+      "unit": "hours",
+      "anchor": "written incident report is due within seventy-two hours"
+    },
+    {
+      "id": "L53",
+      "section": "7.03",
+      "party": "supplier",
+      "action": "not sell, train external models on, benchmark with, or disclose Titan data",
+      "operator": null,
+      "threshold": null,
+      "unit": null,
+      "anchor": "may not sell, train external models on"
+    },
+    {
+      "id": "L54",
+      "section": "8.01",
+      "party": "supplier",
+      "action": "maintain commercial general liability insurance",
+      "operator": ">=",
+      "threshold": 5000000,
+      "unit": "USD per occurrence",
+      "anchor": "commercial general liability of $5,000,000"
+    },
+    {
+      "id": "L55",
+      "section": "8.01",
+      "party": "supplier",
+      "action": "maintain cargo liability insurance",
+      "operator": ">=",
+      "threshold": 10000000,
+      "unit": "USD per shipment",
+      "anchor": "cargo liability of $10,000,000"
+    },
+    {
+      "id": "L56",
+      "section": "8.01",
+      "party": "supplier",
+      "action": "maintain cyber liability insurance",
+      "operator": ">=",
+      "threshold": 10000000,
+      "unit": "USD",
+      "anchor": "cyber liability of $10,000,000"
+    },
+    {
+      "id": "L57",
+      "section": "8.02",
+      "party": "supplier",
+      "action": "indemnify against third-party claims",
+      "operator": null,
+      "threshold": null,
+      "unit": null,
+      "anchor": "shall indemnify Titan against third-party claims"
+    },
+    {
+      "id": "L58",
+      "section": "9.01",
+      "party": "client",
+      "action": "terminate for three material service failures in a rolling six-month period",
+      "operator": ">=",
+      "threshold": 3,
+      "unit": "failures",
+      "anchor": "Three Material Service Failures in any rolling six-month"
+    },
+    {
+      "id": "L59",
+      "section": "9.01",
+      "party": "client",
+      "action": "terminate when on-time delivery falls below threshold in two months",
+      "operator": "<",
+      "threshold": 92.0,
+      "unit": "%",
+      "anchor": "below 92.0% in any two months"
+    },
+    {
+      "id": "L60",
+      "section": "9.01",
+      "party": "client",
+      "action": "terminate when Critical Lane delivery falls below threshold",
+      "operator": "<",
+      "threshold": 95.0,
+      "unit": "%",
+      "anchor": "Critical Lane On-Time Delivery below 95.0%"
+    },
+    {
+      "id": "L61",
+      "section": "9.01",
+      "party": "client",
+      "action": "terminate when aggregate monthly service credits exceed the cap in consecutive months",
+      "operator": ">",
+      "threshold": 300000,
+      "unit": "USD",
+      "anchor": "Service Credits exceeding $300,000 in two consecutive months"
+    },
+    {
+      "id": "L62",
+      "section": "9.01",
+      "party": "supplier",
+      "action": "cure material breach after written notice",
+      "operator": "no_later_than",
+      "threshold": 30,
+      "unit": "days",
+      "anchor": "Material breach uncured thirty days"
+    },
+    {
+      "id": "L63",
+      "section": "9.02",
+      "party": "client",
+      "action": "terminate for convenience on notice",
+      "operator": ">=",
+      "threshold": 180,
+      "unit": "days",
+      "anchor": "terminate for convenience on 180 days"
+    },
+    {
+      "id": "L64",
+      "section": "9.02",
+      "party": "supplier",
+      "action": "terminate for convenience after the initial term on notice",
+      "operator": ">=",
+      "threshold": 365,
+      "unit": "days",
+      "anchor": "on 365 days' written notice"
+    },
+    {
+      "id": "L65",
+      "section": "9.03",
+      "party": "supplier",
+      "action": "provide transition assistance",
+      "operator": "<=",
+      "threshold": 180,
+      "unit": "days",
+      "anchor": "up to 180 days of transition assistance"
+    },
+    {
+      "id": "L66",
+      "section": "10.01",
+      "party": "mutual",
+      "action": "escalate disputes to vice presidents",
+      "operator": "no_later_than",
+      "threshold": 5,
+      "unit": "business days",
+      "anchor": "vice presidents within five business days"
+    },
+    {
+      "id": "L67",
+      "section": "10.01",
+      "party": "mutual",
+      "action": "escalate disputes to executive sponsors",
+      "operator": "no_later_than",
+      "threshold": 10,
+      "unit": "business days",
+      "anchor": "executive sponsors within ten business days"
+    },
+    {
+      "id": "L68",
+      "section": "10.02",
+      "party": "mutual",
+      "action": "maintain confidentiality after termination",
+      "operator": ">=",
+      "threshold": 5,
+      "unit": "years",
+      "anchor": "obligations survive for five years"
+    },
+    {
+      "id": "L69",
+      "section": "2.02",
+      "party": "supplier",
+      "action": "coordinate pickup appointment availability with Titan distribution centres",
+      "operator": null,
+      "threshold": null,
+      "unit": null,
+      "anchor": "coordinate pickup appointment availability with Titan distribution centers"
+    },
+    {
+      "id": "L70",
+      "section": "2.02",
+      "party": "supplier",
+      "action": "maintain carrier appointment compliance, check-in readiness and detention tracking",
+      "operator": null,
+      "threshold": null,
+      "unit": null,
+      "anchor": "responsible for carrier appointment compliance"
+    },
+    {
+      "id": "L71",
+      "section": "2.06",
+      "party": "supplier",
+      "action": "integrate with Titan's source systems",
+      "operator": null,
+      "threshold": null,
+      "unit": null,
+      "anchor": "integrate with Titan"
+    },
+    {
+      "id": "L72",
+      "section": "1.02",
+      "party": "client",
+      "action": "designate a promotional event as Peak Season on advance notice",
+      "operator": ">=",
+      "threshold": 30,
+      "unit": "days",
+      "anchor": "designated by Titan at least thirty days in advance"
+    },
+    {
+      "id": "L73",
+      "section": "1.02",
+      "party": "mutual",
+      "action": "treat penalties above the threshold in a month as a Material Service Failure",
+      "operator": ">",
+      "threshold": 25000,
+      "unit": "USD",
+      "anchor": "penalties exceeding $25,000 in a calendar month"
+    },
+    {
+      "id": "L74",
+      "section": "1.01",
+      "party": "client",
+      "action": "exercise renewal option on written notice before expiration",
+      "operator": ">=",
+      "threshold": 120,
+      "unit": "days",
+      "anchor": "120 days before expiration"
+    },
+    {
+      "id": "L75",
+      "section": "3.04",
+      "party": "client",
+      "action": "benchmark rates against recognised logistics benchmarks",
+      "operator": "recurring",
+      "threshold": 1,
+      "unit": "times per calendar year",
+      "anchor": "Once per calendar year, Titan may benchmark rates"
+    },
+    {
+      "id": "L76",
+      "section": "4.02",
+      "party": "supplier",
+      "action": "score at or above the top performance band to qualify for the bonus pool",
+      "operator": ">=",
+      "threshold": 99.0,
+      "unit": "%",
+      "anchor": "99.0% or higher | 110 | Eligible for quarterly bonus pool"
+    },
+    {
+      "id": "L77",
+      "section": "4.02",
+      "party": "supplier",
+      "action": "receive a warning and root cause summary in the 96.5-97.99% band",
+      "operator": null,
+      "threshold": 75,
+      "unit": "score",
+      "anchor": "96.5% to 97.99% | 75 | Warning and root cause summary"
+    },
+    {
+      "id": "L78",
+      "section": "4.03",
+      "party": "supplier",
+      "action": "hold daily executive calls after three missed Critical Lane deliveries in a rolling seven-day period",
+      "operator": ">=",
+      "threshold": 3,
+      "unit": "deliveries",
+      "anchor": "rolling seven-day period trigger immediate daily executive calls"
+    },
+    {
+      "id": "L79",
+      "section": "6.01",
+      "party": "supplier",
+      "action": "provide weekly progress updates until corrective action closure",
+      "operator": "recurring",
+      "threshold": null,
+      "unit": "weekly",
+      "anchor": "weekly progress updates until closure"
+    },
+    {
+      "id": "L80",
+      "section": "7.01",
+      "party": "supplier",
+      "action": "perform annual penetration testing",
+      "operator": "recurring",
+      "threshold": 1,
+      "unit": "per year",
+      "anchor": "annual penetration testing"
+    },
+    {
+      "id": "L81",
+      "section": "7.01",
+      "party": "supplier",
+      "action": "perform quarterly vulnerability scanning",
+      "operator": "recurring",
+      "threshold": 1,
+      "unit": "per quarter",
+      "anchor": "quarterly vulnerability scanning"
+    },
+    {
+      "id": "L82",
+      "section": "8.01",
+      "party": "supplier",
+      "action": "maintain auto liability insurance",
+      "operator": ">=",
+      "threshold": 5000000,
+      "unit": "USD combined single limit",
+      "anchor": "auto liability of $5,000,000"
+    },
+    {
+      "id": "L83",
+      "section": "10.03",
+      "party": "mutual",
+      "action": "force majeure does not excuse payment, reporting, data security or mitigation duties",
+      "operator": null,
+      "threshold": null,
+      "unit": null,
+      "anchor": "does not excuse payment, reporting, data security"
+    },
+    {
+      "id": "L84",
+      "section": "10.04",
+      "party": "mutual",
+      "action": "send formal notices by email and overnight courier",
+      "operator": null,
+      "threshold": null,
+      "unit": null,
+      "anchor": "email and overnight courier"
+    },
+    {
+      "id": "L85",
+      "section": "1.02",
+      "party": "supplier",
+      "action": "treat a temperature reading outside range beyond the limit as an Excursion Event",
+      "operator": ">",
+      "threshold": 15,
+      "unit": "consecutive minutes",
+      "anchor": "more than fifteen consecutive minutes"
+    }
+  ]
+}

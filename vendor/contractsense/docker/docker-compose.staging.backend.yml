@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  backend:
+    image: fastapi-backend:staging
+    container_name: backend-staging
+    ports:
+      - "8001:8001"  # Different port for staging to avoid conflicts
+    volumes:
+      - ./apps/backend:/app/backend
+      - ./demo_data:/demo_data:ro
+    env_file:
+      - ./apps/backend/.env.staging  # Staging-specific environment variables
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - DEMO_DATA_DIR=/demo_data
+    networks:
+      - backend-network
+
+networks:
+  backend-network:
+    driver: bridge

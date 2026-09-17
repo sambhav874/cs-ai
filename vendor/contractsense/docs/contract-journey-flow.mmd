@@ -1,0 +1,68 @@
+graph TD
+  A["1. User uploads contract PDF"] --> B["2. Frontend sends file, auth token, owner/team, project"]
+  B --> C["3. Backend validates JWT, PDF type, file size, and page count"]
+  C --> D{"Valid upload?"}
+  D -->|"No"| E["Reject upload with error"]
+  D -->|"Yes"| F["Resolve ownership: personal user or team account"]
+  F --> G["Resolve or create project context"]
+  G --> H["Store PDF in MongoDB GridFS"]
+  H --> I["Create contract record with status: Uploaded"]
+  I --> J["Deduct page credits from user or team owner"]
+  J --> K{"Enough credits?"}
+  K -->|"No"| L["Block ingestion and keep contract Uploaded with credit error"]
+  K -->|"Yes"| M["Queue indexing job in Celery"]
+  M --> N["Contract status becomes Indexing"]
+  N --> O["Frontend opens WebSocket job subscription"]
+
+  O --> P["Celery worker reads PDF from GridFS"]
+  P --> Q["Worker extracts markdown using Marker, local Marker, or LiteParse"]
+  Q --> QA{"Extraction succeeded?"}
+  QA -->|"No"| EB["Mark job failed and contract as Index Error"]
+  QA -->|"Yes"| R["Sanitize extracted contract text"]
+  R --> S["Segment legal text into chunks"]
+  S --> T["Generate embeddings with VoyageAI or OpenAI"]
+  T --> TA{"Embedding succeeded?"}
+  TA -->|"No"| EB
+  TA -->|"Yes"| U["Store vectors in MongoDB Atlas Vector Search or Pinecone"]
+  U --> V["Save markdown, HTML, parser metadata, vector namespace"]
+  V --> W["Job status completed"]
+  W --> X["Contract becomes Indexed and searchable"]
+  W --> Y["WebSocket sends final progress update"]
+
+  X --> Z{"What does the user do next?"}
+
+  Z -->|"Ask questions"| AA["Open contract agent chat"]
+  AA --> AB["Agent checks access and indexed status"]
+  AB --> AC["Load conversation memory, project docs, KPIs, and visible UI context"]
+  AC --> AD["Search vector evidence and scoped MongoDB data"]
+  AD --> AE["LLM generates cited answer, trace, confidence, and cost"]
+  AE --> AF{"Side effect requested?"}
+  AF -->|"No"| AG["Show answer and citations in UI"]
+  AF -->|"Yes"| AH["Create approval request for draft, redline, DOCX, tabular review, or edit"]
+  AH --> AI{"User approves?"}
+  AI -->|"No"| AJ["Mark workflow rejected and keep source contract unchanged"]
+  AI -->|"Yes"| AK["Generate approved artifact or tracked-edit document"]
+  AK --> AL["Store artifact versions in MongoDB/GridFS"]
+  AL --> AM["User downloads, edits, accepts, rejects, or replicates artifact"]
+
+  Z -->|"Extract KPIs"| BA["Run KPI extraction from indexed contract text"]
+  BA --> BB["Create draft KPI register: obligations, SLAs, penalties, dates, thresholds"]
+  BB --> BC["User reviews, edits, certifies, or rejects KPIs"]
+  BC --> BD["User configures KPI source: file, API, webhook, or connector"]
+  BD --> BE["Manual fetch, webhook, or scheduled Celery beat pulls KPI actuals"]
+  BE --> BF["Evaluate actuals against KPI rules"]
+  BF --> BG["Store KPI actuals and breach/remediation state"]
+  BG --> BH["Dashboard shows KPI health and breach alerts"]
+
+  Z -->|"Review contract"| CA["Assign workflow roles: editor and approver"]
+  CA --> CB["Editor saves draft or submits for approval"]
+  CB --> CC{"Approver decision"}
+  CC -->|"Approve"| CD["Contract status moves toward Completed"]
+  CC -->|"Reject"| CE["Contract returns for edits with rejection reason"]
+  CC -->|"Request re-edit"| CF["Re-edit approval path starts"]
+
+  Z -->|"Generate reports"| DA["Generate basic or advanced report from selected documents"]
+  DA --> DB["Backend compiles report data from indexed contracts"]
+  DB --> DC["Return generated document/report to frontend"]
+
+  EB --> EC["User can inspect status and retry ingestion/reprocess"]

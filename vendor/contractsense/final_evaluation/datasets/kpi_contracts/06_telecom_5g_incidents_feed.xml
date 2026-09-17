@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<incident_telemetry_feed>
+  <event>
+    <kpi_id>KPI-TEL-08</kpi_id>
+    <kpi_name>Cyber Threat Containment Time</kpi_name>
+    <actual_value>11.5</actual_value>
+    <unit>min</unit>
+    <period>2028-01</period>
+    <timestamp>2028-01-31T23:59:59Z</timestamp>
+    <source_record_id>XML-INC-001</source_record_id>
+  </event>
+  <event>
+    <kpi_id>KPI-TEL-09</kpi_id>
+    <kpi_name>Severity 1 Incident MTTR</kpi_name>
+    <actual_value>12.0</actual_value>
+    <unit>min</unit>
+    <period>2028-01</period>
+    <timestamp>2028-01-31T23:59:59Z</timestamp>
+    <source_record_id>XML-INC-002</source_record_id>
+  </event>
+  <event>
+    <kpi_id>KPI-TEL-10</kpi_id>
+    <kpi_name>Severity 2 Incident MTTR</kpi_name>
+    <actual_value>38.5</actual_value>
+    <unit>min</unit>
+    <period>2028-01</period>
+    <timestamp>2028-01-31T23:59:59Z</timestamp>
+    <source_record_id>XML-INC-003</source_record_id>
+  </event>
+</incident_telemetry_feed>

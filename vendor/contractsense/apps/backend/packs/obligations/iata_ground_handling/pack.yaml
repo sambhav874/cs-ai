@@ -1,0 +1,165 @@
+id: iata_ground_handling
+version: 1
+display_name: IATA Standard Ground Handling Agreement (AHM 810 / SGHA)
+extends: _base
+fixture: sample_projects/corpus/ground_truth.json
+
+match:
+  # Both vocabularies: an SGHA calls the supplier "Handler" or "Handling
+  # Company" and the client "Airline" or "Carrier" depending on the drafter, and
+  # the family's own documents in this repo disagree with each other. Deliberately
+  # excludes "station", "carrier" and "annex a" — all three are common in
+  # logistics and transit contracts, which is where this pack would misfire.
+  title_patterns: ["ground handling agreement", "standard ground handling", "sgha", "annex b"]
+  body_markers: ["ground handling", "handler", "airline", "aircraft", "turnaround",
+                 "sgha", "ahm 810", "on-chocks", "off-blocks", "handling company",
+                 "ramp services", "pushback", "de-icing", "mtow", "load sheet",
+                 "ground power", "annex b"]
+  structure: ["annex_b_rate_schedule", "sgha_reference_column", "mtow_banded_pricing"]
+
+budget:
+  # 1800 dropped sweep.md — the file carrying this family's scatter
+  # patterns, and the reason the pack exists. Shipping a pack whose
+  # highest-value section never renders costs more than the tokens do.
+  max_context_tokens: 2400
+
+classes:
+  - id: turnaround_rate
+    label: Turnaround charge
+    modality: obligation
+    party: client
+    carries_measurement: true
+    description: >
+      A fixed charge per turnaround, banded by aircraft type or MTOW. One record
+      per band; the band is the scope, not part of the price.
+    expect: "one record per band in the tiered pricing and package tables"
+  - id: per_unit_service_rate
+    label: Per-unit service rate
+    modality: obligation
+    party: client
+    carries_measurement: true
+    description: >
+      A rate keyed to a unit — per hour, per attempt, per operation, per flight,
+      per litre, per application. The bulk of Annex B. One record per row.
+    expect: "one record per rate row, each carrying its own currency and basis"
+  - id: nil_charge_service
+    label: Service at no charge
+    modality: obligation
+    party: supplier
+    carries_measurement: false
+    description: >
+      A service listed FREE, at cost, centralized or on request. A duty to
+      provide at no charge is still a duty, and a number-hunting pass drops it.
+    expect: ">=1 record for each FREE / at-cost / on-request line"
+  - id: labour_rate_matrix
+    label: Labour rate matrix
+    modality: obligation
+    party: client
+    carries_measurement: true
+    description: >
+      Hourly rates by position multiplied by shift class (straight, overtime,
+      holiday). One record per position with the multipliers as components.
+    expect: "one record per position, multipliers preserved"
+  - id: pass_through_disbursement
+    label: Pass-through disbursement
+    modality: obligation
+    party: client
+    carries_measurement: true
+    description: >
+      A third-party fee the handler outlays and rebills, often with an
+      administration percentage on top and a named billing entity.
+    expect: ">=1 record; currency read from the row, not from the document"
+  - id: conditional_charge_rule
+    label: Conditional charge
+    modality: obligation
+    party: client
+    carries_measurement: true
+    description: >
+      A rate that varies with circumstance — technical landing at a percentage
+      of the standard rate, ramp return with or without load change, fluid type.
+      Carries a condition, not only an amount.
+  - id: scope_inclusion_or_exclusion
+    label: Scope inclusion or exclusion
+    modality: permission
+    party: mutual
+    carries_measurement: false
+    description: >
+      Which Annex A sections a rate covers and what is billed separately. Stated
+      as Included, Excluded or Optional with no number anywhere. Governs every
+      rate record around it.
+    expect: "one record per row of the scope and services matrix"
+  - id: service_level_target
+    label: Service level target
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      A time or percentage against a stated measurement window — per turnaround,
+      monthly, calendar year. Includes zero targets; a zero is a threshold.
+    expect: "one record per metric, measurement window preserved"
+  - id: service_credit_for_breach
+    label: Service credit for breach
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      A credit keyed to a described breach, stated in a table separate from the
+      targets it punishes. Link it to the target it belongs to.
+    expect: "one record per breach row, linked to its target"
+  - id: staffing_minimum
+    label: Staffing minimum
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      Minimum manning per turnaround or a dedicated station allocation, by role.
+  - id: rate_escalation_rule
+    label: Rate escalation
+    modality: obligation
+    party: mutual
+    carries_measurement: true
+    description: >
+      Indexation on an anniversary, often against a published index with a floor
+      or cap, often compounding. Governs every rate in the document.
+    expect: "1 record; every rate record is subject to it"
+  - id: liability_cap
+    label: Liability cap
+    modality: obligation
+    party: mutual
+    carries_measurement: true
+    description: >
+      A per-incident ceiling, frequently banded by aircraft type, separate from
+      the insurance floor and from any service-credit cap.
+    expect: "one record per aircraft band"
+  - id: payment_term
+    label: Payment term
+    modality: obligation
+    party: client
+    carries_measurement: true
+    description: >
+      When an invoice is due, by invoice type. Different types often carry
+      different periods in the same table.
+  - id: audit_or_review_milestone
+    label: Audit or review milestone
+    modality: obligation
+    party: mutual
+    carries_measurement: false
+    description: >
+      A dated review, audit or notice obligation. Usually a date rather than a
+      quantity, and routinely lost because it carries no unit.
+  - id: insurance_floor
+    label: Insurance floor
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      A minimum coverage the handler must hold, often in a different currency
+      from the rate schedule.
+  - id: notice_and_termination
+    label: Notice and termination
+    modality: obligation
+    party: mutual
+    carries_measurement: true
+    description: >
+      Notice periods, cure periods and termination triggers, each a separate
+      duty with its own window.

@@ -1,0 +1,67 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: extractor-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    {{- if .Values.ingress.annotations }}
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
+    {{- end }}
+    # Cert-Manager annotations for automatic certificate provisioning
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Added performance optimizations
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    # Improved caching settings
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_cache_path /tmp/nginx_cache levels=1:2 keys_zone=static_cache:10m max_size=1g inactive=60m;
+      proxy_cache static_cache;
+      proxy_cache_valid 200 302 10m;
+      proxy_cache_valid 404 1m;
+      add_header X-Cache-Status $upstream_cache_status;
+    # Added security improvements
+    nginx.ingress.kubernetes.io/secure-backends: "true"
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+spec:
+  ingressClassName: {{ .Values.ingress.className | default "nginx" }}
+  tls:
+  - hosts:
+    - {{ .Values.ingress.host }}
+    - www.{{ .Values.ingress.host }}
+    secretName: {{ (index .Values.ingress.tls 0).secretName }}
+  rules:
+  - host: {{ .Values.ingress.host }}
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: extractor-backend
+            port:
+              number: {{ .Values.backendServicePort }}
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: extractor-frontend
+            port:
+              number: {{ .Values.frontendServicePort }}
+  - host: www.{{ .Values.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: extractor-frontend
+            port:
+              number: {{ .Values.frontendServicePort }}
+{{- end }}

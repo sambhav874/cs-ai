@@ -1,0 +1,38 @@
+[Suggested upload date: 2026-04-14]
+
+DATA PROCESSING ADDENDUM
+
+Data Processing Addendum to the Master Service Agreement between Harborview
+Health Systems and Trellis Data Partners, Inc. dated 3 March 2026.
+
+This Data Processing Addendum ("DPA") is entered into as of 24 March 2026
+between Harborview Health Systems ("Covered Entity") and Trellis Data
+Partners, Inc. ("Business Associate") in connection with Business
+Associate's processing of Protected Health Information (PHI) on behalf of
+Covered Entity under the Master Service Agreement referenced above.
+
+1. PROCESSING PURPOSES. Business Associate shall process PHI solely to
+perform the Services described in active Statements of Work issued under
+the Master Service Agreement, including Statement of Work SOW-001.
+
+2. SUBPROCESSORS. Business Associate's current subprocessors are: (a)
+Northgate Cloud Infrastructure, Inc. (cloud hosting); and (b) Vireo
+Analytics Platform Services, LLC (analytics infrastructure). Business
+Associate shall provide Covered Entity not less than thirty (30) days'
+advance written notice before engaging any new subprocessor.
+
+3. SECURITY INCIDENT NOTIFICATION. Business Associate shall notify Covered
+Entity within twenty-four (24) hours of discovering any security incident
+involving unauthorized access to, or disclosure of, PHI.
+
+4. RETURN OR DESTRUCTION OF DATA. Upon termination or expiration of the
+Master Service Agreement, Business Associate shall return or destroy all
+PHI within sixty (60) days and provide written certification of such
+return or destruction.
+
+IN WITNESS WHEREOF, the Parties have executed this DPA as of the date first
+written above.
+
+For HARBORVIEW HEALTH SYSTEMS             For TRELLIS DATA PARTNERS, INC.
+Name: L. Fennimore                         Name: K. Ostrander
+Title: VP Strategic Partnerships           Title: Chief Revenue Officer

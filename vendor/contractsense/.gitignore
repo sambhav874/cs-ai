@@ -1,0 +1,90 @@
+.commandcode/
+
+# See http://help.github.com/ignore-files/ for more about ignoring files.
+
+# compiled output
+dist
+tmp
+out-tsc
+
+# dependencies
+node_modules
+.next
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
+
+# System Files
+.DS_Store
+Thumbs.db
+
+shared
+venv
+model_cache
+__pycache__
+*.pyc
+.env
+.env.production
+.env.development
+.env.test
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+.gemini/
+temp_graphify/
+testing/backend/app-cache/
+testing/root-pytest-cache/
+contract_rag.log
+contract_summarizer.log
+
+document_loading_debug.txt
+context_debug.txt
+contract_rag_full.log
+contract_analysis.log
+final_contract_outputs_full/
+logs/
+prompt_1.txt
+final_extracted_data/
+
+mike
+cypress.env.json
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# Ignored data files
+ContractSense_Supplier_Performance_Report.xlsx
+ContractSense_Performance_Monitoring_Technical_Spec.pdf
+spec_text.txt
+celerybeat-schedule*
+final_evaluation/reports/
+# make eval-agent output
+reports/
+# Local debug logs & bundles
+apps/backend/agent_debug.log
+cookies.txt
+kpi_review_bundle.txt
+rag_review_bundle.txt
+testing/backend/tests/test_voyage_autochunking.py

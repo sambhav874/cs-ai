@@ -1,0 +1,35 @@
+[
+  {
+    "source_record_id": "SLICE-AUDIT-202801-401",
+    "timestamp": "2028-01-31T23:59:59Z",
+    "kpi_id": "KPI-TEL-06",
+    "kpi_name": "Network Slice Isolation Guarantee",
+    "actual_value": 100.0,
+    "unit": "%",
+    "period": "2028-01",
+    "tenant_slice": "Enterprise-Healthcare-URLLC-01",
+    "audit_status": "PASSED_ZERO_LEAKAGE"
+  },
+  {
+    "source_record_id": "SLICE-AUDIT-202802-401",
+    "timestamp": "2028-02-29T23:59:59Z",
+    "kpi_id": "KPI-TEL-06",
+    "kpi_name": "Network Slice Isolation Guarantee",
+    "actual_value": 100.0,
+    "unit": "%",
+    "period": "2028-02",
+    "tenant_slice": "Enterprise-Fintech-HighSpeed-02",
+    "audit_status": "PASSED_ZERO_LEAKAGE"
+  },
+  {
+    "source_record_id": "SLICE-AUDIT-202803-401",
+    "timestamp": "2028-03-31T23:59:59Z",
+    "kpi_id": "KPI-TEL-06",
+    "kpi_name": "Network Slice Isolation Guarantee",
+    "actual_value": 100.0,
+    "unit": "%",
+    "period": "2028-03",
+    "tenant_slice": "PublicSafety-Emergency-01",
+    "audit_status": "PASSED_ZERO_LEAKAGE"
+  }
+]

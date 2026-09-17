@@ -1,0 +1,577 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Length 5729 >>
+stream
+BT
+/F1 9 Tf
+50 750 Td
+12 TL
+(Global Omnichannel Logistics Master Services Agreement) Tj
+T*
+() Tj
+T*
+(# GLOBAL OMNICHANNEL LOGISTICS MASTER SERVICES AGREEMENT **Agreement Number:**) Tj
+T*
+(GOL-2027-MSA-4812 **Effective Date:** March 1, 2027 **Initial Expiration Date:** February 28,) Tj
+T*
+(2032 **Renewal Option:** Two optional one-year renewals by written notice at least 120 days) Tj
+T*
+(before expiration **Shipper:** Titan Retail Group, Inc., a Delaware corporation **Logistics) Tj
+T*
+(Provider:** Northstar Freight & Fulfillment LLC, an Illinois limited liability company) Tj
+T*
+(**Primary Operating Region:** United States, Canada, Mexico, and European Union cross-border) Tj
+T*
+(lanes **Contract Currency:** United States Dollars **Governing Law:** New York, excluding) Tj
+T*
+(conflicts principles --- ## ARTICLE I: BACKGROUND AND DEFINITIONS ### Section 1.01: Background) Tj
+T*
+(Titan Retail Group operates a multi-channel retail network with ecommerce, marketplace, store) Tj
+T*
+(replenishment, and wholesale distribution channels.) Tj
+T*
+(Northstar Freight & Fulfillment will provide managed transportation, warehouse coordination,) Tj
+T*
+(customs support, cold-chain monitoring, reverse logistics, and performance analytics.) Tj
+T*
+(The purpose of this Agreement is to establish measurable logistics obligations with exact) Tj
+T*
+(service levels, penalties, reporting duties, audit rights, and termination triggers.) Tj
+T*
+(The Parties acknowledge that service failure can cause lost sales, retailer chargebacks,) Tj
+T*
+(spoilage, customer refunds, and regulatory exposure.) Tj
+T*
+(### Section 1.02: Defined Terms **Catering Window Equivalent:** For logistics loads, the) Tj
+T*
+(scheduled pickup or delivery window stated in the tender, transportation management system, or) Tj
+T*
+(confirmed route plan.) Tj
+T*
+(**Critical Lane:** Any lane identified in Exhibit B as supporting perishable goods, private-) Tj
+T*
+(label launch inventory, medical wellness products, holiday peak inventory, or customer promise) Tj
+T*
+(dates within two days.) Tj
+T*
+(**EDI 214 Status Message:** The shipment status message required at tender acceptance, pickup,) Tj
+T*
+(border crossing, delivery, delay, exception, and proof of delivery events.) Tj
+T*
+(**Excursion Event:** Any temperature reading outside the required temperature range for a) Tj
+T*
+(temperature-controlled shipment for more than fifteen consecutive minutes.) Tj
+T*
+(**Material Service Failure:** Any service failure that causes a customer shipment to miss a) Tj
+T*
+(promised delivery date, causes inventory to miss a promotional event, causes regulatory) Tj
+T*
+(reporting, or results in penalties exceeding $25,000 in a calendar month.) Tj
+T*
+(**Peak Season:** October 1 through January 15 each year, plus any promotional event designated) Tj
+T*
+(by Titan at least thirty days in advance.) Tj
+T*
+(**Service Credit:** A credit against monthly fees, accessorial fees, or freight management) Tj
+T*
+(fees.) Tj
+T*
+(Service Credits do not limit Titan's right to claim direct damages for fraud, willful) Tj
+T*
+(misconduct, data breach, gross negligence, or indemnified third-party claims.) Tj
+T*
+(--- ## ARTICLE II: SCOPE OF SERVICES ### Section 2.01: Managed Transportation Northstar shall) Tj
+T*
+(manage inbound, outbound, store replenishment, direct-to-consumer, reverse logistics, and) Tj
+T*
+(cross-border transportation.) Tj
+T*
+(Services include carrier procurement, load tendering, route optimization, appointment) Tj
+T*
+(scheduling, freight audit support, claims support, and exception management.) Tj
+T*
+(Northstar shall maintain a carrier network sufficient to cover ordinary volume, Peak Season) Tj
+T*
+(volume, and emergency surge volume.) Tj
+T*
+(At least 85% of all monthly truckload and less-than-truckload shipments must be handled by) Tj
+T*
+(approved carriers listed in Exhibit C.) Tj
+T*
+(No carrier may be used if its safety rating is conditional, unsatisfactory, suspended, or) Tj
+T*
+(materially restricted by a regulator.) Tj
+T*
+(### Section 2.02: Warehouse Coordination Northstar shall coordinate pickup appointment) Tj
+T*
+(availability with Titan distribution centers in Phoenix, Columbus, Dallas, Savannah, Toronto,) Tj
+T*
+(and Rotterdam.) Tj
+T*
+(Northstar is not the warehouse operator, but it is responsible for carrier appointment) Tj
+T*
+(compliance, carrier check-in readiness, detention tracking, demurrage prevention, and) Tj
+T*
+(escalation of missed appointments.) Tj
+T*
+(### Section 2.03: Customs and Trade Support For cross-border lanes, Northstar shall collect,) Tj
+T*
+(validate, and transmit commercial invoices, packing lists, Harmonized Tariff Schedule) Tj
+T*
+(classifications supplied by Titan, broker instructions, product origin data, and admissibility) Tj
+T*
+(documents.) Tj
+T*
+(Northstar is not importer of record, but it must identify missing trade documents before) Tj
+T*
+(departure.) Tj
+T*
+(### Section 2.04: Cold Chain Monitoring Northstar shall provide temperature visibility for) Tj
+T*
+(perishable, wellness, and restricted products.) Tj
+T*
+(Monitoring must use active telemetry for Critical Lanes and passive logger capture for all) Tj
+T*
+(other cold-chain shipments.) Tj
+T*
+(Northstar shall preserve telemetry records for seven years.) Tj
+T*
+(### Section 2.05: Reverse Logistics Northstar shall process returns transport, refurbishment) Tj
+T*
+(routing, recycling routing, vendor return routing, and damaged goods disposition.) Tj
+T*
+(Return authorization data must be reconciled weekly against Titan's order management system.) Tj
+T*
+(--- ## ARTICLE III: PRICING AND PAYMENT ### Section 3.01: Fee Model Northstar will be) Tj
+T*
+(compensated through a monthly management fee, freight audit fee, project implementation fee,) Tj
+T*
+ET
+endstream
+endobj
+3 0 obj
+<< /Type /Page /Parent 10 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 2 0 R >>
+endobj
+4 0 obj
+<< /Length 5745 >>
+stream
+BT
+/F1 9 Tf
+50 750 Td
+12 TL
+(and approved pass-through carrier charges.) Tj
+T*
+(| Fee Category | Amount | Notes | |---|---:|---| | Monthly Management Fee | $450,000 | Fixed) Tj
+T*
+(for the first contract year | | Freight Audit Fee | $1.25 per shipment | Applies to each) Tj
+T*
+(shipment audited | | Cross-Border Document Fee | $18.00 per border shipment | Waived for) Tj
+T*
+(automated API submissions | | Cold Chain Monitoring Fee | $22.00 per monitored shipment |) Tj
+T*
+(Includes telemetry retention | | Peak Season Control Tower Fee | $95,000 per Peak Season month) Tj
+T*
+(| Applies October, November, December | ### Section 3.02: Invoices Northstar shall submit) Tj
+T*
+(monthly invoices by the fifth business day of the following month.) Tj
+T*
+(Titan shall pay undisputed amounts within thirty days after receipt.) Tj
+T*
+(Disputed amounts must be resolved within fifteen business days after the dispute notice unless) Tj
+T*
+(the Parties agree to extend the review period.) Tj
+T*
+(### Section 3.03: Accessorial Controls No detention, demurrage, storage, redelivery, layover,) Tj
+T*
+(reconsignment, chassis, or dry-run charge may be billed unless supported by time-stamped) Tj
+T*
+(carrier records and approved exception codes.) Tj
+T*
+(Unsubstantiated accessorials are automatically rejected.) Tj
+T*
+(### Section 3.04: Most Favored Rate Review Once per calendar year, Titan may benchmark rates) Tj
+T*
+(against two nationally recognized logistics benchmarks.) Tj
+T*
+(If Northstar's management fee is more than 8% above benchmark median without documented service) Tj
+T*
+(differentiation, the Parties shall renegotiate rates within thirty days.) Tj
+T*
+(--- ## ARTICLE IV: KEY PERFORMANCE INDICATORS ### Section 4.01: KPI Framework Northstar) Tj
+T*
+(performance will be measured monthly against the KPIs in this Article.) Tj
+T*
+(KPI failures may trigger Service Credits, Corrective Action Plans, executive escalation,) Tj
+T*
+(termination rights, or all of the foregoing.) Tj
+T*
+(KPI calculations exclude only Force Majeure events accepted under Section 12.03.) Tj
+T*
+(### Section 4.02: KPI-1 On-Time Pickup Performance **Definition:** Percentage of shipments) Tj
+T*
+(picked up within the confirmed appointment window.) Tj
+T*
+(**Target:** At least 98.0% on-time pickup each calendar month.) Tj
+T*
+(**Measurement:** Pickup timestamp from carrier mobile check-in, yard gate record, or warehouse) Tj
+T*
+(appointment system.) Tj
+T*
+(**Exclusions:** Titan-caused dock closure, written Titan hold, or Force Majeure accepted by) Tj
+T*
+(Titan.) Tj
+T*
+(| Monthly Performance | Score | Consequence | |---|---:|---| | 99.0% or higher | 110 | Eligible) Tj
+T*
+(for quarterly bonus pool | | 98.0% to 98.99% | 100 | No action | | 96.5% to 97.99% | 75 |) Tj
+T*
+(Warning and root cause summary | | 94.0% to 96.49% | 50 | Tier 1 Service Credit | | Below 94.0%) Tj
+T*
+(| 25 | Tier 2 Service Credit and Corrective Action Plan | **Penalty Structure:** Tier 1 Service) Tj
+T*
+(Credit equals $3,000 per tenth of a percentage point below 96.5%.) Tj
+T*
+(Tier 2 Service Credit equals $7,500 per tenth of a percentage point below 94.0%, plus a) Tj
+T*
+(mandatory Corrective Action Plan.) Tj
+T*
+(### Section 4.03: KPI-2 On-Time Delivery Performance **Definition:** Percentage of shipments) Tj
+T*
+(delivered within the required delivery window.) Tj
+T*
+(**Target:** At least 97.5% on-time delivery each calendar month.) Tj
+T*
+(**Critical Lane Target:** At least 99.0% on-time delivery for Critical Lanes.) Tj
+T*
+(| Shipment Type | Failure Band | Service Credit | |---|---|---:| | Standard shipment | 95.0% to) Tj
+T*
+(97.49% monthly performance | $4,000 per tenth below 97.5% | | Standard shipment | Below 95.0%) Tj
+T*
+(monthly performance | $9,000 per tenth below 95.0% | | Critical Lane | 97.0% to 98.99% monthly) Tj
+T*
+(performance | $15,000 per tenth below 99.0% | | Critical Lane | Below 97.0% monthly performance) Tj
+T*
+(| $30,000 per tenth below 97.0% plus executive review | **Special Rule:** Three missed Critical) Tj
+T*
+(Lane deliveries in any rolling seven-day period trigger immediate daily executive calls until) Tj
+T*
+(performance returns to target for ten consecutive days.) Tj
+T*
+(### Section 4.04: KPI-3 EDI 214 Timeliness **Definition:** Percentage of required EDI 214) Tj
+T*
+(status messages transmitted within thirty minutes after the underlying event.) Tj
+T*
+(**Target:** 99.2% timely EDI 214 status messages.) Tj
+T*
+(**Penalty:** $250 per late or missing required EDI 214 message after the first twenty) Tj
+T*
+(exceptions in a month.) Tj
+T*
+(If monthly performance falls below 96.0%, Northstar shall pay an additional $35,000 data) Tj
+T*
+(integrity credit.) Tj
+T*
+(### Section 4.05: KPI-4 Damage and Loss Rate **Definition:** Number of units damaged, lost,) Tj
+T*
+(stolen, or rendered commercially unsellable per 10,000 units shipped.) Tj
+T*
+(**Target:** No more than 0.15% damaged or lost units.) Tj
+T*
+(**Penalty:** For each 0.01% above 0.15%, Northstar shall credit $12,500.) Tj
+T*
+(Damage rate above 0.30% in any month is a Material Service Failure.) Tj
+T*
+(### Section 4.06: KPI-5 Customs Document Accuracy **Definition:** Percentage of cross-border) Tj
+T*
+(shipments with complete and accurate customs packet prior to departure.) Tj
+T*
+(**Target:** 99.5% document accuracy.) Tj
+T*
+(**Penalty Structure:** $1,000 for each shipment delayed more than four hours due to Northstar) Tj
+T*
+(document error; $10,000 for each shipment held more than twenty-four hours; reimbursement of) Tj
+T*
+(direct storage, demurrage, and broker rework fees.) Tj
+T*
+(### Section 4.07: KPI-6 Temperature Excursion Prevention **Definition:** Percentage of cold-) Tj
+T*
+(chain shipments delivered without an Excursion Event.) Tj
+T*
+(**Target:** 99.8% no-excursion rate.) Tj
+T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 10 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Length 5826 >>
+stream
+BT
+/F1 9 Tf
+50 750 Td
+12 TL
+(**Penalty:** $5,000 per Excursion Event plus replacement cost of affected goods.) Tj
+T*
+(Three Excursion Events in any calendar quarter trigger a cold-chain Corrective Action Plan.) Tj
+T*
+(A confirmed excursion involving regulated wellness products is a Critical Breach.) Tj
+T*
+(### Section 4.08: KPI-7 Carrier Acceptance Rate **Definition:** Percentage of load tenders) Tj
+T*
+(accepted by approved carriers within two hours after tender.) Tj
+T*
+(**Target:** 98.5% carrier acceptance.) Tj
+T*
+(**Penalty:** $2,500 per percentage point below 98.5%; $10,000 additional credit if acceptance) Tj
+T*
+(drops below 95.0% during Peak Season.) Tj
+T*
+(### Section 4.09: KPI-8 Customer Promise Recovery **Definition:** Percentage of shipments with) Tj
+T*
+(an exception that receive a documented recovery plan within sixty minutes.) Tj
+T*
+(**Target:** 95.0% of exceptions have timely recovery plans.) Tj
+T*
+(**Penalty:** $500 per exception without a timely plan.) Tj
+T*
+(If fewer than 90.0% of exception shipments receive a plan, Northstar must provide a weekly) Tj
+T*
+(remediation report for eight weeks.) Tj
+T*
+(--- ## ARTICLE V: COMPLIANCE, REPORTING, AND AUDIT ### Section 5.01: Daily Reporting Northstar) Tj
+T*
+(shall submit a daily control tower report by 8:00 AM Central Time covering the previous) Tj
+T*
+(operating day.) Tj
+T*
+(The report must include late pickups, late deliveries, Critical Lane exceptions, temperature) Tj
+T*
+(exceptions, EDI failures, customs holds, accessorial exposures, and open recovery plans.) Tj
+T*
+(### Section 5.02: Weekly Reporting Every Monday by 12:00 PM Central Time, Northstar shall) Tj
+T*
+(submit a weekly trend report showing KPI performance, root causes, corrective actions, top) Tj
+T*
+(twenty problem lanes, carrier scorecards, and unresolved claims.) Tj
+T*
+(### Section 5.03: Monthly Business Review Northstar shall conduct a monthly business review by) Tj
+T*
+(the tenth business day of each month.) Tj
+T*
+(The review must include KPI scorecards, Service Credit calculations, open corrective action) Tj
+T*
+(items, pending claims, safety incidents, data quality metrics, forecast variance, and) Tj
+T*
+(improvement initiatives.) Tj
+T*
+(### Section 5.04: Quarterly Executive Review Each quarter, senior executives from both Parties) Tj
+T*
+(shall review performance, cost, strategic network changes, automation roadmap, carbon) Tj
+T*
+(reporting, carrier compliance, and upcoming Peak Season readiness.) Tj
+T*
+(### Section 5.05: Audit Rights Titan may audit Northstar's records, carriers, EDI logs, claims) Tj
+T*
+(files, invoices, corrective action records, data access logs, and telemetry records on ten) Tj
+T*
+(business days' notice.) Tj
+T*
+(Northstar shall retain records for seven years after expiration or termination.) Tj
+T*
+(--- ## ARTICLE VI: CORRECTIVE ACTION AND SERVICE CREDITS ### Section 6.01: Corrective Action) Tj
+T*
+(Plan Requirements If a Corrective Action Plan is triggered, Northstar shall provide root cause) Tj
+T*
+(analysis within five business days, corrective actions within ten business days, owner) Tj
+T*
+(assignments, completion dates, and weekly progress updates until closure.) Tj
+T*
+(### Section 6.02: Service Credit Cap Except for data breach, fraud, willful misconduct,) Tj
+T*
+(indemnity claims, confidentiality breach, and Critical Breach, aggregate monthly Service) Tj
+T*
+(Credits are capped at 18% of monthly management fees.) Tj
+T*
+(This cap does not limit direct damages for lost or damaged goods.) Tj
+T*
+(### Section 6.03: Bonus Pool Northstar may earn a quarterly bonus of up to $75,000 if all KPIs) Tj
+T*
+(score at or above target, no Critical Breach occurred, and total cost per shipment improves by) Tj
+T*
+(at least 3% compared with the prior quarter without reducing service quality.) Tj
+T*
+(--- ## ARTICLE VII: SECURITY AND DATA PROTECTION ### Section 7.01: Data Security Northstar) Tj
+T*
+(shall maintain SOC 2 Type II controls, role-based access, MFA for all privileged accounts,) Tj
+T*
+(encryption in transit and at rest, quarterly vulnerability scanning, annual penetration) Tj
+T*
+(testing, and incident response procedures.) Tj
+T*
+(### Section 7.02: Security Incident Notice Northstar shall notify Titan within four hours after) Tj
+T*
+(discovering any confirmed or suspected unauthorized access to Titan data, EDI credentials,) Tj
+T*
+(shipment location data, customer contact data, or carrier portal credentials.) Tj
+T*
+(A written incident report is due within seventy-two hours.) Tj
+T*
+(### Section 7.03: Data Use Restrictions Northstar may use Titan data only to provide services) Tj
+T*
+(under this Agreement.) Tj
+T*
+(Northstar may not sell, train external models on, benchmark unrelated customers with, or) Tj
+T*
+(disclose Titan data except as expressly authorized.) Tj
+T*
+(--- ## ARTICLE VIII: INSURANCE AND INDEMNITY ### Section 8.01: Insurance Northstar shall) Tj
+T*
+(maintain commercial general liability of $5,000,000 per occurrence, cargo liability of) Tj
+T*
+($10,000,000 per shipment, cyber liability of $10,000,000, workers compensation as required by) Tj
+T*
+(law, and auto liability of $5,000,000 combined single limit.) Tj
+T*
+(### Section 8.02: Indemnity Northstar shall indemnify Titan against third-party claims arising) Tj
+T*
+(from Northstar's negligence, willful misconduct, data breach, carrier selection failures,) Tj
+T*
+(customs documentation errors, cargo loss, regulatory fines caused by Northstar, and violation) Tj
+T*
+(of law.) Tj
+T*
+(--- ## ARTICLE IX: TERMINATION ### Section 9.01: Termination for Cause Titan may terminate this) Tj
+T*
+(Agreement on written notice if any of the following occurs: - Three Material Service Failures) Tj
+T*
+(in any rolling six-month period.) Tj
+T*
+(- On-Time Delivery Performance below 92.0% in any two months during a rolling twelve-month) Tj
+T*
+(period.) Tj
+T*
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 10 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Length 3214 >>
+stream
+BT
+/F1 9 Tf
+50 750 Td
+12 TL
+(- Critical Lane On-Time Delivery below 95.0% in any month.) Tj
+T*
+(- Aggregate monthly Service Credits exceeding $300,000 in two consecutive months.) Tj
+T*
+(- A Critical Breach involving regulated wellness products, data breach, fraud, or intentional) Tj
+T*
+(falsification of KPI data.) Tj
+T*
+(- Material breach uncured thirty days after written notice.) Tj
+T*
+(### Section 9.02: Termination for Convenience Titan may terminate for convenience on 180 days') Tj
+T*
+(written notice.) Tj
+T*
+(Northstar may terminate for convenience after the initial term on 365 days' written notice.) Tj
+T*
+(### Section 9.03: Transition Assistance Upon expiration or termination, Northstar shall provide) Tj
+T*
+(up to 180 days of transition assistance at then-current rates, including carrier data export,) Tj
+T*
+(open claim files, route guide transfer, EDI mapping support, and knowledge transfer.) Tj
+T*
+(--- ## ARTICLE X: DISPUTES, CONFIDENTIALITY, AND GENERAL TERMS ### Section 10.01: Dispute) Tj
+T*
+(Escalation Operational disputes must be escalated first to the control tower leads, then to) Tj
+T*
+(vice presidents within five business days, and then to executive sponsors within ten business) Tj
+T*
+(days.) Tj
+T*
+(Either Party may seek injunctive relief for confidentiality, data security, or intellectual) Tj
+T*
+(property violations.) Tj
+T*
+(### Section 10.02: Confidentiality Each Party shall protect Confidential Information using at) Tj
+T*
+(least reasonable care and no less care than it uses for its own similar information.) Tj
+T*
+(Confidentiality obligations survive for five years, except trade secrets remain protected as) Tj
+T*
+(long as they qualify as trade secrets.) Tj
+T*
+(### Section 10.03: Force Majeure Force Majeure includes natural disaster, declared emergency,) Tj
+T*
+(war, terrorism, port closure, government order, widespread labor stoppage not limited to) Tj
+T*
+(Northstar, and cyberattack not caused by Northstar's failure to maintain required controls.) Tj
+T*
+(Force Majeure does not excuse payment, reporting, data security, or mitigation obligations.) Tj
+T*
+(### Section 10.04: Notices Formal notices must be sent by email and overnight courier to the) Tj
+T*
+(addresses in Exhibit A.) Tj
+T*
+(Notice is effective upon confirmed receipt, except termination notices are effective only when) Tj
+T*
+(received by the legal department contact.) Tj
+T*
+(--- ## EXHIBIT A: NOTICE CONTACTS **Titan Legal:** legal-notices@titanretail.example **Titan) Tj
+T*
+(Operations:** logistics-ops@titanretail.example **Northstar Legal:**) Tj
+T*
+(contracts@northstarfreight.example **Northstar Control Tower:**) Tj
+T*
+(controltower@northstarfreight.example ## EXHIBIT B: CRITICAL LANES Critical Lanes include) Tj
+T*
+(Phoenix to Los Angeles, Columbus to New York Metro, Savannah to Miami, Toronto to Chicago,) Tj
+T*
+(Rotterdam to Hamburg, Dallas to Denver, and any launch event route designated by Titan.) Tj
+T*
+(## EXHIBIT C: REQUIRED SOURCE SYSTEMS Northstar shall integrate with Titan's transportation) Tj
+T*
+(management system, warehouse appointment system, customer order management system, freight) Tj
+T*
+(audit platform, EDI gateway, carrier portal, and product master data feed.) Tj
+T*
+ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 10 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 8 0 R >>
+endobj
+10 0 obj
+<< /Type /Pages /Count 4 /Kids [ 3 0 R 5 0 R 7 0 R 9 0 R ] >>
+endobj
+11 0 obj
+<< /Type /Catalog /Pages 10 0 R >>
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000009 00000 n 
+0000000079 00000 n 
+0000005860 00000 n 
+0000005987 00000 n 
+0000011784 00000 n 
+0000011911 00000 n 
+0000017789 00000 n 
+0000017916 00000 n 
+0000021182 00000 n 
+0000021309 00000 n 
+0000021387 00000 n 
+trailer
+<< /Size 12 /Root 11 0 R >>
+startxref
+21438
+%%EOF

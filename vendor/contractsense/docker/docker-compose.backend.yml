@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Containerfile
+      args:
+        USE_GPU: "false"
+    container_name: backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/backend:/app/backend
+    env_file:
+      - ./apps/backend/.env
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    networks:
+      - backend-network
+
+networks:
+  backend-network:
+    driver: bridge

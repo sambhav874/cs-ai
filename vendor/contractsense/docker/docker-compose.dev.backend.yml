@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  backend:
+    image: fastapi-backend:dev
+    container_name: backend-dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/backend:/app/backend
+      - ./demo_data:/demo_data:ro
+    env_file:
+      - ./apps/backend/.env.dev
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - DEMO_DATA_DIR=/demo_data
+    networks:
+      - backend-network
+
+networks:
+  backend-network:
+    driver: bridge

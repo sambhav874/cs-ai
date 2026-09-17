@@ -1,0 +1,46 @@
+[Suggested upload date: 2026-03-10]
+
+MASTER SERVICE AGREEMENT
+
+This Master Service Agreement ("Agreement") is entered into as of 2 March
+2026 ("Effective Date") between SOLSTICE RETAIL GROUP, INC., a Delaware
+corporation ("Client"), and COBALT DIGITAL SOLUTIONS, LLC, a California
+limited liability company ("Vendor").
+
+1. TERM. This Agreement commences on the Effective Date and continues for
+three (3) years unless earlier terminated as provided herein.
+
+2. SERVICES AND STATEMENTS OF WORK. Vendor shall perform services pursuant
+to one or more Statements of Work executed by both Parties, each referencing
+this Agreement by date and identified by a unique SOW number (e.g.,
+"SOW-001"). Each Statement of Work shall be governed by the terms of this
+Agreement unless expressly stated otherwise in that Statement of Work.
+
+3. PAYMENT TERMS. Undisputed invoices are payable within forty-five (45)
+days of the invoice date (net-45).
+
+4. INTELLECTUAL PROPERTY. Subject to full payment, all work product created
+specifically for Client under a Statement of Work shall be owned by Client
+upon delivery. Vendor retains ownership of its pre-existing tools, methods,
+and platforms, and grants Client a perpetual, non-exclusive license to use
+such pre-existing materials solely as incorporated into the delivered work
+product.
+
+5. LIMITATION OF LIABILITY. Except for breaches of confidentiality
+obligations or gross negligence/willful misconduct, each Party's aggregate
+liability under this Agreement shall not exceed the fees paid by Client to
+Vendor in the twelve (12) months preceding the claim.
+
+6. TERMINATION. Either Party may terminate this Agreement for convenience
+upon sixty (60) days' written notice, or for material breach upon fifteen
+(15) days' written notice if the breach remains uncured.
+
+7. GOVERNING LAW. This Agreement is governed by the laws of the State of
+Delaware.
+
+IN WITNESS WHEREOF, the Parties have executed this Agreement as of the
+Effective Date.
+
+For SOLSTICE RETAIL GROUP, INC.          For COBALT DIGITAL SOLUTIONS, LLC
+Name: T. Whitfield                        Name: A. Marchetti
+Title: Chief Operating Officer            Title: VP Client Engagements

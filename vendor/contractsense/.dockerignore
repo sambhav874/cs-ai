@@ -1,0 +1,75 @@
+# ===========================================================
+# Root .dockerignore — used by backend & worker builds
+# (build context is "." from docker-compose.yml)
+# ===========================================================
+
+# Git
+.git
+.gitignore
+
+# Frontend (not needed in backend/worker images)
+apps/frontend/**
+
+# Docker files themselves
+docker-compose*.yml
+docker/
+**/Dockerfile*
+**/Containerfile*
+
+# Environment/secrets — must be injected at runtime
+.env
+.env.*
+.env.local
+.env.development
+.env.staging
+.env.production
+.env.test
+
+# Python caches and artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+coverage.xml
+.mypy_cache/
+.ruff_cache/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+
+# Logs and debug files
+*.log
+
+# Local model cache (large)
+apps/backend/model_cache/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation
+docs/
+*.md
+
+# Testing
+testing/
+final_evaluation/
+
+# Infrastructure (not needed in app images)
+terraform/
+extractor-chart/
+scripts/
+
+# Shared volume placeholder (mounted at runtime)
+shared/
+
+# Misc
+.DS_Store

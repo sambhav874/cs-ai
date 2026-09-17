@@ -1,0 +1,41 @@
+[Suggested upload date: 2026-01-15]
+
+MUTUAL NON-DISCLOSURE AGREEMENT
+
+This Mutual Non-Disclosure Agreement ("Agreement") is entered into as of 12
+January 2026 between HARBORVIEW HEALTH SYSTEMS, a nonprofit health system
+organized under the laws of Ohio ("Harborview"), and TRELLIS DATA PARTNERS,
+INC., a Delaware corporation ("Trellis"), in connection with discussions
+regarding a potential data-analytics services engagement (the "Purpose").
+
+1. CONFIDENTIAL INFORMATION. "Confidential Information" means any
+non-public technical, business, financial, or operational information
+disclosed by either Party, whether orally or in writing, in connection with
+the Purpose, excluding information that is or becomes publicly available
+through no fault of the receiving Party, was already known to the receiving
+Party without obligation of confidentiality, or is independently developed
+without use of the disclosing Party's Confidential Information.
+
+2. OBLIGATIONS. Each Party shall use the other Party's Confidential
+Information solely for the Purpose, shall not disclose it to any third
+party without prior written consent, and shall protect it using at least
+the same degree of care it uses for its own confidential information, and
+no less than reasonable care.
+
+3. TERM. This Agreement's confidentiality obligations survive for three (3)
+years from the date of disclosure of the relevant Confidential Information.
+
+4. RETURN OF MATERIALS. Upon written request by the disclosing Party, the
+receiving Party shall return or destroy all Confidential Information within
+thirty (30) days.
+
+5. NO LICENSE. Nothing in this Agreement grants either Party any license or
+right to the other Party's intellectual property beyond the limited purpose
+of evaluating the Purpose.
+
+IN WITNESS WHEREOF, the Parties have executed this Agreement as of the date
+first written above.
+
+For HARBORVIEW HEALTH SYSTEMS             For TRELLIS DATA PARTNERS, INC.
+Name: L. Fennimore                         Name: K. Ostrander
+Title: VP Strategic Partnerships           Title: Chief Revenue Officer

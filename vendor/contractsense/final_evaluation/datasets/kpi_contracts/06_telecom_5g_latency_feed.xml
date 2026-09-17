@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<latency_telemetry_feed>
+  <measurement>
+    <kpi_id>KPI-TEL-03</kpi_id>
+    <kpi_name>URLLC Air-Interface P99 Latency</kpi_name>
+    <actual_value>3.45</actual_value>
+    <unit>ms</unit>
+    <period>2028-01</period>
+    <timestamp>2028-01-31T23:59:59Z</timestamp>
+    <source_record_id>XML-LAT-001</source_record_id>
+  </measurement>
+  <measurement>
+    <kpi_id>KPI-TEL-04</kpi_id>
+    <kpi_name>MEC Compute Processing Latency</kpi_name>
+    <actual_value>4.12</actual_value>
+    <unit>ms</unit>
+    <period>2028-01</period>
+    <timestamp>2028-01-31T23:59:59Z</timestamp>
+    <source_record_id>XML-LAT-002</source_record_id>
+  </measurement>
+</latency_telemetry_feed>

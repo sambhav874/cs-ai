@@ -1,0 +1,299 @@
+{
+  "version": 1,
+  "purpose": "Long-form complex contract fixtures for full backend evaluation of contract-agent. These fixtures are intended to stress intent classification, specialist delegation, RAG retrieval, clause lookup, KPI extraction, obligation tracking, risk analysis, compliance reporting, key date extraction, tool execution, and compound question handling.",
+  "excluded_dimensions": [
+    "generated UI evaluation",
+    "browser visual evaluation",
+    "chart rendering validation",
+    "SVG rendering validation"
+  ],
+  "shared_evaluation_dimensions": [
+    "summary",
+    "clause_analysis",
+    "kpi_extraction",
+    "obligation_tracking",
+    "risk_detection",
+    "compliance",
+    "key_dates",
+    "compound_orchestration",
+    "tool_retrieval",
+    "citation_grounding",
+    "exact_value_extraction",
+    "reporting_obligations",
+    "termination_rights",
+    "security_and_privacy",
+    "audit_rights",
+    "penalty_calculation"
+  ],
+  "contracts": [
+    {
+      "contract_id": "full_eval_global_logistics",
+      "contract_name": "Global Omnichannel Logistics Master Services Agreement",
+      "contract_file": "tests/fixtures/full_eval_contracts/01_global_logistics_master_services_agreement.md",
+      "domain": "logistics",
+      "effective_date": "March 1, 2027",
+      "expiration_date": "February 28, 2032",
+      "primary_agents": ["SummaryAgent", "KPIAgent", "ObligationAgent", "RiskAgent", "ClauseAgent"],
+      "critical_sections": [
+        "Section 4.02",
+        "Section 4.03",
+        "Section 4.04",
+        "Section 5.01",
+        "Section 5.03",
+        "Section 7.02",
+        "Section 9.01"
+      ],
+      "evaluation_anchors": {
+        "on_time_pickup_target": "98.0%",
+        "on_time_delivery_target": "97.5%",
+        "critical_lane_delivery_target": "99.0%",
+        "edi_214_target": "99.2%",
+        "daily_report_deadline": "8:00 AM Central Time",
+        "records_retention": "7 years",
+        "security_notice": "4 hours",
+        "termination_service_credit_threshold": "$300,000"
+      },
+      "sample_queries": [
+        "Summarize the logistics agreement and identify the most important commercial risks.",
+        "What are the on-time pickup and on-time delivery KPI targets and penalties?",
+        "Explain Section 9.01 and the termination triggers.",
+        "What daily, weekly, monthly, and quarterly reporting obligations does Northstar have?",
+        "List the EDI 214 requirements and compare them with the customs document accuracy KPI."
+      ]
+    },
+    {
+      "contract_id": "full_eval_healthcare_cloud",
+      "contract_name": "Healthcare Cloud Analytics and Data Processing Agreement",
+      "contract_file": "tests/fixtures/full_eval_contracts/02_healthcare_cloud_data_processing_agreement.md",
+      "domain": "healthcare_cloud",
+      "effective_date": "July 1, 2027",
+      "expiration_date": "June 30, 2031",
+      "primary_agents": ["SummaryAgent", "KPIAgent", "ObligationAgent", "RiskAgent", "ClauseAgent"],
+      "critical_sections": [
+        "Section 4.02",
+        "Section 4.03",
+        "Section 4.04",
+        "Section 5.02",
+        "Section 6.01",
+        "Section 7.01",
+        "Section 9.01"
+      ],
+      "evaluation_anchors": {
+        "availability_target": "99.95%",
+        "data_freshness_target": "98.5%",
+        "data_quality_target": "99.7%",
+        "security_notice": "4 hours",
+        "preliminary_incident_report": "24 hours",
+        "rto": "4 hours",
+        "rpo": "15 minutes",
+        "log_retention": "10 years"
+      },
+      "sample_queries": [
+        "What privacy and security obligations apply to Helix?",
+        "What are the platform availability service credits?",
+        "Explain the disaster recovery requirements and RTO/RPO.",
+        "What termination rights does Meridian have after a security breach?",
+        "Compare the data pipeline freshness KPI with the data quality accuracy KPI."
+      ]
+    },
+    {
+      "contract_id": "full_eval_solar_storage_epc",
+      "contract_name": "Solar Plus Storage EPC and Operations Agreement",
+      "contract_file": "tests/fixtures/full_eval_contracts/03_solar_storage_epc_and_operations_contract.md",
+      "domain": "renewable_energy_epc",
+      "effective_date": "January 10, 2028",
+      "commercial_operation_deadline": "December 31, 2029",
+      "operations_term": "10 years after commercial operation",
+      "primary_agents": ["SummaryAgent", "KPIAgent", "ObligationAgent", "RiskAgent", "ClauseAgent"],
+      "critical_sections": [
+        "Section 4.02",
+        "Section 5.02",
+        "Section 5.03",
+        "Section 7.01",
+        "Section 10.01",
+        "Section 11.01",
+        "Section 11.02"
+      ],
+      "evaluation_anchors": {
+        "commercial_operation_deadline": "December 31, 2029",
+        "cod_delay_ld": "$150,000 per day",
+        "delay_ld_cap": "$18,000,000",
+        "performance_ratio_target": "84.0%",
+        "plant_availability_target": "99.0%",
+        "battery_availability_target": "97.5%",
+        "daily_report_deadline": "7:00 AM Mountain Time",
+        "cause_termination_delay": "120 days"
+      },
+      "sample_queries": [
+        "What are the EPC milestone dates and delay liquidated damages?",
+        "What performance guarantees apply to the solar and battery systems?",
+        "Explain the step-in rights in Section 11.02.",
+        "What reports must ArcLight provide during construction and operations?",
+        "Identify the main safety, environmental, and schedule risks for the Owner."
+      ]
+    },
+    {
+      "contract_id": "full_eval_payment_processing",
+      "contract_name": "Payment Processing Platform and Merchant Services Agreement",
+      "contract_file": "tests/fixtures/full_eval_contracts/04_payment_processing_platform_agreement.md",
+      "domain": "payments_fintech",
+      "effective_date": "May 15, 2028",
+      "expiration_date": "May 14, 2033",
+      "primary_agents": ["SummaryAgent", "KPIAgent", "ObligationAgent", "RiskAgent", "ClauseAgent"],
+      "critical_sections": [
+        "Section 4.02",
+        "Section 4.03",
+        "Section 4.04",
+        "Section 5.01",
+        "Section 6.02",
+        "Section 7.01",
+        "Section 9.01"
+      ],
+      "evaluation_anchors": {
+        "availability_target": "99.99%",
+        "authorization_latency_p95": "450 milliseconds",
+        "settlement_target_us": "T+1 business day",
+        "settlement_target_cross_border": "T+2 business days",
+        "fraud_loss_target": "0.18%",
+        "chargeback_ratio_target": "0.65%",
+        "critical_incident_notice": "1 hour",
+        "log_retention": "7 years"
+      },
+      "sample_queries": [
+        "What are NovaPay's settlement obligations and penalties?",
+        "Explain the platform availability KPI and service credits.",
+        "What happens after a Critical Payment Incident?",
+        "What PCI DSS and security obligations does NovaPay have?",
+        "List the fraud, chargeback, and dispute response KPIs in one answer."
+      ]
+    },
+    {
+      "contract_id": "full_eval_smart_transit",
+      "contract_name": "Smart Transit Operations and Fare Technology Concession Agreement",
+      "contract_file": "tests/fixtures/full_eval_contracts/05_smart_transit_operations_concession.md",
+      "domain": "public_transit_concession",
+      "effective_date": "September 1, 2028",
+      "service_commencement_date": "March 1, 2029",
+      "expiration_date": "August 31, 2038",
+      "primary_agents": ["SummaryAgent", "KPIAgent", "ObligationAgent", "RiskAgent", "ClauseAgent"],
+      "critical_sections": [
+        "Section 4.02",
+        "Section 4.06",
+        "Section 4.09",
+        "Section 5.01",
+        "Section 6.03",
+        "Section 10.02",
+        "Section 12.01"
+      ],
+      "evaluation_anchors": {
+        "on_time_target": "92.0%",
+        "critical_corridor_target": "94.0%",
+        "fare_system_availability": "99.95%",
+        "accessibility_target": "100%",
+        "major_safety_event_notice": "15 minutes",
+        "cyber_notice": "1 hour",
+        "daily_report_deadline": "6:00 AM Pacific Time",
+        "deduction_termination_threshold": "$1,500,000"
+      },
+      "sample_queries": [
+        "What are the public transit KPI targets and monthly penalties?",
+        "Explain the fare system availability KPI and outage penalties.",
+        "What are MetroLink's accessibility obligations and risks?",
+        "What reporting obligations apply daily, monthly, and quarterly?",
+        "List termination triggers and step-in rights for the Grantor."
+      ]
+    },
+    {
+      "contract_id": "full_eval_telecom_5g",
+      "contract_name": "Master 5G Infrastructure and Edge Cloud Managed Services Agreement",
+      "contract_file": "06_telecom_5g_network_managed_services_agreement.md",
+      "domain": "telecom_5g_edge",
+      "effective_date": "October 1, 2027",
+      "expiration_date": "September 30, 2037",
+      "primary_agents": ["SummaryAgent", "KPIAgent", "ObligationAgent", "RiskAgent", "ClauseAgent"],
+      "critical_sections": [
+        "Section 4.01",
+        "Section 5.01",
+        "Section 7.02",
+        "Section 9.01",
+        "Section 10.02"
+      ],
+      "evaluation_anchors": {
+        "5g_core_uptime_target": "99.999%",
+        "gnodeb_availability_target": "99.950%",
+        "urllc_latency_p99_target": "< 4.00 ms",
+        "mec_compute_latency_target": "< 5.00 ms",
+        "slice_isolation_guarantee": "100.000%",
+        "monthly_base_fee": "$2,850,000",
+        "monthly_service_credit_cap": "35%"
+      },
+      "sample_queries": [
+        "What are the 5G Core network availability targets and penalty credits?",
+        "What is the URLLC P99 latency target and how is it measured?",
+        "What happens if slice isolation fails?",
+        "Explain the step-in rights and operational takeover conditions for the Operator."
+      ]
+    },
+    {
+      "contract_id": "full_eval_pharma_cdmo",
+      "contract_name": "Master Contract Development and Commercial Manufacturing Agreement (CDMO)",
+      "contract_file": "07_pharmaceutical_contract_development_manufacturing_agreement.md",
+      "domain": "pharma_cdmo",
+      "effective_date": "January 15, 2028",
+      "expiration_date": "January 14, 2038",
+      "primary_agents": ["SummaryAgent", "KPIAgent", "ObligationAgent", "RiskAgent", "ClauseAgent"],
+      "critical_sections": [
+        "Section 4.01",
+        "Section 5.01",
+        "Section 7.01",
+        "Section 8.01",
+        "Section 10.02"
+      ],
+      "evaluation_anchors": {
+        "batch_rft_target": ">= 98.50%",
+        "otif_delivery_target": ">= 99.00%",
+        "cleanroom_class_5_uptime": "99.99%",
+        "batch_rejection_credit": "$150,000 credit + free re-run",
+        "failure_to_supply_penalty": "$250,000 per week",
+        "regulatory_audit_target": "0 Critical Findings"
+      },
+      "sample_queries": [
+        "What is the Batch Right-First-Time KPI target and penalty for batch rejection?",
+        "What are the Failure to Supply penalties if CDMO misses batch delivery dates?",
+        "What cGMP regulatory audit notification deadlines apply to CDMO?",
+        "Summarize the cleanroom ISO Class 5 uptime KPI requirements."
+      ]
+    },
+    {
+      "contract_id": "full_eval_enterprise_ai",
+      "contract_name": "Enterprise AI Cloud and GPU Supercomputing Infrastructure Master Agreement",
+      "contract_file": "08_enterprise_ai_cloud_infrastructure_master_agreement.md",
+      "domain": "enterprise_ai_supercomputing",
+      "effective_date": "April 1, 2028",
+      "expiration_date": "March 31, 2033",
+      "primary_agents": ["SummaryAgent", "KPIAgent", "ObligationAgent", "RiskAgent", "ClauseAgent"],
+      "critical_sections": [
+        "Section 4.01",
+        "Section 5.01",
+        "Section 6.01",
+        "Section 7.01",
+        "Section 9.01"
+      ],
+      "evaluation_anchors": {
+        "gpu_availability_target": "99.95%",
+        "inference_p99_latency_target": "< 35.0 ms",
+        "infiniband_throughput_target": ">= 99.50%",
+        "checkpoint_restore_time": "<= 4.5 min",
+        "guardrail_safety_pass_rate": "100.00%",
+        "monthly_compute_fee": "$4,200,000",
+        "zero_data_retention_compliance": "100.00%"
+      },
+      "sample_queries": [
+        "What are the GPU cluster availability targets and outage service credits?",
+        "What is the LLM inference P99 latency target and how is it verified?",
+        "What zero-data-retention guarantees apply to enterprise prompt data?",
+        "Explain the AI guardrail safety filter pass rate requirements."
+      ]
+    }
+  ]
+}

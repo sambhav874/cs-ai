@@ -1,0 +1,110 @@
+[
+  {
+    "kpi_id": "KPI-TEL-01",
+    "kpi_name": "5G SA Core Uptime",
+    "actual_value": 99.999,
+    "timestamp": "2028-01-31T23:59:59Z",
+    "unit": "%",
+    "period": "2028-01",
+    "source_record_id": "TEL-ACT-202801-01"
+  },
+  {
+    "kpi_id": "KPI-TEL-02",
+    "kpi_name": "gNodeB Active Availability",
+    "actual_value": 99.962,
+    "timestamp": "2028-01-31T23:59:59Z",
+    "unit": "%",
+    "period": "2028-01",
+    "source_record_id": "TEL-ACT-202801-02"
+  },
+  {
+    "kpi_id": "KPI-TEL-03",
+    "kpi_name": "URLLC Air-Interface P99 Latency",
+    "actual_value": 3.45,
+    "timestamp": "2028-01-31T23:59:59Z",
+    "unit": "ms",
+    "period": "2028-01",
+    "source_record_id": "TEL-ACT-202801-03"
+  },
+  {
+    "kpi_id": "KPI-TEL-04",
+    "kpi_name": "MEC Compute Processing Latency",
+    "actual_value": 4.12,
+    "timestamp": "2028-01-31T23:59:59Z",
+    "unit": "ms",
+    "period": "2028-01",
+    "source_record_id": "TEL-ACT-202801-04"
+  },
+  {
+    "kpi_id": "KPI-TEL-05",
+    "kpi_name": "Mobility Handover Success Rate",
+    "actual_value": 99.91,
+    "timestamp": "2028-01-31T23:59:59Z",
+    "unit": "%",
+    "period": "2028-01",
+    "source_record_id": "TEL-ACT-202801-05"
+  },
+  {
+    "kpi_id": "KPI-TEL-06",
+    "kpi_name": "Network Slice Isolation Guarantee",
+    "actual_value": 100.0,
+    "timestamp": "2028-01-31T23:59:59Z",
+    "unit": "%",
+    "period": "2028-01",
+    "source_record_id": "TEL-ACT-202801-06"
+  },
+  {
+    "kpi_id": "KPI-TEL-07",
+    "kpi_name": "Packet Loss Ratio (User Plane)",
+    "actual_value": 0.0008,
+    "timestamp": "2028-01-31T23:59:59Z",
+    "unit": "%",
+    "period": "2028-01",
+    "source_record_id": "TEL-ACT-202801-07"
+  },
+  {
+    "kpi_id": "KPI-TEL-08",
+    "kpi_name": "Cyber Threat Containment Time",
+    "actual_value": 11.5,
+    "timestamp": "2028-01-31T23:59:59Z",
+    "unit": "min",
+    "period": "2028-01",
+    "source_record_id": "TEL-ACT-202801-08"
+  },
+  {
+    "kpi_id": "KPI-TEL-09",
+    "kpi_name": "Severity 1 Incident MTTR",
+    "actual_value": 12.0,
+    "timestamp": "2028-01-31T23:59:59Z",
+    "unit": "min",
+    "period": "2028-01",
+    "source_record_id": "TEL-ACT-202801-09"
+  },
+  {
+    "kpi_id": "KPI-TEL-10",
+    "kpi_name": "Severity 2 Incident MTTR",
+    "actual_value": 38.5,
+    "timestamp": "2028-01-31T23:59:59Z",
+    "unit": "min",
+    "period": "2028-01",
+    "source_record_id": "TEL-ACT-202801-10"
+  },
+  {
+    "kpi_id": "KPI-TEL-11",
+    "kpi_name": "Edge Facility PUE Efficiency",
+    "actual_value": 1.19,
+    "timestamp": "2028-01-31T23:59:59Z",
+    "unit": "ratio",
+    "period": "2028-01",
+    "source_record_id": "TEL-ACT-202801-11"
+  },
+  {
+    "kpi_id": "KPI-TEL-12",
+    "kpi_name": "Billing Telemetry Data Accuracy",
+    "actual_value": 99.995,
+    "timestamp": "2028-01-31T23:59:59Z",
+    "unit": "%",
+    "period": "2028-01",
+    "source_record_id": "TEL-ACT-202801-12"
+  }
+]

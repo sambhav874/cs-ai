@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Containerfile
+      target: production  # Explicitly build the production stage
+    image: nextjs-frontend:prod
+    container_name: frontend-prod
+    ports:
+      - "4202:4200"
+    env_file:
+      - ./apps/frontend/.env.prod
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:8002
+    volumes:
+      - ./apps/frontend/public:/app/public  # More specific volume mount
+      - ./apps/frontend/.next/static:/app/.next/static  # For static files
+    networks:
+      - frontend-network
+    restart: unless-stopped
+
+networks:
+  frontend-network:
+    driver: bridge

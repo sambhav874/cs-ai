@@ -1,0 +1,41 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/backend && poetry run uvicorn main:app --reload --port 8000"
+      ],
+      "port": 8000
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/frontend && npm run dev"
+      ],
+      "port": 4200
+    },
+    {
+      "name": "backend-sandbox",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/sambhavjain/Desktop/Codes/extractor/extractor/apps/backend && TESTING=true ALLOWED_ORIGINS=http://localhost:4300,http://localhost:4200 poetry run uvicorn main:app --port 8010"
+      ],
+      "port": 8010
+    },
+    {
+      "name": "frontend-sandbox",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/frontend && NEXT_PUBLIC_EXTRACTOR_API_URL=http://localhost:8010/api/v1 npm run dev -- -p 4300"
+      ],
+      "port": 4300
+    }
+  ]
+}

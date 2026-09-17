@@ -1,0 +1,129 @@
+id: logistics_msa
+version: 1
+display_name: Logistics Master Services Agreement
+extends: _base
+fixture: final_evaluation/datasets/kpi_contracts/01_global_logistics_master_services_agreement.md
+
+match:
+  # Advisory signals. The classifier scores; nothing here hard-matches.
+  title_patterns: ["master services agreement", "logistics", "transportation services", "freight"]
+  body_markers: ["on-time delivery", "on-time pickup", "EDI 214", "Critical Lane", "accessorial",
+                 "Peak Season", "carrier", "lane", "demurrage", "detention"]
+  structure: ["per_kpi_section_blocks", "band_table_with_consequence_column"]
+
+budget:
+  # 1800 dropped sweep.md — the file carrying this family's scatter
+  # patterns, and the reason the pack exists. Shipping a pack whose
+  # highest-value section never renders costs more than the tokens do.
+  max_context_tokens: 2400
+
+classes:
+  - id: service_level_target
+    label: Service level target
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      A percentage or duration the provider must meet over a stated period.
+      Take it from the stated target, never from a band's lower bound.
+  - id: banded_consequence_ladder
+    label: Banded consequence ladder
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      A table mapping performance bands to credits, scores or escalations. One
+      record per row; the consequence column is its own obligation stream.
+    expect: "one record per band row"
+  - id: per_unit_credit_rate
+    label: Per-unit credit rate
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      A credit expressed per unit of shortfall — per tenth of a percentage
+      point, per shipment, per event. Frequently stated in prose beneath its
+      table, not inside it.
+    expect: ">=8 records; the per-tenth rates live in the penalty paragraph"
+  - id: triggered_remediation_duty
+    label: Triggered remediation duty
+    modality: obligation
+    party: supplier
+    carries_measurement: false
+    description: >
+      A corrective action plan, root cause analysis or executive review that a
+      band or event count triggers. Has its own deadlines and no threshold.
+  - id: recovery_cap
+    label: Recovery cap
+    modality: obligation
+    party: mutual
+    carries_measurement: true
+    description: >
+      An aggregate ceiling on credits, with carve-outs. Bounds every credit
+      record; a credit extracted without it overstates recoverable money.
+    expect: "1 record; credit records reference it"
+  - id: reporting_cadence
+    label: Reporting cadence
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      A recurring submission with a clock deadline and a required content list.
+      Capture the cadence and the content list.
+    expect: ">=4 records (daily, weekly, monthly, quarterly)"
+  - id: billing_precondition
+    label: Billing precondition
+    modality: prohibition
+    party: supplier
+    carries_measurement: false
+    description: >
+      A charge that may not be billed absent stated evidence. Negative,
+      client-protective, and invisible to quantitative coverage.
+    expect: ">=1 record for the accessorial evidence rule"
+  - id: benchmark_or_repricing_trigger
+    label: Benchmark or repricing trigger
+    modality: permission
+    party: mutual
+    carries_measurement: true
+    description: >
+      A condition forcing renegotiation, plus the frequency right that goes
+      with it.
+  - id: carrier_or_subcontractor_control
+    label: Carrier or subcontractor control
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      Approved-carrier share, safety-rating exclusions, appointment compliance.
+      Some carry a percentage, some do not.
+  - id: termination_trigger
+    label: Termination trigger
+    modality: permission
+    party: client
+    carries_measurement: true
+    description: >
+      An independent ground for termination — a failure count, a performance
+      floor, an aggregate credit ceiling, an uncured breach period.
+    expect: ">=5 records, one per trigger"
+  - id: insurance_floor
+    label: Insurance floor
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      A minimum coverage the provider must hold, by policy type.
+    expect: "4 records (general liability, cargo, cyber, auto)"
+  - id: records_retention
+    label: Records retention
+    modality: obligation
+    party: supplier
+    carries_measurement: true
+    description: >
+      How long records must be kept, often spelled as words rather than digits.
+  - id: audit_right
+    label: Audit right
+    modality: permission
+    party: client
+    carries_measurement: false
+    description: >
+      A right to inspect, with its own notice period and frequency limit.

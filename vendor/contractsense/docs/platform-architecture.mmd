@@ -1,0 +1,76 @@
+graph LR
+  U["Users / Teams"] --> FE["Next.js Frontend<br/>Dashboard, Contracts, KPIs, Agent, Reports"]
+  FE -->|"REST /api/v1 + JWT"| API
+  FE <-->|"WebSocket job updates"| WS
+
+  subgraph Backend["FastAPI Backend"]
+    API["API Routers<br/>contracts, projects, teams, billing, audit"]
+    Auth["Auth & Security<br/>JWT, CORS, rate limits, headers"]
+    Services["Business Services<br/>KPIs, playbooks, reports, support"]
+    Agent["ContractSense Agent<br/>LangGraph ReAct, scoped tools, approvals"]
+    RAG["RAG Layer<br/>segment, embed, retrieve, cite, verify"]
+    Artifacts["Artifact Services<br/>DOCX, redlines, tabular reviews"]
+    WS["WS Router<br/>MongoDB job change stream"]
+
+    API --> Auth
+    API --> Services
+    API --> Agent
+    Agent --> RAG
+    Agent --> Artifacts
+    Services --> RAG
+  end
+
+  subgraph Async["Async Processing"]
+    Broker["RabbitMQ<br/>or Azure Service Bus"]
+    Queues["Celery Queues<br/>default, indexing, kpi_ingestion, email/report"]
+    Worker["Celery Workers<br/>PDF indexing, KPI source fetches, emails, reports"]
+
+    Broker --> Queues --> Worker
+  end
+
+  subgraph Data["Persistence"]
+    Mongo["MongoDB Atlas<br/>contracts, users, teams, projects, jobs, audit, KPIs, agent memory"]
+    GridFS["GridFS<br/>PDF uploads and DOCX artifacts"]
+    Vectors["Vector Store<br/>MongoDB Atlas Vector Search or Pinecone"]
+  end
+
+  subgraph External["External Providers"]
+    OCR["Marker API / local Marker / LiteParse"]
+    Embeddings["VoyageAI / OpenAI Embeddings"]
+    LLMs["Anthropic / Gemini / OpenAI / Groq"]
+    Stripe["Stripe Billing"]
+    Email["Azure Communication Services Email"]
+    Sources["KPI Sources<br/>CSV, XLSX, REST, webhooks, SaaS"]
+  end
+
+  subgraph Deploy["Deployment"]
+    ACR["Azure Container Registry<br/>built by Jenkins"]
+    FrontDeploy["Azure Static Web Apps<br/>or Next.js container"]
+    ApiDeploy["Azure App Service<br/>or Helm backend deployment"]
+    WorkerDeploy["Azure Container Apps<br/>or worker containers"]
+
+    ACR --> FrontDeploy
+    ACR --> ApiDeploy
+    ACR --> WorkerDeploy
+  end
+
+  API --> Mongo
+  API --> GridFS
+  API --> Broker
+  API --> Stripe
+  API --> Email
+
+  Worker --> Mongo
+  Worker --> GridFS
+  Worker --> OCR
+  Worker --> RAG
+
+  RAG --> Embeddings
+  RAG --> Vectors
+  RAG --> LLMs
+
+  Services --> Mongo
+  Services --> Sources
+  Agent --> Mongo
+  Agent --> LLMs
+  WS --> Mongo

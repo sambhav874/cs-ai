@@ -1,0 +1,30 @@
+[Suggested upload date: 2026-03-25]
+
+STATEMENT OF WORK SOW-001
+
+Statement of Work SOW-001, issued under the Master Service Agreement between
+Harborview Health Systems and Trellis Data Partners, Inc. dated 3 March
+2026.
+
+1. SCOPE. Implementation of a predictive readmission-risk analytics
+platform, Phase 1, across three (3) pilot facilities within the Harborview
+network.
+
+2. DELIVERABLES AND TIMELINE. Sixteen (16) week implementation: data
+integration and model calibration (Weeks 1-8), clinical workflow
+integration and staff training (Weeks 9-13), go-live and stabilization
+(Weeks 14-16).
+
+3. FEES. Fees for this engagement are set out in Exhibit B (Pricing
+Exhibit), attached as a separate exhibit to this Statement of Work.
+
+4. SERVICE LEVELS. Service levels applicable to this engagement are set out
+in Exhibit C (SLA Exhibit), attached as a separate exhibit to this Statement
+of Work.
+
+5. PROJECT TEAM.
+Harborview Clinical Analytics Lead: Dr. R. Nabhan
+Trellis Delivery Lead: S. Voss
+
+This Statement of Work is governed by the terms of the Master Service
+Agreement referenced above.

@@ -1,0 +1,34 @@
+sequenceDiagram
+  actor User
+  participant FE as Next.js Frontend
+  participant API as FastAPI API
+  participant DB as MongoDB + GridFS
+  participant Broker as RabbitMQ / Azure Service Bus
+  participant Worker as Celery Worker
+  participant OCR as Marker / LiteParse
+  participant Vec as Vector Store
+  participant Agent as ContractSense Agent
+  participant LLM as LLM Providers
+
+  User->>FE: Upload PDF
+  FE->>API: POST /api/v1/upload
+  API->>DB: Store contract metadata and PDF
+  API->>Broker: Queue indexing task
+  API-->>FE: Return contract id and queued status
+  FE->>API: Open WebSocket job subscription
+
+  Broker->>Worker: Dispatch indexing task
+  Worker->>DB: Read PDF from GridFS
+  Worker->>OCR: Extract markdown / structured text
+  Worker->>Vec: Segment and embed contract text
+  Worker->>DB: Save index content and job status
+  API-->>FE: Push job updates over WebSocket
+
+  User->>FE: Ask contract question or request artifact
+  FE->>API: POST agent query
+  API->>Agent: Run scoped agent workflow
+  Agent->>Vec: Search evidence
+  Agent->>DB: Read scoped contract, KPI, memory, artifact data
+  Agent->>LLM: Generate answer or proposal
+  Agent-->>API: Return cited answer or approval request
+  API-->>FE: Render answer, trace, artifact, or approval UI

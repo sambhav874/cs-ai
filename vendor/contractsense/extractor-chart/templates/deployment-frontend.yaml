@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: extractor-frontend
+  labels:
+    app: extractor-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: extractor-frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: extractor-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: "{{ .Values.frontendImage }}"
+        imagePullPolicy: Always
+        ports:
+        - containerPort: {{ .Values.frontendPort }}
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "{{ .Values.nodeEnv }}"
+        - name: NEXT_PUBLIC_EXTRACTOR_API_URL
+          value: "http://extractor-backend.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.backendPort }}"
+        - name: NEXT_PUBLIC_API_URL
+          value: "http://extractor-frontend.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.frontendPort }}"
+        - name: NEXT_PORT
+          value: "{{ .Values.frontendPort }}"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 20
+          periodSeconds: 30
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 30
+          timeoutSeconds: 2
+          failureThreshold: 3
+      imagePullSecrets:
+      {{- with .Values.imagePullSecrets }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}

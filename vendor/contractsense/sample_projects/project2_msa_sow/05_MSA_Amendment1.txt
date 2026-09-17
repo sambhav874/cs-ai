@@ -1,0 +1,38 @@
+[Suggested upload date: 2026-09-02]
+
+AMENDMENT NO. 1 TO THE MASTER SERVICE AGREEMENT
+
+Amendment No. 1 to the Master Service Agreement between Solstice Retail
+Group, Inc. and Cobalt Digital Solutions, LLC dated 2 March 2026.
+
+Dated: 25 August 2026
+
+WHEREAS the Parties wish to update certain master terms applicable to all
+Statements of Work issued under the Agreement, including SOW-001 and
+SOW-002;
+
+NOW THEREFORE the Parties agree as follows:
+
+1. LIABILITY CAP. Section 5 (Limitation of Liability) of the Agreement is
+amended to increase the liability cap from twelve (12) months' fees to
+eighteen (18) months' fees paid in the preceding eighteen (18) months.
+
+2. DATA SECURITY ADDENDUM. A new Section 9A (Data Security) is added to the
+Agreement, requiring Vendor to provide Client with an annual SOC 2 Type II
+report covering the systems used to deliver Services under any Statement of
+Work.
+
+3. PAYMENT TERMS. Section 3 (Payment Terms) is amended so that invoices
+exceeding USD 100,000 are payable within thirty (30) days (net-30) rather
+than forty-five (45) days; invoices at or below USD 100,000 remain net-45.
+
+4. APPLICATION. This Amendment applies to the Agreement and to all
+Statements of Work currently in effect, including SOW-001 (as modified by
+Change Order No. 1) and SOW-002, from the date first written above.
+
+5. NO OTHER CHANGES. Except as expressly amended herein, the Agreement
+remains in full force and effect.
+
+For SOLSTICE RETAIL GROUP, INC.          For COBALT DIGITAL SOLUTIONS, LLC
+Name: T. Whitfield                        Name: A. Marchetti
+Title: Chief Operating Officer            Title: VP Client Engagements

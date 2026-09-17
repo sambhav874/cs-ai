@@ -1,0 +1,29 @@
+[Suggested upload date: 2026-06-01]
+
+CHANGE ORDER NO. 1
+
+Change Order No. 1 to Statement of Work SOW-001, issued under the Master
+Service Agreement between Solstice Retail Group, Inc. and Cobalt Digital
+Solutions, LLC dated 2 March 2026.
+
+Dated: 18 May 2026
+
+1. BACKGROUND. Following strong early results from the initial pilot scope
+defined in SOW-001, Solstice Retail Group, Inc. has requested an expansion
+of the pilot deployment prior to full rollout.
+
+2. CHANGES TO SOW-001.
+(a) Deliverable D2 is expanded from five (5) to eight (8) stores
+("Deliverable D2a").
+(b) Deliverable D3 (full rollout, forty stores) is extended from Week 22 to
+Week 24 to accommodate the expanded pilot evaluation period.
+(c) The fixed fee under SOW-001 is increased by USD 45,000 to cover the
+expanded pilot scope, payable upon D2a acceptance.
+
+3. NO OTHER CHANGES. All other terms of SOW-001 remain unchanged. This
+Change Order applies solely to SOW-001 and does not modify SOW-002 or any
+other Statement of Work issued under the Agreement.
+
+For SOLSTICE RETAIL GROUP, INC.          For COBALT DIGITAL SOLUTIONS, LLC
+Name: J. Alvarez                          Name: R. Chen
+Title: Project Manager                    Title: Delivery Lead

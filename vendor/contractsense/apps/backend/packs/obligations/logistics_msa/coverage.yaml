@@ -1,0 +1,24 @@
+# Floors enforced by testing/backend/scripts/score_obligation_coverage.py and
+# score_obligation_correctness.py against the reference fixture.
+# Set from the measured retry-only baseline, not from ambition.
+span_coverage_floor: 0.95
+anchor_recall_floor: 1.0
+grounding_floor: 0.90
+recall_floor: 0.85          # against labels/01_global_logistics.labels.json (85 obligations)
+threshold_accuracy_floor: 0.85
+
+required_obligation_classes:
+  - id: per_unit_credit_rate
+    expect: ">=8 records; includes $3,000 and $7,500 per tenth (Sec 4.02) and the four KPI-2 rates"
+  - id: banded_consequence_ladder
+    expect: "one record per band row across Sections 4.02-4.09"
+  - id: reporting_cadence
+    expect: ">=4 records (daily, weekly, monthly, quarterly)"
+  - id: billing_precondition
+    expect: ">=1 record for the accessorial evidence rule (Sec 3.03)"
+  - id: recovery_cap
+    expect: "1 record; credit records reference it"
+  - id: termination_trigger
+    expect: ">=5 records, one per trigger in Sec 9.01"
+  - id: insurance_floor
+    expect: "4 records (general liability, cargo, cyber, auto)"

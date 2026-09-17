@@ -1,0 +1,102 @@
+# ============================================================
+# Stage 1: Builder — compile dependencies with full build tools
+# ============================================================
+FROM python:3.11-slim AS builder
+
+ARG USE_PDF=false
+ARG USE_ML=false
+ARG USE_FAISS=false
+ARG USE_GPU=false
+
+WORKDIR /build
+
+# Install build-time system dependencies (compilers, headers)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH="/root/.local/bin:$PATH"
+
+# Create an isolated virtualenv for the runtime
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    VIRTUAL_ENV="/opt/venv" \
+    POETRY_VIRTUALENVS_CREATE=false
+
+# Install Python dependencies first (cached layer — only re-runs on lock changes)
+COPY apps/backend/pyproject.toml apps/backend/poetry.lock ./
+
+RUN set -ex \
+    && EXTRAS="" \
+    && if [ "$USE_PDF" = "true" ]; then EXTRAS="$EXTRAS pdf"; fi \
+    && if [ "$USE_ML" = "true" ]; then EXTRAS="$EXTRAS ml"; fi \
+    && if [ "$USE_FAISS" = "true" ]; then EXTRAS="$EXTRAS faiss"; fi \
+    && if [ -z "$EXTRAS" ]; then \
+        poetry install --no-root --no-interaction; \
+    else \
+        poetry install --no-root --no-interaction --extras "${EXTRAS}"; \
+    fi \
+    && if [ "$USE_GPU" = "true" ]; then \
+        pip install --no-cache-dir faiss-gpu; \
+    fi
+
+# Slim down the venv: remove caches, tests, docs, pip/setuptools/wheel
+RUN find /opt/venv -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true \
+    && find /opt/venv -type f -name '*.pyc' -delete 2>/dev/null || true \
+    && find /opt/venv -type f -name '*.pyo' -delete 2>/dev/null || true \
+    && find /opt/venv -type d \( -name 'tests' -o -name 'test' -o -name 'testing' \) -exec rm -rf {} + 2>/dev/null || true \
+    && find /opt/venv -type d -name 'examples' -exec rm -rf {} + 2>/dev/null || true \
+    && rm -rf /opt/venv/lib/python3.11/site-packages/pip \
+             /opt/venv/lib/python3.11/site-packages/setuptools \
+             /opt/venv/lib/python3.11/site-packages/wheel \
+             /opt/venv/lib/python3.11/site-packages/poetry \
+             /opt/venv/share \
+             /opt/venv/include \
+             /root/.cache
+
+# ============================================================
+# Stage 2: Runtime — minimal image, no build tools
+# ============================================================
+FROM python:3.11-slim
+
+ARG ENVIRONMENT=dev
+ENV ENVIRONMENT=${ENVIRONMENT} \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app/backend
+
+# Install only the shared libraries needed at runtime (no compilers)
+# libgomp1: needed by OpenCV and some numerical libs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Copy the pre-built virtualenv from the builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy application code
+COPY apps/backend/ ./
+
+# Baked in, not bind-mounted -- Coolify builds straight from this
+# Containerfile and does not apply docker-compose.yml's volumes:, so a
+# host bind mount for demo_data never reaches this container.
+COPY demo_data /demo_data
+
+# Set up entrypoint
+COPY apps/backend/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Run as non-root for security
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app/backend
+USER appuser
+
+EXPOSE 8000
+ENTRYPOINT ["/entrypoint.sh"]

@@ -1,0 +1,80 @@
+# ================================================
+# Stage 1: Install dependencies (prod + dev)
+# ================================================
+FROM node:20-alpine AS deps
+WORKDIR /app
+# Install system dependencies (needed for some npm packages)
+RUN apk add --no-cache libc6-compat
+# Copy only what's needed for dependency installation
+COPY package.json package-lock.json ./
+# Install all dependencies (including devDependencies)
+RUN npm ci --legacy-peer-deps
+
+# ================================================
+# Stage 2: Build the application
+# ================================================
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Copy dependencies from previous stage
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Set build-time environment variables (will be baked into the build)
+ARG NODE_ENV=production
+ARG NEXT_PUBLIC_EXTRACTOR_API_URL=http://localhost:8000/api/v1
+ARG NEXT_PUBLIC_API_URL=http://localhost:4200
+ARG NEXT_PORT=4200
+
+ENV NODE_ENV=${NODE_ENV}
+ENV NEXT_PUBLIC_EXTRACTOR_API_URL=${NEXT_PUBLIC_EXTRACTOR_API_URL}
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV PORT=${NEXT_PORT}
+
+# Build Next.js (this bakes the public variables into static files)
+RUN npm run build
+
+# ================================================
+# Stage 3: Production image
+# ================================================
+FROM node:20-alpine AS production
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -u 1001 -S nextjs -G nodejs
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+# Copy only standalone output (includes necessary node_modules)
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+EXPOSE 3000
+CMD ["node", "server.js"]
+
+# ================================================
+# Stage 4: Development image (optional)
+# ================================================
+FROM node:20-alpine AS development
+WORKDIR /app
+# Copy package files first for better caching
+COPY package.json package-lock.json ./
+# Install all dependencies (including devDependencies)
+RUN npm install --legacy-peer-deps
+# Copy source code
+COPY . .
+
+# Hardcoded environment variables for development
+ENV NODE_ENV=development
+ENV NEXT_PUBLIC_EXTRACTOR_API_URL=http://localhost:8000/api/v1
+ENV NEXT_PUBLIC_API_URL=http://localhost:4200/
+ENV PORT=4200
+ENV NEXT_PORT=4200
+
+EXPOSE 4200
+CMD ["npm", "run", "dev"]

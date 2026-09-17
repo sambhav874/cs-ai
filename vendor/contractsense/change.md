@@ -1,0 +1,182 @@
+# ContractSense Deep Workflow Agent Implementation
+
+## Implementation Checklist
+
+- [x] Create implementation tracker before code work.
+- [x] Add modular backend graph package with typed state, policies, tools, approvals, telemetry, persistence, middleware, model gateway, and runner.
+- [x] Add global agent API endpoints for query, streaming-compatible response shape, workflow inspection, proposal editing, approval, and rejection.
+- [x] Add tabular review proposal editing and approval flow using existing tabular review primitives.
+- [x] Add reusable frontend agent types/components for proposal approval and tabular field editing.
+- [x] Add tests for graph routing, guardrails, tabular proposal editing, approval/rejection, and idempotency.
+- [x] Run relevant tests and record results.
+- [x] Plug the deep workflow agent into the real ContractSense contract/project chat panel.
+- [x] Render editable approval cards in live chat and execute/reject tabular review workflows from the panel.
+- [x] Verify live-chat integration build/tests.
+- [x] Fix live-chat approval 400 caused by wrong project/document scope.
+- [x] Compact the tabular approval card for real chat use.
+- [x] Move workflow intent selection out of frontend keyword triggers and into backend agent routing.
+- [x] Clear completed approval state so approved workflows show the result instead of the proposal card.
+- [x] Audit whether middleware descriptors are actually wired into the runner.
+- [x] Replace sequential runner with a compiled LangGraph workflow.
+- [x] Execute middleware/policy gates as active graph nodes.
+- [x] Add graph-level tool decision and approval-gated action transitions.
+- [x] Add tests proving graph and middleware execution are active.
+- [x] Route real contract/project stream endpoints through the graph agent gate.
+- [x] Remove duplicated frontend deep-agent preflight once backend stream gate owns interruptions.
+- [x] Fix contract-page explorer so it lists all accessible contracts in the actual project.
+- [x] Add approval gate for draft/redline/copy artifact side effects in real chat streams.
+- [x] Keep generated agent DOCX files out of the project Contracts table.
+- [x] Fix the contract-page explorer sibling contract list and upload affordance.
+- [x] Replace malformed prose-to-DOCX redline generation with structured approved redline artifacts.
+- [x] Preserve original contract title for edited/redline copies instead of `Edited Copy - ...`.
+- [x] Show proposed redline changes as approval cards before artifact creation.
+- [x] Render redline DOCX from original contract content with applied Word insert/delete markup.
+- [x] Review Mike's document edit/versioning pattern and adapt the relevant redline behavior.
+- [x] Store redline previews as the updated contract body with inline delete/insert markers.
+- [x] Save follow-up redline approvals as new versions of the same redline copy.
+- [x] Render inline redline markup in the in-app DOCX preview.
+- [x] Add Mike capability parity notes and deterministic quality gates for model-shuffled agent output.
+- [x] Verify redline preview/versioning with tests and targeted API-free checks.
+- [x] Add Mike-equivalent document tools to the agent tool registry.
+- [x] Add deterministic DOCX tracked edit apply/resolve helpers.
+- [x] Persist tracked edit annotations and active-version document reads.
+- [x] Add accept/reject and tracked-change-id endpoints for contract/project agent documents.
+- [x] Add read/find/replicate/edit document manager APIs for tool execution.
+- [x] Add Mike-style document events and edit annotations to chat responses.
+- [x] Upgrade frontend cards/panel for tracked edit accept/reject/view interactions.
+- [x] Add parity tests for document tools, tracked edits, versions, and UI-facing payloads.
+- [x] Make tabular approval durable when provider generation fails with 503.
+- [x] Reuse an existing workflow-created tabular review on approval retry to avoid duplicates after prior provider failure.
+- [x] Replace one-shot deterministic tool planning with a bounded ReAct loop inside the LangGraph runner.
+- [x] Feed scoped contract/project document observations back into the ReAct loop through a real chat tool executor.
+- [x] Add regression coverage for ReAct tool observations and trace events.
+- [x] Extract reusable Mongo-backed read-tool executor and wire it into both global and live chat agent routes.
+- [x] Add collapsible agent run details UI with safe model action summaries, tool observations, raw trace JSON, token usage, and cost.
+- [x] Show friendly document names in tabular review proposal document selection.
+- [x] Add bulk accept/reject controls for pending tracked edits.
+- [x] Stop deterministic answer-keyword artifact routing from turning QA/review answers into redline approvals.
+- [x] Add regression tests proving obligation/deadline review stays a normal answer while explicit redline still creates an edit workflow.
+
+## Files And Modules Touched
+
+- `change.md`
+- `apps/backend/pyproject.toml`
+- `apps/backend/poetry.lock`
+- `apps/backend/services/contract_agent/__init__.py`
+- `apps/backend/services/contract_agent/graph/__init__.py`
+- `apps/backend/services/contract_agent/graph/state.py`
+- `apps/backend/services/contract_agent/graph/runner.py`
+- `apps/backend/services/contract_agent/graph/model_gateway.py`
+- `apps/backend/services/contract_agent/graph/policies.py`
+- `apps/backend/services/contract_agent/graph/approvals.py`
+- `apps/backend/services/contract_agent/graph/persistence.py`
+- `apps/backend/services/contract_agent/graph/telemetry.py`
+- `apps/backend/services/contract_agent/graph/middleware.py`
+- `apps/backend/services/contract_agent/graph/nodes/core.py`
+- `apps/backend/services/contract_agent/graph/nodes/types.py`
+- `apps/backend/services/contract_agent/graph/nodes/__init__.py`
+- `apps/backend/services/contract_agent/graph/tools/registry.py`
+- `apps/backend/services/contract_agent/graph/tools/tabular.py`
+- `apps/backend/services/contract_agent/graph/tools/executor.py`
+- `apps/backend/services/contract_agent/graph/tools/__init__.py`
+- `apps/backend/api/routes/agent.py`
+- `apps/backend/api/routes/tabular_reviews.py`
+- `apps/backend/main.py`
+- `apps/backend/core/database_indexes.py`
+- `apps/backend/services/document_artifacts.py`
+- `apps/backend/services/agent_documents.py`
+- `apps/backend/services/agent_memory.py`
+- `apps/frontend/lib/agent.ts`
+- `apps/frontend/components/agent/AgentTraceView.tsx`
+- `apps/frontend/components/agent/ApprovalCard.tsx`
+- `apps/frontend/components/agent/TabularReviewProposalEditor.tsx`
+- `apps/frontend/components/agent/index.ts`
+- `apps/frontend/components/ContractAgentPanel.tsx`
+- `apps/frontend/app/contracts/[contract_id]/page.tsx`
+- `apps/frontend/app/dashboard/page.tsx`
+- `testing/backend/tests/test_deep_contract_agent.py`
+
+## Test And Eval Status
+
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests` — 88 passed.
+- Passed: `cd apps/backend && poetry run python -m compileall services/contract_agent api/routes/agent.py api/routes/tabular_reviews.py core/database_indexes.py`.
+- Passed: direct graph sanity check for a project-surface tabular review request; result required approval and returned an editable tabular proposal before any side effect.
+- Passed: `cd apps/backend && poetry run python ../../testing/backend/scripts/evaluate_contractsense_agent.py --suite smoke --runner core --output /tmp/contractsense-agent-smoke.json` — 2/2 passed, score 1.0, hard gate passed, release gate passed.
+- Passed: `cd apps/backend && poetry run python ../../testing/backend/scripts/evaluate_contractsense_agent.py --suite security --runner core --fail-on-hard-gate --output /tmp/contractsense-agent-security.json` — 1/1 passed, score 1.0, hard gate passed, release gate passed.
+- Passed: `cd apps/backend && poetry run python ../../testing/backend/scripts/evaluate_contractsense_agent.py --suite full --runner core --output /tmp/contractsense-agent-full.json` — 4/4 passed, score 1.0, hard gate passed, release gate passed.
+- Passed: `cd apps/backend && poetry run python ../../testing/backend/scripts/evaluate_contractsense_agent.py --suite benchmark --runner core --output /tmp/contractsense-agent-benchmark.json` — 1/1 passed, score 1.0, hard gate passed, release gate passed.
+- Passed: `cd apps/frontend && npm run build`.
+- Passed: `cd apps/frontend && npm run build` after wiring the deep workflow agent into the real contract/project chat panel.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py` after live-chat integration — 5 passed.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py` after approval-scope/model-planner/card fixes — 5 passed.
+- Passed: `cd apps/frontend && npm run build` after approval-scope/model-planner/card fixes.
+- Passed: `cd apps/backend && poetry run python -m compileall services/contract_agent/graph api/routes/agent.py api/routes/tabular_reviews.py`.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py` after completed-approval state fix — 6 passed.
+- Passed: clean frontend rebuild after deleting stale `.next`; `@radix-ui.js` vendor chunk regenerated and `GET /contracts/6a1ca2a9efa67a9070dbb8cd` returned `200 OK`.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py` after LangGraph runner/middleware activation — 7 passed.
+- Passed: `cd apps/backend && poetry run python -m compileall services/contract_agent/graph api/routes/agent.py api/routes/tabular_reviews.py` after LangGraph runner/middleware activation.
+- Passed: `cd apps/backend && poetry run python -m compileall api/routes/endpoints.py services/contract_agent/graph` after routing real chat streams through the graph gate.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py` after real stream gate integration — 7 passed.
+- Passed: live `POST /api/v1/contracts/6a1ca2a9efa67a9070dbb8cd/agent/query/stream` emitted `approval_required` from the real contract chat stream, including editable model-planned fields and active middleware trace.
+- Passed: live `POST /api/v1/agent/workflows/workflow-bf071112489745f9972a5e7d66d86eb4/approve` completed the workflow, cleared `approval_request`, and created/generated tabular review `6a25a3e4f3d076f408b834ba` with 12 generated cells.
+- Passed: `cd apps/backend && poetry run python -m compileall api/routes/endpoints.py` after adding the project contracts explorer endpoint.
+- Passed: live `GET /api/v1/projects/6a1ca28defa67a9070dbb8ca/contracts` returned `count: 2` with both project contracts for the visible contract page.
+- Passed: `GET http://127.0.0.1:4200/contracts/6a1ca2a9efa67a9070dbb8cd` returned `200 OK` after the explorer fetch change.
+- Passed: `cd apps/backend && poetry run python -m compileall api/routes/endpoints.py` after restoring `projectId` on contract detail responses.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py` after the project/explorer UI fixes — 7 passed.
+- Passed: `git diff --check -- apps/backend/api/routes/endpoints.py apps/frontend/app/dashboard/page.tsx apps/frontend/app/contracts/[contract_id]/page.tsx change.md`.
+- Passed: live authenticated `GET /api/v1/contracts/6a1ca2a9efa67a9070dbb8cd` returned `projectId: 6a1ca28defa67a9070dbb8ca`.
+- Passed: live authenticated `GET /api/v1/projects/6a1ca28defa67a9070dbb8ca/contracts` returned `count: 2` with the Bank of America and Cascade Natural Gas PDFs.
+- Passed: `GET http://localhost:4200/contracts/6a1ca2a9efa67a9070dbb8cd` returned `200 OK` after the Explorer upload button change.
+- Passed: `GET http://localhost:4200/dashboard?project_id=6a1ca28defa67a9070dbb8ca&tab=contracts&upload=1` returned `200 OK`.
+- Blocked: `cd apps/frontend && npx tsc --noEmit --pretty false` still fails on pre-existing app-wide TypeScript errors outside this slice; no reported errors were in `app/dashboard/page.tsx`, `app/contracts/[contract_id]/page.tsx`, agent components, or agent lib.
+- Blocked: headless browser UI smoke with Playwright because the workspace does not have the `playwright` package installed.
+- Passed: `cd apps/backend && poetry run python -m compileall api/routes/endpoints.py api/routes/agent.py services/contract_agent/graph` after artifact approval gating.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py` after artifact approval gating — 7 passed.
+- Passed: live drafting stream now returns `approval_required` before DOCX creation; the stream read both project documents and no `doc_created` event was emitted before approval.
+- Passed: live artifact approval for workflow `workflow-ecbc92284ef74253b6a6aa20d6a06929` completed, cleared `approval_request`, and returned DOCX artifact `Contract Approval Note.docx`.
+- Passed: `cd apps/backend && poetry run python -m compileall services/document_artifacts.py services/agent_documents.py api/routes/agent.py api/routes/endpoints.py` after structured redline artifact changes.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py` after adding supplier-name redline coverage — 8 passed.
+- Passed: live `please redline the supplier name` contract stream returned `approval_required` with one visible change: `Cascade Natural Gas Corporation -> [New Supplier Name]`.
+- Passed: live approval created `redline_contract_copy` artifact with original contract title, applied redline metadata, and no unmatched redline changes.
+- Observed before fix: preview metadata for the live redline artifact returned `artifactKind: redline_contract_copy`, original document title, visible redline change card data, and body text starting with `Approved Redline Changes`.
+- Passed: `cd apps/backend && poetry run python -m compileall services/document_artifacts.py services/agent_documents.py api/routes/agent.py api/routes/endpoints.py` after redline preview/versioning fixes.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py` after redline preview/versioning fixes — 8 passed.
+- Passed: targeted redline sanity check planned 3 repeated supplier-name changes, applied 3, unmatched 0, and produced inline preview markers in source contract text.
+- Passed: removed the old memo-style redline preview helper so new artifacts cannot store `Approved Redline Changes` as the preview body.
+- Passed: `cd apps/backend && poetry run python -m compileall services/document_artifacts.py services/agent_documents.py` after removing the old preview helper.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py` after removing the old preview helper — 8 passed.
+- Passed: `cd apps/backend && poetry run python -m compileall services/document_artifacts.py services/agent_documents.py services/contract_agent/graph api/routes/endpoints.py api/routes/agent.py core/database_indexes.py` after Mike parity tracked-edit/API/tool-planner wiring.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py -q` after Mike parity tracked-edit/tool-planner tests — 11 passed.
+- Passed: `git diff --check -- apps/backend/services/document_artifacts.py apps/backend/services/agent_documents.py apps/backend/api/routes/endpoints.py apps/backend/api/routes/agent.py apps/backend/services/contract_agent/graph apps/backend/core/database_indexes.py apps/frontend/components/ContractAgentPanel.tsx apps/frontend/app/contracts/[contract_id]/page.tsx testing/backend/tests/test_deep_contract_agent.py change.md`.
+- Passed: `cd apps/frontend && npm run build` after tracked edit cards/viewer wiring.
+- Passed: `cd apps/backend && poetry run python -m compileall services/agent_documents.py api/routes/endpoints.py` after adding read/find/replicate document routes.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py -q` after adding read/find/replicate document routes — 11 passed.
+- Not run: live HTTP smoke for new document endpoints because `127.0.0.1:8000` was not reachable from this shell and no app terminal session was attached.
+- Passed: `cd apps/backend && poetry run python -m compileall api/routes/agent.py` after tabular approval provider-failure resilience fix.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py -q` after tabular approval provider-failure resilience fix — 12 passed.
+- Passed: `cd apps/backend && poetry run python -m compileall api/routes/agent.py api/routes/tabular_reviews.py` after tabular approval retry idempotency fix.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py -q` after tabular approval retry idempotency fix — 13 passed.
+- Passed: `cd apps/backend && poetry run python -m compileall services/contract_agent/graph api/routes/endpoints.py` after bounded ReAct wiring.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py -q` after bounded ReAct wiring — 14 passed.
+- Passed: `cd apps/backend && poetry run python -m compileall services/contract_agent/graph api/routes/agent.py api/routes/endpoints.py` after extracting reusable ReAct read-tool executor.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py -q` after reusable executor/global route wiring — 14 passed.
+- Blocked then passed: `cd apps/frontend && npm run build`; first run failed because sandbox DNS could not reach `fonts.googleapis.com`, rerun with network permission passed.
+- Passed: `cd apps/backend && poetry run python -m compileall services/agent_memory.py services/document_artifacts.py api/routes/endpoints.py` after side-effect routing fix.
+- Passed: `cd apps/backend && poetry run pytest ../../testing/backend/tests/test_deep_contract_agent.py -q` after side-effect routing fix — 16 passed.
+- Passed: `git diff --check -- apps/backend/services/document_artifacts.py apps/backend/services/agent_documents.py apps/frontend/app/contracts/[contract_id]/page.tsx change.md`.
+- Blocked: `cd apps/frontend && npx tsc --noEmit --pretty false` still fails only on known unrelated frontend errors outside this slice; no errors were reported in `app/contracts/[contract_id]/page.tsx`, agent components, or agent lib.
+- Completed: redline preview/versioning now stores the changed contract body rather than a change memo.
+- Passed: `git diff --check -- apps/backend/services/document_artifacts.py apps/backend/services/agent_documents.py apps/backend/api/routes/agent.py apps/backend/api/routes/endpoints.py apps/frontend/components/agent/ApprovalCard.tsx apps/frontend/components/ContractAgentPanel.tsx apps/frontend/app/contracts/[contract_id]/page.tsx testing/backend/tests/test_deep_contract_agent.py change.md`.
+- Blocked: `cd apps/frontend && npm run lint` opens Next.js ESLint setup prompt because the app has no configured ESLint migration for deprecated `next lint`.
+- Blocked: `cd apps/frontend && npx tsc --noEmit --pretty false` fails on pre-existing frontend errors outside this slice, including `next/font/google` exports and older component prop/type mismatches; reruns after live-chat integration, explorer fix, and generic approval-card changes did not report errors in `ContractAgentPanel`, the contract route page, `components/agent`, or `lib/agent`.
+
+## Blockers, Assumptions, Follow-up
+
+- Backend remains Python/FastAPI/MongoDB/Celery.
+- Existing RAG, KPI, citation, artifact, tabular, and memory services are reused.
+- LangGraph is implemented as the target orchestration layer with an import-safe fallback until dependencies are installed in every environment.
+- Middleware audit: current `graph/middleware.py` now includes `ActiveMiddlewareEngine`, and `DeepContractAgentRunner` executes those middleware gates as LangGraph nodes. LangChain built-in middleware imports remain best-effort descriptors; production-critical enforcement currently runs through active custom middleware nodes plus route checks, approval persistence, and tabular access validation.
+- Mike reference pattern reviewed: its assistant edit flow applies tracked changes to active document bytes, records a new document version, and surfaces edit annotations from the persisted edit result. ContractSense will keep source contracts immutable but make redline copies follow the same versioned edited-document behavior.
+- Mike capability parity target: ContractSense agent must keep editable copies, active-version reads, tracked edits, version history, edit annotations/cards, document replication, download/open cards, and follow-up edits; quality gates must rely on typed edit schemas, source matching, approval status, deterministic rendering, and verifier checks so behavior does not depend on a single model/provider.
+- Active implementation target: complete Mike document-agent parity inside existing ContractSense agent surfaces, while preserving ContractSense approval gates, scoped access, and immutable source contracts.

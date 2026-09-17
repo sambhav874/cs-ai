@@ -1,0 +1,250 @@
+{
+  "_notes": [
+    "Config for the Baltia Airlines / Swissport USA JFK GHA Recoveries Management demo.",
+    "Pairs with baltia_jfk_ground_truth.json (37 obligations) and baltia_jfk_telemetry.json (mock actuals).",
+    "PRIMARY tracking surface = SUPPLIER (Swissport) obligations -- the 12 KPIs in this contract",
+    "explicitly tagged party_role='supplier' (Swissport is the party bound by the commitment):",
+    "manning/staffing, conditional-charge rules (technical landing, ramp return, night/Sunday/",
+    "holiday surcharge ban), liability cap, statutory pass-through, CPI escalation floor, and the",
+    "3 Annex A scope-of-service references. These are grouped into one dedicated source",
+    "(supplier_obligations_log) so connecting it is the demo's headline moment.",
+    "SECONDARY = CUSTOMER (Baltia) obligations -- 10 fee-schedule / notice / schedule-adherence",
+    "KPIs tagged party_role='customer', tracked across 4 smaller sources as a compliance baseline.",
+    "22 of 37 obligations tracked; the remaining 15 are extracted but unmapped (tiered labor",
+    "rates, contract-term/administrative clauses, reference-only items without a clean single",
+    "target) -- a realistic partial-rollout state.",
+    "4 breaches total: 3 supplier (75%) + 1 customer (25%), matching the pitch's primary focus."
+  ],
+  "contract": {
+    "filename_hints": ["baltia", "swissport", "jfk", "gha"],
+    "party_customer": "Baltia Airlines",
+    "party_supplier": "Swissport USA, Inc.",
+    "location": "John F. Kennedy International Airport (JFK)",
+    "effective_date": "2014-05-16",
+    "annex": "Annex B.1.0 (Ramp and Passenger Handling)"
+  },
+  "tracked_kpi_codes": {
+    "supplier_primary": [
+      "BALTIA-JFK-GHA-006",
+      "BALTIA-JFK-GHA-008",
+      "BALTIA-JFK-GHA-009",
+      "BALTIA-JFK-GHA-010",
+      "BALTIA-JFK-GHA-011",
+      "BALTIA-JFK-GHA-025",
+      "BALTIA-JFK-GHA-026",
+      "BALTIA-JFK-GHA-028",
+      "BALTIA-JFK-GHA-032",
+      "BALTIA-JFK-GHA-035",
+      "BALTIA-JFK-GHA-036",
+      "BALTIA-JFK-GHA-037"
+    ],
+    "customer_secondary": [
+      "BALTIA-JFK-GHA-001",
+      "BALTIA-JFK-GHA-002",
+      "BALTIA-JFK-GHA-003",
+      "BALTIA-JFK-GHA-005",
+      "BALTIA-JFK-GHA-007",
+      "BALTIA-JFK-GHA-012",
+      "BALTIA-JFK-GHA-018",
+      "BALTIA-JFK-GHA-021",
+      "BALTIA-JFK-GHA-022",
+      "BALTIA-JFK-GHA-024"
+    ]
+  },
+  "breached_kpi_codes": [
+    "BALTIA-JFK-GHA-006",
+    "BALTIA-JFK-GHA-010",
+    "BALTIA-JFK-GHA-011",
+    "BALTIA-JFK-GHA-032",
+    "BALTIA-JFK-GHA-007"
+  ],
+  "clear_kpi_codes": [
+    "BALTIA-JFK-GHA-008",
+    "BALTIA-JFK-GHA-009",
+    "BALTIA-JFK-GHA-025",
+    "BALTIA-JFK-GHA-026",
+    "BALTIA-JFK-GHA-028",
+    "BALTIA-JFK-GHA-035",
+    "BALTIA-JFK-GHA-036",
+    "BALTIA-JFK-GHA-037",
+    "BALTIA-JFK-GHA-001",
+    "BALTIA-JFK-GHA-002",
+    "BALTIA-JFK-GHA-003",
+    "BALTIA-JFK-GHA-005",
+    "BALTIA-JFK-GHA-012",
+    "BALTIA-JFK-GHA-018",
+    "BALTIA-JFK-GHA-021",
+    "BALTIA-JFK-GHA-022",
+    "BALTIA-JFK-GHA-024"
+  ],
+  "_breach_summary_notes": [
+    "Each row is one occurrence (evidence record), not one KPI -- mirrors how the real breach engine",
+    "writes one contract_kpi_breaches doc per evaluate_kpi call. A KPI with recurring violations",
+    "(006, 010, 011, 032) appears multiple times; each amount is fully traceable to its evidence_record_id",
+    "in baltia_jfk_telemetry.json. GHA-032 is billed as ONE audit finding (not 254 line items) because",
+    "that mirrors how a real rate-card escalation audit is actually delivered to a Recoveries team --",
+    "an aggregate reconciliation against the Swissport monthly billing summaries, not per-turnaround rows."
+  ],
+  "breach_summary": [
+    {
+      "kpi_code": "BALTIA-JFK-GHA-006",
+      "kpi_name": "Passenger Service Staffing/Manning Commitment",
+      "party_role": "supplier",
+      "category": "Passenger Handling",
+      "breach_type": "operational_sla",
+      "evidence_record_id": "STAFF-20260723",
+      "detail": "2026-07-23 roster check: Check-in/Gate staffed 6 of 8 required, Arrivals staffed 2 of 3 required -- below the Annex B P1.2 mutually agreed manning table.",
+      "expected_value": "8 Check-in/Gate, 3 Arrivals",
+      "actual_value": "6 Check-in/Gate, 2 Arrivals",
+      "unit": "staff",
+      "operator": ">="
+    },
+    {
+      "kpi_code": "BALTIA-JFK-GHA-006",
+      "kpi_name": "Passenger Service Staffing/Manning Commitment",
+      "party_role": "supplier",
+      "category": "Passenger Handling",
+      "breach_type": "operational_sla",
+      "evidence_record_id": "STAFF-20260801",
+      "detail": "2026-08-01 roster check: same shortfall pattern recurs -- Check-in/Gate staffed 7 of 8 required, Arrivals staffed 2 of 3 required.",
+      "expected_value": "8 Check-in/Gate, 3 Arrivals",
+      "actual_value": "7 Check-in/Gate, 2 Arrivals",
+      "unit": "staff",
+      "operator": ">="
+    },
+    {
+      "kpi_code": "BALTIA-JFK-GHA-010",
+      "kpi_name": "Ramp Return With Load Change - Technical-Landing Rate Applies",
+      "party_role": "supplier",
+      "category": "Ramp Handling",
+      "breach_type": "billing_overcharge",
+      "evidence_record_id": "RAMPRET-20260726",
+      "detail": "2026-07-26 ramp return with load change billed the full $4,165.00 standard turnaround rate instead of the Annex B P1.2.4 technical-landing rate (50% = $2,082.50) -- $2,082.50 recoverable.",
+      "expected_value": 2082.50,
+      "actual_value": 4165.00,
+      "unit": "USD",
+      "operator": "=",
+      "recoverable_amount_usd": 2082.50
+    },
+    {
+      "kpi_code": "BALTIA-JFK-GHA-010",
+      "kpi_name": "Ramp Return With Load Change - Technical-Landing Rate Applies",
+      "party_role": "supplier",
+      "category": "Ramp Handling",
+      "breach_type": "billing_overcharge",
+      "evidence_record_id": "RAMPRET-20260802",
+      "detail": "2026-08-02 ramp return with load change -- same overcharge pattern recurs, full $4,165.00 billed instead of $2,082.50 -- $2,082.50 recoverable.",
+      "expected_value": 2082.50,
+      "actual_value": 4165.00,
+      "unit": "USD",
+      "operator": "=",
+      "recoverable_amount_usd": 2082.50
+    },
+    {
+      "kpi_code": "BALTIA-JFK-GHA-011",
+      "kpi_name": "No Night/Sunday/Holiday Surcharge",
+      "party_role": "supplier",
+      "category": "Ramp/Passenger Handling",
+      "breach_type": "billing_overcharge",
+      "evidence_record_id": "HOLIDAY-20260525",
+      "detail": "2026-05-25 (Memorial Day, legal holiday) service billed a $180.00 surcharge, prohibited under Annex B P1.2.5 -- $180.00 recoverable.",
+      "expected_value": 0.00,
+      "actual_value": 180.00,
+      "unit": "USD",
+      "operator": "=",
+      "recoverable_amount_usd": 180.00
+    },
+    {
+      "kpi_code": "BALTIA-JFK-GHA-011",
+      "kpi_name": "No Night/Sunday/Holiday Surcharge",
+      "party_role": "supplier",
+      "category": "Ramp/Passenger Handling",
+      "breach_type": "billing_overcharge",
+      "evidence_record_id": "HOLIDAY-20260619",
+      "detail": "2026-06-19 (Juneteenth, legal holiday) service billed a $180.00 surcharge, prohibited under Annex B P1.2.5 -- $180.00 recoverable.",
+      "expected_value": 0.00,
+      "actual_value": 180.00,
+      "unit": "USD",
+      "operator": "=",
+      "recoverable_amount_usd": 180.00
+    },
+    {
+      "kpi_code": "BALTIA-JFK-GHA-011",
+      "kpi_name": "No Night/Sunday/Holiday Surcharge",
+      "party_role": "supplier",
+      "category": "Ramp/Passenger Handling",
+      "breach_type": "billing_overcharge",
+      "evidence_record_id": "HOLIDAY-20260704",
+      "detail": "2026-07-04 (Independence Day, legal holiday) -- third consecutive instance of the same billing-system defect -- $180.00 recoverable.",
+      "expected_value": 0.00,
+      "actual_value": 180.00,
+      "unit": "USD",
+      "operator": "=",
+      "recoverable_amount_usd": 180.00
+    },
+    {
+      "kpi_code": "BALTIA-JFK-GHA-032",
+      "kpi_name": "Annual CPI Rate Escalation (Minimum 3%)",
+      "party_role": "supplier",
+      "category": "Pricing/Cost Adjustment",
+      "breach_type": "billing_overcharge",
+      "evidence_record_id": "CPI-20250516-AUDIT",
+      "detail": "At the 2025-05-16 anniversary, Swissport applied a 4.5% escalation to the full Annex B turnaround rate card against a contracted floor of 3.0% (actual CPI 2.9%) -- a 1.5-point overcharge across 254 turnarounds ($1,057,910 base billed) for the 12 months through 2026-05-15. Corrected at the 2026-05-16 anniversary (see CPI-20260516) -- this is the retroactive recovery for the prior period. $15,868.65 recoverable.",
+      "expected_value": 3.0,
+      "actual_value": 4.5,
+      "unit": "%",
+      "operator": ">=",
+      "recoverable_amount_usd": 15868.65
+    },
+    {
+      "kpi_code": "BALTIA-JFK-GHA-007",
+      "kpi_name": "On-Schedule Handling Window (+/-60 minutes)",
+      "party_role": "customer",
+      "category": "Operations/Scheduling",
+      "breach_type": "operational_sla",
+      "evidence_record_id": "OPS-20260714",
+      "detail": "2026-07-14 turnaround deviated 105 minutes from scheduled ETA/ETD (contracted tolerance: 60 minutes) -- Baltia's own schedule-adherence obligation; flagged as ops-risk exposure, not a recovery item.",
+      "expected_value": 60,
+      "actual_value": 105,
+      "unit": "minutes",
+      "operator": "<="
+    }
+  ],
+  "sources": [
+    {
+      "source_id": "supplier_obligations_log",
+      "display_name": "Supplier Obligations Compliance Log",
+      "source_type": "sap_ariba",
+      "priority": "primary",
+      "feeds_kpi_codes": ["BALTIA-JFK-GHA-006", "BALTIA-JFK-GHA-008", "BALTIA-JFK-GHA-009", "BALTIA-JFK-GHA-010", "BALTIA-JFK-GHA-011", "BALTIA-JFK-GHA-025", "BALTIA-JFK-GHA-026", "BALTIA-JFK-GHA-028", "BALTIA-JFK-GHA-032", "BALTIA-JFK-GHA-035", "BALTIA-JFK-GHA-036", "BALTIA-JFK-GHA-037"]
+    },
+    {
+      "source_id": "ramp_turnaround_invoices",
+      "display_name": "Ramp & Turnaround Invoices",
+      "source_type": "file_upload",
+      "priority": "secondary",
+      "feeds_kpi_codes": ["BALTIA-JFK-GHA-001", "BALTIA-JFK-GHA-002", "BALTIA-JFK-GHA-003", "BALTIA-JFK-GHA-005"]
+    },
+    {
+      "source_id": "ops_telemetry_feed",
+      "display_name": "Ops Telemetry Feed",
+      "source_type": "rest_api",
+      "priority": "secondary",
+      "feeds_kpi_codes": ["BALTIA-JFK-GHA-007"]
+    },
+    {
+      "source_id": "sap_finance_postings",
+      "display_name": "Finance / SAP S/4HANA GL Postings",
+      "source_type": "sap_s4hana",
+      "priority": "secondary",
+      "feeds_kpi_codes": ["BALTIA-JFK-GHA-012", "BALTIA-JFK-GHA-024"]
+    },
+    {
+      "source_id": "ancillary_services_log",
+      "display_name": "Ancillary Services Log",
+      "source_type": "scanned_images",
+      "priority": "secondary",
+      "feeds_kpi_codes": ["BALTIA-JFK-GHA-018", "BALTIA-JFK-GHA-021", "BALTIA-JFK-GHA-022"]
+    }
+  ]
+}

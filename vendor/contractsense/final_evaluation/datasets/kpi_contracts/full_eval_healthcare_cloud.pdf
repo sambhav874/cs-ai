@@ -1,0 +1,430 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Length 5839 >>
+stream
+BT
+/F1 9 Tf
+50 750 Td
+12 TL
+(Healthcare Cloud Analytics and Data Processing Agreement) Tj
+T*
+() Tj
+T*
+(# HEALTHCARE CLOUD ANALYTICS AND DATA PROCESSING AGREEMENT **Agreement Number:**) Tj
+T*
+(HCA-2027-DPA-9021 **Effective Date:** July 1, 2027 **Initial Term Expiration:** June 30, 2031) Tj
+T*
+(**Customer:** Meridian Health Network, a nonprofit integrated healthcare system **Vendor:**) Tj
+T*
+(Helix Cloud Analytics, Inc., a Delaware corporation **Covered Data:** Protected Health) Tj
+T*
+(Information, personally identifiable information, clinical operational data, claims extracts,) Tj
+T*
+(patient engagement data, and de-identified analytics outputs **Hosting Region:** United States) Tj
+T*
+(only unless Meridian gives prior written approval **Governing Law:** State of Washington and) Tj
+T*
+(applicable federal healthcare privacy law --- ## ARTICLE I: PURPOSE AND REGULATORY CONTEXT ###) Tj
+T*
+(Section 1.01: Purpose Meridian engages Helix to provide a cloud analytics platform for care) Tj
+T*
+(coordination, revenue cycle optimization, utilization management, population health reporting,) Tj
+T*
+(prior authorization workflow, and clinical quality dashboards.) Tj
+T*
+(Helix will host, process, transform, analyze, and return Covered Data under strict privacy,) Tj
+T*
+(security, uptime, reporting, and audit requirements.) Tj
+T*
+(### Section 1.02: Business Associate Status To the extent Helix creates, receives, maintains,) Tj
+T*
+(or transmits Protected Health Information on behalf of Meridian, Helix acts as a business) Tj
+T*
+(associate.) Tj
+T*
+(The Parties incorporate the Business Associate Addendum in Exhibit A.) Tj
+T*
+(If a term in this Agreement conflicts with the Business Associate Addendum, the stricter) Tj
+T*
+(privacy or security requirement controls.) Tj
+T*
+(### Section 1.03: No Sale or Secondary Use Helix shall not sell Covered Data, use Covered Data) Tj
+T*
+(for advertising, use Covered Data for unrelated model training, combine Covered Data with) Tj
+T*
+(third-party customer data, or create external benchmarks without Meridian's express written) Tj
+T*
+(approval.) Tj
+T*
+(--- ## ARTICLE II: PLATFORM SERVICES ### Section 2.01: Core Platform Helix shall provide secure) Tj
+T*
+(ingestion pipelines, data normalization, analytics dashboards, API access, role-based access) Tj
+T*
+(controls, audit logging, data quality rules, configurable alerting, export tools, and managed) Tj
+T*
+(support.) Tj
+T*
+(### Section 2.02: Implementation Implementation begins July 15, 2027.) Tj
+T*
+(Production go-live must occur no later than January 15, 2028.) Tj
+T*
+(Helix shall complete data mapping, interface testing, security review, user acceptance testing,) Tj
+T*
+(and administrator training before go-live.) Tj
+T*
+(### Section 2.03: Data Sources Covered Data may include ADT feeds, claims extracts, encounter) Tj
+T*
+(files, provider rosters, care gap files, referral data, lab result metadata, medication) Tj
+T*
+(adherence feeds, quality measure extracts, authorization records, and patient outreach) Tj
+T*
+(activity.) Tj
+T*
+(### Section 2.04: Support Tiers | Severity | Definition | Response Time | Restoration Target |) Tj
+T*
+(|---|---|---:|---:| | Severity 1 | Platform unavailable, PHI exposure suspected, or patient) Tj
+T*
+(safety workflow blocked | 15 minutes | 4 hours | | Severity 2 | Major function unavailable or) Tj
+T*
+(data feed failure affecting more than one facility | 1 hour | 8 hours | | Severity 3 | Minor) Tj
+T*
+(function degraded or single facility affected | 4 business hours | 3 business days | | Severity) Tj
+T*
+(4 | General question, cosmetic issue, enhancement request | 2 business days | Mutually) Tj
+T*
+(scheduled | --- ## ARTICLE III: FEES AND PAYMENT ### Section 3.01: Subscription Fees Meridian) Tj
+T*
+(shall pay an annual subscription fee of $3,600,000 for the first contract year.) Tj
+T*
+(Fees increase by 3% annually unless Helix misses the uptime KPI or data quality KPI in the) Tj
+T*
+(prior contract year, in which case the annual increase is waived.) Tj
+T*
+(### Section 3.02: Implementation Fees Implementation fees are fixed at $850,000 and payable in) Tj
+T*
+(four milestones: | Milestone | Due Date | Amount | |---|---:|---:| | Project kickoff and) Tj
+T*
+(architecture approval | August 1, 2027 | $150,000 | | Interface build complete | October 15,) Tj
+T*
+(2027 | $250,000 | | Security review and UAT complete | December 15, 2027 | $250,000 | |) Tj
+T*
+(Production go-live | January 15, 2028 | $200,000 | ### Section 3.03: Invoices Helix shall) Tj
+T*
+(invoice annually in advance for subscription fees and monthly in arrears for approved) Tj
+T*
+(professional services.) Tj
+T*
+(Meridian shall pay undisputed invoices within forty-five days after receipt.) Tj
+T*
+(--- ## ARTICLE IV: SERVICE LEVELS AND KPIS ### Section 4.01: KPI Framework Helix will be) Tj
+T*
+(measured monthly.) Tj
+T*
+(Service Credits are applied to the next invoice.) Tj
+T*
+(Repeated KPI failures may trigger Corrective Action Plans, enhanced audit rights, fee increase) Tj
+T*
+(waiver, or termination.) Tj
+T*
+(### Section 4.02: KPI-1 Platform Availability **Target:** 99.95% monthly availability,) Tj
+T*
+(excluding pre-approved maintenance windows.) Tj
+T*
+(**Measurement:** Availability is measured from Meridian user locations and Helix synthetic) Tj
+T*
+(monitoring.) Tj
+T*
+(**Maintenance:** Scheduled maintenance may not exceed four hours per month and must occur) Tj
+T*
+(between 12:00 AM and 4:00 AM Pacific Time.) Tj
+T*
+(| Monthly Availability | Service Credit | |---:|---:| | 99.90% to 99.949% | 5% of monthly) Tj
+T*
+(subscription equivalent | | 99.50% to 99.899% | 10% of monthly subscription equivalent | |) Tj
+T*
+(99.00% to 99.499% | 20% of monthly subscription equivalent | | Below 99.00% | 35% of monthly) Tj
+T*
+(subscription equivalent and executive review | ### Section 4.03: KPI-2 Data Pipeline Freshness) Tj
+T*
+ET
+endstream
+endobj
+3 0 obj
+<< /Type /Page /Parent 8 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 2 0 R >>
+endobj
+4 0 obj
+<< /Length 5832 >>
+stream
+BT
+/F1 9 Tf
+50 750 Td
+12 TL
+(**Target:** 98.5% of scheduled inbound feeds processed and visible in the platform within two) Tj
+T*
+(hours after receipt.) Tj
+T*
+(**Critical Feeds:** ADT, emergency department census, prior authorization, and care gap feeds) Tj
+T*
+(must process within thirty minutes.) Tj
+T*
+(**Penalty:** $7,500 for each Critical Feed delay over thirty minutes after the first two delays) Tj
+T*
+(in a month; $25,000 if total feed freshness falls below 95.0%.) Tj
+T*
+(### Section 4.04: KPI-3 Data Quality Accuracy **Target:** 99.7% record-level transformation) Tj
+T*
+(accuracy for mapped fields.) Tj
+T*
+(**Measurement:** Monthly sampling by Meridian data governance team and automated validation) Tj
+T*
+(rules.) Tj
+T*
+(**Penalty:** $10,000 per 0.1% below 99.7%.) Tj
+T*
+(Accuracy below 99.0% requires a Corrective Action Plan within five business days.) Tj
+T*
+(### Section 4.05: KPI-4 API Latency **Target:** 95th percentile API response time below 700) Tj
+T*
+(milliseconds for standard queries and below 2,500 milliseconds for complex analytics queries.) Tj
+T*
+(**Penalty:** $5,000 for each business day in which standard API latency exceeds 700) Tj
+T*
+(milliseconds for more than sixty consecutive minutes.) Tj
+T*
+(### Section 4.06: KPI-5 Security Patch Timeliness **Target:** Critical vulnerabilities patched) Tj
+T*
+(within seventy-two hours, high vulnerabilities within seven days, medium vulnerabilities within) Tj
+T*
+(thirty days.) Tj
+T*
+(**Penalty:** $15,000 per missed critical patch deadline and $5,000 per missed high patch) Tj
+T*
+(deadline.) Tj
+T*
+(Failure to patch a critical vulnerability within seven days is a Critical Security Breach.) Tj
+T*
+(### Section 4.07: KPI-6 Support Resolution **Target:** 95% of Severity 1 tickets restored) Tj
+T*
+(within four hours and 90% of Severity 2 tickets restored within eight hours.) Tj
+T*
+(**Penalty:** $10,000 for each Severity 1 ticket missing the restoration target and $3,000 for) Tj
+T*
+(each Severity 2 ticket missing the restoration target.) Tj
+T*
+(### Section 4.08: KPI-7 Audit Log Completeness **Target:** 100% of user access, export, delete,) Tj
+T*
+(privilege change, failed login, API access, and administrative configuration events logged.) Tj
+T*
+(**Penalty:** Any material audit log gap lasting more than thirty minutes is a Critical Security) Tj
+T*
+(Breach.) Tj
+T*
+(Non-material gaps trigger a $20,000 credit per incident.) Tj
+T*
+(--- ## ARTICLE V: PRIVACY AND SECURITY OBLIGATIONS ### Section 5.01: Safeguards Helix shall) Tj
+T*
+(maintain administrative, physical, and technical safeguards consistent with HIPAA Security Rule) Tj
+T*
+(standards, SOC 2 Type II, HITRUST or equivalent certification, least privilege access,) Tj
+T*
+(encryption at rest using AES-256 or stronger, TLS 1.2 or stronger in transit, MFA for all) Tj
+T*
+(workforce users, and quarterly access reviews.) Tj
+T*
+(### Section 5.02: Security Incident Notice Helix shall notify Meridian within four hours after) Tj
+T*
+(discovering a suspected or confirmed Security Incident.) Tj
+T*
+(Helix shall provide a preliminary written incident report within twenty-four hours and a final) Tj
+T*
+(root cause report within ten business days after containment.) Tj
+T*
+(### Section 5.03: Breach Notification Support If a Breach of Unsecured Protected Health) Tj
+T*
+(Information occurs, Helix shall provide all information reasonably required for Meridian's) Tj
+T*
+(legal notification obligations within twenty-four hours after request, including affected) Tj
+T*
+(individuals, data elements, timeline, mitigation, and evidence preservation.) Tj
+T*
+(### Section 5.04: Subprocessors Helix may use only subprocessors listed in Exhibit B.) Tj
+T*
+(Helix must provide sixty days' notice before adding a subprocessor.) Tj
+T*
+(Meridian may object on security, privacy, regulatory, or operational grounds.) Tj
+T*
+(### Section 5.05: Data Segregation Helix shall logically segregate Meridian data from other) Tj
+T*
+(customer data.) Tj
+T*
+(Production data may not be copied to development or test environments unless masked, tokenized,) Tj
+T*
+(or otherwise de-identified under Meridian-approved procedures.) Tj
+T*
+(### Section 5.06: Access Controls All Helix workforce access to Covered Data must be role-) Tj
+T*
+(based, approved by a manager, logged, reviewed quarterly, and revoked within twenty-four hours) Tj
+T*
+(after job change or termination.) Tj
+T*
+(--- ## ARTICLE VI: REPORTING, AUDIT, AND GOVERNANCE ### Section 6.01: Daily Operational Report) Tj
+T*
+(By 9:00 AM Pacific Time each business day, Helix shall provide a report showing platform) Tj
+T*
+(availability, feed status, failed feeds, open support incidents, security alerts, API latency) Tj
+T*
+(exceptions, and unresolved data quality defects.) Tj
+T*
+(### Section 6.02: Monthly Service Review By the tenth calendar day of each month, Helix shall) Tj
+T*
+(provide a monthly service review containing KPI results, Service Credit calculations, support) Tj
+T*
+(ticket metrics, patch status, access review exceptions, subprocessor changes, incident) Tj
+T*
+(summaries, and roadmap risks.) Tj
+T*
+(### Section 6.03: Quarterly Compliance Review Each quarter, Helix shall review HIPAA) Tj
+T*
+(compliance, SOC 2 findings, penetration test remediation, vulnerability management, audit log) Tj
+T*
+(completeness, disaster recovery testing, and privacy impact assessments.) Tj
+T*
+(### Section 6.04: Audit Rights Meridian may audit Helix's controls once per year on thirty) Tj
+T*
+(days' notice and after any Security Incident on five business days' notice.) Tj
+T*
+(Helix shall retain logs, evidence, support records, and data processing records for ten years.) Tj
+T*
+(--- ## ARTICLE VII: DISASTER RECOVERY AND BUSINESS CONTINUITY ### Section 7.01: Recovery) Tj
+T*
+(Objectives Helix shall maintain a recovery time objective of four hours and a recovery point) Tj
+T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 8 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Length 3476 >>
+stream
+BT
+/F1 9 Tf
+50 750 Td
+12 TL
+(objective of fifteen minutes for production services.) Tj
+T*
+(Disaster recovery tests must be conducted twice per year and reported to Meridian within) Tj
+T*
+(fifteen days.) Tj
+T*
+(### Section 7.02: Backup Requirements Production data must be backed up at least every four) Tj
+T*
+(hours, encrypted, integrity tested monthly, and stored in geographically separate facilities) Tj
+T*
+(within the United States.) Tj
+T*
+(--- ## ARTICLE VIII: WARRANTIES, INDEMNITY, AND LIABILITY ### Section 8.01: Warranties Helix) Tj
+T*
+(warrants that the platform will materially conform to documentation, process data in accordance) Tj
+T*
+(with this Agreement, maintain required security controls, and not introduce malicious code.) Tj
+T*
+(### Section 8.02: Indemnity Helix shall indemnify Meridian for third-party claims, regulatory) Tj
+T*
+(penalties, patient notification costs, credit monitoring, forensic investigation, and) Tj
+T*
+(reasonable attorneys' fees arising from Helix's breach of privacy or security obligations,) Tj
+T*
+(negligence, willful misconduct, intellectual property infringement, or violation of law.) Tj
+T*
+(### Section 8.03: Liability Cap The general liability cap is two times annual fees paid or) Tj
+T*
+(payable.) Tj
+T*
+(The cap is five times annual fees for privacy breach, security breach, confidentiality breach,) Tj
+T*
+(regulatory fines caused by Helix, indemnity claims, and willful misconduct.) Tj
+T*
+(--- ## ARTICLE IX: TERMINATION ### Section 9.01: Termination for Cause Meridian may terminate) Tj
+T*
+(for cause if any of the following occurs: - Platform availability below 99.0% in two months) Tj
+T*
+(during any rolling twelve-month period.) Tj
+T*
+(- Data Quality Accuracy below 99.0% for two consecutive months.) Tj
+T*
+(- A Critical Security Breach.) Tj
+T*
+(- Failure to meet RTO in a disaster recovery event.) Tj
+T*
+(- Unauthorized use or sale of Covered Data.) Tj
+T*
+(- Material breach uncured thirty days after written notice.) Tj
+T*
+(### Section 9.02: Termination Assistance For up to twelve months after termination, Helix shall) Tj
+T*
+(provide data export, transition support, interface documentation, schema mapping, audit logs,) Tj
+T*
+(and cooperation with Meridian's successor vendor.) Tj
+T*
+(### Section 9.03: Data Return and Destruction Within thirty days after termination assistance) Tj
+T*
+(ends, Helix shall return all Covered Data in a mutually agreed format and destroy remaining) Tj
+T*
+(copies, except legally required archival copies.) Tj
+T*
+(Destruction certification is due within fifteen days after completion.) Tj
+T*
+(--- ## EXHIBIT A: BUSINESS ASSOCIATE ADDENDUM SUMMARY Helix shall use PHI only as permitted by) Tj
+T*
+(Meridian, report breaches, ensure subcontractors agree to equivalent restrictions, make PHI) Tj
+T*
+(available for access and amendment, support accounting of disclosures, make internal practices) Tj
+T*
+(available to regulators, and return or destroy PHI at termination.) Tj
+T*
+(## EXHIBIT B: APPROVED SUBPROCESSORS Approved subprocessors are limited to cloud infrastructure) Tj
+T*
+(hosting, managed database monitoring, email notification delivery, security scanning, and) Tj
+T*
+(support ticketing vendors listed in Meridian's vendor risk register.) Tj
+T*
+(## EXHIBIT C: REQUIRED INTEGRATIONS Required integrations include HL7 ADT, FHIR API, SFTP) Tj
+T*
+(claims extracts, SSO through SAML 2.0, SCIM user provisioning, SIEM log forwarding, and API) Tj
+T*
+(gateway connectivity.) Tj
+T*
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 8 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Type /Pages /Count 3 /Kids [ 3 0 R 5 0 R 7 0 R ] >>
+endobj
+9 0 obj
+<< /Type /Catalog /Pages 8 0 R >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000079 00000 n 
+0000005970 00000 n 
+0000006096 00000 n 
+0000011980 00000 n 
+0000012106 00000 n 
+0000015634 00000 n 
+0000015760 00000 n 
+0000015831 00000 n 
+trailer
+<< /Size 10 /Root 9 0 R >>
+startxref
+15880
+%%EOF

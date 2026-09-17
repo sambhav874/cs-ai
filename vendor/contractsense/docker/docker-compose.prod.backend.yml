@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  backend:
+    image: fastapi-backend:prod
+    container_name: backend-prod
+    ports:
+      - "8002:8002"  # Different port for production to avoid conflicts
+    volumes:
+      - ./apps/backend:/app/backend
+    env_file:
+      - ./apps/backend/.env.prod  # Production-specific environment variables
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    networks:
+      - backend-network
+
+networks:
+  backend-network:
+    driver: bridge

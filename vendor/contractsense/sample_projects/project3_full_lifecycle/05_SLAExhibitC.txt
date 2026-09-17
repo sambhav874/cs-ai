@@ -1,0 +1,27 @@
+[Suggested upload date: 2026-03-26]
+
+EXHIBIT C — SLA EXHIBIT
+
+Exhibit C (SLA Exhibit) to Statement of Work SOW-001 under the Master
+Service Agreement between Harborview Health Systems and Trellis Data
+Partners, Inc. dated 3 March 2026.
+
+1. PLATFORM UPTIME. Vendor shall maintain platform uptime of ninety-nine
+point nine percent (99.9%) measured monthly, excluding scheduled
+maintenance windows of up to four (4) hours per month with at least
+seventy-two (72) hours' advance notice.
+
+2. SERVICE CREDITS. For each 0.1% shortfall below the 99.9% monthly uptime
+target, Client shall receive a service credit equal to five percent (5%) of
+that month's subscription fee, capped at thirty percent (30%) of the
+monthly fee.
+
+3. INCIDENT RESPONSE. Priority 1 (P1) incidents shall be acknowledged
+within fifteen (15) minutes of report, with an initial mitigation status
+update provided within one (1) hour.
+
+4. MODEL PERFORMANCE MONITORING. The readmission-risk model's Area Under
+the Curve (AUC) shall remain at or above 0.78 in monthly validation
+testing. If the AUC falls below 0.78 in any monthly validation cycle,
+Vendor shall complete mandatory model retraining within thirty (30) days
+at no additional cost to Client.

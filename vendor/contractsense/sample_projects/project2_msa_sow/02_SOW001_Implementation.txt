@@ -1,0 +1,31 @@
+[Suggested upload date: 2026-03-24]
+
+STATEMENT OF WORK SOW-001
+
+Statement of Work SOW-001, issued under the Master Service Agreement between
+Solstice Retail Group, Inc. and Cobalt Digital Solutions, LLC dated 2 March
+2026.
+
+1. SCOPE. Implementation of Cobalt's inventory-forecasting platform across
+forty (40) Solstice retail locations.
+
+2. DELIVERABLES AND TIMELINE.
+D1 — Discovery and requirements documentation (Week 4)
+D2 — Pilot deployment, five (5) stores (Week 10)
+D3 — Full rollout, forty (40) stores (Week 22)
+D4 — Hypercare support and handover (Week 26)
+
+3. FEES. Fixed fee of USD 640,000, milestone-billed as follows: 20% upon D1
+acceptance, 30% upon D2 acceptance, 40% upon D3 acceptance, 10% upon D4
+completion.
+
+4. ACCEPTANCE CRITERIA. Pilot forecast accuracy must be within eight percent
+(8%) Mean Absolute Percentage Error (MAPE) against actual pilot-period sales
+data before proceeding to the D3 full-rollout gate.
+
+5. PROJECT TEAM.
+Solstice Project Manager: J. Alvarez
+Cobalt Delivery Lead: R. Chen
+
+This Statement of Work is governed by the terms of the Master Service
+Agreement referenced above.

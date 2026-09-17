@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  frontend:
+    image: nextjs-frontend:staging
+    container_name: frontend-staging
+    ports:
+      - "4201:4200"  # Different port for staging to avoid conflicts
+    env_file:
+      - ./apps/frontend/.env.staging  # Staging-specific environment variables
+    environment:
+      - NODE_ENV=staging
+      - NEXT_PUBLIC_API_URL=http://localhost:8001  # Point to staging backend
+    volumes:
+      - .:/app
+    networks:
+      - frontend-network
+
+networks:
+  frontend-network:
+    driver: bridge

@@ -1,0 +1,21 @@
+[Suggested upload date: 2026-03-25]
+
+EXHIBIT B — PRICING EXHIBIT
+
+Exhibit B (Pricing Exhibit) to Statement of Work SOW-001 under the Master
+Service Agreement between Harborview Health Systems and Trellis Data
+Partners, Inc. dated 3 March 2026.
+
+1. IMPLEMENTATION FEE. Fixed fee of USD 410,000 for Phase 1 implementation
+across the three (3) pilot facilities, billed: 30% upon contract signature,
+40% upon go-live, 30% upon completion of the stabilization period.
+
+2. SUBSCRIPTION FEE. Following go-live, a monthly subscription fee of USD
+22,000 per facility applies, billed monthly in arrears.
+
+3. ANNUAL ESCALATION. On each anniversary of the Effective Date of the
+Master Service Agreement (3 March), the subscription fee shall increase by
+the greater of the applicable Consumer Price Index for All Urban Consumers
+(CPI-U) or three percent (3%) (the "Escalation Floor").
+
+4. PAYMENT TERMS. Invoices are payable within thirty (30) days (net-30).
