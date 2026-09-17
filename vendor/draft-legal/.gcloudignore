@@ -1,0 +1,45 @@
+.gcloudignore
+.git
+.gitignore
+.github
+.claude
+.husky
+.vscode
+.idea
+
+# Build artefacts and caches
+node_modules
+**/node_modules
+**/dist
+**/build
+**/.next
+**/.turbo
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/coverage
+**/test-results
+**/playwright-report
+**/blob-report
+**/*.tsbuildinfo
+**/.eslintcache
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+env.api.yaml
+env.agents.yaml
+
+# Heavy on-disk fixtures and screenshots
+scripts/screenshots
+scripts/audit-screenshots
+scripts/persona-tests/output
+
+# Docs (huge tree, not needed inside the build context)
+docs
+
+# Mac
+.DS_Store

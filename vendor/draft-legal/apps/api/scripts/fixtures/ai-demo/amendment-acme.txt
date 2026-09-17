@@ -1,0 +1,48 @@
+AMENDMENT NO. 1 TO MASTER SERVICES AGREEMENT
+
+This Amendment No. 1 (the "Amendment"), dated as of April 1, 2027, amends that certain Master Services Agreement dated January 15, 2026 (the "MSA") between Demo Org, Inc. ("Provider") and Acme Corporation ("Customer"). Capitalized terms not defined here have the meanings given in the MSA.
+
+RECITALS
+
+A. The Parties entered into the MSA to govern professional services engagements under successive Statements of Work.
+
+B. The Parties wish to amend the MSA to (i) extend the term, (ii) adjust the liability cap, and (iii) add a new exhibit governing artificial intelligence usage.
+
+NOW, THEREFORE, in consideration of the mutual covenants herein and for other good and valuable consideration, the Parties agree as follows:
+
+1. EXTENSION OF TERM
+Section 3.1 of the MSA is hereby amended to replace "two (2) years" with "four (4) years". Accordingly, the Initial Term shall end on January 14, 2030.
+
+2. INCREASED LIABILITY CAP
+Section 9.2 of the MSA is amended to replace "$500,000" with "$1,500,000". All other terms of Section 9 (including carve-outs for indemnification, confidentiality, and gross negligence) remain in full force.
+
+3. AI ADDENDUM — NEW EXHIBIT D
+A new Exhibit D titled "AI Services Addendum" is added and attached hereto. It governs Provider's use of artificial intelligence in delivering the Services, including:
+
+    (a) Training restrictions: Provider shall not use Customer Data to train any generative AI model, whether foundation or fine-tune, without Customer's prior written consent on a per-engagement basis.
+    (b) Model transparency: Provider shall disclose the provider(s) and model(s) used for any AI-assisted output, upon Customer's request.
+    (c) Human oversight: All AI-generated deliverables shall be reviewed by a qualified human practitioner before Customer receives them.
+    (d) Bias and disparate-impact mitigation: Provider shall follow industry-standard procedures including periodic fairness audits documented in the Information Security addendum.
+
+4. PAYMENT TERMS
+Section 2.3 of the MSA is amended to change payment terms from Net 30 to Net 45 for invoices delivered after the Effective Date of this Amendment.
+
+5. AUTO-RENEWAL
+Section 3.2 is amended to extend the notice period for non-renewal from ninety (90) days to one hundred twenty (120) days.
+
+6. NO OTHER CHANGES
+Except as expressly amended herein, the MSA remains in full force and effect. In the event of conflict, this Amendment controls.
+
+7. COUNTERPARTS; EFFECTIVE DATE
+This Amendment may be executed in counterparts and shall be effective as of the date first written above.
+
+IN WITNESS WHEREOF:
+
+DEMO ORG, INC.                          ACME CORPORATION
+
+By: __________________________          By: __________________________
+Name: Alex Chen                         Name: Wile E. Coyote
+Title: General Counsel                  Title: VP, Procurement
+Date: ________________                  Date: ________________
+
+EXHIBIT D — AI SERVICES ADDENDUM (attached)

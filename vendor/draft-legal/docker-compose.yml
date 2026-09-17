@@ -1,0 +1,108 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: clm_postgres
+    environment:
+      POSTGRES_USER: clm
+      POSTGRES_PASSWORD: clm
+      POSTGRES_DB: clm_dev
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U clm -d clm_dev']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: clm_redis
+    ports:
+      - '6380:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: clm_elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - 'ES_JAVA_OPTS=-Xms512m -Xmx512m'
+    ports:
+      - '9200:9200'
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:9200/_cluster/health || exit 1']
+      interval: 20s
+      timeout: 10s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: clm_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      # OrbStack auto-injects *_FILE variants which override the plain ones; null them out.
+      MINIO_ROOT_USER_FILE: ''
+      MINIO_ROOT_PASSWORD_FILE: ''
+      MINIO_ACCESS_KEY_FILE: ''
+      MINIO_SECRET_KEY_FILE: ''
+      MINIO_CONFIG_ENV_FILE: ''
+    ports:
+      - '9100:9000'
+      - '9101:9001'
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio_init:
+    image: minio/mc:latest
+    container_name: clm_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minioadmin minioadmin;
+        mc mb --ignore-existing local/clm-documents;
+        mc anonymous set none local/clm-documents;
+        exit 0;
+      "
+    # The bucket is PRIVATE — documents are served via presigned URLs
+    # (@aws-sdk/s3-request-presigner), never anonymous download. The prior
+    # `anonymous set download` exposed every uploaded contract to the world.
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: clm_gotenberg
+    ports:
+      - '3002:3000'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+  elasticsearch_data:
+  minio_data:

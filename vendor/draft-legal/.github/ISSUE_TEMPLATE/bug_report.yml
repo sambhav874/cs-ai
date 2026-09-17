@@ -1,0 +1,72 @@
+name: 🐛 Bug report
+description: Something isn't working as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. The more detail you give, the
+        faster it gets fixed. If it's a security issue, please **don't** file it
+        here — email the maintainer instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect to happen, and what actually happened instead?
+      placeholder: I clicked "Upload Contract" and got a 500 error. I expected the contract to be created.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A numbered list we can follow to see the bug ourselves.
+      placeholder: |
+        1. Run `pnpm dev:setup`
+        2. Log in as admin@demo.com
+        3. Click "Upload Contract"
+        4. See the error
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app?
+      options:
+        - "Web / frontend (port 5173)"
+        - "API (port 3001)"
+        - "Agents / AI (port 8002)"
+        - "Setup / docker compose / self-hosting"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste any error output (browser console, API logs, or the agents log). This will be auto-formatted as code.
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Docker version, Node version, and whether you're self-hosting or on the demo.
+      placeholder: macOS 14, Docker Desktop 4.30, Node 22.3, self-hosting via pnpm dev:setup
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this isn't a duplicate
+          required: true
+        - label: I'm on the latest `main` (or I've noted my version above)
+          required: true

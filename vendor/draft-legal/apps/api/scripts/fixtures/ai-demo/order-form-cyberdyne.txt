@@ -1,0 +1,62 @@
+ORDER FORM NO. 2026-0042
+
+This Order Form is entered into as of May 10, 2026 between Demo Org, Inc. ("Provider") and Cyberdyne Systems, Inc. ("Customer"), and is governed by the Master Subscription Agreement dated December 1, 2025 between the Parties (the "MSA").
+
+1. SUBSCRIPTION DETAILS
+
+    Product:              DocInsight Enterprise, Analyst Tier
+    Subscription Term:    36 months
+    Start Date:           June 1, 2026
+    End Date:             May 31, 2029
+    Seats:                250 Named Users
+    Regions:              US-East-1 (primary), EU-West-3 (secondary, data residency)
+    Payment Terms:        Annual, invoiced 30 days before each anniversary
+
+2. PRICING
+
+    Year 1 (Jun 2026 – May 2027):     $450,000
+    Year 2 (Jun 2027 – May 2028):     $472,500   (5% annual uplift)
+    Year 3 (Jun 2028 – May 2029):     $496,125   (5% annual uplift)
+    ──────────────────────────────────────────
+    Total Contract Value:             $1,418,625
+
+    Overage rate (per additional seat per year):    $1,800
+    Professional Services bank (optional):          $50,000 (first year, use-or-lose)
+
+3. SERVICE LEVEL
+
+    Uptime target:           99.95% monthly
+    Support tier:             Premier (24×7 for Sev 1, business hours Sev 2+)
+    Sev 1 response:           15 minutes
+    Sev 1 resolution target:  2 hours
+
+4. SPECIFIC PROVISIONS
+
+4.1 Data Residency. EU customer data shall be Processed and stored exclusively in EU-West-3. Cross-region replication of EU data is disabled by default.
+4.2 Security. Customer's Security Addendum (Exhibit A to the MSA) applies; current SOC 2 Type II report shall be shared under NDA upon renewal.
+4.3 Change of Control. In the event of a Provider change of control, Customer may terminate this Order Form within sixty (60) days upon written notice with pro-rata refund of prepaid fees for any unused period.
+
+5. PURCHASE ORDER REQUIREMENT
+Customer requires a valid PO number on all invoices. No PO, no payment — but PO is for Customer's internal tracking only and does not supersede this Order Form.
+
+6. OPT-OUT / TRUE-UP
+6.1 True-Up. If average monthly usage exceeds the Seats limit for three (3) consecutive months, the Parties shall true-up at the next billing anniversary. Overage is billed at the rate in Section 2.
+6.2 Reduction. Seats may be reduced by up to ten percent (10%) at each anniversary with thirty (30) days notice.
+
+7. MARKETING
+Customer agrees that Provider may include Customer's name and logo in a customer list on its website. Case studies and press releases require Customer's prior written approval.
+
+8. SIGNATURES
+
+This Order Form incorporates and is governed by the MSA. In case of conflict, this Order Form controls for the specific subscription described herein.
+
+PROVIDER                                CUSTOMER
+
+Demo Org, Inc.                          Cyberdyne Systems, Inc.
+
+By: __________________________          By: __________________________
+Name: Alex Chen                         Name: Miles Dyson
+Title: VP, Sales                        Title: VP, Technology
+Date: ________________                  Date: ________________
+
+PO Number (Customer):                   __________________________

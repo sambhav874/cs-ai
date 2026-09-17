@@ -1,0 +1,209 @@
+name: Deploy to production
+
+# Pushes to main go to prod after both smokes pass. The PR-time CI
+# workflow (ci.yml) handles lint + typecheck + unit tests; this file
+# only runs after main is updated.
+#
+# Required GitHub Secrets (Settings → Secrets and variables → Actions):
+#   GCP_PROJECT_ID         — e.g. draftlegal-prod-13353
+#   GCP_SA_KEY             — JSON for github-deployer SA (full file content)
+#   SMOKE_ADMIN_EMAIL      — admin@demo.com
+#   SMOKE_ADMIN_PASSWORD   — password123 (or whatever you've changed to)
+#
+# Provision the SA + secrets once with: ./scripts/setup-github-deployer.sh
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip-smoke:
+        description: 'Emergency only — deploy without running the smoke gate'
+        type: boolean
+        default: false
+      skip-rollback:
+        description: 'Even if smoke fails, do NOT auto-rollback'
+        type: boolean
+        default: false
+
+# Never run two deploys at the same time. New pushes queue behind the
+# in-flight one rather than racing.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  GCP_REGION: us-central1
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9'
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────
+  # Stage 1: deploy gotenberg → agents → api → web (in that order).
+  # ─────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy gotenberg + agents + api + web
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      web-url: ${{ steps.urls.outputs.web-url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # Version is read from package.json's "packageManager" field
+        # (pnpm@9.0.0). Specifying it here too triggers ERR_PNPM_BAD_PM_VERSION.
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install workspace deps
+        run: pnpm install --frozen-lockfile
+
+      - id: auth
+        name: Auth to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - id: urls
+        name: Compute target URLs
+        run: |
+          echo "web-url=https://${{ secrets.GCP_PROJECT_ID }}.web.app" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy all services
+        env:
+          GCP_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ env.GCP_REGION }}
+          VITE_API_URL: https://${{ secrets.GCP_PROJECT_ID }}.web.app
+        run: ./scripts/deploy.sh all
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Stage 2: smoke gate. Hits the freshly-deployed prod URLs.
+  # ─────────────────────────────────────────────────────────────────────
+  smoke:
+    name: Production smoke (API + UI)
+    needs: deploy
+    if: ${{ !inputs.skip-smoke }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # Version is read from package.json's "packageManager" field
+        # (pnpm@9.0.0). Specifying it here too triggers ERR_PNPM_BAD_PM_VERSION.
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install deps (needed for Playwright)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: API smoke (~60s, 49 checks)
+        env:
+          API_URL: https://${{ secrets.GCP_PROJECT_ID }}.web.app
+          ADMIN_EMAIL: ${{ secrets.SMOKE_ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
+        run: node scripts/smoke-prod.mjs
+
+      - name: UI smoke (~25s, real Chromium)
+        env:
+          APP_URL: https://${{ secrets.GCP_PROJECT_ID }}.web.app
+          ADMIN_EMAIL: ${{ secrets.SMOKE_ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
+        run: node scripts/smoke-ui.mjs
+
+      - name: Upload UI screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-smoke-screenshots-${{ github.run_id }}
+          path: scripts/screenshots/smoke-ui/
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Stage 3: rollback if smoke failed. Runs ONLY when deploy succeeded
+  # but smoke failed (no point rolling back a deploy that itself broke).
+  # ─────────────────────────────────────────────────────────────────────
+  rollback:
+    name: Auto-rollback (smoke failed)
+    needs: [deploy, smoke]
+    if: |
+      always() &&
+      needs.deploy.result == 'success' &&
+      needs.smoke.result == 'failure' &&
+      !inputs.skip-rollback
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Roll Cloud Run services back to previous revision
+        run: |
+          for svc in api-service agents-service gotenberg; do
+            PREV=$(gcloud run revisions list \
+              --service "$svc" \
+              --region "${{ env.GCP_REGION }}" \
+              --format='value(metadata.name)' \
+              --sort-by='~metadata.creationTimestamp' \
+              --limit 5 \
+              | sed -n '2p')
+            if [ -n "$PREV" ]; then
+              echo "Rolling $svc back to $PREV"
+              gcloud run services update-traffic "$svc" \
+                --to-revisions="$PREV=100" \
+                --region "${{ env.GCP_REGION }}" \
+                --quiet
+            else
+              echo "Skipping $svc — no previous revision found"
+            fi
+          done
+
+      - name: Roll Firebase Hosting back one version
+        run: |
+          firebase hosting:rollback \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --non-interactive \
+            || echo "Firebase rollback failed (probably first deploy ever, or no prior version)"
+
+      - name: Annotate run summary
+        run: |
+          {
+            echo "## ⛔ Auto-rollback executed"
+            echo ""
+            echo "The smoke gate failed against the new deploy, so traffic"
+            echo "was reverted to the previous Cloud Run revisions and the"
+            echo "previous Firebase Hosting release."
+            echo ""
+            echo "**Next steps:**"
+            echo "1. Read the failed smoke job's logs for the specific failure."
+            echo "2. Fix the underlying bug on \`main\` (or a hotfix branch)."
+            echo "3. Push the fix and re-deploy."
+          } >> "$GITHUB_STEP_SUMMARY"

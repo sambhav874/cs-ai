@@ -1,0 +1,1284 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+// ─── Organizations ─────────────────────────────────────────────────────────
+
+model Organization {
+  id               String   @id @default(cuid())
+  name             String
+  slug             String   @unique
+  subscriptionTier String   @default("FREE") // FREE | PRO | ENTERPRISE
+  brandColor       String?
+  logoUrl          String?
+  settings         Json     @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  users               User[]
+  contracts           Contract[]
+  counterparties      Counterparty[]
+  requests            ContractRequest[]
+  auditEvents         AuditEvent[]
+  fieldDefinitions    ContractFieldDefinition[]
+  templates           Template[]
+  clauseCategories    ClauseCategory[]
+  clauseItems         ClauseLibraryItem[]
+  playbookPositions   PlaybookPosition[]
+  contractComments    ContractComment[]
+  shareLinks          ContractShareLink[]
+  workflowDefinitions WorkflowDefinition[]
+  approvalInstances   ApprovalInstance[]
+  notifications       Notification[]
+  // D.0.1 — agent + AI settings back-relations
+  agentThreads        AgentThread[]
+  skills              Skill[]
+  skillInvocations    SkillInvocation[]
+  aiKeys              OrgAiKey[]
+  aiSettings          OrgAiSettings?
+  // P4.1 — Matter back-relation
+  matters             Matter[]
+  // P8 — Obligation back-relation
+  obligations         Obligation[]
+  // P8 Step 9 — Invoice back-relation
+  invoices            Invoice[]
+  // P9 Step 4 — Diligence Rooms back-relation
+  diligenceRooms      DiligenceRoom[]
+  // P10A — API keys + webhooks
+  apiKeys             ApiKey[]
+  webhooks            Webhook[]
+
+  @@map("organizations")
+}
+
+// ─── Users & Roles ────────────────────────────────────────────────────────
+
+model User {
+  id               String    @id @default(cuid())
+  orgId            String
+  // P7.0.1 — Email is globally unique across orgs to prevent the
+  // multi-tenant login routing bug (F-30). When a user has the same
+  // email in two orgs, login auth resolves to the wrong tenant. The
+  // industry default for B2B SaaS (Notion, Linear, Vercel, Stripe) is
+  // one email = one user. Users who legitimately need multi-org access
+  // get a workspace-picker UX in a future phase (P8 candidate).
+  email            String    @unique
+  passwordHash     String
+  name             String
+  avatarUrl        String?
+  preferences      Json      @default("{}")
+  refreshToken     String?
+  status           String    @default("ACTIVE") // ACTIVE | INVITED | DEACTIVATED
+  inviteToken      String?   @unique
+  inviteExpiresAt  DateTime?
+  lastActiveAt     DateTime?
+  outOfOffice      Boolean   @default(false)
+  outOfOfficeUntil DateTime?
+  delegateToId     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  org              Organization      @relation(fields: [orgId], references: [id])
+  userRoles        UserRole[]
+  contracts        Contract[]        @relation("ContractOwner")
+  // D.0.1 — agent + AI settings back-relations
+  agentThreads     AgentThread[]
+  ownedSkills      Skill[]           @relation("SkillOwner")
+  skillInvocations SkillInvocation[]
+  createdAiKeys    OrgAiKey[]
+  // P4.1 — Matter back-relation
+  ownedMatters     Matter[]          @relation("MatterOwner")
+  // P8 — Obligation completion back-relation
+  completedObligations Obligation[]  @relation("ObligationCompleter")
+
+  // [orgId, email] kept as a composite unique for backwards compatibility
+  // with code paths that still upsert by `orgId_email`. The single-column
+  // `email @unique` above is the authoritative tenant-routing constraint.
+  @@unique([orgId, email])
+  @@index([orgId, status])
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  orgId       String? // null = system role
+  name        String
+  description String?
+  permissions Json     @default("[]") // [{ action, resource, scope }]
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userRoles UserRole[]
+
+  @@unique([orgId, name])
+  @@map("roles")
+}
+
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  roleId    String
+  grantedBy String? // userId who assigned this role
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+// ─── Counterparties ───────────────────────────────────────────────────────
+
+model Counterparty {
+  id        String    @id @default(cuid())
+  orgId     String
+  name      String
+  legalName String? // Official registered legal name
+  email     String?
+  phone     String?
+  address   String?
+  website   String?
+  crmId     String?
+  contacts  Json      @default("[]") // [{ name, email, role, phone }]
+  metadata  Json      @default("{}")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  org       Organization @relation(fields: [orgId], references: [id])
+  contracts Contract[]
+  // P4.1 — Matter back-relation
+  matters   Matter[]
+
+  @@unique([orgId, name])
+  @@index([orgId])
+  @@map("counterparties")
+}
+
+// ─── Contracts ────────────────────────────────────────────────────────────
+
+model Contract {
+  id                String    @id @default(cuid())
+  orgId             String
+  contractNumber    String? // Auto-generated: CTR-2026-0001
+  title             String
+  type              String // ContractType enum
+  status            String    @default("DRAFT") // ContractStatus enum
+  counterpartyId    String?
+  counterpartyName  String?
+  parentContractId  String? // For amendments — links to parent contract
+  relationshipType  String? // amendment | sow | order_form | renewal | nda | exhibit_only
+  attachments       Json      @default("[]") // [{filename, s3Key, mimeType, size, label}]
+  value             Decimal?
+  currency          String?   @default("USD")
+  effectiveDate     DateTime?
+  expiryDate        DateTime?
+  jurisdiction      String? // Governing law jurisdiction (dedicated column for ES filtering)
+  ownerId           String
+  createdBy         String? // User who created (may differ from owner)
+  currentVersionId  String?
+  riskScore         Float?
+  summary           String? // AI-generated
+  keyTerms          Json      @default("{}") // AI-extracted structured terms
+  fieldConfidence   Json      @default("{}") // { fieldName: { confidence, source_quote, section } }
+  analysisStatus    String    @default("PENDING") // PENDING | ANALYZING | DONE | FAILED
+  analysisError     String? // Last failure reason — set whenever analysisStatus → FAILED
+  riskFactors       String[]  @default([]) // AI-identified risk factors from score step
+  overallConfidence Float? // Avg extraction confidence 0-1
+  tags              String[]  @default([])
+  metadata          Json      @default("{}") // Custom field values (field_key → value)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // P4.1 — optional matter link. null = ungrouped (current behaviour).
+  matterId          String?
+
+  org               Organization        @relation(fields: [orgId], references: [id])
+  owner             User                @relation("ContractOwner", fields: [ownerId], references: [id])
+  counterparty      Counterparty?       @relation(fields: [counterpartyId], references: [id])
+  matter            Matter?             @relation(fields: [matterId], references: [id])
+  versions          ContractVersion[]
+  parentContract    Contract?           @relation("ContractAmendments", fields: [parentContractId], references: [id])
+  amendments        Contract[]          @relation("ContractAmendments")
+  comments          ContractComment[]
+  shareLinks        ContractShareLink[]
+  approvalInstances ApprovalInstance[]
+  obligations       Obligation[]
+  invoices          Invoice[]
+
+  // P9 Step 4 — Diligence Room link. When set, this contract is part of
+  // a bulk-upload diligence batch (Harvey Vault equivalent) and is hidden
+  // from the main repo by default.
+  diligenceRoomId   String?
+  diligenceRoom     DiligenceRoom? @relation(fields: [diligenceRoomId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, status])
+  @@index([orgId, type])
+  @@index([orgId, ownerId])
+  @@index([orgId, counterpartyId])
+  @@index([orgId, jurisdiction])
+  @@index([orgId, matterId])
+  @@index([orgId, expiryDate])
+  @@index([diligenceRoomId])
+  @@map("contracts")
+}
+
+model ContractVersion {
+  id             String    @id @default(cuid())
+  contractId     String
+  versionNumber  Int
+  htmlContent    String    @default("")
+  plainText      String    @default("")
+  // Source file — original uploaded PDF/DOCX, or template-generated file.
+  // Preserved across edits so we can always diff against the original.
+  s3Key          String?
+  mimeType       String?
+  fileSize       Int?
+  // Rendered PDF — Gotenberg-rendered from htmlContent after any edit. When
+  // present, this is the CANONICAL artifact (what approvers, signers, and
+  // counterparties see). `s3Key` remains valid for diff-against-original.
+  // See docs/25-CONTRACT-FLOW-FIX-PLAN.md §A.5.
+  renderedPdfKey String?
+  renderedAt     DateTime?
+  changeNote     String?
+  changeSummary  String? // AI-generated diff summary
+  clauseFlags    Json      @default("{}") // { forceMajeure: bool, mfn: bool, ... }
+  // P1.5 — structured metadata for versions created by tools. Current
+  // shape: { redline: { sourceClauseId, originalText, aggression,
+  //                     changes: [{before, after, reason}],
+  //                     rationale, generatedBy: 'redline_apply' } }
+  // Future tools (obligations, drafters) can nest their own keys here.
+  metadata       Json      @default("{}")
+  createdById    String
+  createdAt      DateTime  @default(now())
+
+  contract Contract         @relation(fields: [contractId], references: [id])
+  clauses  ContractClause[]
+
+  @@unique([contractId, versionNumber])
+  @@index([contractId])
+  @@map("contract_versions")
+}
+
+// Clause-level segments with per-clause embeddings
+// One row per extracted clause — enables clause similarity search and RAG Q&A
+model ContractClause {
+  id             String                       @id @default(cuid())
+  versionId      String
+  clauseType     String // e.g. "limitation_of_liability", "indemnification", "payment"
+  content        String // Verbatim clause text from contract
+  interpretation String? // Plain-English explanation of what the clause means
+  riskRating     String? // "favorable" | "unfavorable" | "neutral" | "unusual"
+  // B.5.7 — per-clause review progress used by the Focused Review drawer.
+  // Values: "unreviewed" (default) | "reviewed" (user confirmed they looked)
+  //         | "resolved" (user accepted a change / applied a suggestion).
+  reviewState    String                       @default("unreviewed")
+  reviewedAt     DateTime?
+  reviewedById   String?
+  sectionRef     String? // e.g. "Section 5.2" or "Article III"
+  sortOrder      Int                          @default(0)
+  // Chunking metadata
+  isSubChunk     Boolean                      @default(false) // true for sliding-window sub-chunks of long clauses
+  windowIndex    Int? // sub-chunk index within parent clause (null for primary)
+  charStart      Int? // char offset from start of clause content
+  charEnd        Int? // char offset end
+  embedding      Unsupported("vector(1536)")? // null until embed job runs
+  embeddedAt     DateTime?
+  createdAt      DateTime                     @default(now())
+
+  version ContractVersion @relation(fields: [versionId], references: [id])
+
+  @@index([versionId])
+  @@index([clauseType])
+  @@index([versionId, isSubChunk])
+  @@map("contract_clauses")
+}
+
+// ─── Contract Requests ────────────────────────────────────────────────────
+
+model ContractRequest {
+  id               String    @id @default(cuid())
+  orgId            String
+  requestNumber    String? // Auto-generated: REQ-2026-0001
+  title            String
+  type             String
+  status           String    @default("SUBMITTED")
+  source           String    @default("web_form") // web_form | chat | email | crm_trigger | slack
+  requestedById    String
+  assignedToId     String?
+  counterpartyName String?
+  description      String
+  estimatedValue   Decimal?
+  priority         String    @default("MEDIUM")
+  attachments      Json      @default("[]") // [{ filename, s3Key, mimeType, size }]
+  metadata         Json      @default("{}")
+  // P4.1 — optional link to the Matter this request belongs to.
+  matterId         String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  org    Organization @relation(fields: [orgId], references: [id])
+  matter Matter?      @relation(fields: [matterId], references: [id])
+
+  @@index([orgId, status])
+  @@index([orgId, source])
+  @@index([orgId, matterId])
+  @@map("contract_requests")
+}
+
+// Org-defined custom field definitions per contract type
+model ContractFieldDefinition {
+  id           String    @id @default(cuid())
+  orgId        String
+  contractType String? // null = applies to all types
+  fieldKey     String // snake_case key, used in contracts.metadata
+  fieldLabel   String // Human-readable label shown in UI
+  fieldType    String // text | number | date | boolean | select | multiselect
+  required     Boolean   @default(false)
+  options      Json      @default("[]") // For select/multiselect: ["Option A", "Option B"]
+  sortOrder    Int       @default(0)
+  helpText     String? // Optional UI hint shown below the field
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, contractType, fieldKey])
+  @@index([orgId, contractType])
+  @@map("contract_field_definitions")
+}
+
+// ─── Templates & Clause Library ───────────────────────────────────────────
+
+model Template {
+  id           String    @id @default(cuid())
+  orgId        String
+  name         String
+  description  String?
+  contractType String? // null = generic; otherwise NDA | MSA | SOW | etc.
+  variables    Json      @default("[]") // [{ key, label, type, required, defaultValue }]
+  isPublished  Boolean   @default(false)
+  version      Int       @default(1)
+  usageCount   Int       @default(0)
+  createdById  String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  org      Organization      @relation(fields: [orgId], references: [id])
+  sections TemplateSection[]
+
+  @@index([orgId, contractType])
+  @@index([orgId, isPublished])
+  @@map("templates")
+}
+
+model TemplateSection {
+  id               String   @id @default(cuid())
+  templateId       String
+  title            String
+  sortOrder        Int      @default(0)
+  content          String   @default("") // HTML content (may contain {{variable}} tokens)
+  conditionalLogic Json? // { field, operator, value } — if set, section only included when true
+  clauseRefs       Json     @default("[]") // [clauseLibraryItemId] — clause library items embedded
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  template Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("template_sections")
+}
+
+model ClauseCategory {
+  id               String   @id @default(cuid())
+  orgId            String
+  name             String
+  description      String?
+  parentCategoryId String? // Self-referential for category tree
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  org               Organization        @relation(fields: [orgId], references: [id])
+  parent            ClauseCategory?     @relation("CategoryTree", fields: [parentCategoryId], references: [id])
+  children          ClauseCategory[]    @relation("CategoryTree")
+  clauseItems       ClauseLibraryItem[]
+  playbookPositions PlaybookPosition[]
+
+  @@index([orgId])
+  @@index([orgId, parentCategoryId])
+  @@map("clause_categories")
+}
+
+model ClauseLibraryItem {
+  id          String    @id @default(cuid())
+  orgId       String
+  categoryId  String
+  title       String
+  content     String    @default("") // HTML clause text (may contain {{variable}} tokens)
+  tags        String[]  @default([])
+  riskRating  String? // favorable | unfavorable | neutral | standard
+  isApproved  Boolean   @default(false)
+  usageCount  Int       @default(0)
+  versions    Json      @default("[]") // [{ version, content, changedById, changedAt, note }]
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org      Organization   @relation(fields: [orgId], references: [id])
+  category ClauseCategory @relation(fields: [categoryId], references: [id])
+
+  @@index([orgId, categoryId])
+  @@index([orgId, isApproved])
+  @@map("clause_library_items")
+}
+
+model PlaybookPosition {
+  id               String   @id @default(cuid())
+  orgId            String
+  clauseCategoryId String
+  positionType     String // preferred | acceptable | fallback | walkaway
+  content          String   @default("") // HTML — what we want to see in this position
+  notes            String? // Legal team guidance notes
+  riskThreshold    Float    @default(0.5) // 0-1, score below which we escalate
+  contractTypes    String[] @default([]) // [] = applies to all; otherwise filter by type
+  sortOrder        Int      @default(0)
+  // P1.2 (docs/28 C.2.1) — Structured rules the playbook_check evaluator
+  // checks against. Prose `content` stays authoritative; `rules` lets the
+  // evaluator surface concrete violations ("missing 'consequential
+  // damages' carve-out", "cap > 24 months of fees") instead of only
+  // a prose comparison.
+  //
+  // Shape (TypeScript):
+  //   {
+  //     must_have?:  PlaybookRule[]   // clause MUST contain each
+  //     must_not?:   PlaybookRule[]   // clause MUST NOT contain any
+  //     bounds?:     Record<string, { min?, max?, units?, severity }>
+  //     variables?:  Array<{ key, type, required, default? }>
+  //   }
+  //   PlaybookRule = {
+  //     id: string, description: string,
+  //     check: 'contains' | 'regex' | 'present' | 'absent',
+  //     value: string,
+  //     severity: 'low' | 'medium' | 'high' | 'walkaway'
+  //   }
+  rules            Json?
+  createdById      String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  org            Organization   @relation(fields: [orgId], references: [id])
+  clauseCategory ClauseCategory @relation(fields: [clauseCategoryId], references: [id])
+
+  @@index([orgId, clauseCategoryId])
+  @@index([orgId, positionType])
+  @@map("playbook_positions")
+}
+
+// ─── Audit Events (append-only, immutable) ────────────────────────────────
+
+model AuditEvent {
+  id           String   @id @default(cuid())
+  orgId        String
+  userId       String?
+  action       String // AuditAction enum
+  resourceType String
+  resourceId   String
+  metadata     Json     @default("{}")
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  // P7.5.4 — Tamper-evident hash chain (per-org).
+  //   hash     = SHA256(canonical-json of this row including prevHash)
+  //   prevHash = the previous (createdAt order) row's hash for this org.
+  // Null on the first event of an org's chain. The chain can be
+  // re-verified at any time via verifyAuditChain(orgId).
+  hash         String?
+  prevHash     String?
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, createdAt])
+  @@index([orgId, resourceType, resourceId])
+  @@map("audit_events")
+}
+
+// ─── Phase 08 — Post-Signature Obligations ────────────────────────────────
+//
+// One row per extracted deliverable / commitment from an executed contract.
+// The extractor (apps/agents/.../obligations.py) populates these on
+// signature.completed; the daily scanner fires due-soon notifications;
+// the user marks completed with optional evidence.
+//
+// Replaces the prior contract.metadata.obligations[] JSON shape so we can
+// query org-wide, attach evidence files, and track lifecycle cleanly.
+model Obligation {
+  id            String    @id @default(cuid())
+  orgId         String
+  contractId    String
+
+  // ── Extracted from contract text ──
+  type          String    // payment | sla | renewal | audit | report | termination | compliance | other
+  description   String    @db.Text
+  owner         String    @default("unknown") // customer | provider | either | unknown
+  dueDate       DateTime?
+  recurrence    String    @default("one-time") // one-time | monthly | quarterly | annually | on-event | unknown
+  trigger       String?   @db.Text
+  quote         String    @db.Text
+  severity      String    @default("medium") // low | medium | high
+  sectionRef    String?
+
+  // ── Lifecycle state ──
+  status         String    @default("OPEN") // OPEN | COMPLETED | OVERDUE | WAIVED
+  completedAt    DateTime?
+  completedById  String?
+  completionNote String?   @db.Text
+  // Evidence: optional file uploaded when marking complete (e.g. paid invoice).
+  evidenceS3Key    String?
+  evidenceFilename String?
+  evidenceMimeType String?
+  evidenceSize     Int?
+
+  // ── Notification tracking ──
+  notifiedAt    DateTime?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  org         Organization @relation(fields: [orgId], references: [id])
+  contract    Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  completedBy User?        @relation("ObligationCompleter", fields: [completedById], references: [id])
+
+  @@index([orgId, status])
+  @@index([orgId, dueDate])
+  @@index([orgId, status, dueDate])
+  @@index([contractId])
+  @@map("obligations")
+
+  // P8 Step 9 — back-relation for matched invoices.
+  matchedInvoices Invoice[]
+}
+
+// ─── Phase 08 Step 9 — Invoice reconciliation ─────────────────────────────
+//
+// Customers track vendor invoices against the payment obligations the
+// extractor pulled out of an executed contract. Each invoice can be
+// matched to at most one obligation; the matchScore captures how
+// confident the auto-matcher was. Status flow:
+//   PENDING (just created) → MATCHED (auto-paired) → RECONCILED (user
+//   confirmed) | DISPUTED (user flagged a mismatch).
+model Invoice {
+  id                  String   @id @default(cuid())
+  orgId               String
+  // Optional contract link — set when an invoice is associated with a
+  // specific contract (either via auto-match or manual selection).
+  contractId          String?
+  // Which payment obligation this invoice satisfies, if any.
+  matchedObligationId String?
+  matchScore          Float?    // 0..1 — confidence from auto-matcher
+
+  // From the invoice itself (manual entry or future OCR).
+  vendorName     String
+  invoiceNumber  String?
+  amount         Decimal
+  currency       String   @default("USD")
+  invoiceDate    DateTime
+  dueDate        DateTime?
+  description    String?  @db.Text
+
+  // Lifecycle
+  status         String   @default("PENDING") // PENDING | MATCHED | RECONCILED | DISPUTED
+  reconciledAt   DateTime?
+  reconciledById String?
+  disputeReason  String?  @db.Text
+  notes          String?  @db.Text
+
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  org              Organization @relation(fields: [orgId], references: [id])
+  contract         Contract?    @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  matchedObligation Obligation? @relation(fields: [matchedObligationId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, status])
+  @@index([orgId, dueDate])
+  @@index([contractId])
+  @@map("invoices")
+}
+
+// ─── Phase 10A — Public API + Webhooks ─────────────────────────────────────
+//
+// ApiKey is the org-scoped credential customers use to call /api/v1/* from
+// their own backends (Salesforce sync, finance ERP, etc.). The actual key
+// material is stored hashed (we only show the full key once at creation);
+// `prefix` is the displayed identifier in the UI.
+//
+// Webhook lets customers receive event pushes (contract.executed,
+// signature.completed, etc.) at a URL of their choosing. Each delivery is
+// HMAC-signed with the webhook's secret so the receiver can verify
+// authenticity. WebhookDelivery records every attempt for retry + audit.
+model ApiKey {
+  id           String    @id @default(cuid())
+  orgId        String
+  name         String    // e.g. "Salesforce sync"
+  keyHash      String    @unique  // SHA-256 of the actual key
+  prefix       String    // first 8 chars of the key, displayed in UI
+  scopes       String[]  @default([])  // e.g. ["read:contracts", "write:contracts"]
+  lastUsedAt   DateTime?
+  expiresAt    DateTime?
+  createdById  String
+  createdAt    DateTime  @default(now())
+  revokedAt    DateTime?
+
+  org          Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, revokedAt])
+  @@map("api_keys")
+}
+
+model Webhook {
+  id                 String    @id @default(cuid())
+  orgId              String
+  name               String
+  url                String    @db.Text
+  secret             String    // for HMAC signing of payloads
+  events             String[]  @default([])
+  enabled            Boolean   @default(true)
+  // P10B — payload type. "generic" sends our standard JSON envelope;
+  // "slack" formats as Slack blocks so a paste-in incoming-webhook URL
+  // just works for notifications.
+  type               String    @default("generic")
+  lastDeliveryAt     DateTime?
+  lastDeliveryStatus String?   // "success" | "failed"
+  failureCount       Int       @default(0)
+  createdById        String
+  createdAt          DateTime  @default(now())
+  deletedAt          DateTime?
+
+  org        Organization      @relation(fields: [orgId], references: [id])
+  deliveries WebhookDelivery[]
+
+  @@index([orgId, enabled, deletedAt])
+  @@map("webhooks")
+}
+
+model WebhookDelivery {
+  id              String    @id @default(cuid())
+  webhookId       String
+  event           String
+  payload         Json
+  responseStatus  Int?
+  responseBody    String?   @db.Text
+  attempts        Int       @default(0)
+  succeeded       Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  deliveredAt     DateTime?
+  errorMessage    String?   @db.Text
+
+  webhook         Webhook   @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId, createdAt])
+  @@map("webhook_deliveries")
+}
+
+// ─── Phase 09 Step 4 — Diligence Rooms (Harvey Vault equivalent) ──────────
+//
+// A bag of contracts uploaded together for cross-document analysis (M&A
+// due diligence, vendor consolidation, portfolio risk review). Each
+// Contract that's part of a room has its diligenceRoomId set; the room
+// itself just tracks the name/description and ownership.
+//
+// Reuses the standard parse+extract+score pipeline — every uploaded doc
+// goes through the same pipeline as a normal contract upload, but stays
+// out of the main repo via the diligenceRoomId filter applied to the
+// /contracts list.
+model DiligenceRoom {
+  id          String   @id @default(cuid())
+  orgId       String
+  name        String
+  description String?  @db.Text
+  status      String   @default("ACTIVE")  // ACTIVE | ARCHIVED
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  org       Organization @relation(fields: [orgId], references: [id])
+  contracts Contract[]
+
+  @@index([orgId, status])
+  @@map("diligence_rooms")
+}
+
+// ─── Phase 05 — Negotiation ────────────────────────────────────────────────
+
+model ContractComment {
+  id           String    @id @default(cuid())
+  orgId        String
+  contractId   String
+  versionId    String? // null = contract-level; set = anchored to specific version
+  clauseRef    String? // optional section/clause anchor string
+  parentId     String? // null = top-level thread; set = reply
+  authorId     String // userId or "portal:<linkId>" for external commenters
+  body         String
+  resolved     Boolean   @default(false)
+  resolvedById String?
+  resolvedAt   DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  org      Organization      @relation(fields: [orgId], references: [id])
+  contract Contract          @relation(fields: [contractId], references: [id])
+  parent   ContractComment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies  ContractComment[] @relation("CommentReplies")
+
+  @@index([orgId, contractId])
+  @@index([contractId, clauseRef])
+  @@index([contractId, parentId])
+  @@map("contract_comments")
+}
+
+model ContractShareLink {
+  id           String    @id @default(cuid())
+  orgId        String
+  contractId   String
+  token        String    @unique // 32-byte random hex — embedded in portal JWT
+  label        String?
+  // Address the link was emailed to (null when it was just copied to clipboard).
+  // Also consulted by the inbound-email sender allow-list so an invited
+  // counterparty can email a redline back.
+  invitedEmail String?
+  permissions  String[]  @default(["read"]) // "read" | "comment" | "upload" (legacy alias: "edit")
+  expiresAt    DateTime
+  viewCount    Int       @default(0)
+  lastViewedAt DateTime?
+  createdById  String
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  org      Organization @relation(fields: [orgId], references: [id])
+  contract Contract     @relation(fields: [contractId], references: [id])
+
+  @@index([orgId, contractId])
+  @@index([token])
+  @@map("contract_share_links")
+}
+
+// ─── Phase P7.6 — Self-hosted eSignature ───────────────────────────────────
+
+// One signature campaign per contract. Holds metadata, deadlines, and the
+// per-signer roster. status: PENDING | COMPLETED | VOIDED | EXPIRED.
+model SignatureRequest {
+  id              String    @id @default(cuid())
+  orgId           String
+  contractId      String
+  versionId       String // The version being signed (frozen at send time)
+  status          String    @default("PENDING") // PENDING | COMPLETED | VOIDED | EXPIRED
+  // Configuration
+  signOrder       String    @default("ANY") // ANY (parallel) | SEQUENTIAL
+  expiresAt       DateTime?
+  message         String? // Optional cover note shown on the signing page
+  createdById     String
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+  voidedAt        DateTime?
+  voidedReason    String?
+
+  signers         Signer[]
+  events          SignatureEvent[]
+
+  @@index([orgId, status])
+  @@index([contractId])
+  @@map("signature_requests")
+}
+
+// One row per person who needs to sign. Internal users can be linked via
+// userId; external signers are name+email only.
+model Signer {
+  id                 String           @id @default(cuid())
+  signatureRequestId String
+  email              String
+  name               String
+  role               String? // e.g. "CFO", "Counsel" — informational
+  // Internal user link. Null = external signer.
+  userId             String?
+  // Order key for sequential signing (1-based). Same value = parallel siblings.
+  signOrder          Int              @default(1)
+  // Per-signer signing token — embedded in the email link. 32-byte hex.
+  token              String           @unique
+  // Status: PENDING | SIGNED | DECLINED
+  status             String           @default("PENDING")
+  signedAt           DateTime?
+  declinedAt         DateTime?
+  declinedReason     String?
+  // Captured at signing time
+  signedName         String? // What the signer typed as their name
+  signedIp           String?
+  signedUserAgent    String?
+  // Free-form structured details (e.g. signature image data URL)
+  signature          Json             @default("{}")
+  createdAt          DateTime         @default(now())
+
+  signatureRequest   SignatureRequest @relation(fields: [signatureRequestId], references: [id])
+
+  @@index([signatureRequestId])
+  @@index([token])
+  @@index([email])
+  @@map("signers")
+}
+
+// Append-only audit trail per request. Sent / Viewed / Signed / Declined / etc.
+model SignatureEvent {
+  id                 String           @id @default(cuid())
+  signatureRequestId String
+  signerId           String?
+  kind               String // SENT | VIEWED | SIGNED | DECLINED | VOIDED | REMINDED | COMPLETED
+  metadata           Json             @default("{}")
+  ipAddress          String?
+  userAgent          String?
+  createdAt          DateTime         @default(now())
+
+  signatureRequest   SignatureRequest @relation(fields: [signatureRequestId], references: [id])
+
+  @@index([signatureRequestId, createdAt])
+  @@map("signature_events")
+}
+
+model VersionDiffCache {
+  id         String   @id @default(cuid())
+  contractId String
+  v1Id       String
+  v2Id       String
+  diffHtml   String   @db.Text
+  stats      Json     @default("{}") // { insertions: int, deletions: int }
+  createdAt  DateTime @default(now())
+
+  @@unique([v1Id, v2Id])
+  @@index([contractId])
+  @@map("version_diff_cache")
+}
+
+// ─── Phase 06 — Approval Workflows ────────────────────────────────────────────
+
+// Reusable workflow template. Steps are a JSON array of WorkflowStepDef objects:
+// { order, name, approverId?, roleRequired?, executionMode, requiredApprovals, dueSoonHours, escalateTo? }
+// Production pattern used by Ironclad, DocuSign CLM, SAP Ariba: DB-backed state machine
+// with queryable state. JSON steps makes workflows admin-configurable without code deploys.
+model WorkflowDefinition {
+  id           String    @id @default(cuid())
+  orgId        String
+  name         String
+  description  String?
+  triggerRules Json      @default("{}") // { contractTypes[], valueThreshold, autoApproveRules[{ contractType, maxValue }] }
+  steps        Json      @default("[]") // WorkflowStepDef[] ordered by .order
+  isDefault    Boolean   @default(false)
+  isActive     Boolean   @default(true)
+  createdById  String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  org       Organization       @relation(fields: [orgId], references: [id])
+  instances ApprovalInstance[]
+
+  @@index([orgId, isActive])
+  @@index([orgId, isDefault])
+  @@map("workflow_definitions")
+}
+
+// Live instance of a workflow running on a specific contract
+model ApprovalInstance {
+  id                     String    @id @default(cuid())
+  orgId                  String
+  contractId             String
+  workflowDefinitionId   String
+  status                 String    @default("PENDING") // ApprovalStatus enum
+  currentStepOrder       Int       @default(0)
+  submittedById          String
+  // AI-generated summary fields (written back by approval agent)
+  aiSummary              String?
+  keyRisks               Json      @default("[]") // [{ title, description, severity }]
+  nonStandardTerms       String[]  @default([])
+  approvalRecommendation String? // "approve" | "review_required" | "reject_advised"
+  submittedAt            DateTime  @default(now())
+  decidedAt              DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  org        Organization       @relation(fields: [orgId], references: [id])
+  contract   Contract           @relation(fields: [contractId], references: [id])
+  definition WorkflowDefinition @relation(fields: [workflowDefinitionId], references: [id])
+  steps      ApprovalStep[]
+
+  @@index([orgId, status])
+  @@index([contractId])
+  @@index([orgId, submittedById])
+  @@map("approval_instances")
+}
+
+// One row per approver per step in a workflow instance
+model ApprovalStep {
+  id                 String    @id @default(cuid())
+  approvalInstanceId String
+  orgId              String
+  stepOrder          Int // matches WorkflowStepDef.order
+  stepName           String
+  approverId         String // userId of assigned approver
+  status             String    @default("PENDING") // ApprovalStatus enum
+  decision           String? // APPROVED | REJECTED | DELEGATED
+  comment            String?
+  delegatedToId      String? // set when DELEGATED
+  decidedAt          DateTime?
+  escalationJobId    String? // BullMQ job ID — removed on decision to cancel timer
+  escalateAt         DateTime? // absolute time when escalation fires
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  instance ApprovalInstance @relation(fields: [approvalInstanceId], references: [id])
+
+  @@index([approvalInstanceId])
+  @@index([approverId, status])
+  @@index([orgId, status])
+  @@map("approval_steps")
+}
+
+// In-app notifications — written by notification worker, read by frontend bell
+model Notification {
+  id           String    @id @default(cuid())
+  orgId        String
+  userId       String // recipient
+  type         String // APPROVAL_REQUEST | APPROVAL_DECIDED | ESCALATION | DELEGATION
+  title        String
+  body         String
+  resourceType String // "approval_instance" | "approval_step" | "contract"
+  resourceId   String
+  read         Boolean   @default(false)
+  readAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+// ─── D.0.1 — Agent state ──────────────────────────────────────────────────────
+// Conversations, messages, and tool-call audit for the app-wide agent.
+// Additive only — no existing tables touched. See docs/30 §7.
+
+/// One conversation thread between a user and the agent. Optionally
+/// scope-anchored to a Matter / Contract / Request so the side panel can
+/// resume the right thread when the user returns.
+// ─── P4.1 — Matter (docs/30 D.7.1) ──────────────────────────────────────────
+//
+// A Matter groups contracts + requests + approvals + agent threads under
+// one negotiation. Procurement RFPs ask "do you support matters?" as a
+// gating question; this model answers yes + gives Legal the nav unit
+// they expect from Legal Files / NetDocs / Ironclad.
+//
+// Minimal v1 shape — id + name + status + owner. Nested objects link via
+// nullable matterId on Contract / ContractRequest / AgentThread.
+model Matter {
+  id          String    @id @default(cuid())
+  orgId       String
+  name        String
+  description String?
+  status      String    @default("OPEN") // OPEN | CLOSED | ARCHIVED
+  // Counterparty at the matter level — sets default for everything in it
+  counterpartyId   String?
+  counterpartyName String?
+  ownerId     String
+  createdById String
+  // Free-form tags so orgs can filter by practice area / region
+  tags        String[]  @default([])
+  metadata    Json      @default("{}")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  closedAt    DateTime?
+
+  org          Organization       @relation(fields: [orgId], references: [id])
+  owner        User               @relation("MatterOwner", fields: [ownerId], references: [id])
+  counterparty Counterparty?      @relation(fields: [counterpartyId], references: [id])
+  contracts    Contract[]
+  requests     ContractRequest[]
+  threads      AgentThread[]
+
+  @@index([orgId, status])
+  @@index([orgId, ownerId])
+  @@index([orgId, counterpartyId])
+  @@map("matters")
+}
+
+model AgentThread {
+  id            String    @id @default(cuid())
+  orgId         String
+  userId        String // owner of the thread
+  title         String // auto-generated from first user message; editable
+  // Scope anchor — null = free chat
+  scopeType     String? // 'matter' | 'contract' | 'request' | null
+  scopeId       String?
+  // P4.1 — first-class matter link (separate from scopeType='matter'
+  // so a thread about a specific contract can still belong to a
+  // matter). Nullable; free chat stays free.
+  matterId      String?
+  // Which skill (if any) originated this thread; null = free chat
+  originSkillId String?
+  // Provider hint for resuming with the same model context where reasonable
+  providerHint  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  archivedAt    DateTime?
+
+  org       Organization   @relation(fields: [orgId], references: [id])
+  user      User           @relation(fields: [userId], references: [id])
+  matter    Matter?        @relation(fields: [matterId], references: [id])
+  skill     Skill?         @relation(fields: [originSkillId], references: [id])
+  messages  AgentMessage[]
+  toolCalls ToolCall[]
+
+  @@index([orgId, userId, updatedAt])
+  @@index([orgId, scopeType, scopeId])
+  @@index([orgId, matterId])
+  @@map("agent_threads")
+}
+
+/// One message in a thread. `content` is the LangChain / Anthropic content
+/// blocks (text / tool_use / tool_result / thinking) so we can reconstruct
+/// the conversation faithfully across providers.
+model AgentMessage {
+  id           String   @id @default(cuid())
+  threadId     String
+  role         String // 'user' | 'assistant' | 'system' | 'tool'
+  content      Json // Array of content blocks
+  // Token + cost accounting (assistant turns only)
+  provider     String? // 'openai' | 'anthropic' | 'google' | 'voyage' | 'cohere' | 'mistral'
+  model        String?
+  tier         String? // 'reasoning' | 'default' | 'fast' | …
+  inputTokens  Int?
+  outputTokens Int?
+  costUsd      Decimal? @db.Decimal(10, 6)
+  // Was the call billed against an org's BYOK key (informational, not platform cost)?
+  isByok       Boolean  @default(false)
+  // Langfuse trace id for cross-system observability
+  traceId      String?
+  createdAt    DateTime @default(now())
+
+  thread AgentThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("agent_messages")
+}
+
+/// One tool invocation. Captures dry-run + real-run, the entity touched,
+/// and a rollback hook for the Undo affordance on reversible actions.
+model ToolCall {
+  id             String    @id @default(cuid())
+  threadId       String
+  messageId      String // AgentMessage that emitted the tool_use block
+  toolName       String // 'contract_search', 'playbook_check', …
+  input          Json // Tool input from the model
+  dryRun         Boolean   @default(false)
+  status         String // 'pending' | 'awaiting_confirmation' | 'running' | 'success' | 'error' | 'cancelled'
+  output         Json? // Tool result (post-execution)
+  error          String?
+  // Which entity got touched — drives audit + undo lookups
+  entityType     String? // 'contract' | 'approval' | 'request' | …
+  entityId       String?
+  // Undo plumbing — only set for reversible actions
+  reversible     Boolean   @default(false)
+  rollbackHook   Json? // Serialised rollback instructions
+  rolledBackAt   DateTime?
+  rolledBackById String?
+  // Latency (informational, also goes to Langfuse)
+  latencyMs      Int?
+  createdAt      DateTime  @default(now())
+
+  thread AgentThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@index([entityType, entityId])
+  @@map("tool_calls")
+}
+
+// ─── D.0.1 — Skills ───────────────────────────────────────────────────────────
+// Reusable workflows users / admins / built-ins compose on top of the agent's
+// tool catalog. Skill = system prompt + allowed tools + scope + UX hints.
+
+model Skill {
+  id           String    @id @default(cuid())
+  orgId        String? // null for built-in skills
+  ownerUserId  String? // null for built-in / org skills
+  name         String
+  slug         String // '@review-nda', '@prep-for-approval'
+  description  String
+  ownerType    String // 'built_in' | 'org' | 'user'
+  contextScope String // 'dashboard' | 'current_contract' | 'current_request' | 'selection' | 'portfolio' | 'any'
+  systemPrompt String
+  allowedTools String[]
+  modelTier    String // 'reasoning' | 'fast' | 'default'
+  triggerTypes String[] // subset of ['mention', 'chip', 'button']
+  followUps    String[]  @default([])
+  requiresRole String[]  @default([])
+  // Versioning — edits bump version; SkillInvocation snapshots the version
+  version      Int       @default(1)
+  isPublished  Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  org         Organization?     @relation(fields: [orgId], references: [id])
+  owner       User?             @relation("SkillOwner", fields: [ownerUserId], references: [id])
+  threads     AgentThread[]
+  invocations SkillInvocation[]
+
+  @@unique([orgId, slug])
+  @@index([orgId, ownerType, isPublished])
+  @@map("skills")
+}
+
+model SkillInvocation {
+  id           String   @id @default(cuid())
+  skillId      String
+  skillVersion Int // snapshot of Skill.version at invocation time
+  threadId     String
+  userId       String
+  orgId        String
+  contextType  String?
+  contextId    String?
+  inputMessage String
+  createdAt    DateTime @default(now())
+
+  skill Skill        @relation(fields: [skillId], references: [id])
+  user  User         @relation(fields: [userId], references: [id])
+  org   Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, userId, createdAt])
+  @@index([skillId, createdAt])
+  @@map("skill_invocations")
+}
+
+// ─── D.0.1 — BYOK + AI Settings ───────────────────────────────────────────────
+// Per-org bring-your-own-key for any provider, plus per-tier model defaults
+// and daily cost cap. Encrypted at rest with AES-GCM (master key from env).
+
+/// Encrypted API key for a single provider, owned by one org. Unique on
+/// (orgId, provider) so each org has at most one key per provider.
+model OrgAiKey {
+  id           String    @id @default(cuid())
+  orgId        String
+  provider     String // 'openai' | 'anthropic' | 'google' | 'voyage' | 'cohere' | 'mistral'
+  encryptedKey String // AES-GCM ciphertext (base64); see lib/encryption.ts
+  keyPrefix    String // first 8 chars of the plaintext key for UI display
+  isActive     Boolean   @default(true)
+  lastTestedAt DateTime?
+  testStatus   String? // 'success' | 'failed' | null
+  testError    String?
+  createdById  String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  org       Organization @relation(fields: [orgId], references: [id])
+  createdBy User         @relation(fields: [createdById], references: [id])
+
+  @@unique([orgId, provider])
+  @@index([orgId, isActive])
+  @@map("org_ai_keys")
+}
+
+/// Per-org AI configuration. Singleton (orgId is unique). Each tier override
+/// is a "provider/model" string (e.g., "openai/gpt-4.1"); null = inherit
+/// platform default for that tier.
+model OrgAiSettings {
+  id              String   @id @default(cuid())
+  orgId           String   @unique
+  reasoningModel  String? // e.g., "openai/gpt-5", "anthropic/claude-opus-4-7"
+  defaultModel    String?
+  fastModel       String?
+  embedModel      String?
+  rerankModel     String?
+  visionOcrModel  String?
+  // Daily cost ceiling (USD). Null = use platform default ($50/day).
+  // Only counts non-BYOK calls (BYOK calls go against org's own provider account).
+  dailyCostCapUsd Decimal? @db.Decimal(10, 2)
+  capPolicy       String   @default("block") // 'block' | 'warn'
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@map("org_ai_settings")
+}
+
+/// Daily aggregated usage for fast dashboards + billing later. Upserted on
+/// the unique key as messages flow in. Older days can be compacted into a
+/// monthly table in v1.1 if volume warrants.
+model OrgUsageDaily {
+  id           String  @id @default(cuid())
+  orgId        String
+  date         String // 'YYYY-MM-DD' (UTC)
+  provider     String
+  model        String
+  tier         String // 'reasoning' | 'default' | 'fast' | 'embed' | 'rerank' | 'vision_ocr'
+  toolName     String? // null for non-tool calls (raw chat completions)
+  inputTokens  Int     @default(0)
+  outputTokens Int     @default(0)
+  costUsd      Decimal @default(0) @db.Decimal(10, 6)
+  callCount    Int     @default(0)
+  // True if calls used the org's BYOK key (informational; doesn't count toward platform cost cap)
+  isByok       Boolean @default(false)
+
+  @@unique([orgId, date, provider, model, tier, toolName, isByok])
+  @@index([orgId, date])
+  @@map("org_usage_daily")
+}
+
+/// Marketing site contact-form submission. Public POST endpoint stores rows
+/// here; admins read via the future Settings → Leads page. No PII beyond
+/// what the user volunteers; IP captured for rate-limit + abuse triage.
+model MarketingContact {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  company   String?
+  message   String   @db.Text
+  source    String? // free-form, e.g. "/pricing", "industry_saas", etc.
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([email])
+  @@map("marketing_contacts")
+}
+
+// Wave 2.4 — durable storage for the collaborative-editing Yjs document.
+// The Hocuspocus Database extension persists each contract's live Y.Doc binary
+// here (keyed by the document name "contract:<id>"), so concurrent edits
+// survive a collab-server restart instead of evaporating from memory.
+model CollabState {
+  documentName String   @id
+  state        Bytes
+  updatedAt    DateTime @updatedAt
+
+  @@map("collab_states")
+}

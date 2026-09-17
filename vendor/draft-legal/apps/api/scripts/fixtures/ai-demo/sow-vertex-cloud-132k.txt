@@ -1,0 +1,72 @@
+STATEMENT OF WORK #04
+
+This Statement of Work ("SOW") is entered into as of February 10, 2026 ("Effective Date") and is governed by the Master Services Agreement dated November 4, 2025 between Demo Org, Inc. ("Provider") and Vertex Cloud Holdings ("Customer"). In the event of any conflict between this SOW and the MSA, the MSA shall control, except with respect to the specific terms set forth herein.
+
+1. PROJECT OVERVIEW
+1.1 Name. "Project Skywalk — Multi-Region Data Pipeline."
+1.2 Duration. February 16, 2026 through April 10, 2026 (eight weeks).
+1.3 Objective. Design and build a multi-region streaming data pipeline for Customer's telemetry platform; migrate legacy batch jobs; deliver a runbook for ongoing operations.
+
+2. SCOPE OF SERVICES
+Provider shall perform the following services:
+(a) Architecture and capacity-planning workshop (Week 1–2);
+(b) Build streaming ingestion across two AWS regions (Week 2–5);
+(c) Migrate twelve legacy batch jobs to the new pipeline (Week 4–6);
+(d) Load test, failover test, and chaos validation (Week 6–7);
+(e) Documentation, training, and handoff (Week 8).
+
+3. MILESTONES AND DELIVERABLES
+
+Milestone 1 — Architecture Approved              Due: Feb 27, 2026   Fee: $22,000
+  Deliverables:
+    - Reference architecture diagram (mermaid + draw.io)
+    - Capacity model (RPS, GB/day, $/month projection)
+    - Failover and disaster-recovery plan
+
+Milestone 2 — Pipeline Live in Region 1          Due: Mar 13, 2026   Fee: $34,000
+  Deliverables:
+    - Ingestion service deployed to us-east-1
+    - Schema registry populated with 14 event types
+    - Observability dashboard (Datadog) with SLOs
+
+Milestone 3 — Cross-Region + Legacy Migrated     Due: Mar 27, 2026   Fee: $42,000
+  Deliverables:
+    - Region 2 (us-west-2) live with auto-failover
+    - All 12 batch jobs cut over to streaming
+    - Backfill of trailing 30 days complete
+
+Milestone 4 — Validation + Handoff               Due: Apr 10, 2026   Fee: $34,000
+  Deliverables:
+    - Load test report (10x peak traffic)
+    - Chaos test report (region-out, broker-out, schema-evolution)
+    - Operational runbook + 2 training sessions delivered
+
+TOTAL FIXED FEE: $132,000 (exclusive of pre-approved AWS infrastructure pass-through)
+
+4. TEAM AND ROLES
+4.1 Provider Team.
+    - Principal Architect (0.4 FTE) — Sam Okafor
+    - Senior Data Engineer (1.0 FTE) — Priya Raman
+    - Platform Engineer (0.6 FTE) — Lucas Tran
+    - Engagement Manager (0.1 FTE) — Morgan Leigh
+
+4.2 Key Personnel. Sam Okafor and Priya Raman are Key Personnel.
+
+5. ACCEPTANCE
+Customer has ten (10) business days after each milestone delivery to either accept or provide written notice of specific defects. Silence is deemed acceptance.
+
+6. PAYMENT TERMS
+Net 30 from invoice, per the MSA. Provider invoices upon milestone acceptance.
+
+7. ASSUMPTIONS
+7.1 Customer provides production-equivalent AWS accounts in both regions by Feb 17, 2026.
+7.2 Customer Technical Lead is available for daily standup during Weeks 2–7.
+
+8. SIGNATURES
+
+DEMO ORG, INC.                          VERTEX CLOUD HOLDINGS
+
+By: __________________________          By: __________________________
+Name: Morgan Leigh                      Name: Elena Vasquez
+Title: VP, Delivery                     Title: VP, Engineering
+Date: ________________                  Date: ________________

@@ -1,0 +1,86 @@
+/**
+ * scan.worker — daily obligation + renewal scan (Phase 08 Step 6).
+ *
+ * Two repeatable BullMQ jobs are registered on startup:
+ *   • obligation-scan-daily — runs scanObligations() every day at 09:00 UTC
+ *   • renewal-scan-daily    — runs scanRenewals()    every day at 09:15 UTC
+ *
+ * Idempotent registration: BullMQ dedups repeatable jobs by their
+ * pattern + jobId, so re-importing this module on every API restart is
+ * safe — it'll either insert a new repeatable record or replace the
+ * existing one's nextRunAt without orphaning entries.
+ *
+ * Why repeatable jobs (not setInterval): repeatable jobs survive
+ * process restarts via Redis, fan out to multiple worker replicas, and
+ * are visible in the Bull Board UI for ops to inspect/replay.
+ */
+import { Worker } from 'bullmq'
+import { redis } from '../lib/redis.js'
+import { scanQueue } from '../lib/queue.js'
+import { scanObligations, scanRenewals } from '../lib/obligation-scanner.js'
+
+const OBLIGATION_PATTERN = process.env.OBLIGATION_SCAN_PATTERN ?? '0 9 * * *'   // 09:00 UTC daily
+const RENEWAL_PATTERN    = process.env.RENEWAL_SCAN_PATTERN    ?? '15 9 * * *'  // 09:15 UTC daily
+
+async function registerRepeatable(name: string, pattern: string, payload: Record<string, unknown> = {}) {
+  // BullMQ uses the jobId so repeated invocations from process restart
+  // don't create duplicate schedules. Removing first ensures pattern
+  // changes (e.g. via env override) take effect on next deploy.
+  try {
+    await scanQueue.removeRepeatable(name, { pattern })
+  } catch {/* ignore */}
+  await scanQueue.add(name, payload, {
+    repeat: { pattern },
+    removeOnComplete: 50,
+    removeOnFail:     50,
+    jobId: `repeat-${name}`,
+  })
+}
+
+// Run the registration at module-load. Wrapped so we don't crash the
+// API on Redis hiccups during cold start — an exception just means the
+// next scan will be scheduled on the next process tick.
+;(async () => {
+  try {
+    await registerRepeatable('obligation-scan-daily', OBLIGATION_PATTERN)
+    await registerRepeatable('renewal-scan-daily',    RENEWAL_PATTERN)
+    console.info(
+      '[scan-worker] registered repeatable jobs · obligations=%s renewals=%s',
+      OBLIGATION_PATTERN, RENEWAL_PATTERN,
+    )
+  } catch (err) {
+    console.error('[scan-worker] failed to register repeatable jobs:', err)
+  }
+})()
+
+export const scanWorker = new Worker(
+  'scans',
+  async (job) => {
+    const start = Date.now()
+    if (job.name === 'obligation-scan-daily') {
+      const result = await scanObligations({ leadDays: 7 })
+      console.info(
+        '[scan-worker] obligation-scan-daily · %dms · scanned=%d notified=%d skippedAcked=%d skippedCooldown=%d errors=%d',
+        Date.now() - start,
+        result.scannedContracts, result.notified, result.skippedAcked,
+        result.skippedCooldown,  result.errors.length,
+      )
+      return result
+    }
+    if (job.name === 'renewal-scan-daily') {
+      const result = await scanRenewals({ leadDays: 90 })
+      console.info(
+        '[scan-worker] renewal-scan-daily · %dms · scanned=%d notified=%d skippedCooldown=%d errors=%d',
+        Date.now() - start,
+        result.scannedContracts, result.notified, result.skippedCooldown,
+        result.errors.length,
+      )
+      return result
+    }
+  },
+  { connection: redis, concurrency: 1 }, // serial — these are bulk passes
+)
+
+scanWorker.on('failed', (job, err) => {
+  console.error('[scan-worker] job %s/%s failed: %s', job?.name, job?.id, err.message)
+})

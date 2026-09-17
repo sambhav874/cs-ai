@@ -1,0 +1,69 @@
+name: ⚖️ Legal content contribution
+description: Contribute a template, clause library, or playbook rule — no code required
+title: "[Legal]: "
+labels: ["legal", "good first issue"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **You don't need to write any code.** draftLegal's AI is only as good as
+        the legal knowledge behind it — templates, clause libraries, and playbook
+        rules contributed by practitioners like you.
+
+        Just describe your contribution in plain text below. A maintainer will
+        wire it into the right place and credit you. See
+        [CONTRIBUTING-LEGAL.md](https://github.com/AniketTati/draft-legal/blob/main/CONTRIBUTING-LEGAL.md)
+        for examples.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: What are you contributing?
+      options:
+        - "Contract template (NDA, MSA, SOW, DPA, etc.)"
+        - "Playbook rule (preferred / fallback / walk-away position on a clause)"
+        - "Clause library (preferred / fallback / unacceptable language for a clause type)"
+        - "Jurisdiction notes (governing-law nuances, mandatory terms)"
+        - "Validating the AI's legal reasoning (telling us where it's wrong)"
+    validations:
+      required: true
+
+  - type: input
+    id: jurisdiction
+    attributes:
+      label: Jurisdiction (if relevant)
+      placeholder: e.g. US / Delaware, England & Wales, EU (GDPR)
+
+  - type: textarea
+    id: content
+    attributes:
+      label: Your contribution (plain text is perfect)
+      description: |
+        Paste the template, clause, or playbook position here. For playbook
+        rules, include the rationale — the AI uses it to explain its
+        recommendations. Don't worry about formatting or code.
+      placeholder: |
+        Clause: Limitation of Liability
+        Preferred: Liability capped at 1× fees paid in the trailing 12 months.
+        Fallback: Up to 2× fees, with a mutual cap and carve-outs for confidentiality + IP.
+        Walk-away: Uncapped liability, or any cap above 2× fees.
+        Why: Keeps downside proportional to contract value; 2× is our ceiling for standard vendors.
+    validations:
+      required: true
+
+  - type: input
+    id: attribution
+    attributes:
+      label: How would you like to be credited?
+      description: Name, handle, or "anonymous". We credit every legal contributor.
+      placeholder: Jane Doe, Legal Ops @ Acme — or just your GitHub handle
+
+  - type: checkboxes
+    id: rights
+    attributes:
+      label: Confirmation
+      options:
+        - label: This is my own work, or I have the right to contribute it, and it doesn't contain confidential or client-privileged material.
+          required: true
+        - label: I understand this is general legal content for a software tool, not legal advice to any specific party.
+          required: true

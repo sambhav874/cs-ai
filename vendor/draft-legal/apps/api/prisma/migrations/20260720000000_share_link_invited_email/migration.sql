@@ -1,0 +1,13 @@
+-- Store the address a portal share link was emailed to.
+--
+-- Two purposes:
+--   1. Sending — share links can now be delivered by email instead of being
+--      copied to the clipboard and pasted into the user's own mail client.
+--   2. Inbound email — the sender allow-list in routes/inbound-email.ts could
+--      previously only match contract.counterparty.email. A counterparty who
+--      was invited via a share link had no way to be recognised, so their
+--      emailed redline was rejected outright (that branch was an empty block
+--      whose own comment admitted it fell through to denial).
+--
+-- Nullable: links created via "copy link" have no recipient.
+ALTER TABLE "contract_share_links" ADD COLUMN "invitedEmail" TEXT;
