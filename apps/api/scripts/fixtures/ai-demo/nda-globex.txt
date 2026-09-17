@@ -1,0 +1,47 @@
+MUTUAL NON-DISCLOSURE AGREEMENT
+
+This Mutual Non-Disclosure Agreement ("Agreement") is entered into as of March 1, 2026 ("Effective Date") by and between:
+
+  (1) Demo Org, Inc., a Delaware corporation with its principal office at 100 Market Street, San Francisco, CA 94105 ("Demo Org"); and
+  (2) Globex Industries, LLC, a California limited liability company with its principal office at 500 Castro Street, Mountain View, CA 94041 ("Globex").
+
+Each of Demo Org and Globex may be referred to herein as a "Party" and collectively as the "Parties."
+
+1. PURPOSE
+The Parties wish to explore a potential business relationship (the "Purpose") and, in connection therewith, each Party may disclose to the other certain confidential or proprietary information.
+
+2. DEFINITION OF CONFIDENTIAL INFORMATION
+"Confidential Information" means any non-public information disclosed by one Party (the "Disclosing Party") to the other (the "Receiving Party"), whether orally, in writing, or in any other form, that is marked or identified as confidential or that a reasonable person would understand to be confidential given the nature of the information and the circumstances of disclosure. Confidential Information includes, without limitation, business plans, customer lists, technical specifications, source code, financial data, pricing information, product roadmaps, and personnel information.
+
+3. OBLIGATIONS OF RECEIVING PARTY
+The Receiving Party shall: (a) hold the Confidential Information in strict confidence; (b) use the Confidential Information solely for the Purpose; (c) restrict disclosure of Confidential Information to those of its employees, contractors, and advisors who have a need to know and who are bound by confidentiality obligations at least as protective as those contained herein; and (d) protect the Confidential Information using the same degree of care used to protect its own confidential information, but in no event less than a reasonable degree of care.
+
+4. EXCLUSIONS
+Confidential Information shall not include information that: (a) is or becomes publicly known through no fault of the Receiving Party; (b) was rightfully in the Receiving Party's possession prior to disclosure; (c) is independently developed by the Receiving Party without reference to the Confidential Information; or (d) is rightfully obtained from a third party without a duty of confidentiality.
+
+5. TERM
+This Agreement shall commence on the Effective Date and continue for a period of TWO (2) YEARS thereafter, unless earlier terminated by either Party upon thirty (30) days prior written notice. The confidentiality obligations set forth in Section 3 shall survive termination of this Agreement for a period of five (5) years from the date of disclosure.
+
+6. LIQUIDATED DAMAGES
+The Parties acknowledge that monetary damages may be inadequate for a breach of this Agreement. In the event of a material breach of Section 3, the breaching Party shall pay liquidated damages of FIFTY THOUSAND DOLLARS ($50,000) per incident, in addition to any other remedies available at law or in equity, including injunctive relief.
+
+7. NO LICENSE
+Nothing in this Agreement shall be construed as granting any license or other rights under any patent, copyright, trade secret, or other intellectual property right.
+
+8. GOVERNING LAW
+This Agreement shall be governed by and construed in accordance with the laws of the State of California, without regard to its conflict of laws principles. Any dispute arising out of or relating to this Agreement shall be resolved exclusively in the state or federal courts located in San Mateo County, California.
+
+9. ENTIRE AGREEMENT
+This Agreement constitutes the entire agreement between the Parties with respect to its subject matter and supersedes all prior or contemporaneous agreements and understandings, whether written or oral.
+
+10. COUNTERPARTS
+This Agreement may be executed in counterparts, each of which shall be deemed an original but all of which together shall constitute one and the same instrument.
+
+IN WITNESS WHEREOF, the Parties have executed this Agreement as of the Effective Date.
+
+DEMO ORG, INC.                          GLOBEX INDUSTRIES, LLC
+
+By: __________________________          By: __________________________
+Name: Alex Chen                         Name: Marcus Holloway
+Title: General Counsel                  Title: VP, Business Development
+Date: ________________                  Date: ________________

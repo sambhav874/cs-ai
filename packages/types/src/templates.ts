@@ -1,0 +1,142 @@
+// ─── Template & Clause Library Types — Phase 4.1 ─────────────────────────
+
+export type PositionType = 'preferred' | 'acceptable' | 'fallback' | 'walkaway'
+export type RiskRating = 'favorable' | 'unfavorable' | 'neutral' | 'standard'
+export type VariableType = 'text' | 'number' | 'date' | 'boolean' | 'select'
+export type ConditionOperator =
+  | 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'not_empty' | 'empty'
+
+export interface VariableDef {
+  key: string
+  label: string
+  type: VariableType
+  required: boolean
+  defaultValue?: string
+  options?: string[] // for select type
+}
+
+export interface ConditionalLogic {
+  field: string
+  operator: ConditionOperator
+  value?: string | number | boolean
+}
+
+export interface TemplateSection {
+  id: string
+  templateId: string
+  title: string
+  sortOrder: number
+  content: string
+  conditionalLogic: ConditionalLogic | null
+  clauseRefs: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Template {
+  id: string
+  orgId: string
+  name: string
+  description: string | null
+  contractType: string | null
+  variables: VariableDef[]
+  isPublished: boolean
+  version: number
+  usageCount: number
+  createdById: string
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
+  sections?: TemplateSection[]
+}
+
+export interface ClauseCategory {
+  id: string
+  orgId: string
+  name: string
+  description: string | null
+  parentCategoryId: string | null
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+  children?: ClauseCategory[]
+}
+
+export interface ClauseVersion {
+  version: number
+  content: string
+  changedById: string
+  changedAt: string
+  note: string
+}
+
+export interface ClauseLibraryItem {
+  id: string
+  orgId: string
+  categoryId: string
+  title: string
+  content: string
+  tags: string[]
+  riskRating: RiskRating | null
+  isApproved: boolean
+  usageCount: number
+  versions: ClauseVersion[]
+  createdById: string
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
+  category?: Pick<ClauseCategory, 'id' | 'name'>
+}
+
+export interface PlaybookPosition {
+  id: string
+  orgId: string
+  clauseCategoryId: string
+  positionType: PositionType
+  content: string
+  notes: string | null
+  riskThreshold: number
+  contractTypes: string[]
+  sortOrder: number
+  createdById: string
+  createdAt: string
+  updatedAt: string
+  clauseCategory?: Pick<ClauseCategory, 'id' | 'name' | 'parentCategoryId'>
+}
+
+export interface GenerateResult {
+  html: string
+  sectionsIncluded: number
+  sectionsExcluded: number
+  unfilledVariables: string[]
+  isSample?: boolean
+}
+
+export interface DraftResult {
+  contractId?: string
+  versionId?: string
+  html: string
+  usedTemplateId: string
+  usedTemplateName: string
+  variableValues: Record<string, string | number | boolean>
+  completenessScore: number
+  missingFields: string[]
+}
+
+export interface AssistResult {
+  revisedText: string
+  explanation: string
+  action: 'rewrite' | 'simplify' | 'expand' | 'check_compliance' | 'suggest_alternative'
+}
+
+export interface PlaybookTestResult {
+  clauseText: string
+  bestMatch: PositionType
+  score: number
+  explanation: string
+  deviations: Array<{
+    positionType: PositionType
+    deviation: string
+    severity: 'low' | 'medium' | 'high'
+  }>
+}

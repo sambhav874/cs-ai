@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & ideas (Discussions)
+    url: https://github.com/AniketTati/draft-legal/discussions
+    about: Ask questions, share what you built, or propose a big feature before coding.
+  - name: 📖 Self-hosting & setup help
+    url: https://github.com/AniketTati/draft-legal/blob/main/README.md#quickstart
+    about: Setup trouble? Check the quickstart and the deep health-check first.
+  - name: 🔒 Security issue
+    url: https://github.com/AniketTati/draft-legal/security/advisories/new
+    about: Found a vulnerability? Please report it privately, not as a public issue.

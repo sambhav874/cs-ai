@@ -1,0 +1,56 @@
+DATA PROCESSING ADDENDUM
+
+This Data Processing Addendum ("DPA") supplements the Master Services Agreement dated February 1, 2026 ("MSA") between Demo Org, Inc. ("Processor") and Tyrell Corporation ("Controller"). Capitalized terms not defined here have the meanings given in the MSA.
+
+1. DEFINITIONS
+"Applicable Law" means EU GDPR, UK GDPR, and any successor data protection laws applicable to the Services.
+"Personal Data," "Controller," "Processor," "Data Subject," "Processing" — as defined in Applicable Law.
+"Sub-processor" — any third party engaged by Processor to Process Personal Data on Controller's behalf.
+
+2. ROLES AND RESPONSIBILITIES
+2.1 Controller determines the purposes and means of Processing. Processor Processes Personal Data only on Controller's documented instructions.
+2.2 Scope. Processor Processes Personal Data solely to provide the Services defined in the MSA and its SOWs.
+2.3 Categories of Data Subjects. Controller's employees, contractors, customers, and end users.
+2.4 Categories of Personal Data. Names, business contact details, employment data, and any additional categories Controller uploads to the Services.
+
+3. PROCESSOR OBLIGATIONS
+3.1 Processor shall implement appropriate technical and organisational measures consistent with Article 32 GDPR, including: encryption in transit (TLS 1.3) and at rest (AES-256), access controls (SSO + MFA + least privilege), audit logging, vulnerability management, and incident response.
+3.2 Processor personnel with access to Personal Data are bound by written confidentiality obligations.
+3.3 Processor shall assist Controller in responding to Data Subject rights requests (access, rectification, erasure, restriction, portability, objection) within five (5) business days of Controller's request.
+
+4. SUB-PROCESSORS
+4.1 Controller provides general authorisation for Processor's use of Sub-processors listed at https://demoorg.example/subprocessors.
+4.2 Processor shall provide thirty (30) days prior notice of any intended change to its Sub-processor list. Controller may object in writing on reasonable grounds; if objection cannot be resolved, either Party may terminate the affected Services.
+4.3 Processor remains liable to Controller for Sub-processor acts and omissions.
+
+5. INTERNATIONAL TRANSFERS
+5.1 For transfers of Personal Data from the EEA/UK to third countries lacking an adequacy decision, the EU Standard Contractual Clauses (2021/914) Module 2 (Controller-to-Processor) and the UK IDTA are deemed incorporated by reference.
+5.2 Processor shall implement supplementary measures where the transferring country's law materially impacts the SCCs' effectiveness.
+
+6. SECURITY INCIDENTS
+6.1 Processor shall notify Controller of any confirmed Personal Data breach without undue delay and in any event within SEVENTY-TWO (72) HOURS of becoming aware.
+6.2 The notification shall include: nature and scope, categories and approximate number of Data Subjects and records affected, likely consequences, measures taken, and a contact point.
+
+7. AUDIT RIGHTS
+7.1 Processor shall make available information reasonably necessary to demonstrate compliance, including its current SOC 2 Type II report.
+7.2 Controller may audit Processor once per calendar year, on at least thirty (30) days prior written notice, at Controller's expense, subject to reasonable confidentiality and scheduling constraints. Audit may not unreasonably interfere with Processor's operations.
+
+8. RETURN / DELETION OF DATA
+Upon termination of the MSA, Processor shall, at Controller's election, return or permanently delete all Personal Data within thirty (30) days, unless retention is required by Applicable Law. Certification of deletion shall be provided on request.
+
+9. LIABILITY
+Liability for Processing is governed by the Liability provisions of the MSA. Nothing in this DPA expands or limits such provisions except that each Party shall be responsible for regulatory fines or claims arising from its own non-compliance with Applicable Law.
+
+10. ORDER OF PRECEDENCE
+In case of conflict: (i) this DPA governs with respect to Personal Data Processing; (ii) the MSA governs all other matters.
+
+IN WITNESS WHEREOF:
+
+CONTROLLER                              PROCESSOR
+
+Tyrell Corporation                      Demo Org, Inc.
+
+By: __________________________          By: __________________________
+Name: Eldon Tyrell                      Name: Alex Chen
+Title: General Counsel                  Title: Data Protection Officer
+Date: ________________                  Date: ________________

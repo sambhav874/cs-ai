@@ -1,0 +1,96 @@
+STATEMENT OF WORK #12
+
+This Statement of Work ("SOW") is entered into as of January 5, 2026 ("Effective Date") and is governed by the Master Services Agreement dated January 15, 2026 between Demo Org, Inc. ("Provider") and Stark Industries ("Customer"). In the event of any conflict between this SOW and the MSA, the MSA shall control, except with respect to the specific terms set forth herein.
+
+1. PROJECT OVERVIEW
+1.1 Name. "Project Arc Reactor Integration" — systems integration, staff augmentation, and knowledge transfer.
+1.2 Duration. January 15, 2026 through March 31, 2026.
+1.3 Objective. Integrate Customer's ERP with Provider's analytics platform, train Customer's internal team, and deliver runbooks for ongoing operations.
+
+2. SCOPE OF SERVICES
+Provider shall perform the following services:
+(a) Discovery and requirements gathering (Phase 1);
+(b) Architecture and integration design (Phase 2);
+(c) Build, configure, and test the integration (Phase 3);
+(d) Knowledge transfer and training (Phase 4);
+(e) Documentation and handoff (Phase 5).
+
+3. MILESTONES AND DELIVERABLES
+This SOW has FIVE (5) milestones. Each milestone's fee is due upon Customer acceptance as defined in Section 5.
+
+Milestone 1 — Discovery Complete               Due: Jan 31, 2026   Fee: $15,000
+  Deliverables:
+    - Current-state architecture diagram
+    - Data mapping matrix (source → target fields)
+    - Requirements specification document (signed by both Parties)
+
+Milestone 2 — Design Approved                  Due: Feb 14, 2026   Fee: $15,000
+  Deliverables:
+    - Solution architecture document
+    - API contracts and integration specification
+    - Test strategy
+    - Risk register
+
+Milestone 3 — Build and UAT Complete           Due: Mar 7, 2026    Fee: $25,000
+  Deliverables:
+    - Production-ready integration code (in Customer's repository)
+    - UAT test results signed off by Customer
+    - Defect log with all blocking issues resolved
+
+Milestone 4 — Training Delivered               Due: Mar 21, 2026   Fee: $15,000
+  Deliverables:
+    - Three (3) half-day training sessions delivered (admin, operator, developer)
+    - Recorded sessions posted to Customer's LMS
+    - Hands-on lab exercises and reference solutions
+
+Milestone 5 — Handoff and Acceptance           Due: Mar 31, 2026   Fee: $15,000
+  Deliverables:
+    - Runbooks for incident, monitoring, and rollback
+    - Operational handoff document
+    - Go-live report
+    - Final acceptance sign-off from Customer Project Sponsor
+
+TOTAL FIXED FEE: $85,000 (exclusive of pre-approved expenses)
+
+4. TEAM AND ROLES
+4.1 Provider Team.
+    - Lead Architect (0.5 FTE) — Jessica Wu
+    - Senior Integration Engineer (1.0 FTE) — Raj Patel
+    - Technical Writer (0.25 FTE) — Sam Rivera
+    - Engagement Manager (0.1 FTE) — Morgan Leigh
+
+4.2 Customer Team. Customer shall provide a Project Sponsor, a dedicated Technical Lead, and timely access to SMEs for each system in scope.
+
+4.3 Key Personnel. Jessica Wu and Raj Patel are Key Personnel. Provider shall not remove Key Personnel from the project without Customer's prior written consent except in cases of illness, resignation, or termination of employment.
+
+5. ACCEPTANCE PROCEDURE
+5.1 Delivery. Upon completion of each milestone, Provider shall deliver the applicable deliverables to Customer and notify Customer in writing.
+5.2 Review Period. Customer shall have TEN (10) BUSINESS DAYS from delivery to review the deliverable and either (a) accept it, or (b) provide written notice of specific defects.
+5.3 Correction. If Customer identifies defects, Provider shall use reasonable efforts to correct them within ten (10) business days and re-submit.
+5.4 Deemed Acceptance. If Customer does not respond within the review period, the deliverable shall be deemed accepted.
+
+6. PAYMENT TERMS
+6.1 Invoicing. Provider shall invoice Customer upon acceptance of each milestone.
+6.2 Payment. Payment is due NET THIRTY (30) DAYS from the date of invoice, per the Master Services Agreement.
+6.3 Expenses. Pre-approved, reasonable out-of-pocket expenses shall be invoiced monthly with receipts for amounts over $500.
+
+7. ASSUMPTIONS
+7.1 Customer shall provide production-equivalent test environments, valid credentials, and timely responses to requests for information.
+7.2 Any delay caused by Customer shall extend project timelines on a day-for-day basis.
+7.3 Changes to scope require a written change order under Section 1.2 of the MSA.
+
+8. WARRANTY
+Provider warrants that the integration code delivered under Milestone 3 will function substantially in accordance with the specifications in Milestone 2 for a period of ninety (90) days after acceptance. As Customer's sole remedy, Provider shall correct defects reported within the warranty period at no additional charge.
+
+9. CONFIDENTIALITY AND IP
+Confidentiality and intellectual property rights are governed by the MSA. Any Deliverables specifically developed for Customer under this SOW shall be Work Product as defined in the MSA.
+
+10. SIGNATURES
+Each Party represents that the person signing below has authority to bind such Party to this SOW.
+
+DEMO ORG, INC.                          STARK INDUSTRIES
+
+By: __________________________          By: __________________________
+Name: Morgan Leigh                      Name: Pepper Potts
+Title: VP, Delivery                     Title: Chief Executive Officer
+Date: ________________                  Date: ________________

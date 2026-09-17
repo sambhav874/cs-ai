@@ -1,0 +1,36 @@
+NON-DISCLOSURE AGREEMENT
+
+This Non-Disclosure Agreement (the "NDA") is between Demo Org, Inc. ("Disclosing Party") and Aperture Science, Inc. ("Recipient"), effective February 14, 2026.
+
+1. CONFIDENTIAL INFORMATION
+Recipient acknowledges that in connection with evaluating a potential commercial transaction, it will receive confidential information of Disclosing Party, including product roadmaps, internal pricing, and customer lists ("Confidential Information").
+
+2. OBLIGATIONS
+Recipient shall (a) use Confidential Information solely to evaluate the potential transaction; (b) protect Confidential Information with at least the same degree of care it uses for its own confidential information, and in no event less than reasonable care; (c) disclose only to employees with a need to know who are bound by comparable confidentiality obligations; and (d) not reverse engineer, decompile, or disassemble any proprietary technology disclosed.
+
+3. EXCLUSIONS
+Confidential Information does not include information that (i) is publicly available, (ii) was rightfully in Recipient's possession, (iii) is independently developed without reference to Confidential Information, or (iv) is rightfully obtained from a third party without restriction.
+
+4. TERM
+This NDA shall remain in effect for THREE (3) YEARS from the effective date. Confidentiality obligations survive for an additional two (2) years post-termination.
+
+5. NO LICENSE
+No license or other rights are granted, whether express or implied, under any intellectual property.
+
+6. REMEDIES
+Recipient acknowledges that monetary damages may be inadequate for breach and that Disclosing Party may seek injunctive relief. The prevailing party shall be entitled to reasonable attorneys' fees.
+
+7. GOVERNING LAW
+Washington state law, without regard to conflict-of-laws principles. Exclusive jurisdiction in King County, Washington.
+
+8. MISCELLANEOUS
+This is a unilateral NDA — only Disclosing Party's information is protected. Entire agreement; amendments in writing; counterparts OK.
+
+DISCLOSING PARTY                        RECIPIENT
+
+Demo Org, Inc.                          Aperture Science, Inc.
+
+By: __________________________          By: __________________________
+Name: Alex Chen                         Name: Cave Johnson
+Title: General Counsel                  Title: Founder
+Date: ________________                  Date: ________________

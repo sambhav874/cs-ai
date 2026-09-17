@@ -1,0 +1,70 @@
+SERVICE LEVEL AGREEMENT
+
+This Service Level Agreement ("SLA") is entered into as of February 1, 2026 ("Effective Date") by and between Demo Org, Inc. ("Provider") and Umbrella Corporation ("Customer"), and is incorporated into the Master Services Agreement dated January 15, 2026 between the Parties.
+
+1. DEFINITIONS
+1.1 "Service" means the cloud-hosted analytics platform provided by Provider to Customer.
+1.2 "Downtime" means any period during which the Service is unavailable to Customer as a result of Provider's infrastructure failure, excluding Scheduled Maintenance and Customer-caused issues.
+1.3 "Monthly Uptime Percentage" is calculated as: ((Total Monthly Minutes − Downtime Minutes) / Total Monthly Minutes) × 100.
+1.4 "Scheduled Maintenance" means any planned maintenance announced at least seventy-two (72) hours in advance, performed outside the window of 09:00–18:00 UTC on business days.
+1.5 "Service Credit" means the credit issued to Customer under Section 3.
+
+2. SERVICE LEVEL COMMITMENT
+2.1 Availability Target. Provider commits to a Monthly Uptime Percentage of at least NINETY-NINE POINT NINE PERCENT (99.9%) (the "Availability Target").
+2.2 Response Times for Incidents. Provider shall acknowledge incidents and begin investigation according to the following table:
+
+        Severity     Description                                    Response Time     Resolution Target
+        Sev 1        Service completely unavailable                 15 minutes        4 hours
+        Sev 2        Major feature unavailable, no workaround       30 minutes        8 hours
+        Sev 3        Minor feature degraded, workaround available   2 hours           24 hours
+        Sev 4        Cosmetic / documentation / enhancement         1 business day    Best effort
+
+2.3 Support Channels. Customer may submit incidents via (a) the Provider support portal, (b) email to support@demoorg.example, or (c) the 24x7 incident hotline for Sev 1 and Sev 2 issues.
+
+3. SERVICE CREDITS
+3.1 Calculation. If the Monthly Uptime Percentage falls below the Availability Target in any calendar month, Customer shall be entitled to the following Service Credits, calculated as a percentage of the monthly recurring fee for the affected Service:
+
+        Monthly Uptime Percentage         Service Credit
+        < 99.9% and >= 99.0%              10% of monthly fee
+        < 99.0% and >= 95.0%              25% of monthly fee
+        < 95.0%                           50% of monthly fee
+
+3.2 Claim Procedure. To receive a Service Credit, Customer must submit a written claim to accounts@demoorg.example within thirty (30) days of the end of the month in which the Downtime occurred. The claim must include dates and times of Downtime and any reference numbers.
+3.3 Credit Cap. Total Service Credits issued in any single month shall not exceed FIFTY PERCENT (50%) of the monthly recurring fee.
+3.4 Exclusive Remedy. Service Credits are Customer's sole and exclusive remedy for any failure by Provider to meet the Availability Target.
+
+4. EXCLUSIONS
+The Availability Target does not apply to any Downtime resulting from: (a) Scheduled Maintenance; (b) emergency maintenance required to address a security vulnerability, provided that Provider uses reasonable efforts to notify Customer; (c) force majeure events; (d) Customer's acts or omissions, including misconfiguration or misuse; (e) issues with Customer's network connectivity outside of Provider's infrastructure; or (f) third-party services or components not controlled by Provider.
+
+5. CHRONIC FAILURE
+If the Monthly Uptime Percentage falls below 95.0% in any two (2) consecutive months, or below 99.0% in any three (3) months during any rolling twelve (12) month period, Customer may terminate the Service upon thirty (30) days written notice without penalty, in addition to receiving Service Credits as provided above.
+
+6. REPORTING
+6.1 Monthly Reports. Provider shall make available to Customer, within ten (10) business days after the end of each month, a monthly service report including Monthly Uptime Percentage, incident summary, and root cause analysis for any Sev 1 or Sev 2 incidents.
+6.2 Real-Time Status. Provider shall maintain a publicly accessible status page at https://status.demoorg.example.
+
+7. MAINTENANCE WINDOWS
+Provider may perform Scheduled Maintenance during the following windows, unless otherwise agreed in writing: (a) weekly maintenance window on Sundays 02:00–06:00 UTC; (b) quarterly major maintenance, announced at least thirty (30) days in advance.
+
+8. DISASTER RECOVERY
+8.1 Recovery Point Objective (RPO). Provider commits to an RPO of no more than FOUR (4) HOURS for Customer Data.
+8.2 Recovery Time Objective (RTO). Provider commits to an RTO of no more than TWELVE (12) HOURS in the event of a disaster.
+8.3 Backup. Provider shall back up Customer Data at least daily and shall retain backups for a minimum of thirty (30) days.
+8.4 Testing. Provider shall perform a disaster recovery test at least annually and shall make the test report available to Customer upon request.
+
+9. SECURITY
+9.1 Certifications. Provider shall maintain SOC 2 Type II certification and shall make its current audit report available to Customer under NDA.
+9.2 Incident Notification. Provider shall notify Customer of any security incident affecting Customer Data within forty-eight (48) hours of discovery.
+9.3 Vulnerability Management. Provider shall remediate critical vulnerabilities within seven (7) days and high-severity vulnerabilities within thirty (30) days of identification.
+
+10. REVIEWS
+The Parties shall meet quarterly to review service performance, discuss upcoming changes, and address any concerns. Provider shall provide a written executive summary one (1) week prior to each review.
+
+IN WITNESS WHEREOF, the Parties have executed this SLA as of the Effective Date.
+
+DEMO ORG, INC.                          UMBRELLA CORPORATION
+
+By: __________________________          By: __________________________
+Name: Alex Chen                         Name: Ada Wong
+Title: VP, Customer Success             Title: Chief Information Officer
+Date: ________________                  Date: ________________

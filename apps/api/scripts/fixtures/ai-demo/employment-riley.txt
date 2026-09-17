@@ -1,0 +1,52 @@
+EMPLOYMENT AGREEMENT
+
+This Employment Agreement ("Agreement") is entered into as of April 1, 2026 (the "Effective Date") by and between Demo Org, Inc., a Delaware corporation ("Employer"), and Riley Chen, an individual residing in Austin, Texas ("Employee").
+
+1. POSITION AND DUTIES
+1.1 Position. Employer hereby employs Employee as Senior Product Manager, reporting to the VP of Product.
+1.2 Duties. Employee shall perform such duties as are customary for this position and such other duties as may be reasonably assigned. Employee shall devote their full business time and best efforts to the performance of their duties.
+1.3 Location. Employee's primary work location shall be Austin, Texas, with remote work up to three (3) days per week subject to Employer's remote work policy.
+
+2. TERM
+This Agreement shall commence on the Effective Date and continue until terminated in accordance with Section 7. Employment is "at-will" — either party may terminate at any time, with or without cause, subject to the notice and severance provisions below.
+
+3. COMPENSATION
+3.1 Base Salary. Employee shall receive an annual base salary of ONE HUNDRED EIGHTY THOUSAND DOLLARS ($180,000), payable in accordance with Employer's standard payroll practices (bi-weekly).
+3.2 Signing Bonus. Employee shall receive a one-time signing bonus of $20,000, payable within 30 days of the Effective Date, subject to repayment in full if Employee voluntarily terminates employment within 12 months.
+3.3 Annual Bonus. Employee shall be eligible for an annual discretionary bonus targeted at 20% of base salary, subject to achievement of individual and company performance objectives determined by the Board.
+3.4 Equity. Employee shall be granted 25,000 restricted stock units, vesting 25% on the first anniversary of the Effective Date and 1/48th monthly thereafter.
+
+4. BENEFITS
+Employee shall be eligible to participate in Employer's standard benefits including medical, dental, vision, 401(k) (4% match), unlimited PTO, and professional development stipend ($2,500 annually).
+
+5. CONFIDENTIALITY AND INVENTIONS
+5.1 Employee shall execute Employer's standard Confidentiality and Invention Assignment Agreement as a condition of employment.
+5.2 All inventions, discoveries, and works of authorship conceived or developed by Employee during employment and within the scope of Employer's business shall be the sole property of Employer.
+
+6. NON-COMPETE AND NON-SOLICITATION
+6.1 Non-Compete. During employment and for a period of TWELVE (12) MONTHS following termination, Employee shall not directly or indirectly engage in any business that competes with Employer's core product within the United States.
+6.2 Non-Solicitation of Employees. For eighteen (18) months post-termination, Employee shall not solicit or hire any employee of Employer.
+6.3 Non-Solicitation of Customers. For twelve (12) months post-termination, Employee shall not solicit customers with whom Employee had material contact.
+
+7. TERMINATION AND SEVERANCE
+7.1 Termination by Employer Without Cause. Upon written notice, Employee shall receive severance equal to three (3) months of base salary plus accelerated vesting of 25% of unvested equity, conditional on executing a mutual release.
+7.2 Termination by Employee. Employee shall provide four (4) weeks' written notice.
+7.3 Termination for Cause. No severance owed. "Cause" means material breach, gross negligence, conviction of a felony, or material violation of company policy.
+7.4 Change of Control. If Employee is terminated without Cause within twelve (12) months following a change of control, severance shall be doubled and equity fully accelerated.
+
+8. GOVERNING LAW AND DISPUTES
+This Agreement shall be governed by the laws of the State of Texas. Disputes shall be resolved through binding arbitration under the JAMS Employment Arbitration Rules in Travis County, Texas.
+
+9. ENTIRE AGREEMENT
+This Agreement constitutes the entire agreement between the Parties with respect to Employee's employment and supersedes all prior understandings.
+
+IN WITNESS WHEREOF, the Parties have executed this Agreement as of the Effective Date.
+
+EMPLOYER                                EMPLOYEE
+
+Demo Org, Inc.                          Riley Chen
+
+By: __________________________          __________________________
+Name: Alex Chen                         Date: ________________
+Title: Chief People Officer
+Date: ________________

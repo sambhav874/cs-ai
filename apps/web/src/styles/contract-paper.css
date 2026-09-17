@@ -1,0 +1,301 @@
+/*
+ * Contract paper typography — applied to TipTap's `.ProseMirror` surface
+ * only when inside `.document-canvas`. Scoped so it never leaks to the
+ * rest of the app.
+ *
+ * Goal: make the document FEEL like a legal contract on paper — serif
+ * type, generous leading, numbered sections, signature blocks — so the
+ * lawyer's instinct of "this is a document I can read and trust" kicks
+ * in even though it's rendered HTML.
+ *
+ * B.5.1 — first pass. Tunable without touching the component.
+ */
+
+.document-canvas .ProseMirror {
+  font-family: 'IBM Plex Serif', Georgia, 'Times New Roman', serif;
+  font-size: 11.5pt;
+  line-height: 1.62;
+  color: hsl(var(--foreground));
+  outline: none;
+  /* Prevent runaway width inside the page */
+  max-width: 100%;
+  /* Give the cursor somewhere to sit in empty editors */
+  min-height: 2rem;
+}
+
+/* Paragraph rhythm tuned for legal text density */
+.document-canvas .ProseMirror p {
+  margin: 0 0 0.9em 0;
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* Headings — mirror common contract numbering weights without mimicking
+   Word's oversized defaults. */
+.document-canvas .ProseMirror h1 {
+  font-size: 16pt;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin: 2em 0 1.2em 0;
+}
+.document-canvas .ProseMirror h2 {
+  font-size: 13pt;
+  font-weight: 700;
+  margin: 1.8em 0 0.6em 0;
+}
+.document-canvas .ProseMirror h3 {
+  font-size: 12pt;
+  font-weight: 700;
+  margin: 1.4em 0 0.4em 0;
+}
+.document-canvas .ProseMirror h4 {
+  font-size: 12pt;
+  font-weight: 600;
+  margin: 1em 0 0.3em 0;
+}
+
+/* Lists — contracts use numbered lists heavily; keep indentation modest */
+.document-canvas .ProseMirror ol,
+.document-canvas .ProseMirror ul {
+  margin: 0.4em 0 0.9em 0;
+  padding-left: 1.75em;
+}
+.document-canvas .ProseMirror li {
+  margin-bottom: 0.3em;
+}
+.document-canvas .ProseMirror li > p {
+  margin: 0;
+}
+
+/* Tables — clean borders, tighter padding than web defaults */
+.document-canvas .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 11pt;
+}
+.document-canvas .ProseMirror th,
+.document-canvas .ProseMirror td {
+  border: 1px solid hsl(var(--input));
+  padding: 0.45em 0.7em;
+  vertical-align: top;
+  text-align: left;
+}
+.document-canvas .ProseMirror th {
+  background: hsl(var(--muted));
+  font-weight: 600;
+}
+
+/* Blockquotes — used for recitals, preambles */
+.document-canvas .ProseMirror blockquote {
+  margin: 1em 0;
+  padding-left: 1em;
+  border-left: 3px solid hsl(var(--input));
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+
+/* Inline styles */
+.document-canvas .ProseMirror strong { font-weight: 700; }
+.document-canvas .ProseMirror em { font-style: italic; }
+.document-canvas .ProseMirror u { text-decoration: underline; }
+.document-canvas .ProseMirror s { text-decoration: line-through; }
+
+/* Horizontal rule — used for signature block dividers */
+.document-canvas .ProseMirror hr {
+  border: none;
+  border-top: 1px solid hsl(var(--input));
+  margin: 2em 0;
+}
+
+/* Links — subtle, not Web-loud */
+.document-canvas .ProseMirror a {
+  color: hsl(var(--foreground));
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+/* Empty-editor placeholder — from @tiptap/extension-placeholder */
+.document-canvas .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+  height: 0;
+  font-style: italic;
+}
+
+/* Selection — contracts often get text-selected for comments/AI actions;
+   use a softer highlight than the browser default. */
+.document-canvas .ProseMirror ::selection {
+  background: hsl(var(--brand) / 0.14);
+}
+
+/* B.5.5 — Inline risk & deviation markers (RiskHighlights extension). */
+.document-canvas .risk-marker {
+  position: relative;
+}
+
+/* Red squiggle for risks in full mode */
+.document-canvas .risk-marker--risk.risk-marker--view-full {
+  text-decoration: underline wavy hsl(var(--destructive));
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+  background: hsl(var(--destructive) / 0.04);
+}
+/* Blue squiggle for deviations in full mode */
+.document-canvas .risk-marker--deviation.risk-marker--view-full {
+  text-decoration: underline wavy hsl(var(--info));
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+  background: hsl(var(--info) / 0.04);
+}
+
+/* Summary mode — no inline underline; drop a dot in the margin */
+.document-canvas .risk-marker--view-summary::before {
+  content: '';
+  position: absolute;
+  left: -1em;
+  top: 0.5em;
+  width: 0.35em;
+  height: 0.35em;
+  border-radius: 9999px;
+}
+.document-canvas .risk-marker--risk.risk-marker--view-summary::before      { background: hsl(var(--destructive)); }
+.document-canvas .risk-marker--deviation.risk-marker--view-summary::before { background: hsl(var(--info)); }
+
+/* Hover cursor hint — both modes */
+.document-canvas .risk-marker--view-full,
+.document-canvas .risk-marker--view-summary {
+  cursor: pointer;
+}
+.document-canvas .risk-marker:hover {
+  background: hsl(var(--muted));
+}
+
+/* B.5.17 a11y — keyboard focus ring on risk markers. */
+.document-canvas .risk-marker:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/*
+  B.5.10 — Approver-mode tone shift.
+  When the viewer is the pending approver (docs/26 State 4), risk
+  markers recolor from red → amber. The signal changes meaning for this
+  persona: Legal flags blockers (red = "must fix"), but an Approver is
+  asked to weigh tradeoffs (amber = "heads up, decide"). Keeping the
+  same shape (wavy underline + margin dot) while softening the tone
+  communicates "this is the same information, presented for a decision-
+  maker context" rather than "something was downgraded."
+*/
+.document-canvas--tone-amber .risk-marker--risk.risk-marker--view-full {
+  text-decoration-color: hsl(var(--attention));
+  background: hsl(var(--attention) / 0.05);
+}
+.document-canvas--tone-amber .risk-marker--risk.risk-marker--view-summary::before {
+  background: hsl(var(--attention));
+}
+
+/* ─── Print ───────────────────────────────────────────────────────────────────
+   On screen the canvas SIMULATES a sheet of paper — fixed 820px width, 2.5cm
+   padding, a page shadow, an 11in minimum height. On actual paper all of that
+   is a second sheet drawn inside the first: doubled margins, a shadow the
+   printer renders as a grey smear, and a forced blank page whenever the
+   contract is shorter than the simulated one. The @page margin in index.css is
+   the real margin, so the simulation is dropped and the document just becomes
+   the document.
+
+   This file is @imported ABOVE @tailwind utilities, so these rules lose to
+   Tailwind's utilities on specificity alone — hence !important. */
+@media print {
+  .document-canvas {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  .document-canvas .ProseMirror {
+    max-width: none !important;
+    min-height: 0 !important;
+    /* 11.5pt was sized for a 820px screen column; the printed measure is wider
+       once the @page margin replaces the canvas padding, so the same text at
+       10.5pt keeps a comparable line length and saves a sheet or two on a
+       long-form MSA. */
+    font-size: 10.5pt;
+  }
+  .document-canvas .ProseMirror p {
+    orphans: 3;
+    widows: 3;
+  }
+  /* A section heading stranded at the foot of a page is the classic contract
+     printing defect — the clause number says one thing, the next sheet says
+     another. */
+  .document-canvas .ProseMirror h1,
+  .document-canvas .ProseMirror h2,
+  .document-canvas .ProseMirror h3,
+  .document-canvas .ProseMirror h4 {
+    break-after: avoid;
+    page-break-after: avoid;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  /* Signature blocks and short recitals must not be split across sheets. */
+  .document-canvas .ProseMirror tr,
+  .document-canvas .ProseMirror blockquote,
+  .document-canvas .ProseMirror li {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .document-canvas .ProseMirror table {
+    break-inside: auto;
+  }
+  .document-canvas .ProseMirror thead {
+    display: table-header-group;
+  }
+
+  /*
+    Risk and deviation markers are hue-coded on screen (red squiggle = risk,
+    blue = deviation) and greyscale flattens the two into the same wavy line.
+    Print gives them different STROKES instead — a doubled underline for risk,
+    a single dotted one for a deviation — so a marked-up print still reads,
+    and the marker keeps working on a mono office printer.
+  */
+  .document-canvas .risk-marker--risk.risk-marker--view-full {
+    background: transparent !important;
+    text-decoration: underline double hsl(var(--foreground)) !important;
+    text-underline-offset: 3px;
+  }
+  .document-canvas .risk-marker--deviation.risk-marker--view-full {
+    background: transparent !important;
+    text-decoration: underline dotted hsl(var(--foreground)) !important;
+    text-underline-offset: 3px;
+  }
+  /* The summary-mode margin dot is a background fill, which print drops. Same
+     two-axis trick the status dots use in index.css: risk is a solid square,
+     a deviation is a hollow circle. */
+  .document-canvas .risk-marker--view-summary::before {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .document-canvas .risk-marker--risk.risk-marker--view-summary::before {
+    background: hsl(var(--foreground)) !important;
+    border-radius: 0 !important;
+  }
+  .document-canvas .risk-marker--deviation.risk-marker--view-summary::before {
+    background: transparent !important;
+    box-shadow: inset 0 0 0 1px hsl(var(--foreground));
+  }
+  .document-canvas .risk-marker:hover {
+    background: transparent;
+  }
+}

@@ -1,0 +1,75 @@
+STATEMENT OF WORK #08
+
+This Statement of Work ("SOW") is entered into as of March 4, 2026 ("Effective Date") and is governed by the Master Services Agreement dated October 1, 2025 between Demo Org, Inc. ("Provider") and Lumen Bio, Inc. ("Customer"). In the event of any conflict between this SOW and the MSA, the MSA shall control.
+
+1. PROJECT OVERVIEW
+1.1 Name. "Project Helix — LIMS Modernization and Genomics Data Lake."
+1.2 Duration. March 16, 2026 through May 22, 2026 (ten weeks).
+1.3 Objective. Migrate Customer's lab-information-management system off legacy LabWare to a cloud-native architecture. Stand up a genomics data lake (Parquet on S3) for downstream R&D analytics.
+
+2. SCOPE OF SERVICES
+Provider shall perform the following services:
+(a) Discovery, current-state assessment, GxP impact analysis (Week 1–2);
+(b) Cloud-native LIMS build (Week 2–6);
+(c) Genomics data lake with parquet ingestion from 4 instrument types (Week 4–7);
+(d) GxP/21 CFR Part 11 validation (Week 7–9);
+(e) Parallel-run, cutover, and decommission planning (Week 10).
+
+3. MILESTONES AND DELIVERABLES
+
+Milestone 1 — Discovery + GxP Impact              Due: Mar 27, 2026   Fee: $24,000
+  Deliverables:
+    - Current-state assessment (instruments, workflows, integrations)
+    - GxP / 21 CFR Part 11 impact analysis with mitigation plan
+    - Target-state architecture diagram
+
+Milestone 2 — Cloud LIMS in QA                    Due: Apr 17, 2026   Fee: $46,000
+  Deliverables:
+    - Cloud LIMS deployed to validated QA environment
+    - All sample workflows migrated and tested
+    - User access controls + audit logging operational
+
+Milestone 3 — Data Lake + Validation              Due: May 8, 2026    Fee: $48,000
+  Deliverables:
+    - Parquet data lake on S3 with daily snapshots
+    - All 4 instrument types ingesting cleanly
+    - GxP IQ/OQ/PQ protocols executed and signed by QA
+
+Milestone 4 — Parallel Run + Cutover              Due: May 22, 2026   Fee: $40,000
+  Deliverables:
+    - Two-week parallel run with discrepancy log < 0.5%
+    - Production cutover with rollback validated
+    - Decommissioning plan for legacy LabWare
+    - Training: 3 sessions for lab staff, 2 for IT
+
+TOTAL FIXED FEE: $158,000 (exclusive of pre-approved AWS infrastructure pass-through)
+
+4. TEAM AND ROLES
+4.1 Provider Team.
+    - GxP Validation Lead (0.5 FTE) — Dr. Hina Sato (CSV / Part 11 certified)
+    - Cloud Platform Architect (0.5 FTE) — Owen Reilly
+    - Senior Data Engineer (1.0 FTE) — Priya Raman
+    - QA / Validation Engineer (0.5 FTE) — Tomas Adler
+    - Engagement Manager (0.1 FTE) — Morgan Leigh
+
+4.2 Key Personnel. Hina Sato and Priya Raman are Key Personnel.
+
+5. ACCEPTANCE
+Customer has fifteen (15) business days after each milestone for QA / Validation review. Silence is deemed acceptance.
+
+6. PAYMENT TERMS
+Net 30 from invoice. Provider invoices upon milestone acceptance.
+
+7. ASSUMPTIONS
+7.1 Customer QA team provides validation protocol review within 10 business days.
+7.2 AWS accounts and instrument network connectivity available by Mar 16, 2026.
+7.3 Two lab SMEs available 50% during weeks 4–9.
+
+8. SIGNATURES
+
+DEMO ORG, INC.                          LUMEN BIO, INC.
+
+By: __________________________          By: __________________________
+Name: Morgan Leigh                      Name: Dr. Camille Okafor
+Title: VP, Delivery                     Title: VP, Research IT
+Date: ________________                  Date: ________________

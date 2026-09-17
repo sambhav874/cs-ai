@@ -1,0 +1,10 @@
+{
+  "name": "@clm/agents",
+  "private": true,
+  "version": "0.1.0",
+  "description": "draftLegal AI agent service (FastAPI + LangGraph). Not an npm package — this manifest only exposes a `dev` script so `pnpm --parallel -r dev` starts the Python service alongside web + api.",
+  "scripts": {
+    "dev": "./.venv/bin/python -m uvicorn main:app --reload --host 127.0.0.1 --port ${AGENTS_PORT:-8002}",
+    "start": "./.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${AGENTS_PORT:-8002}"
+  }
+}

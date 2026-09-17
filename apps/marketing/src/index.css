@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 158 64% 24%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 158 64% 24%;
+    --accent-foreground: 0 0% 100%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 158 64% 24%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+  }
+  ::selection {
+    @apply bg-emerald-700 text-white;
+  }
+}
+
+@layer components {
+  .container-prose {
+    @apply mx-auto max-w-3xl px-6 lg:px-8;
+  }
+  .container-page {
+    @apply mx-auto max-w-7xl px-6 lg:px-8;
+  }
+  .heading-display {
+    @apply text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl;
+  }
+  .heading-section {
+    @apply text-3xl font-bold tracking-tight sm:text-4xl;
+  }
+  .prose-marketing {
+    @apply text-base leading-7 text-slate-700;
+  }
+  .prose-marketing p {
+    @apply mb-4;
+  }
+  .prose-marketing h2 {
+    @apply mt-12 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl;
+  }
+  .prose-marketing h3 {
+    @apply mt-8 text-xl font-semibold tracking-tight text-slate-900;
+  }
+  .prose-marketing ul {
+    @apply my-4 list-disc space-y-2 pl-6;
+  }
+  .prose-marketing ol {
+    @apply my-4 list-decimal space-y-2 pl-6;
+  }
+  .prose-marketing a {
+    @apply text-emerald-700 underline underline-offset-4 hover:text-emerald-800;
+  }
+  .prose-marketing code {
+    @apply rounded bg-slate-100 px-1.5 py-0.5 font-mono text-sm text-slate-900;
+  }
+  .prose-marketing strong {
+    @apply font-semibold text-slate-900;
+  }
+}

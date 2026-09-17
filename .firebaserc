@@ -1,0 +1,18 @@
+{
+  "projects": {
+    "default": "draftlegal-prod-13353"
+  },
+  "targets": {
+    "draftlegal-prod-13353": {
+      "hosting": {
+        "app": [
+          "draftlegal-prod-13353"
+        ],
+        "marketing": [
+          "draftlegal-marketing"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

@@ -1,0 +1,73 @@
+STATEMENT OF WORK #07
+
+This Statement of Work ("SOW") is entered into as of January 22, 2026 ("Effective Date") and is governed by the Master Services Agreement dated September 12, 2025 between Demo Org, Inc. ("Provider") and Caldera Health Networks ("Customer"). In the event of any conflict between this SOW and the MSA, the MSA shall control.
+
+1. PROJECT OVERVIEW
+1.1 Name. "Project Vault — HIPAA-Compliant EHR Integration."
+1.2 Duration. February 2, 2026 through April 17, 2026 (eleven weeks).
+1.3 Objective. Integrate Customer's Epic EHR with three downstream analytics systems under a HIPAA-compliant data exchange. Replace the legacy nightly CSV drop with FHIR R4 streaming.
+
+2. SCOPE OF SERVICES
+Provider shall perform the following services:
+(a) HIPAA gap assessment and BAA review (Week 1);
+(b) FHIR R4 connector build for Epic and three target systems (Week 2–6);
+(c) PHI tokenization layer with audit trail (Week 4–7);
+(d) Penetration testing and security review (Week 8–9);
+(e) Pilot with two clinical workflows, then production cutover (Week 10–11).
+
+3. MILESTONES AND DELIVERABLES
+
+Milestone 1 — HIPAA + BAA Sign-Off                Due: Feb 6, 2026    Fee: $14,000
+  Deliverables:
+    - HIPAA technical safeguards gap analysis
+    - Updated BAA executed by all sub-processors
+    - Data flow diagram with PHI categorization
+
+Milestone 2 — FHIR Connectors Live (Non-Prod)     Due: Mar 6, 2026    Fee: $44,000
+  Deliverables:
+    - Epic → connector tested against sandbox
+    - Three downstream systems receiving live test data
+    - Conformance test suite passing 100%
+
+Milestone 3 — Tokenization + Security Audit       Due: Mar 27, 2026   Fee: $40,000
+  Deliverables:
+    - PHI tokenization layer deployed with rotating keys
+    - Pen-test report (no Critical or High findings)
+    - SOC 2 control mappings updated
+
+Milestone 4 — Pilot + Production Cutover          Due: Apr 17, 2026   Fee: $50,000
+  Deliverables:
+    - Two clinical workflows live in pilot (10% traffic, 2 weeks)
+    - Full production cutover with rollback plan executed cleanly
+    - On-call runbook and 3 training sessions delivered
+
+TOTAL FIXED FEE: $148,000 (exclusive of pre-approved penetration-testing vendor pass-through)
+
+4. TEAM AND ROLES
+4.1 Provider Team.
+    - HIPAA Specialist Lead (0.5 FTE) — Dr. Aisha Bello (security clearance)
+    - Senior FHIR Engineer (1.0 FTE) — Marcus Hu
+    - Application Security Engineer (0.5 FTE) — Nina Kowalski
+    - Engagement Manager (0.1 FTE) — Morgan Leigh
+
+4.2 Key Personnel. Aisha Bello and Marcus Hu are Key Personnel.
+
+5. ACCEPTANCE
+Customer has fifteen (15) business days after each milestone for clinical-validation review. Silence is deemed acceptance.
+
+6. PAYMENT TERMS
+Net 45 from invoice (per the MSA's healthcare-customer addendum). Provider invoices upon milestone acceptance.
+
+7. ASSUMPTIONS
+7.1 Customer Compliance team provides BAA review responses within 5 business days.
+7.2 Epic sandbox access is granted by Feb 4, 2026.
+7.3 Two clinical SMEs available for the pilot phase.
+
+8. SIGNATURES
+
+DEMO ORG, INC.                          CALDERA HEALTH NETWORKS
+
+By: __________________________          By: __________________________
+Name: Morgan Leigh                      Name: Dr. Jonathan Reyes
+Title: VP, Delivery                     Title: Chief Information Officer
+Date: ________________                  Date: ________________

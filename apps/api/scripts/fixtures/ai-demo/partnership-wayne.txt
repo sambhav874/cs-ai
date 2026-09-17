@@ -1,0 +1,57 @@
+STRATEGIC PARTNERSHIP AGREEMENT
+
+This Strategic Partnership Agreement ("Agreement") is entered into as of March 15, 2026 ("Effective Date") by and between Demo Org, Inc. ("Demo") and Wayne Enterprises ("Wayne"). Demo and Wayne are each a "Partner" and together the "Partners."
+
+1. PURPOSE
+The Partners wish to jointly develop and co-market a technology-enabled legal intake workflow, combining Demo's contract platform with Wayne's legal-ops consulting network.
+
+2. SCOPE
+2.1 Joint Solution. The Partners shall co-develop an integrated offering ("Joint Solution") comprising Demo's core product plus Wayne's implementation services.
+2.2 Territory. North America initially; European expansion subject to mutual written agreement.
+2.3 Exclusivity. Neither Partner grants exclusivity in this initial phase; each may continue to partner with other firms, subject to the non-compete in Section 6.
+
+3. GOVERNANCE
+3.1 Steering Committee. A Joint Steering Committee of three representatives from each Partner shall meet monthly to oversee execution.
+3.2 Decision-Making. Material decisions (scope changes, pricing, marketing budget >$50,000) require unanimous approval of the Committee.
+3.3 Escalation. Unresolved disputes shall be escalated to the respective CEOs within fifteen (15) business days.
+
+4. FINANCIAL TERMS
+4.1 Revenue Share. Net revenue from Joint Solution sales shall be split sixty percent (60%) to Demo and forty percent (40%) to Wayne.
+4.2 Marketing Contribution. Each Partner shall contribute $100,000 to a jointly-managed marketing fund per calendar year.
+4.3 Pass-Through Expenses. Travel, third-party tool licenses, and event sponsorships shall be expensed at cost against the marketing fund.
+
+5. INTELLECTUAL PROPERTY
+5.1 Pre-Existing IP. Each Partner retains all right, title and interest in its pre-existing IP.
+5.2 Joint IP. Any IP jointly created shall be owned jointly, with each Partner free to exploit it independently subject to a non-exclusive perpetual royalty-free cross-license.
+5.3 Branding. "Joint Solution" is a working title; the Partners shall mutually agree on a commercial brand name prior to launch.
+
+6. NON-COMPETE AND EXCLUSIVITY CARVE-OUTS
+6.1 During the Term and for six (6) months thereafter, neither Partner shall partner with or acquire a direct competitor of the other in the defined scope.
+6.2 Partners may continue existing relationships identified in Schedule A at the Effective Date.
+
+7. TERM AND TERMINATION
+7.1 Initial Term. Two (2) years from the Effective Date.
+7.2 Renewal. Renews for successive one-year terms unless either Partner provides ninety (90) days prior written notice of non-renewal.
+7.3 Termination for Convenience. Either Partner may terminate on one hundred eighty (180) days prior written notice after the first anniversary.
+7.4 Termination for Cause. Upon material uncured breach after a thirty (30) day cure period, or upon a Partner's bankruptcy or change of control.
+
+8. CONFIDENTIALITY
+Each Partner shall protect the other's confidential information for three (3) years after termination, consistent with the Mutual NDA dated January 12, 2026 between the Partners (incorporated by reference).
+
+9. LIMITATION OF LIABILITY
+NEITHER PARTNER'S AGGREGATE LIABILITY UNDER THIS AGREEMENT SHALL EXCEED TWO HUNDRED FIFTY THOUSAND DOLLARS ($250,000). NEITHER PARTNER SHALL BE LIABLE FOR CONSEQUENTIAL OR LOST-PROFIT DAMAGES. CAP DOES NOT APPLY TO BREACH OF CONFIDENTIALITY OR WILFUL MISCONDUCT.
+
+10. GOVERNING LAW
+This Agreement shall be governed by the laws of the State of New York. Disputes shall be resolved by confidential binding arbitration in New York, NY under the AAA Commercial Rules.
+
+11. GENERAL
+Independent contractors. No partnership, joint venture, or agency. Assignment requires consent except to an affiliate. Notices per Schedule B. Counterparts permitted.
+
+IN WITNESS WHEREOF:
+
+DEMO ORG, INC.                          WAYNE ENTERPRISES
+
+By: __________________________          By: __________________________
+Name: Alex Chen                         Name: Lucius Fox
+Title: Chief Executive Officer          Title: Chief Operating Officer
+Date: ________________                  Date: ________________

@@ -1,0 +1,72 @@
+STATEMENT OF WORK #03
+
+This Statement of Work ("SOW") is entered into as of November 18, 2025 ("Effective Date") and is governed by the Master Services Agreement dated June 30, 2025 between Demo Org, Inc. ("Provider") and Ironbridge Industrial Group ("Customer"). In the event of any conflict between this SOW and the MSA, the MSA shall control.
+
+1. PROJECT OVERVIEW
+1.1 Name. "Project Forge — Supply-Chain ERP Integration."
+1.2 Duration. December 1, 2025 through January 30, 2026 (nine weeks).
+1.3 Objective. Integrate Customer's SAP ERP with three regional supplier portals. Replace manual purchase-order workflows with EDI-based real-time exchange.
+
+2. SCOPE OF SERVICES
+Provider shall perform the following services:
+(a) Discovery and EDI mapping across three supplier portals (Week 1–2);
+(b) SAP integration layer build (Week 2–5);
+(c) EDI X12 transaction set implementation (850, 855, 856, 810) (Week 4–6);
+(d) UAT with two pilot suppliers, then rollout to all three (Week 6–8);
+(e) Documentation, training, and handoff (Week 9).
+
+3. MILESTONES AND DELIVERABLES
+
+Milestone 1 — EDI Mapping Complete                Due: Dec 12, 2025   Fee: $26,000
+  Deliverables:
+    - EDI mapping spec for all 4 transaction sets
+    - SAP iDoc-to-EDI translation table
+    - Supplier conformance test plan
+
+Milestone 2 — Integration Layer in QA             Due: Jan 9, 2026    Fee: $38,000
+  Deliverables:
+    - SAP middleware deployed to non-prod
+    - All 4 X12 transactions round-tripping cleanly
+    - Error queue + retry mechanism implemented
+
+Milestone 3 — Pilot Suppliers Live in Production  Due: Jan 23, 2026   Fee: $40,000
+  Deliverables:
+    - Two suppliers exchanging POs end-to-end in prod
+    - 30-day soak metrics meeting SLAs
+    - Cutover rollback runbook validated
+
+Milestone 4 — Full Rollout + Handoff              Due: Jan 30, 2026   Fee: $38,000
+  Deliverables:
+    - Third supplier live and stable
+    - Operational handoff document
+    - Two training sessions delivered (procurement + IT ops)
+
+TOTAL FIXED FEE: $142,000 (exclusive of pre-approved EDI VAN charges)
+
+4. TEAM AND ROLES
+4.1 Provider Team.
+    - SAP Integration Architect (0.5 FTE) — Diego Salinas
+    - Senior EDI Engineer (1.0 FTE) — Yuki Tanaka
+    - QA Engineer (0.5 FTE) — Beth Holloway
+    - Engagement Manager (0.1 FTE) — Morgan Leigh
+
+4.2 Key Personnel. Diego Salinas and Yuki Tanaka are Key Personnel.
+
+5. ACCEPTANCE
+Customer has ten (10) business days after each milestone. Silence is deemed acceptance.
+
+6. PAYMENT TERMS
+Net 30 from invoice. Provider invoices upon milestone acceptance.
+
+7. ASSUMPTIONS
+7.1 Customer SAP team grants non-prod and prod access by Dec 1, 2025.
+7.2 All three suppliers commit to UAT participation per the side letter dated Nov 5, 2025.
+
+8. SIGNATURES
+
+DEMO ORG, INC.                          IRONBRIDGE INDUSTRIAL GROUP
+
+By: __________________________          By: __________________________
+Name: Morgan Leigh                      Name: Hans Müller
+Title: VP, Delivery                     Title: Director, Procurement Systems
+Date: ________________                  Date: ________________

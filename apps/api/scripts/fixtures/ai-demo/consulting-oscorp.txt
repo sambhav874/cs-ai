@@ -1,0 +1,53 @@
+CONSULTING AGREEMENT
+
+This Consulting Agreement ("Agreement") is entered into as of August 20, 2026 ("Effective Date") by and between Demo Org, Inc. ("Client") and OsCorp Industries LLC ("Consultant").
+
+1. SERVICES
+Consultant shall provide the services described in SOW #1 attached hereto, which concerns strategic advisory on the expansion of Client's European operations. Additional SOWs may be added by mutual signed agreement.
+
+2. COMPENSATION
+2.1 Hourly Rate. Consultant shall be compensated at $400 per hour for principal time and $225 per hour for senior associate time.
+2.2 Not-to-Exceed. Total fees under SOW #1 shall not exceed SEVENTY-FIVE THOUSAND DOLLARS ($75,000) without Client's prior written approval.
+2.3 Expenses. Pre-approved, reasonable travel expenses (economy airfare, mid-tier hotels, standard meals) shall be reimbursed at cost with receipts.
+2.4 Invoicing. Monthly, itemized with time entries in 6-minute increments. Net 30.
+
+3. TERM
+3.1 Initial Term: six (6) months from the Effective Date.
+3.2 Extension by mutual written agreement.
+3.3 Early termination: either Party may terminate for any reason on thirty (30) days written notice. Fees earned through the termination date are payable.
+
+4. INDEPENDENT CONTRACTOR
+Consultant is an independent contractor, not an employee, agent, or partner of Client. Consultant is responsible for its own taxes, insurance, and benefits. No authority to bind Client.
+
+5. CONFIDENTIALITY
+Consultant shall protect Client's confidential information for five (5) years after termination. Standard exclusions apply (public, independently developed, already possessed).
+
+6. INTELLECTUAL PROPERTY
+6.1 Work Product. All deliverables created specifically for Client under this Agreement are work-made-for-hire and are Client's property upon payment in full. To the extent not treated as work-made-for-hire, Consultant assigns all right, title and interest in such deliverables to Client.
+6.2 Consultant Tools. Consultant retains ownership of its pre-existing methodologies and templates, with a perpetual royalty-free license to Client for the extent necessary to use the deliverables.
+
+7. NON-SOLICITATION
+For twelve (12) months following termination, neither Party shall solicit or hire the other's employees or contractors, except for hires resulting from a general public advertisement not directed at such personnel.
+
+8. REPRESENTATIONS AND WARRANTIES
+Consultant warrants that (a) its engagement here does not breach any other agreement; (b) work will be performed in a professional, workmanlike manner consistent with industry standards; (c) deliverables will not infringe third-party IP.
+
+9. LIMITATION OF LIABILITY
+Consultant's aggregate liability is capped at fees paid in the six (6) months preceding the claim. No consequential or lost-profit damages. Cap does not apply to Consultant's indemnification obligations or intentional misconduct.
+
+10. GOVERNING LAW; DISPUTES
+New York law. Disputes resolved by confidential binding arbitration under JAMS Comprehensive Rules in New York, NY.
+
+11. GENERAL
+Entire agreement; amendments in writing; no assignment without consent; notices to addresses on Schedule A; counterparts OK; severability.
+
+IN WITNESS WHEREOF:
+
+CLIENT                                  CONSULTANT
+
+Demo Org, Inc.                          OsCorp Industries LLC
+
+By: __________________________          By: __________________________
+Name: Alex Chen                         Name: Norman Osborn
+Title: Chief Operating Officer          Title: Managing Director
+Date: ________________                  Date: ________________

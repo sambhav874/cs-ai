@@ -1,0 +1,61 @@
+VENDOR SERVICES AGREEMENT
+
+This Vendor Services Agreement ("Agreement") is entered into as of July 15, 2026 by and between Demo Org, Inc. ("Buyer") and Pied Piper, Inc. ("Vendor"). Vendor and Buyer are the "Parties."
+
+1. ENGAGEMENT
+Vendor shall provide data-compression-as-a-service for Buyer's contract archive as described in Statement of Work #1 attached hereto.
+
+2. TERM
+Initial term: eighteen (18) months, from July 15, 2026 through January 14, 2028. Auto-renews for successive twelve (12)-month terms unless either Party gives sixty (60) days prior written notice.
+
+3. FEES
+3.1 Monthly Subscription. Vendor shall invoice Buyer $18,000 per month, billed in arrears.
+3.2 Usage Overage. Compression volumes exceeding 50 TB per month are billed at $200 per additional TB.
+3.3 Payment Terms. Net 45. Invoices sent electronically to ap@demoorg.example.
+3.4 Late Payment. Interest accrues at 1.0% per month on overdue amounts.
+
+4. SERVICE LEVELS
+4.1 Uptime. Vendor guarantees 99.5% monthly availability, measured at the regional edge.
+4.2 Compression Ratio. Minimum 5:1 on Buyer's dataset; Vendor shall credit 10% of the monthly fee if ratio drops below 4:1.
+4.3 Support. Business hours email support; emergency paging for full outages.
+
+5. DATA HANDLING AND SECURITY
+5.1 Buyer retains all ownership of Buyer's data. Vendor is granted a limited license to process such data solely to provide the Services.
+5.2 Vendor shall use at least industry-standard encryption (TLS 1.2+ in transit, AES-256 at rest).
+5.3 Vendor shall notify Buyer of any suspected security incident within seventy-two (72) hours.
+
+6. AUDIT RIGHTS
+Upon thirty (30) days written notice, Buyer may audit Vendor's compliance with Sections 5 (Data Handling) and 7 (Compliance) once per calendar year, subject to reasonable confidentiality protections.
+
+7. COMPLIANCE
+7.1 Vendor represents that it will comply with all applicable laws governing Vendor's performance, including export control, sanctions, and data protection.
+7.2 Vendor shall maintain (and evidence to Buyer on request) commercial general liability insurance of at least $2,000,000 per occurrence and professional liability of at least $3,000,000 aggregate.
+
+8. TERMINATION
+8.1 Either Party may terminate this Agreement for convenience on ninety (90) days prior written notice after the Initial Term.
+8.2 Either Party may terminate for material uncured breach after a fifteen (15) business day cure period.
+8.3 Buyer may terminate immediately on written notice if Vendor undergoes a change of control to a direct competitor of Buyer.
+8.4 Transition Assistance. Vendor shall cooperate with a transition of up to one hundred twenty (120) days at the then-current rates.
+
+9. INDEMNIFICATION
+Vendor shall indemnify and hold harmless Buyer from third-party claims arising from (a) Vendor's negligence or wilful misconduct, (b) Vendor's breach of Sections 5 or 7, or (c) infringement of third-party IP by Vendor's services as delivered and used as authorized.
+
+10. LIMITATION OF LIABILITY
+Except for Vendor's indemnification obligations and breaches of data protection, aggregate liability under this Agreement is capped at twelve (12) months of fees paid. Neither Party shall be liable for consequential damages.
+
+11. GOVERNING LAW
+California. Disputes resolved in state/federal courts in San Francisco County, California.
+
+12. NOTICES
+Notices shall be sent to the addresses on Schedule A and are effective on receipt.
+
+IN WITNESS WHEREOF:
+
+BUYER                                   VENDOR
+
+Demo Org, Inc.                          Pied Piper, Inc.
+
+By: __________________________          By: __________________________
+Name: Alex Chen                         Name: Richard Hendricks
+Title: VP, Infrastructure               Title: CEO
+Date: ________________                  Date: ________________
