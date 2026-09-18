@@ -89,7 +89,7 @@ export function CounterpartyPicker({
   return (
     <div ref={containerRef} className="relative">
       <div className="relative">
-        <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-ink-400 pointer-events-none" />
+        <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-fg-400 pointer-events-none" />
         <Input
           type="text"
           value={query}
@@ -111,7 +111,7 @@ export function CounterpartyPicker({
           <span
             title="Linked to counterparty"
             data-testid={`${testIdPrefix}-linked`}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-brand-700"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-success-700"
           >
             <Check className="size-3.5" />
           </span>
@@ -120,7 +120,7 @@ export function CounterpartyPicker({
           <button
             type="button"
             onClick={() => { setQuery(''); onChange({ id: null, name: '' }); setOpen(false) }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-400 hover:text-fg-700"
             data-testid={`${testIdPrefix}-clear`}
           >
             <X className="size-3.5" />
@@ -131,10 +131,10 @@ export function CounterpartyPicker({
       {open && (matches.length > 0 || showCreate) && (
         <div
           data-testid={`${testIdPrefix}-dropdown`}
-          className="absolute z-30 left-0 right-0 mt-1 bg-card border border-paper-200 rounded-md shadow-e2 max-h-72 overflow-y-auto"
+          className="absolute z-30 left-0 right-0 mt-1 bg-card border border-surface-200 rounded-md shadow-e2 max-h-72 overflow-y-auto"
         >
           {isFetching && matches.length === 0 && (
-            <div className="px-3 py-2 text-dense text-ink-400 inline-flex items-center gap-1.5">
+            <div className="px-3 py-2 text-dense text-fg-400 inline-flex items-center gap-1.5">
               <Loader2 className="size-3 animate-spin" /> Searching…
             </div>
           )}
@@ -148,16 +148,16 @@ export function CounterpartyPicker({
                 setOpen(false)
               }}
               data-testid={`${testIdPrefix}-option-${cp.id}`}
-              className="w-full px-3 py-2 text-left hover:bg-paper-100 flex items-center justify-between gap-2"
+              className="w-full px-3 py-2 text-left hover:bg-surface-100 flex items-center justify-between gap-2"
             >
               <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium text-ink-950 truncate">{cp.name}</div>
+                <div className="text-[13px] font-medium text-fg-950 truncate">{cp.name}</div>
                 {cp.legalName && cp.legalName !== cp.name && (
-                  <div className="text-[10.5px] text-ink-400 truncate">{cp.legalName}</div>
+                  <div className="text-[10.5px] text-fg-400 truncate">{cp.legalName}</div>
                 )}
               </div>
               {(cp.contractCount ?? 0) > 0 && (
-                <span className="text-[10.5px] text-ink-400 tabular-nums shrink-0">
+                <span className="text-[10.5px] text-fg-400 tabular-nums shrink-0">
                   {cp.contractCount} {cp.contractCount === 1 ? 'contract' : 'contracts'}
                 </span>
               )}
@@ -171,7 +171,7 @@ export function CounterpartyPicker({
               onClick={() => create.mutate()}
               disabled={create.isPending}
               data-testid={`${testIdPrefix}-create`}
-              className="w-full px-3 py-2 text-left border-t border-paper-200 hover:bg-paper-100 inline-flex items-center gap-2 text-dense text-ink-950 font-medium disabled:opacity-50"
+              className="w-full px-3 py-2 text-left border-t border-surface-200 hover:bg-surface-100 inline-flex items-center gap-2 text-dense text-fg-950 font-medium disabled:opacity-50"
             >
               {create.isPending ? <Loader2 className="size-3 animate-spin" /> : <Plus className="size-3.5" />}
               Create new counterparty <span className="font-semibold">"{trimmed}"</span>

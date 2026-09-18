@@ -1,22 +1,26 @@
 #!/usr/bin/env node
 /**
- * check-design-system.mjs — conformance gate for the draftLegal Design System.
+ * check-design-system.mjs — conformance gate for the cs-ai design system.
  *
- * The design system's whole premise is that color carries meaning: ink acts,
- * emerald means binding, indigo means a machine wrote it. That premise survives
+ * The design system's whole premise is that color carries meaning: cobalt acts,
+ * green means binding, violet means a machine wrote it. That premise survives
  * exactly as long as nobody reaches for `bg-blue-600` again. A one-time
  * migration cannot hold it; a check that runs on every build can.
  *
  * Three rules, in descending order of how badly breaking them hurts:
  *
  *   1. No raw Tailwind hue classes, and no raw hex, in app source. The palette
- *      in tailwind.config.ts (paper/ink/brand/assist/info/attention/risk) covers
+ *      in tailwind.config.ts (surface/fg/primary/success/info/attention/risk/
+ *      assist) covers
  *      every case, so a raw hue is always a value that escaped meaning.
- *   2. Indigo/assist only on machine-authored surfaces. This is the rule the
+ *   2. Violet/assist only on machine-authored surfaces. This is the rule the
  *      design system states most emphatically ("Delete every indigo-* literal
  *      outside agent components") because the mark stops meaning "the model
  *      wrote this" the moment a button borrows it.
  *   3. No off-scale elevation. Borders before shadows; e3 is overlays only.
+ *   4. White text sits only on a `-solid` fill. In dark mode the numbered
+ *      steps turn into light text tones, so `bg-primary-700 text-white` is
+ *      readable in light mode and illegible in dark.
  *
  * Run: node scripts/check-design-system.mjs   (also wired into `pnpm lint:ds`)
  */
@@ -58,7 +62,7 @@ const OPACITY_SCALE = new Set([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60,
 const OPACITY_MOD = new RegExp(`\\b(?:${UTILS})-[a-z]+(?:-\\d{2,3})?/(\\d{1,3})\\b`, 'g')
 
 /**
- * Surfaces allowed to speak in assist indigo. Everything the model authors
+ * Surfaces allowed to speak in assist violet. Everything the model authors
  * lives here; nothing else may borrow the accent.
  */
 const ASSIST_ALLOWED = [
@@ -75,7 +79,7 @@ const ASSIST_ALLOWED = [
   'pages/AgentHomePage.tsx',
   'pages/ReviewQueuePage.tsx',
   // The rest of the machine-authored surfaces outside components/agent. Each
-  // one shows model output or is an "Ask draftLegal" affordance, which the
+  // one shows model output or is an "Ask the assistant" affordance, which the
   // design system names as assist territory alongside the agent components:
   'components/contracts/CoachMarks.tsx',          // the assistant introducing itself
   'components/contracts/DecisionStrip.tsx',       // the AI confidence reading
@@ -95,6 +99,10 @@ function walk(dir, out = []) {
   }
   return out
 }
+
+// A fill from a numbered step (or a neutral) carrying white text. Checked per
+// line, which is where a class string lives.
+const WHITE_ON_SCALE = /\bbg-(?:(?:primary|success|risk|assist|info|attention)-[0-9]{2,3}|fg-[0-9]{3}|surface-[0-9]{1,3})\b/
 
 const violations = []
 function record(file, line, rule, text) {
@@ -123,6 +131,11 @@ for (const abs of walk(SRC)) {
       record(file, lineOf(src, m.index), 'dead-opacity-modifier', m[0])
     }
   }
+  src.split('\n').forEach((text, i) => {
+    if (/\btext-white\b/.test(text) && WHITE_ON_SCALE.test(text) && !/\?/.test(text)) {
+      record(file, i + 1, 'white-on-scale', text)
+    }
+  })
   if (!ASSIST_ALLOWED.some((p) => file.startsWith(p) || file === p)) {
     for (const m of src.matchAll(ASSIST_USE)) {
       record(file, lineOf(src, m.index), 'assist-outside-agent', m[0])
@@ -141,10 +154,11 @@ const byRule = violations.reduce((acc, v) => {
 }, {})
 
 const EXPLAIN = {
-  'raw-hue': 'Use the palette: paper/ink (neutrals), brand (binding), info (in flight), attention (your turn), risk, assist (machine).',
-  'raw-hex': 'Hex in markup escapes the token layer. Use a palette class or hsl(var(--token)).',
+  'raw-hue': 'Use the palette: surface/fg (neutrals), primary (action), success (binding), info (in flight), attention (your turn), risk, assist (machine).',
+  'raw-hex': 'Hex in markup escapes the token layer. Use a palette class, rgb(var(--token)), or lib/paint.',
   'off-scale-shadow': 'Elevation is e0–e3 (+ shadow-page). Borders before shadows; e3 is overlays only.',
-  'assist-outside-agent': 'Indigo means "a machine wrote this". Outside agent surfaces it stops meaning anything.',
+  'assist-outside-agent': 'Violet means "a machine wrote this". Outside agent surfaces it stops meaning anything.',
+  'white-on-scale': 'White text needs a -solid fill (bg-primary-solid, bg-risk-solid…). Numbered steps invert in dark mode.',
   'dead-opacity-modifier': 'Not a step in Tailwind\'s opacity scale, so this utility is never emitted — it fails silently. Use the nearest multiple of 5.',
 }
 

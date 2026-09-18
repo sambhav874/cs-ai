@@ -51,11 +51,11 @@ export function AdminRolesPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-title text-ink-950 flex items-center gap-2">
+          <h1 className="text-title text-fg-950 flex items-center gap-2">
             <ShieldCheck className="size-5" />
             Roles &amp; Permissions
           </h1>
-          <p className="text-dense text-ink-500 mt-1">
+          <p className="text-dense text-fg-500 mt-1">
             View system roles and their associated permissions. Custom role editing is coming soon.
           </p>
         </div>
@@ -80,12 +80,12 @@ export function AdminRolesPage() {
       {/* Roles list */}
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <div className="size-5 border-2 border-paper-300 border-t-ink-950 rounded-full animate-spin" />
+          <div className="size-5 border-2 border-surface-300 border-t-fg-950 rounded-full animate-spin" />
         </div>
       ) : !roles || roles.length === 0 ? (
         <EmptyState icon={<ShieldCheck />} title="No roles configured" />
       ) : (
-        <Card className="divide-y divide-paper-200">
+        <Card className="divide-y divide-surface-200">
           {visibleRoles.map(role => {
             const isExpanded = expandedRoleId === role.id
             const unconfigured = role.permissions.length === 0
@@ -93,18 +93,18 @@ export function AdminRolesPage() {
               <div key={role.id} className={unconfigured ? 'bg-muted/20' : undefined}>
                 <button
                   onClick={() => toggleRole(role.id)}
-                  className="w-full flex items-center gap-4 px-5 py-4 hover:bg-paper-50 transition-colors text-left"
+                  className="w-full flex items-center gap-4 px-5 py-4 hover:bg-surface-50 transition-colors text-left"
                 >
                   <ChevronRight
-                    className={`size-4 text-ink-400 transition-transform ${
+                    className={`size-4 text-fg-400 transition-transform ${
                       isExpanded ? 'rotate-90' : ''
                     }`}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className={`text-body font-medium ${unconfigured ? 'text-ink-500' : 'text-ink-950'}`}>{role.name}</p>
+                      <p className={`text-body font-medium ${unconfigured ? 'text-fg-500' : 'text-fg-950'}`}>{role.name}</p>
                       {role.isSystem && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-chip text-[10px] font-medium bg-paper-100 text-ink-500 border border-paper-200">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-chip text-[10px] font-medium bg-surface-100 text-fg-500 border border-surface-200">
                           <Lock className="size-2.5" />
                           System
                         </span>
@@ -118,10 +118,10 @@ export function AdminRolesPage() {
                       )}
                     </div>
                     {role.description && (
-                      <p className="text-dense text-ink-500 mt-0.5">{role.description}</p>
+                      <p className="text-dense text-fg-500 mt-0.5">{role.description}</p>
                     )}
                   </div>
-                  <span className="text-dense tabular-nums text-ink-400 flex-shrink-0">
+                  <span className="text-dense tabular-nums text-fg-400 flex-shrink-0">
                     {role.permissions.length} permission{role.permissions.length !== 1 ? 's' : ''}
                   </span>
                 </button>
@@ -139,33 +139,33 @@ export function AdminRolesPage() {
                         lands with v1.1.
                       </div>
                     ) : (
-                      <div className="bg-paper-50 rounded-card border border-paper-200 p-3">
+                      <div className="bg-surface-50 rounded-card border border-surface-200 p-3">
                         <table className="w-full">
                           <thead>
-                            <tr className="text-[11px] font-semibold text-ink-400 uppercase tracking-[0.08em]">
+                            <tr className="text-[11px] font-semibold text-fg-400 uppercase tracking-[0.08em]">
                               <th className="text-left pb-2 pr-4">Action</th>
                               <th className="text-left pb-2 pr-4">Resource</th>
                               <th className="text-left pb-2">Scope</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-paper-200">
+                          <tbody className="divide-y divide-surface-200">
                             {role.permissions.map((perm, i) => (
                               <tr key={i}>
                                 {/* action/resource were blue and purple, but neither carries a
                                     meaning — they are machine-readable identifiers, so they read
                                     as mono neutrals: filled for the verb, outlined for the noun. */}
                                 <td className="py-1.5 pr-4">
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-chip font-mono text-[11px] bg-paper-100 text-ink-950 border border-paper-200">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-chip font-mono text-[11px] bg-surface-100 text-fg-950 border border-surface-200">
                                     {perm.action}
                                   </span>
                                 </td>
                                 <td className="py-1.5 pr-4">
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-chip font-mono text-[11px] bg-card text-ink-700 border border-paper-200">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-chip font-mono text-[11px] bg-card text-fg-700 border border-surface-200">
                                     {perm.resource}
                                   </span>
                                 </td>
                                 <td className="py-1.5">
-                                  <span className="text-dense text-ink-500">{perm.scope}</span>
+                                  <span className="text-dense text-fg-500">{perm.scope}</span>
                                 </td>
                               </tr>
                             ))}

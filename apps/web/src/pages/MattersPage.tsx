@@ -68,9 +68,9 @@ export function MattersPage() {
     <div className="px-6 py-5 max-w-6xl mx-auto" data-testid="matters-page">
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h1 className="text-title text-ink-950 flex items-center gap-2">
+          <h1 className="text-title text-fg-950 flex items-center gap-2">
             {/* Indigo belongs to the machine; a matter is a human folder. */}
-            <Briefcase className="size-4 text-ink-400" />
+            <Briefcase className="size-4 text-fg-400" />
             Matters
           </h1>
           <p className="text-[12px] text-muted-foreground mt-1">
@@ -84,7 +84,7 @@ export function MattersPage() {
 
       <div className="flex items-center gap-2 mb-4">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-ink-400" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-fg-400" />
           <Input
             type="text"
             placeholder="Search by name, counterparty, tag…"
@@ -99,7 +99,7 @@ export function MattersPage() {
           onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
           data-testid="matters-status-filter"
           aria-label="Filter matters by status"
-          className="h-8 text-[13px] text-ink-950 rounded-md border border-input bg-card px-2.5 focus:outline-none focus-visible:border-brand-700"
+          className="h-8 text-[13px] text-fg-950 rounded-md border border-input bg-card px-2.5 focus:outline-none focus-visible:border-primary-700"
         >
           <option value="OPEN">Open only</option>
           <option value="all">All</option>
@@ -149,14 +149,14 @@ export function MattersPage() {
           <li
             key={m.id}
             data-testid={`matter-row-${m.id}`}
-            className="border border-border rounded-card bg-card hover:border-paper-300 hover:bg-paper-50 transition-colors"
+            className="border border-border rounded-card bg-card hover:border-surface-300 hover:bg-surface-50 transition-colors"
           >
             <Link
               to={`/matters/${m.id}`}
               className="block px-4 py-2.5 rounded-card focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
               <div className="flex items-center gap-2 flex-wrap mb-1">
-                <span className="font-medium text-body text-ink-950 truncate">{m.name}</span>
+                <span className="font-medium text-body text-fg-950 truncate">{m.name}</span>
                 {/*
                   The status pill only appears when it is telling you something.
                   The filter defaults to "Open only", so every row carried an
@@ -175,10 +175,10 @@ export function MattersPage() {
                 {/* Tags were indigo; a user-authored tag is not machine output,
                     so it reads as a neutral chip. */}
                 {m.tags.slice(0, 3).map(t => (
-                  <span key={t} className="text-[10px] font-mono text-ink-700 bg-paper-100 border border-paper-200 rounded-chip px-1.5">#{t}</span>
+                  <span key={t} className="text-[10px] font-mono text-fg-700 bg-surface-100 border border-surface-200 rounded-chip px-1.5">#{t}</span>
                 ))}
                 {m.tags.length > 3 && (
-                  <span className="text-[10px] text-ink-400" title={m.tags.slice(3).join(', ')}>
+                  <span className="text-[10px] text-fg-400" title={m.tags.slice(3).join(', ')}>
                     +{m.tags.length - 3}
                   </span>
                 )}
@@ -186,7 +186,7 @@ export function MattersPage() {
               {m.description && (
                 <div className="text-[12px] text-muted-foreground truncate">{m.description}</div>
               )}
-              <div className="mt-1.5 flex items-center gap-4 text-[11px] tabular-nums text-ink-500">
+              <div className="mt-1.5 flex items-center gap-4 text-[11px] tabular-nums text-fg-500">
                 {/*
                   Zeroes are dropped. Every seeded matter reads "0 requests ·
                   0 threads", so two thirds of this line was the same two
@@ -207,7 +207,7 @@ export function MattersPage() {
                     list to answer. */}
                 <span className="ml-auto flex items-center gap-3">
                   <span title={new Date(m.updatedAt).toLocaleString()}>{relativeTime(m.updatedAt)}</span>
-                  <span className="text-ink-400">{m.ownerName ?? 'unassigned'}</span>
+                  <span className="text-fg-400">{m.ownerName ?? 'unassigned'}</span>
                 </span>
               </div>
             </Link>
@@ -239,11 +239,11 @@ function CreateMatterDrawer({ onClose, onCreated }: { onClose: () => void; onCre
 
   return (
     <div className="fixed inset-0 z-50 flex" data-testid="matter-create-drawer">
-      <button aria-label="Close" onClick={onClose} className="flex-1 bg-ink-950/30" />
+      <button aria-label="Close" onClick={onClose} className="flex-1 bg-scrim/30" />
       <div className="w-[520px] max-w-[90vw] bg-card border-l border-border flex flex-col">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <div className="text-section flex items-center gap-1.5">
-            <Briefcase className="size-3.5 text-ink-400" /> New matter
+            <Briefcase className="size-3.5 text-fg-400" /> New matter
           </div>
           <Button size="icon-xs" variant="ghost" onClick={onClose}><X className="size-3.5" /></Button>
         </div>
@@ -303,13 +303,13 @@ function CreateMatterDrawer({ onClose, onCreated }: { onClose: () => void; onCre
 }
 
 const inputCls =
-  'w-full text-[13px] text-ink-950 rounded-md border border-input bg-card px-[11px] py-1.5 ' +
-  'placeholder:text-ink-400 focus:outline-none focus-visible:border-brand-700 ' +
-  'focus-visible:ring-[3px] focus-visible:ring-brand-700/15'
+  'w-full text-[13px] text-fg-950 rounded-md border border-input bg-card px-[11px] py-1.5 ' +
+  'placeholder:text-fg-400 focus:outline-none focus-visible:border-primary-700 ' +
+  'focus-visible:ring-[3px] focus-visible:ring-primary-700/15'
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[11px] font-medium text-ink-700 mb-1">{label}</div>
+      <div className="text-[11px] font-medium text-fg-700 mb-1">{label}</div>
       {children}
     </div>
   )

@@ -78,21 +78,21 @@ export function NewContractFlow({ onClose, onCreated }: Props) {
       <div className="w-full max-w-lg bg-card rounded-card shadow-e3 overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-paper-200">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-surface-200">
           <button
             onClick={() => setStep('template')}
-            className="text-ink-400 hover:text-ink-700"
+            className="text-fg-400 hover:text-fg-700"
             title="Back to templates"
           >
             <ArrowLeft className="size-4" />
           </button>
           <div className="flex-1">
-            <h2 className="text-section text-ink-950">Draft Details</h2>
-            <p className="text-dense text-ink-500">
-              Template: <span className="font-medium text-ink-700">{selectedTemplate?.name}</span>
+            <h2 className="text-section text-fg-950">Draft Details</h2>
+            <p className="text-dense text-fg-500">
+              Template: <span className="font-medium text-fg-700">{selectedTemplate?.name}</span>
             </p>
           </div>
-          <button onClick={onClose} className="text-ink-400 hover:text-ink-700">
+          <button onClick={onClose} className="text-fg-400 hover:text-fg-700">
             <X className="size-4" />
           </button>
         </div>
@@ -100,7 +100,7 @@ export function NewContractFlow({ onClose, onCreated }: Props) {
         {/* Form */}
         <div className="px-6 py-5 space-y-4">
           <div>
-            <label className="block text-dense font-medium text-ink-700 mb-1.5">
+            <label className="block text-dense font-medium text-fg-700 mb-1.5">
               Contract title <span className="text-risk-600">*</span>
             </label>
             <Input
@@ -112,7 +112,7 @@ export function NewContractFlow({ onClose, onCreated }: Props) {
           </div>
 
           <div>
-            <label className="block text-dense font-medium text-ink-700 mb-1.5">
+            <label className="block text-dense font-medium text-fg-700 mb-1.5">
               Counterparty name
             </label>
             <Input
@@ -124,7 +124,7 @@ export function NewContractFlow({ onClose, onCreated }: Props) {
           </div>
 
           <div>
-            <label className="block text-dense font-medium text-ink-700 mb-1.5">
+            <label className="block text-dense font-medium text-fg-700 mb-1.5">
               Additional context for AI
             </label>
             <textarea
@@ -132,7 +132,7 @@ export function NewContractFlow({ onClose, onCreated }: Props) {
               onChange={e => setContext(e.target.value)}
               placeholder="e.g. 2-year term, mutual NDA, governing law Delaware, SaaS licensing deal..."
               rows={3}
-              className="w-full resize-none rounded-md border border-input bg-card px-[11px] py-2 text-[13px] text-ink-950 placeholder:text-ink-400 focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+              className="w-full resize-none rounded-md border border-input bg-card px-[11px] py-2 text-[13px] text-fg-950 placeholder:text-fg-400 focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
             />
           </div>
 
@@ -152,7 +152,7 @@ export function NewContractFlow({ onClose, onCreated }: Props) {
           )}
 
           {draftMutation.isPending && (
-            <div className="flex items-center gap-2 text-dense text-ink-500">
+            <div className="flex items-center gap-2 text-dense text-fg-500">
               <Loader2 className="size-4 animate-spin" />
               Generating draft with AI… this takes 20–40 seconds
             </div>
@@ -160,7 +160,7 @@ export function NewContractFlow({ onClose, onCreated }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-paper-200 bg-paper-50">
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-surface-200 bg-surface-50">
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>

@@ -57,44 +57,44 @@ function AddCounterpartyModal({ onClose }: { onClose: () => void }) {
     setForm(v => ({ ...v, [f]: e.target.value }))
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 backdrop-blur-sm">
       <div className="bg-card rounded-card shadow-e3 w-full max-w-md mx-4">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-paper-200">
-          <h2 className="text-section text-ink-950">Add Counterparty</h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-paper-100 rounded-md">
-            <X className="size-4 text-ink-500" />
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200">
+          <h2 className="text-section text-fg-950">Add Counterparty</h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-surface-100 rounded-md">
+            <X className="size-4 text-fg-500" />
           </button>
         </div>
         <div className="px-6 py-5 space-y-4">
           <div>
-            <label className="block text-[11px] font-medium text-ink-700 mb-1.5">
+            <label className="block text-[11px] font-medium text-fg-700 mb-1.5">
               Name <span className="text-risk-600">*</span>
             </label>
             <Input value={form.name} onChange={set('name')} placeholder="Acme Corp" />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-ink-700 mb-1.5">Legal name</label>
+            <label className="block text-[11px] font-medium text-fg-700 mb-1.5">Legal name</label>
             <Input value={form.legalName} onChange={set('legalName')} placeholder="Acme Corporation Inc." />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] font-medium text-ink-700 mb-1.5">Email</label>
+              <label className="block text-[11px] font-medium text-fg-700 mb-1.5">Email</label>
               <Input type="email" value={form.email} onChange={set('email')} placeholder="legal@acme.com" />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-ink-700 mb-1.5">Phone</label>
+              <label className="block text-[11px] font-medium text-fg-700 mb-1.5">Phone</label>
               <Input value={form.phone} onChange={set('phone')} placeholder="+1 555 000 0000" />
             </div>
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-ink-700 mb-1.5">Website</label>
+            <label className="block text-[11px] font-medium text-fg-700 mb-1.5">Website</label>
             <Input value={form.website} onChange={set('website')} placeholder="https://acme.com" />
           </div>
           {create.isError && (
             <p className="text-[11.5px] text-risk-700">Failed to add counterparty. Name may already exist.</p>
           )}
         </div>
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-paper-200">
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-surface-200">
           <Button variant="ghost" size="sm" onClick={onClose} disabled={create.isPending}>Cancel</Button>
           <Button
             size="sm"
@@ -181,13 +181,13 @@ export function CounterpartiesPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-paper-200 bg-card">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200 bg-card">
         <div>
-          <h1 className="text-title text-ink-950">Counterparties</h1>
+          <h1 className="text-title text-fg-950">Counterparties</h1>
           {/* The count now says which count it is. It used to read
               "52 counterparties" whether that was the whole book, a page cap,
               or a search result. */}
-          <p className="text-dense text-ink-500 mt-0.5" data-testid="cp-count">
+          <p className="text-dense text-fg-500 mt-0.5" data-testid="cp-count">
             {debounced ? (
               <>
                 <span className="tabular-nums">{counterparties.length}</span>{' '}
@@ -208,9 +208,9 @@ export function CounterpartiesPage() {
       </div>
 
       {/* Search + sort */}
-      <div className="px-6 py-3 bg-card border-b border-paper-200 flex items-center gap-3 flex-wrap">
+      <div className="px-6 py-3 bg-card border-b border-surface-200 flex items-center gap-3 flex-wrap">
         <div className="relative max-w-sm flex-1 min-w-[14rem]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-ink-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-fg-400" />
           <Input
             value={search}
             onChange={e => handleSearch(e.target.value)}
@@ -219,13 +219,13 @@ export function CounterpartiesPage() {
             className="pl-9"
           />
         </div>
-        <label className="inline-flex items-center gap-2 text-dense text-ink-500">
+        <label className="inline-flex items-center gap-2 text-dense text-fg-500">
           Sort
           <select
             value={sort}
             onChange={e => setSort(e.target.value as SortKey)}
             data-testid="cp-sort"
-            className="h-8 text-[13px] text-ink-950 rounded-md border border-input bg-card px-2.5 focus:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+            className="h-8 text-[13px] text-fg-950 rounded-md border border-input bg-card px-2.5 focus:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
           >
             <option value="contracts">Most contracts</option>
             <option value="activity">Recently active</option>
@@ -248,9 +248,9 @@ export function CounterpartiesPage() {
       )}
 
       {/* Table */}
-      <div className="flex-1 overflow-auto bg-paper-50 p-6">
+      <div className="flex-1 overflow-auto bg-surface-50 p-6">
         {isLoading ? (
-          <div className="flex items-center justify-center h-48 gap-2 text-ink-400 text-dense">
+          <div className="flex items-center justify-center h-48 gap-2 text-fg-400 text-dense">
             <Loader2 className="size-4 animate-spin" /> Loading…
           </div>
         ) : counterparties.length === 0 ? (
@@ -264,17 +264,17 @@ export function CounterpartiesPage() {
             ) : undefined}
           />
         ) : (
-          <div className="bg-card rounded-card border border-paper-200 overflow-hidden">
+          <div className="bg-card rounded-card border border-surface-200 overflow-hidden">
             {/* Table header — B.6.9 adds Contracts + Last activity columns */}
-            <div className="grid grid-cols-[minmax(0,2fr)_100px_140px_1fr_auto_20px] gap-4 px-5 py-2 border-b border-paper-200 bg-paper-50">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-ink-400">Name</span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-ink-400">Contracts</span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-ink-400">Last activity</span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-ink-400">Contact</span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-ink-400">Added</span>
+            <div className="grid grid-cols-[minmax(0,2fr)_100px_140px_1fr_auto_20px] gap-4 px-5 py-2 border-b border-surface-200 bg-surface-50">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-fg-400">Name</span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-fg-400">Contracts</span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-fg-400">Last activity</span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-fg-400">Contact</span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.09em] text-fg-400">Added</span>
               <span />
             </div>
-            <div className="divide-y divide-paper-100">
+            <div className="divide-y divide-surface-100">
               {counterparties.map(cp => {
                 const count = cp.contractCount ?? 0
                 return (
@@ -289,25 +289,25 @@ export function CounterpartiesPage() {
                       if ((e.target as HTMLElement).closest('a, button')) return
                       navigate(`/counterparties/${cp.id}`)
                     }}
-                    className="grid grid-cols-[minmax(0,2fr)_100px_140px_1fr_auto_20px] gap-4 items-center px-5 py-2 hover:bg-paper-50 cursor-pointer transition-colors group"
+                    className="grid grid-cols-[minmax(0,2fr)_100px_140px_1fr_auto_20px] gap-4 items-center px-5 py-2 hover:bg-surface-50 cursor-pointer transition-colors group"
                   >
                     <div className="min-w-0">
                       <Link
                         to={`/counterparties/${cp.id}`}
                         onClick={(e) => e.stopPropagation()}
-                        className="text-[13px] font-medium text-ink-950 truncate hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                        className="text-[13px] font-medium text-fg-950 truncate hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                       >
                         {cp.name}
                       </Link>
                       {cp.legalName && cp.legalName !== cp.name && (
-                        <p className="text-[11px] text-ink-400 truncate">{cp.legalName}</p>
+                        <p className="text-[11px] text-fg-400 truncate">{cp.legalName}</p>
                       )}
                     </div>
 
                     {/* Contract count — the headline metric */}
                     <div className="flex items-center gap-1.5">
-                      <FileText className={`size-3.5 ${count > 0 ? 'text-ink-500' : 'text-ink-400'}`} />
-                      <span className={`text-[13px] tabular-nums ${count > 0 ? 'font-medium text-ink-950' : 'text-ink-400'}`}>
+                      <FileText className={`size-3.5 ${count > 0 ? 'text-fg-500' : 'text-fg-400'}`} />
+                      <span className={`text-[13px] tabular-nums ${count > 0 ? 'font-medium text-fg-950' : 'text-fg-400'}`}>
                         {count}
                       </span>
                     </div>
@@ -316,11 +316,11 @@ export function CounterpartiesPage() {
                         verb ("comment", "share", "update") makes "today"
                         meaningful rather than every-row-the-same. */}
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-[11.5px] text-ink-700 tabular-nums">
+                      <span className="text-[11.5px] text-fg-700 tabular-nums">
                         {relativeDate(cp.lastContractAt)}
                       </span>
                       {cp.lastActivityKind && cp.lastContractAt && (
-                        <span className="text-[9.5px] uppercase tracking-[0.09em] text-ink-400">
+                        <span className="text-[9.5px] uppercase tracking-[0.09em] text-fg-400">
                           {cp.lastActivityKind === 'comment' ? 'comment'
                            : cp.lastActivityKind === 'share' ? 'share link'
                            : 'contract'}
@@ -334,7 +334,7 @@ export function CounterpartiesPage() {
                         <a
                           href={`mailto:${cp.email}`}
                           onClick={(e) => e.stopPropagation()}
-                          className="text-[12.5px] text-ink-500 hover:text-ink-950 truncate block"
+                          className="text-[12.5px] text-fg-500 hover:text-fg-950 truncate block"
                         >
                           {cp.email}
                         </a>
@@ -344,18 +344,18 @@ export function CounterpartiesPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="flex items-center gap-1 text-[12.5px] text-ink-700 hover:text-ink-950 hover:underline truncate"
+                          className="flex items-center gap-1 text-[12.5px] text-fg-700 hover:text-fg-950 hover:underline truncate"
                         >
                           {cp.website.replace(/^https?:\/\//, '')}
                           <ExternalLink className="size-3 flex-shrink-0" />
                         </a>
                       ) : (
-                        <span className="text-[12.5px] text-ink-400">—</span>
+                        <span className="text-[12.5px] text-fg-400">—</span>
                       )}
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-ink-400 whitespace-nowrap tabular-nums">
+                      <span className="text-[11px] text-fg-400 whitespace-nowrap tabular-nums">
                         {new Date(cp.createdAt).toLocaleDateString()}
                       </span>
                       {/*
@@ -378,13 +378,13 @@ export function CounterpartiesPage() {
                         }}
                         aria-label={`Delete ${cp.name}`}
                         data-testid={`counterparty-delete-${cp.id}`}
-                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity p-1 hover:bg-risk-50 rounded-md text-ink-400 hover:text-risk-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity p-1 hover:bg-risk-50 rounded-md text-fg-400 hover:text-risk-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <Trash2 className="size-3.5" />
                       </button>
                     </div>
 
-                    <ChevronRight className="size-3.5 text-paper-300 group-hover:text-ink-400 transition-colors" />
+                    <ChevronRight className="size-3.5 text-surface-300 group-hover:text-fg-400 transition-colors" />
                   </div>
                 )
               })}
@@ -428,7 +428,7 @@ function DeleteCounterpartyDialog({
   }, [onCancel, pending])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 backdrop-blur-sm">
       <div
         role="alertdialog"
         aria-modal="true"
@@ -437,12 +437,12 @@ function DeleteCounterpartyDialog({
         data-testid="cp-delete-dialog"
       >
         <div className="px-6 py-5">
-          <h2 className="text-section text-ink-950">Delete {cp.name}?</h2>
-          <p className="text-dense text-ink-500 mt-2">
+          <h2 className="text-section text-fg-950">Delete {cp.name}?</h2>
+          <p className="text-dense text-fg-500 mt-2">
             {count > 0 ? (
               <>
                 This counterparty is on{' '}
-                <span className="font-medium text-ink-950 tabular-nums">{count}</span>{' '}
+                <span className="font-medium text-fg-950 tabular-nums">{count}</span>{' '}
                 contract{count === 1 ? '' : 's'}. Those contracts stay, but they
                 lose their link to this record, and the link cannot be restored
                 from here.
@@ -452,7 +452,7 @@ function DeleteCounterpartyDialog({
             )}
           </p>
         </div>
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-paper-200">
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-surface-200">
           <Button variant="ghost" size="sm" onClick={onCancel} disabled={pending} autoFocus>Cancel</Button>
           <Button
             variant="danger" size="sm"

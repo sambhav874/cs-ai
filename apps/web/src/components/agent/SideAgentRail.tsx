@@ -1318,19 +1318,19 @@ export function SideAgentRail() {
         data-testid="side-agent-rail"
         data-state="collapsed"
         onClick={() => setOpen(true)}
-        className="w-assist-collapsed border-l border-paper-200 bg-card hover:bg-assist-50 transition-colors flex flex-col items-center py-4 gap-3 flex-shrink-0 cursor-pointer group"
+        className="w-assist-collapsed border-l border-surface-200 bg-card hover:bg-assist-50 transition-colors flex flex-col items-center py-4 gap-3 flex-shrink-0 cursor-pointer group"
         title="Open Ask · ⌘K"
       >
         <AssistMark className="size-[9px] group-hover:scale-110 transition-transform" />
-        <div className="w-px h-12 bg-paper-200 group-hover:bg-assist-200 transition-colors" />
+        <div className="w-px h-12 bg-surface-200 group-hover:bg-assist-200 transition-colors" />
         <span
-          className="text-[9.5px] tracking-[0.1em] font-semibold text-ink-700 group-hover:text-assist-700 select-none"
+          className="text-[9.5px] tracking-[0.1em] font-semibold text-fg-700 group-hover:text-assist-700 select-none"
           style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
         >
           Ask · ⌘K
         </span>
         <div className="flex-1" />
-        <ChevronLeft className="size-3 text-ink-400 group-hover:text-assist-600" />
+        <ChevronLeft className="size-3 text-fg-400 group-hover:text-assist-600" />
       </aside>
     )
   }
@@ -1365,7 +1365,7 @@ export function SideAgentRail() {
       // (every Linear / Notion / Slack right-panel behaves this way).
       // If a viewport is too narrow for both rail + content, the user
       // collapses the rail explicitly via the chevron in the header.
-      className="w-assist border-l border-paper-200 bg-card flex flex-col flex-shrink-0"
+      className="w-assist border-l border-surface-200 bg-card flex flex-col flex-shrink-0"
     >
       {/* U4/A6 — presence-based streaming marker. Mounted only while a
           message is streaming; absence == stream complete. Hidden visually
@@ -1394,7 +1394,7 @@ export function SideAgentRail() {
         data-attention={attentionFlash ? 'pulse' : 'idle'}
         // The flash says "the answer landed here" — it's the agent surface
         // announcing itself, so it borrows the assist wash rather than a status.
-        className={`h-14 border-b border-paper-200 px-4 flex items-center justify-between flex-shrink-0 relative transition-colors duration-300 ${attentionFlash ? 'bg-assist-50' : ''}`}
+        className={`h-14 border-b border-surface-200 px-4 flex items-center justify-between flex-shrink-0 relative transition-colors duration-300 ${attentionFlash ? 'bg-assist-50' : ''}`}
       >
         <button
           type="button"
@@ -1406,17 +1406,17 @@ export function SideAgentRail() {
               return next
             })
           }}
-          className="flex items-center gap-2 min-w-0 text-left hover:bg-paper-100 rounded-md px-1.5 py-1 -ml-1.5 transition-colors"
+          className="flex items-center gap-2 min-w-0 text-left hover:bg-surface-100 rounded-md px-1.5 py-1 -ml-1.5 transition-colors"
         >
           {/* U.2.1 — indigo accent (decision 14a) — distinct from product blue */}
           <div className="size-7 rounded-md bg-assist-50 border border-assist-200 flex items-center justify-center flex-shrink-0">
             <AssistMark />
           </div>
           <div className="min-w-0">
-            <div className="text-body font-semibold text-ink-950 truncate">
+            <div className="text-body font-semibold text-fg-950 truncate">
               {activeThread ? activeThread.title : 'Ask'}
             </div>
-            <div className="text-[10px] text-ink-400 flex items-center gap-0.5">
+            <div className="text-[10px] text-fg-400 flex items-center gap-0.5">
               {activeThread ? 'Recent threads' : 'New thread'}
               <ChevronDown className="size-2.5" />
             </div>
@@ -1481,7 +1481,7 @@ export function SideAgentRail() {
               <div className="text-[11px] uppercase tracking-[0.08em] font-semibold text-assist-700">
                 Focused on {context.type}
               </div>
-              <div className="text-[12.5px] font-medium text-ink-950 truncate" title={context.label}>
+              <div className="text-[12.5px] font-medium text-fg-950 truncate" title={context.label}>
                 {context.label}
               </div>
               <button
@@ -1531,7 +1531,7 @@ export function SideAgentRail() {
                 title={s.description}
                 className="text-[11px] inline-flex items-center gap-1.5 rounded-full border border-assist-200 bg-card px-2.5 py-1 font-semibold text-assist-700 hover:bg-assist-50 transition-colors"
               >
-                <AssistMark className="size-[5px]" />
+                <AssistMark className="size-[7px]" />
                 {s.name}
               </button>
             ))}
@@ -1542,7 +1542,7 @@ export function SideAgentRail() {
       {/* ─── Message list ─────────────────────────────────────────────── */}
       {/* Messages sit on warm ground so the card-white assistant bubbles read
           as pages against it (pattern "Agent thread"). */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 bg-paper-50">
+      <div className="flex-1 overflow-y-auto px-4 py-4 bg-surface-50">
         {messages.length === 0
           ? <SideAgentEmptyState
               onSuggestion={(text) => setComposer(text)}
@@ -1570,7 +1570,7 @@ export function SideAgentRail() {
       </div>
 
       {/* ─── Composer ────────────────────────────────────────────────── */}
-      <footer className="border-t border-paper-200 bg-card p-3 flex-shrink-0 space-y-2">
+      <footer className="border-t border-surface-200 bg-card p-3 flex-shrink-0 space-y-2">
         {/* D.1.7 — Quick-action chips. Contextual preset prompts that drop
             into the composer on click (doesn't auto-send, so the user can
             tweak first). Source today is a hard-coded catalog per page
@@ -1653,9 +1653,9 @@ export function SideAgentRail() {
           {slashVisible.length > 0 && (
             <div
               data-testid="side-agent-slash-popover"
-              className="absolute bottom-full left-0 right-0 mb-1.5 rounded-md border border-paper-200 bg-card shadow-e2 overflow-hidden text-[12px] z-10"
+              className="absolute bottom-full left-0 right-0 mb-1.5 rounded-md border border-surface-200 bg-card shadow-e2 overflow-hidden text-[12px] z-10"
             >
-              <div className="px-2.5 py-1 text-[9.5px] uppercase tracking-[0.08em] text-ink-500 border-b border-paper-200 bg-paper-50">
+              <div className="px-2.5 py-1 text-[9.5px] uppercase tracking-[0.08em] text-fg-500 border-b border-surface-200 bg-surface-50">
                 Quick actions · type to filter
               </div>
               <ul role="listbox" aria-label="Quick actions">
@@ -1670,13 +1670,13 @@ export function SideAgentRail() {
                       onMouseEnter={() => setSlashIdx(i)}
                       data-testid={`side-agent-slash-item-${a.id}`}
                       data-active={active ? '1' : '0'}
-                      className={`px-2.5 py-2 cursor-pointer flex items-start gap-2 ${active ? 'bg-paper-100' : 'hover:bg-paper-50'}`}
+                      className={`px-2.5 py-2 cursor-pointer flex items-start gap-2 ${active ? 'bg-surface-100' : 'hover:bg-surface-50'}`}
                     >
                       <span className="text-[15px] mt-0.5">{a.icon}</span>
                       <div className="min-w-0 flex-1">
-                        <div className="text-[12px] font-medium text-ink-950 truncate">{a.label}</div>
+                        <div className="text-[12px] font-medium text-fg-950 truncate">{a.label}</div>
                         {a.description && (
-                          <div className="text-[10.5px] text-ink-500 truncate">{a.description}</div>
+                          <div className="text-[10.5px] text-fg-500 truncate">{a.description}</div>
                         )}
                       </div>
                     </li>
@@ -1691,9 +1691,9 @@ export function SideAgentRail() {
           {mentionQuery !== null && mentionMatches.length > 0 && (
             <div
               data-testid="side-agent-mention-popover"
-              className="absolute bottom-full left-0 right-0 mb-1.5 rounded-md border border-paper-200 bg-card shadow-e2 overflow-hidden text-[12px] z-10"
+              className="absolute bottom-full left-0 right-0 mb-1.5 rounded-md border border-surface-200 bg-card shadow-e2 overflow-hidden text-[12px] z-10"
             >
-              <div className="px-2.5 py-1 text-[9.5px] uppercase tracking-[0.08em] text-ink-500 border-b border-paper-200 bg-paper-50">
+              <div className="px-2.5 py-1 text-[9.5px] uppercase tracking-[0.08em] text-fg-500 border-b border-surface-200 bg-surface-50">
                 Skills + entities · type to filter
               </div>
               <ul role="listbox" aria-label="Mention picker">
@@ -1710,15 +1710,15 @@ export function SideAgentRail() {
                         data-testid={`side-agent-mention-item-${item.slug.slice(1)}`}
                         data-kind="skill"
                         data-active={active ? '1' : '0'}
-                        className={`px-2.5 py-1.5 cursor-pointer flex items-start gap-2 ${active ? 'bg-paper-100' : 'hover:bg-paper-50'}`}
+                        className={`px-2.5 py-1.5 cursor-pointer flex items-start gap-2 ${active ? 'bg-surface-100' : 'hover:bg-surface-50'}`}
                       >
                         <AssistMark className="mt-1 flex-shrink-0" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-baseline gap-1.5">
                             <span className="font-mono text-[11px] text-assist-700">{item.slug}</span>
-                            <span className="truncate text-[11px] text-ink-950">{item.name}</span>
+                            <span className="truncate text-[11px] text-fg-950">{item.name}</span>
                           </div>
-                          <div className="text-[10.5px] text-ink-500 truncate">{item.description}</div>
+                          <div className="text-[10.5px] text-fg-500 truncate">{item.description}</div>
                         </div>
                       </li>
                     )
@@ -1740,27 +1740,27 @@ export function SideAgentRail() {
                       data-testid={`side-agent-mention-entity-${item.kind}-${item.id}`}
                       data-kind={item.kind}
                       data-active={active ? '1' : '0'}
-                      className={`px-2.5 py-1.5 cursor-pointer flex items-start gap-2 ${active ? 'bg-paper-100' : 'hover:bg-paper-50'}`}
+                      className={`px-2.5 py-1.5 cursor-pointer flex items-start gap-2 ${active ? 'bg-surface-100' : 'hover:bg-surface-50'}`}
                     >
-                      <span className="text-[10.5px] font-mono text-ink-500 flex-shrink-0 mt-0.5">
+                      <span className="text-[10.5px] font-mono text-fg-500 flex-shrink-0 mt-0.5">
                         {kindLabel[0]}
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-1.5">
-                          <span className="truncate text-[11.5px] text-ink-950 font-medium">{item.label}</span>
+                          <span className="truncate text-[11.5px] text-fg-950 font-medium">{item.label}</span>
                         </div>
                         {item.sub && (
-                          <div className="text-[10.5px] text-ink-500 truncate">{item.sub}</div>
+                          <div className="text-[10.5px] text-fg-500 truncate">{item.sub}</div>
                         )}
                       </div>
-                      <span className="text-[9.5px] uppercase tracking-[0.08em] text-ink-400 flex-shrink-0 mt-0.5">
+                      <span className="text-[9.5px] uppercase tracking-[0.08em] text-fg-400 flex-shrink-0 mt-0.5">
                         {kindLabel}
                       </span>
                     </li>
                   )
                 })}
               </ul>
-              <div className="px-2.5 py-1 text-[9.5px] text-ink-500 border-t border-paper-200 bg-paper-50 flex items-center justify-between">
+              <div className="px-2.5 py-1 text-[9.5px] text-fg-500 border-t border-surface-200 bg-surface-50 flex items-center justify-between">
                 <span>↑↓ navigate · Enter insert · Esc close</span>
                 <span className="tabular-nums">{mentionMatches.length}</span>
               </div>
@@ -1823,7 +1823,7 @@ export function SideAgentRail() {
             placeholder={streaming ? 'Generating… Esc to stop' : 'Ask anything · @ for skills · / for actions'}
             rows={2}
             data-testid="side-agent-composer"
-            className="w-full resize-none rounded-md border border-input bg-card px-3 py-2 pr-10 text-[13px] text-ink-950 placeholder:text-ink-400 focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15 transition-colors disabled:opacity-60"
+            className="w-full resize-none rounded-md border border-input bg-card px-3 py-2 pr-10 text-[13px] text-fg-950 placeholder:text-fg-400 focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15 transition-colors disabled:opacity-60"
           />
           {/* One button, two jobs: Send when idle, Stop mid-run. A spinner
               here used to be the only feedback and it was DISABLED, so the
@@ -1855,7 +1855,7 @@ export function SideAgentRail() {
             </Button>
           )}
         </form>
-        <div className="text-[10px] text-ink-400 mt-1.5 flex items-center justify-between">
+        <div className="text-[10px] text-fg-400 mt-1.5 flex items-center justify-between">
           <span>{streaming ? 'Esc stop · ⌘K focus' : '⌘K focus · Enter send · @ skills · / actions'}</span>
           <span className="font-mono">v3</span>
         </div>
@@ -1865,7 +1865,7 @@ export function SideAgentRail() {
         <a
           href="/agent"
           data-testid="side-agent-handoff-link"
-          className="block mt-2 px-2.5 py-1.5 rounded-md bg-paper-50 border border-paper-200 hover:border-assist-200 hover:bg-assist-50 text-[11px] text-ink-500 hover:text-assist-700 transition-colors text-center"
+          className="block mt-2 px-2.5 py-1.5 rounded-md bg-surface-50 border border-surface-200 hover:border-assist-200 hover:bg-assist-50 text-[11px] text-fg-500 hover:text-assist-700 transition-colors text-center"
         >
           For drafts, exports, multi-step work → <span className="font-medium">open Assistant ↗</span>
         </a>
@@ -1943,8 +1943,8 @@ function SideAgentEmptyState({
       <div className="size-10 mx-auto rounded-card bg-assist-50 border border-assist-200 flex items-center justify-center mb-3">
         <AssistMark className="size-[11px]" />
       </div>
-      <div className="text-body font-semibold text-ink-950">How can I help?</div>
-      <p className="text-[11px] text-ink-500 mt-1 max-w-[260px] mx-auto leading-relaxed">
+      <div className="text-body font-semibold text-fg-950">How can I help?</div>
+      <p className="text-[11px] text-fg-500 mt-1 max-w-[260px] mx-auto leading-relaxed">
         {context
           ? `I'm focused on this ${context.type} — start with one below or ask anything.`
           : 'I\'m context-aware — the page you\'re on, the contract you\'re viewing, the matter you\'re working. Start with one below or type a question.'}
@@ -1964,9 +1964,9 @@ function SuggestedPrompt({ text, onSelect }: { text: string; onSelect: (t: strin
       type="button"
       data-testid="side-agent-suggestion"
       onClick={() => onSelect(text)}
-      className="w-full text-left px-3 py-2 rounded-md border border-paper-200 bg-card hover:bg-paper-100 transition-colors"
+      className="w-full text-left px-3 py-2 rounded-md border border-surface-200 bg-card hover:bg-surface-100 transition-colors"
     >
-      <span className="text-[12px] text-ink-700">{text}</span>
+      <span className="text-[12px] text-fg-700">{text}</span>
     </button>
   )
 }
@@ -2004,7 +2004,7 @@ function MessageBubble({
           data-slug={msg.skillSlug}
           className="text-[10px] inline-flex items-center gap-1.5 text-assist-700 bg-assist-50 border border-assist-200 rounded-full px-2 py-0.5 font-mono"
         >
-          <AssistMark className="size-[5px]" />
+          <AssistMark className="size-[7px]" />
           {msg.skillSlug}
         </div>
       )}
@@ -2065,10 +2065,10 @@ function MessageBubble({
           // for typed input / raw error output). Assistant bubble below
           // renders Markdown so **bold**, * lists, and `code` show correctly.
           (isUser
-            ? 'max-w-[82%] leading-[1.55] rounded-[12px_12px_3px_12px] bg-ink-950 text-white whitespace-pre-wrap'
+            ? 'max-w-[82%] leading-[1.55] rounded-[12px_12px_3px_12px] bg-primary-solid text-white whitespace-pre-wrap'
             : (msg.error
                 ? 'max-w-[88%] leading-[1.6] rounded-[12px_12px_12px_3px] bg-risk-50 border border-risk-200 text-risk-900 whitespace-pre-wrap'
-                : 'max-w-[88%] leading-[1.6] rounded-[12px_12px_12px_3px] bg-card border border-paper-200 text-ink-950'))
+                : 'max-w-[88%] leading-[1.6] rounded-[12px_12px_12px_3px] bg-card border border-surface-200 text-fg-950'))
         }
       >
         {cleanProse
@@ -2088,7 +2088,7 @@ function MessageBubble({
                 />
               : null)}
         {msg.streaming && (msg.content?.length ?? 0) > 0 && (
-          <span className="inline-block w-1.5 h-3 bg-ink-400 ml-0.5 animate-pulse align-middle" aria-hidden />
+          <span className="inline-block w-1.5 h-3 bg-fg-400 ml-0.5 animate-pulse align-middle" aria-hidden />
         )}
       </div>
       {/* CONTROL — an interrupted turn says so. Without this the transcript
@@ -2097,9 +2097,9 @@ function MessageBubble({
       {!isUser && msg.stopped && (
         <div
           data-testid="side-agent-stopped"
-          className="inline-flex items-center gap-1 text-[10.5px] text-ink-700 bg-paper-100 border border-paper-200 rounded-chip px-1.5 py-0.5"
+          className="inline-flex items-center gap-1 text-[10.5px] text-fg-700 bg-surface-100 border border-surface-200 rounded-chip px-1.5 py-0.5"
         >
-          <Square className="size-2 fill-current text-ink-400" />
+          <Square className="size-2 fill-current text-fg-400" />
           Stopped — this answer is incomplete
         </div>
       )}
@@ -2178,23 +2178,23 @@ export function ToolCallChip({ call }: { call: RailToolCall }) {
 
   return (
     <div
-      className="rounded-md border border-paper-200 bg-card text-[11px] text-ink-700 overflow-hidden"
+      className="rounded-md border border-surface-200 bg-card text-[11px] text-fg-700 overflow-hidden"
       data-testid={`tool-chip-${call.name}`}
       data-tool-status={call.status}
     >
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-paper-50 transition-colors"
+        className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-surface-50 transition-colors"
       >
         <StatusIcon className={`size-3 flex-shrink-0 ${MEANING_CLASS[meaning].fg}${iconSpin}`} />
-        <span className="font-mono font-medium text-[10.5px] flex-shrink-0 text-ink-950">{call.name}</span>
+        <span className="font-mono font-medium text-[10.5px] flex-shrink-0 text-fg-950">{call.name}</span>
         {argsSummary && (
-          <span className="text-[10.5px] truncate text-ink-500">{argsSummary}</span>
+          <span className="text-[10.5px] truncate text-fg-500">{argsSummary}</span>
         )}
         <span className="ml-auto flex items-center gap-1 flex-shrink-0">
           {call.status === 'running' && typeof call.elapsedSec === 'number' && call.elapsedSec >= 3 && (
-            <span className="text-[10px] text-ink-400 tabular-nums">
+            <span className="text-[10px] text-fg-400 tabular-nums">
               {call.elapsedSec.toFixed(1)}s
             </span>
           )}
@@ -2204,7 +2204,7 @@ export function ToolCallChip({ call }: { call: RailToolCall }) {
           {call.status === 'ok' && scope && (
             <span
               data-testid={`tool-scope-${call.name}`}
-              className={`text-[10px] tabular-nums ${scope.empty ? 'text-ink-700 font-medium' : 'text-ink-500'}`}
+              className={`text-[10px] tabular-nums ${scope.empty ? 'text-fg-700 font-medium' : 'text-fg-500'}`}
             >
               {scope.text}
             </span>
@@ -2221,31 +2221,31 @@ export function ToolCallChip({ call }: { call: RailToolCall }) {
             </span>
           )}
           {call.status === 'ok' && !scope && !payloadError && resultLen > 0 && (
-            <span className="text-[10px] text-ink-400 tabular-nums">
+            <span className="text-[10px] text-fg-400 tabular-nums">
               {call.truncated ? '>' : ''}{resultLen}ch
             </span>
           )}
           <ChevronRight
-            className={`size-3 text-ink-400 transition-transform ${open ? 'rotate-90' : ''}`}
+            className={`size-3 text-fg-400 transition-transform ${open ? 'rotate-90' : ''}`}
           />
         </span>
       </button>
       {open && (
-        <div className="border-t border-paper-200 bg-paper-50 px-2 py-1.5 space-y-1.5">
+        <div className="border-t border-surface-200 bg-surface-50 px-2 py-1.5 space-y-1.5">
           {/* Args block */}
           <div>
-            <div className="text-[9px] font-medium uppercase tracking-[0.08em] text-ink-400 mb-0.5">Args</div>
-            <pre className="text-[10px] font-mono leading-snug whitespace-pre-wrap break-all text-ink-700">
+            <div className="text-[9px] font-medium uppercase tracking-[0.08em] text-fg-400 mb-0.5">Args</div>
+            <pre className="text-[10px] font-mono leading-snug whitespace-pre-wrap break-all text-fg-700">
 {JSON.stringify(call.args, null, 2)}
             </pre>
           </div>
           {/* Result block — only when we have one */}
           {call.status !== 'running' && call.resultPreview && (
             <div>
-              <div className="text-[9px] font-medium uppercase tracking-[0.08em] text-ink-400 mb-0.5">
+              <div className="text-[9px] font-medium uppercase tracking-[0.08em] text-fg-400 mb-0.5">
                 Result{call.truncated ? ' (truncated)' : ''}
               </div>
-              <pre className="text-[10px] font-mono leading-snug whitespace-pre-wrap break-all max-h-40 overflow-y-auto text-ink-700">
+              <pre className="text-[10px] font-mono leading-snug whitespace-pre-wrap break-all max-h-40 overflow-y-auto text-fg-700">
 {call.resultPreview}
               </pre>
             </div>
@@ -2345,28 +2345,28 @@ function ThreadPickerPanel({
       <div
         role="menu"
         data-testid="side-agent-thread-picker-panel"
-        className="absolute left-3 top-[52px] w-[372px] max-h-[480px] overflow-y-auto rounded-card border border-paper-200 bg-card shadow-e2 z-40 py-1.5"
+        className="absolute left-3 top-[52px] w-[372px] max-h-[480px] overflow-y-auto rounded-card border border-surface-200 bg-card shadow-e2 z-40 py-1.5"
       >
         {/* New thread — always first */}
         <button
           type="button"
           onClick={onNewThread}
           data-testid="side-agent-thread-picker-new"
-          className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-ink-950 hover:bg-paper-100 transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-fg-950 hover:bg-surface-100 transition-colors"
         >
           <MessageSquarePlus className="size-3.5" />
           <span className="font-medium">New thread</span>
         </button>
 
         {threads.length === 0 && (
-          <div className="px-3 py-6 text-center text-[11px] text-ink-400">
+          <div className="px-3 py-6 text-center text-[11px] text-fg-400">
             No prior threads yet. Send a message to start one.
           </div>
         )}
 
         {inScope.length > 0 && (
           <>
-            <div className="px-3 pt-2 pb-1 text-[9px] font-medium uppercase tracking-[0.08em] text-ink-400">
+            <div className="px-3 pt-2 pb-1 text-[9px] font-medium uppercase tracking-[0.08em] text-fg-400">
               In this {currentContext?.type}
             </div>
             {inScope.map(t => (
@@ -2381,14 +2381,14 @@ function ThreadPickerPanel({
 
         {hasOther && (
           <>
-            {inScope.length > 0 && <div className="border-t border-paper-200 mt-1" />}
+            {inScope.length > 0 && <div className="border-t border-surface-200 mt-1" />}
             {otherBuckets.map((bucket, i) => (
               <div key={bucket.label}>
                 {/* Subtle divider between buckets so eye doesn't run them
                     together when there are 3+ */}
-                {i > 0 && <div className="border-t border-paper-100 mt-0.5" />}
+                {i > 0 && <div className="border-t border-surface-100 mt-0.5" />}
                 <div
-                  className="px-3 pt-2 pb-1 text-[9px] font-medium uppercase tracking-[0.08em] text-ink-400"
+                  className="px-3 pt-2 pb-1 text-[9px] font-medium uppercase tracking-[0.08em] text-fg-400"
                   data-testid={`thread-bucket-${bucket.label.toLowerCase().replace(/\W+/g, '-')}`}
                 >
                   {bucket.label}
@@ -2423,13 +2423,13 @@ function ThreadPickerRow({
       onClick={onSelect}
       data-testid={`side-agent-thread-picker-row-${t.id}`}
       // A menu highlight, not a persistent selection — paper, not an ink fill.
-      className={`w-full group flex items-center gap-2 px-3 py-1.5 text-left hover:bg-paper-50 transition-colors ${active ? 'bg-paper-100' : ''}`}
+      className={`w-full group flex items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-50 transition-colors ${active ? 'bg-surface-100' : ''}`}
     >
       <div className="flex-1 min-w-0">
-        <div className={`text-[12px] truncate text-ink-950 ${active ? 'font-semibold' : ''}`}>
+        <div className={`text-[12px] truncate text-fg-950 ${active ? 'font-semibold' : ''}`}>
           {t.title}
         </div>
-        <div className="text-[10px] text-ink-400 flex items-center gap-1.5">
+        <div className="text-[10px] text-fg-400 flex items-center gap-1.5">
           <span className="tabular-nums">{t.messageCount} msg{t.messageCount === 1 ? '' : 's'}</span>
           <span aria-hidden>·</span>
           <span className="tabular-nums">{formatRel(t.updatedAt)}</span>
@@ -2440,7 +2440,7 @@ function ThreadPickerRow({
         onClick={onArchive}
         aria-label="Archive thread"
         title="Archive thread"
-        className="p-1 rounded-chip text-ink-400 opacity-0 group-hover:opacity-100 hover:text-risk-700 hover:bg-risk-50 transition-all"
+        className="p-1 rounded-chip text-fg-400 opacity-0 group-hover:opacity-100 hover:text-risk-700 hover:bg-risk-50 transition-all"
       >
         <Trash2 className="size-3" />
       </button>
@@ -2519,7 +2519,7 @@ function QuickActionChips({
           disabled={disabled}
           onClick={() => onPick(a.prompt)}
           data-testid={`quick-action-${a.label.toLowerCase().replace(/\s+/g, '-')}`}
-          className="text-[10.5px] rounded-full border border-paper-200 bg-paper-50 px-2 py-0.5 text-ink-700 hover:text-ink-950 hover:border-paper-300 hover:bg-paper-100 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+          className="text-[10.5px] rounded-full border border-surface-200 bg-surface-50 px-2 py-0.5 text-fg-700 hover:text-fg-950 hover:border-surface-300 hover:bg-surface-100 transition-colors disabled:opacity-50 disabled:pointer-events-none"
           title={a.prompt}
         >
           {a.label}

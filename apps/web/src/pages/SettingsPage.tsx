@@ -33,7 +33,7 @@ const CONTRACT_TYPES = ['', 'NDA', 'MSA', 'SOW', 'SLA', 'VENDOR_AGREEMENT', 'EMP
  * date is not "binding" and a boolean is not "your turn". Type is a machine-side
  * label, so it reads as one mono neutral chip and the word does the work.
  */
-const FIELD_TYPE_CHIP = 'bg-paper-100 text-ink-700 border-paper-200 font-mono'
+const FIELD_TYPE_CHIP = 'bg-surface-100 text-fg-700 border-surface-200 font-mono'
 
 type Tab = 'custom-fields' | 'general' | 'notifications'
 
@@ -183,9 +183,9 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="h-full flex bg-paper-50">
+    <div className="h-full flex bg-surface-50">
       {/* Settings sidebar */}
-      <aside className="w-52 border-r border-paper-200 bg-card flex-shrink-0 p-4">
+      <aside className="w-52 border-r border-surface-200 bg-card flex-shrink-0 p-4">
         <Eyebrow className="mb-3">Settings</Eyebrow>
         <nav className="space-y-0.5">
           {[
@@ -202,8 +202,8 @@ export function SettingsPage() {
               // and it competes with the page's actual primary button.
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-dense transition-colors ${
                 activeTab === id
-                  ? 'bg-paper-100 text-ink-950 font-medium'
-                  : 'text-ink-700 hover:bg-paper-100'
+                  ? 'bg-surface-100 text-fg-950 font-medium'
+                  : 'text-fg-700 hover:bg-surface-100'
               }`}
             >
               <Icon className="size-4" />
@@ -221,8 +221,8 @@ export function SettingsPage() {
           <div className="max-w-3xl space-y-6">
             <div className="flex items-start justify-between">
               <div>
-                <h1 className="text-title text-ink-950">Custom Fields</h1>
-                <p className="text-dense text-ink-500 mt-1">
+                <h1 className="text-title text-fg-950">Custom Fields</h1>
+                <p className="text-dense text-fg-500 mt-1">
                   Define extra fields for your contracts. Values are stored on each contract and fully searchable.
                 </p>
               </div>
@@ -233,20 +233,20 @@ export function SettingsPage() {
 
             {/* Filter by type */}
             <div className="flex items-center gap-2">
-              <span className="text-dense text-ink-500">Show fields for:</span>
+              <span className="text-dense text-fg-500">Show fields for:</span>
               <div className="relative">
                 <select
                   value={filterType}
                   onChange={e => setFilterType(e.target.value)}
                   aria-label="Filter fields by contract type"
-                  className="appearance-none h-8 pl-3 pr-7 text-[13px] text-ink-950 bg-card border border-input rounded-md focus:outline-none focus:ring-[3px] focus:ring-brand-700/15 focus:border-brand-700"
+                  className="appearance-none h-8 pl-3 pr-7 text-[13px] text-fg-950 bg-card border border-input rounded-md focus:outline-none focus:ring-[3px] focus:ring-primary-700/15 focus:border-primary-700"
                 >
                   <option value="">All contract types</option>
                   {CONTRACT_TYPES.filter(Boolean).map(t => (
                     <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
                   ))}
                 </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-ink-400 pointer-events-none" />
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-fg-400 pointer-events-none" />
               </div>
             </div>
 
@@ -254,12 +254,12 @@ export function SettingsPage() {
             {showNewForm && (
               // Border, not a colored wash: the open form is emphasised by being a
               // lifted surface, not by a hue that would have to mean something.
-              <div className="bg-card rounded-card border border-paper-300 shadow-e1 p-5 space-y-4">
-                <h3 className="text-section text-ink-950">New Custom Field</h3>
+              <div className="bg-card rounded-card border border-surface-300 shadow-e1 p-5 space-y-4">
+                <h3 className="text-section text-fg-950">New Custom Field</h3>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Field Label *</Label>
+                    <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Field Label *</Label>
                     <Input
                       placeholder="e.g. Survival Period"
                       value={newField.fieldLabel}
@@ -270,7 +270,7 @@ export function SettingsPage() {
                     />
                   </div>
                   <div>
-                    <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Field Key * (snake_case)</Label>
+                    <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Field Key * (snake_case)</Label>
                     <Input
                       placeholder="e.g. survival_period"
                       value={newField.fieldKey}
@@ -282,7 +282,7 @@ export function SettingsPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Field Type *</Label>
+                    <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Field Type *</Label>
                     <div className="grid grid-cols-3 gap-1.5">
                       {FIELD_TYPES.map(({ value, label, icon: Icon }) => (
                         <button
@@ -290,8 +290,8 @@ export function SettingsPage() {
                           onClick={() => setNewField(f => ({ ...f, fieldType: value }))}
                           className={`flex flex-col items-center gap-1 p-2 rounded-md border text-dense transition-colors ${
                             newField.fieldType === value
-                              ? 'border-ink-950 bg-paper-100 text-ink-950'
-                              : 'border-paper-200 text-ink-700 hover:bg-paper-50'
+                              ? 'border-fg-950 bg-surface-100 text-fg-950'
+                              : 'border-surface-200 text-fg-700 hover:bg-surface-50'
                           }`}
                         >
                           <Icon className="size-3.5" />
@@ -302,20 +302,20 @@ export function SettingsPage() {
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Contract Type (optional)</Label>
+                      <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Contract Type (optional)</Label>
                       <div className="relative">
                         <select
                           value={newField.contractType}
                           onChange={e => setNewField(f => ({ ...f, contractType: e.target.value }))}
                           aria-label="Contract type for new field"
-                          className="w-full appearance-none h-8 pl-3 pr-7 text-[13px] text-ink-950 bg-card border border-input rounded-md focus:outline-none focus:ring-[3px] focus:ring-brand-700/15 focus:border-brand-700"
+                          className="w-full appearance-none h-8 pl-3 pr-7 text-[13px] text-fg-950 bg-card border border-input rounded-md focus:outline-none focus:ring-[3px] focus:ring-primary-700/15 focus:border-primary-700"
                         >
                           <option value="">All types (global)</option>
                           {CONTRACT_TYPES.filter(Boolean).map(t => (
                             <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
                           ))}
                         </select>
-                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-ink-400 pointer-events-none" />
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-fg-400 pointer-events-none" />
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -324,9 +324,9 @@ export function SettingsPage() {
                         id="required"
                         checked={newField.required}
                         onChange={e => setNewField(f => ({ ...f, required: e.target.checked }))}
-                        className="rounded-chip border-paper-300 accent-ink-950"
+                        className="rounded-chip border-surface-300 accent-fg-950"
                       />
-                      <label htmlFor="required" className="text-body text-ink-700">Required field</label>
+                      <label htmlFor="required" className="text-body text-fg-700">Required field</label>
                     </div>
                   </div>
                 </div>
@@ -334,12 +334,12 @@ export function SettingsPage() {
                 {/* Options for select/multiselect */}
                 {(newField.fieldType === 'select' || newField.fieldType === 'multiselect') && (
                   <div>
-                    <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Options *</Label>
+                    <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Options *</Label>
                     <div className="flex flex-wrap gap-1.5 mb-2">
                       {newField.options.map(opt => (
-                        <span key={opt} className="inline-flex items-center gap-1 px-2.5 py-0.5 border border-paper-200 bg-paper-100 text-ink-950 rounded-full text-[11.5px]">
+                        <span key={opt} className="inline-flex items-center gap-1 px-2.5 py-0.5 border border-surface-200 bg-surface-100 text-fg-950 rounded-full text-[11.5px]">
                           {opt}
-                          <button onClick={() => setNewField(f => ({ ...f, options: f.options.filter(o => o !== opt) }))} className="text-ink-400 hover:text-ink-700">×</button>
+                          <button onClick={() => setNewField(f => ({ ...f, options: f.options.filter(o => o !== opt) }))} className="text-fg-400 hover:text-fg-700">×</button>
                         </span>
                       ))}
                     </div>
@@ -357,7 +357,7 @@ export function SettingsPage() {
                 )}
 
                 <div>
-                  <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Help Text (optional)</Label>
+                  <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Help Text (optional)</Label>
                   <Input
                     placeholder="Shown below the field in the contract form"
                     value={newField.helpText}
@@ -372,7 +372,7 @@ export function SettingsPage() {
                   </div>
                 )}
 
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-paper-200">
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-surface-200">
                   <Button variant="outline" onClick={() => { setShowNewForm(false); setNewField({ ...EMPTY_FIELD }); setFormError('') }}>
                     Cancel
                   </Button>
@@ -386,7 +386,7 @@ export function SettingsPage() {
             {/* Field list */}
             {isLoading ? (
               <div className="flex justify-center py-12">
-                <div className="size-5 border-2 border-paper-300 border-t-ink-950 rounded-full animate-spin" />
+                <div className="size-5 border-2 border-surface-300 border-t-fg-950 rounded-full animate-spin" />
               </div>
             ) : defs.length === 0 ? (
               <EmptyState
@@ -400,40 +400,40 @@ export function SettingsPage() {
                 }
               />
             ) : (
-              <div className="bg-card rounded-card border border-paper-200 divide-y divide-paper-200 overflow-hidden">
+              <div className="bg-card rounded-card border border-surface-200 divide-y divide-surface-200 overflow-hidden">
                 {/* Group by contract type */}
                 {Array.from(new Set(defs.map((d: any) => d.contractType ?? ''))).map(group => {
                   const groupDefs = defs.filter((d: any) => (d.contractType ?? '') === group)
                   return (
                     <div key={String(group)}>
-                      <div className="px-5 py-2 bg-paper-50 border-b border-paper-200">
+                      <div className="px-5 py-2 bg-surface-50 border-b border-surface-200">
                         <Eyebrow>
                           {group ? String(group).replace(/_/g, ' ') : 'Global (all contract types)'}
                         </Eyebrow>
                       </div>
                       {groupDefs.map((def: any) => (
-                        <div key={def.id} className="flex items-center gap-4 px-5 py-2 hover:bg-paper-50">
-                          <GripVertical className="size-4 text-ink-400 flex-shrink-0" />
+                        <div key={def.id} className="flex items-center gap-4 px-5 py-2 hover:bg-surface-50">
+                          <GripVertical className="size-4 text-fg-400 flex-shrink-0" />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <p className="text-body font-medium text-ink-950">{def.fieldLabel}</p>
+                              <p className="text-body font-medium text-fg-950">{def.fieldLabel}</p>
                               {/* A required flag is a schema constraint, not legal
                                   exposure — red would have overstated it. */}
                               {def.required && (
-                                <span className="text-[10px] font-bold text-ink-500 uppercase tracking-[0.08em]">Required</span>
+                                <span className="text-[10px] font-bold text-fg-500 uppercase tracking-[0.08em]">Required</span>
                               )}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
-                              <span className="font-mono text-[11px] text-ink-400">{def.fieldKey}</span>
+                              <span className="font-mono text-[11px] text-fg-400">{def.fieldKey}</span>
                               <span className={`inline-flex items-center px-1.5 py-0.5 rounded-chip border text-[10px] ${FIELD_TYPE_CHIP}`}>
                                 {def.fieldType}
                               </span>
                               {def.options?.length > 0 && (
-                                <span className="text-[11px] text-ink-400">{def.options.join(' · ')}</span>
+                                <span className="text-[11px] text-fg-400">{def.options.join(' · ')}</span>
                               )}
                             </div>
                             {def.helpText && (
-                              <p className="text-dense text-ink-400 mt-0.5 italic">{def.helpText}</p>
+                              <p className="text-dense text-fg-400 mt-0.5 italic">{def.helpText}</p>
                             )}
                           </div>
                           <button
@@ -441,7 +441,7 @@ export function SettingsPage() {
                             aria-label={`Delete field ${def.fieldLabel}`}
                             title={`Delete field "${def.fieldLabel}"`}
                             data-testid={`delete-field-${def.id}`}
-                            className="rounded-md p-2 text-ink-400 transition-colors hover:bg-risk-50 hover:text-risk-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="rounded-md p-2 text-fg-400 transition-colors hover:bg-risk-50 hover:text-risk-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <Trash2 className="size-4" />
                           </button>
@@ -476,15 +476,15 @@ export function SettingsPage() {
         requireTyped={pendingDeleteField?.fieldKey}
         requireTypedHint={
           <>
-            Type the field key <span className="font-mono text-ink-700">{pendingDeleteField?.fieldKey}</span> to confirm
+            Type the field key <span className="font-mono text-fg-700">{pendingDeleteField?.fieldKey}</span> to confirm
           </>
         }
         body={
           <>
-            <span className="font-medium text-ink-950">{pendingDeleteField?.fieldLabel}</span> is
+            <span className="font-medium text-fg-950">{pendingDeleteField?.fieldLabel}</span> is
             removed from every contract in the organisation, along with the value
             stored on each one. Saved views, exports and reports that reference{' '}
-            <span className="font-mono text-[11.5px] text-ink-500">{pendingDeleteField?.fieldKey}</span>{' '}
+            <span className="font-mono text-[11.5px] text-fg-500">{pendingDeleteField?.fieldKey}</span>{' '}
             stop returning it. This cannot be undone.
           </>
         }
@@ -582,35 +582,35 @@ function GeneralTab() {
     <div className="max-w-2xl space-y-6" data-testid="general-tab">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-title text-ink-950">General</h1>
-          <p className="text-dense text-ink-500 mt-1">Your profile and display preferences.</p>
+          <h1 className="text-title text-fg-950">General</h1>
+          <p className="text-dense text-fg-500 mt-1">Your profile and display preferences.</p>
         </div>
         <SaveBadge state={savedFlash} />
       </div>
 
       {/* Profile */}
-      <section className="bg-card rounded-card border border-paper-200 p-5 space-y-4" data-testid="general-profile">
-        <h2 className="text-section text-ink-950">Profile</h2>
+      <section className="bg-card rounded-card border border-surface-200 p-5 space-y-4" data-testid="general-profile">
+        <h2 className="text-section text-fg-950">Profile</h2>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Display name</Label>
+            <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Display name</Label>
             <Input
               value={name}
               onChange={e => setName(e.target.value)}
               data-testid="general-name-input"
               placeholder="Your name"
             />
-            <p className="text-[11px] text-ink-400 mt-1">Shown on contracts you own and in the activity feed.</p>
+            <p className="text-[11px] text-fg-400 mt-1">Shown on contracts you own and in the activity feed.</p>
           </div>
           <div>
-            <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Email</Label>
+            <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Email</Label>
             <div
-              className="flex h-8 items-center rounded-md border border-input bg-paper-50 px-3 text-[13px] text-ink-700 select-text"
+              className="flex h-8 items-center rounded-md border border-input bg-surface-50 px-3 text-[13px] text-fg-700 select-text"
               data-testid="general-email-readonly"
             >
               {user?.email ?? '—'}
             </div>
-            <p className="text-[11px] text-ink-400 mt-1">Contact your admin to change.</p>
+            <p className="text-[11px] text-fg-400 mt-1">Contact your admin to change.</p>
           </div>
         </div>
         <div className="flex items-center gap-2 pt-1">
@@ -622,46 +622,46 @@ function GeneralTab() {
       </section>
 
       {/* Workspace */}
-      <section className="bg-card rounded-card border border-paper-200 p-5 space-y-4" data-testid="general-workspace">
-        <h2 className="text-section text-ink-950">Workspace</h2>
+      <section className="bg-card rounded-card border border-surface-200 p-5 space-y-4" data-testid="general-workspace">
+        <h2 className="text-section text-fg-950">Workspace</h2>
         {orgName && (
           <div>
-            <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Organization</Label>
-            <div className="flex h-8 items-center rounded-md border border-input bg-paper-50 px-3 text-[13px] text-ink-700 select-text">
+            <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Organization</Label>
+            <div className="flex h-8 items-center rounded-md border border-input bg-surface-50 px-3 text-[13px] text-fg-700 select-text">
               {orgName}
             </div>
           </div>
         )}
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Default currency</Label>
+            <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Default currency</Label>
             <select
               value={prefs.currency}
               onChange={e => onPrefChange({ ...prefs, currency: e.target.value })}
               data-testid="general-currency"
-              className="w-full h-8 text-[13px] text-ink-950 border border-input bg-card rounded-md px-2 focus:outline-none focus:ring-[3px] focus:ring-brand-700/15 focus:border-brand-700"
+              className="w-full h-8 text-[13px] text-fg-950 border border-input bg-card rounded-md px-2 focus:outline-none focus:ring-[3px] focus:ring-primary-700/15 focus:border-primary-700"
             >
               {CURRENCY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
-            <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Date format</Label>
+            <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Date format</Label>
             <select
               value={prefs.dateFormat}
               onChange={e => onPrefChange({ ...prefs, dateFormat: e.target.value as GeneralPrefs['dateFormat'] })}
               data-testid="general-date-format"
-              className="w-full h-8 text-[13px] text-ink-950 border border-input bg-card rounded-md px-2 focus:outline-none focus:ring-[3px] focus:ring-brand-700/15 focus:border-brand-700"
+              className="w-full h-8 text-[13px] text-fg-950 border border-input bg-card rounded-md px-2 focus:outline-none focus:ring-[3px] focus:ring-primary-700/15 focus:border-primary-700"
             >
               {DATE_FORMAT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
           <div>
-            <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Timezone</Label>
+            <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Timezone</Label>
             <select
               value={prefs.timezone}
               onChange={e => onPrefChange({ ...prefs, timezone: e.target.value })}
               data-testid="general-timezone"
-              className="w-full h-8 text-[13px] text-ink-950 border border-input bg-card rounded-md px-2 focus:outline-none focus:ring-[3px] focus:ring-brand-700/15 focus:border-brand-700"
+              className="w-full h-8 text-[13px] text-fg-950 border border-input bg-card rounded-md px-2 focus:outline-none focus:ring-[3px] focus:ring-primary-700/15 focus:border-primary-700"
             >
               {COMMON_TIMEZONES.map(z => <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>)}
               {!COMMON_TIMEZONES.includes(prefs.timezone) && (
@@ -670,7 +670,7 @@ function GeneralTab() {
             </select>
           </div>
         </div>
-        <p className="text-[11px] text-ink-400">Used for date display, currency formatting and digest delivery time.</p>
+        <p className="text-[11px] text-fg-400">Used for date display, currency formatting and digest delivery time.</p>
       </section>
     </div>
   )
@@ -735,47 +735,47 @@ function NotificationsTab() {
     <div className="max-w-2xl space-y-6" data-testid="notifications-tab">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-title text-ink-950">Notifications</h1>
-          <p className="text-dense text-ink-500 mt-1">Pick what reaches you and how often.</p>
+          <h1 className="text-title text-fg-950">Notifications</h1>
+          <p className="text-dense text-fg-500 mt-1">Pick what reaches you and how often.</p>
         </div>
         <SaveBadge state={savedFlash} />
       </div>
 
-      <section className="bg-card rounded-card border border-paper-200 divide-y divide-paper-200 overflow-hidden" data-testid="notifications-triggers">
+      <section className="bg-card rounded-card border border-surface-200 divide-y divide-surface-200 overflow-hidden" data-testid="notifications-triggers">
         <div className="p-4 flex items-center justify-between">
-          <h2 className="text-section text-ink-950">Email me when…</h2>
-          <span className="text-[11px] text-ink-400">All toggles persist immediately</span>
+          <h2 className="text-section text-fg-950">Email me when…</h2>
+          <span className="text-[11px] text-fg-400">All toggles persist immediately</span>
         </div>
         {triggers.map(({ key, icon: Icon, title, body }) => (
           <label
             key={key}
-            className="flex items-start gap-3 p-4 cursor-pointer hover:bg-paper-50 transition-colors"
+            className="flex items-start gap-3 p-4 cursor-pointer hover:bg-surface-50 transition-colors"
             data-testid={`notif-${key}-row`}
           >
-            <span className="size-9 rounded-md bg-paper-100 flex items-center justify-center flex-shrink-0">
-              <Icon className="size-4 text-ink-500" />
+            <span className="size-9 rounded-md bg-surface-100 flex items-center justify-center flex-shrink-0">
+              <Icon className="size-4 text-fg-500" />
             </span>
             <div className="flex-1 min-w-0">
-              <p className="text-body font-medium text-ink-950">{title}</p>
-              <p className="text-dense text-ink-500 mt-0.5 leading-relaxed">{body}</p>
+              <p className="text-body font-medium text-fg-950">{title}</p>
+              <p className="text-dense text-fg-500 mt-0.5 leading-relaxed">{body}</p>
             </div>
             <input
               type="checkbox"
               checked={!!prefs[key]}
               onChange={e => update({ [key]: e.target.checked } as Partial<NotificationPrefs>)}
               data-testid={`notif-${key}-toggle`}
-              className="mt-1 size-4 rounded-chip border-paper-300 accent-ink-950 focus:ring-[3px] focus:ring-brand-700/15"
+              className="mt-1 size-4 rounded-chip border-surface-300 accent-fg-950 focus:ring-[3px] focus:ring-primary-700/15"
             />
           </label>
         ))}
       </section>
 
-      <section className="bg-card rounded-card border border-paper-200 p-4 space-y-3" data-testid="notifications-digest">
+      <section className="bg-card rounded-card border border-surface-200 p-4 space-y-3" data-testid="notifications-digest">
         <div className="flex items-center gap-2">
-          <Clock className="size-4 text-ink-500" />
-          <h2 className="text-section text-ink-950">Delivery cadence</h2>
+          <Clock className="size-4 text-fg-500" />
+          <h2 className="text-section text-fg-950">Delivery cadence</h2>
         </div>
-        <p className="text-dense text-ink-500">How often we should batch and send the notifications you've chosen.</p>
+        <p className="text-dense text-fg-500">How often we should batch and send the notifications you've chosen.</p>
         <div className="grid grid-cols-3 gap-2">
           {[
             { value: 'real-time', label: 'Real-time',     hint: 'As things happen' },
@@ -790,12 +790,12 @@ function NotificationsTab() {
               // Selection is an action — ink, not a colored wash.
               className={`p-3 rounded-md border text-left transition-colors ${
                 prefs.digest === opt.value
-                  ? 'border-ink-950 bg-paper-100'
-                  : 'border-paper-200 hover:bg-paper-50'
+                  ? 'border-fg-950 bg-surface-100'
+                  : 'border-surface-200 hover:bg-surface-50'
               }`}
             >
-              <p className={`text-body font-medium ${prefs.digest === opt.value ? 'text-ink-950' : 'text-ink-700'}`}>{opt.label}</p>
-              <p className="text-[11px] text-ink-500 mt-0.5">{opt.hint}</p>
+              <p className={`text-body font-medium ${prefs.digest === opt.value ? 'text-fg-950' : 'text-fg-700'}`}>{opt.label}</p>
+              <p className="text-[11px] text-fg-500 mt-0.5">{opt.hint}</p>
             </button>
           ))}
         </div>
@@ -817,8 +817,8 @@ function SaveBadge({ state }: { state: 'idle' | 'saving' | 'saved' | 'error' }) 
        * Only the failure earns a meaning color here.
        */
       className={`inline-flex items-center gap-1.5 text-[11.5px] px-2 py-1 rounded-full ${
-        state === 'saving' ? 'bg-paper-100 text-ink-500' :
-        state === 'saved' ? 'bg-paper-100 text-ink-950 ring-1 ring-paper-200' :
+        state === 'saving' ? 'bg-surface-100 text-fg-500' :
+        state === 'saved' ? 'bg-surface-100 text-fg-950 ring-1 ring-surface-200' :
         'bg-risk-50 text-risk-700 ring-1 ring-risk-200'
       }`}
     >

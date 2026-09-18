@@ -107,10 +107,10 @@ export function ExternalPortalPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-paper-50 flex items-center justify-center">
+      <div className="min-h-screen bg-surface-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="size-6 animate-spin text-ink-400 mx-auto mb-3" />
-          <p className="text-ink-500 text-body">Loading contract…</p>
+          <Loader2 className="size-6 animate-spin text-fg-400 mx-auto mb-3" />
+          <p className="text-fg-500 text-body">Loading contract…</p>
         </div>
       </div>
     )
@@ -124,19 +124,19 @@ export function ExternalPortalPage() {
      * reaches it should be able to act without emailing to ask what happened.
      */
     return (
-      <div className="min-h-screen bg-paper-50 flex flex-col items-center justify-center gap-6 p-4">
-        <div className="w-full max-w-md rounded-card border border-paper-200 bg-card p-8 text-center shadow-e1">
+      <div className="min-h-screen bg-surface-50 flex flex-col items-center justify-center gap-6 p-4">
+        <div className="w-full max-w-md rounded-card border border-surface-200 bg-card p-8 text-center shadow-e1">
           {/* A dead share link is expiry/revocation — genuine risk, not decor. */}
           <span className="mb-4 inline-flex size-11 items-center justify-center rounded-full bg-risk-50">
             <AlertCircle className="size-5 text-risk-600" />
           </span>
-          <h1 className="text-title text-ink-950">Link unavailable</h1>
-          <p className="mt-2 text-body text-ink-500">
+          <h1 className="text-title text-fg-950">Link unavailable</h1>
+          <p className="mt-2 text-body text-fg-500">
             This share link is invalid, has expired, or has been revoked.
           </p>
-          <div className="mt-5 rounded-md border border-paper-200 bg-paper-50 px-4 py-3 text-left text-dense text-ink-700">
-            <p className="font-medium text-ink-950">What to do next</p>
-            <ul className="mt-1.5 space-y-1 text-ink-500">
+          <div className="mt-5 rounded-md border border-surface-200 bg-surface-50 px-4 py-3 text-left text-dense text-fg-700">
+            <p className="font-medium text-fg-950">What to do next</p>
+            <ul className="mt-1.5 space-y-1 text-fg-500">
               <li>· Reply to the email that carried this link and ask the sender for a new one.</li>
               <li>· Share links expire on a schedule the sender sets — this is routine, not a fault.</li>
               <li>· Anything you uploaded or commented before it expired was already delivered.</li>
@@ -176,10 +176,10 @@ export function ExternalPortalPage() {
     : null
 
   return (
-    <div className="min-h-screen bg-paper-50 flex flex-col">
+    <div className="min-h-screen bg-surface-50 flex flex-col">
       {/* Branded header */}
       <header
-        className={`px-6 py-4 flex items-center justify-between ${brandColor ? '' : 'bg-ink-950'}`}
+        className={`px-6 py-4 flex items-center justify-between ${brandColor ? '' : 'bg-primary-solid'}`}
         style={brandColor ? { backgroundColor: brandColor } : undefined}
       >
         <div className="flex items-center gap-3">
@@ -220,16 +220,16 @@ export function ExternalPortalPage() {
       <div
         role="region"
         aria-label="Portal trust and actions"
-        className="bg-paper-100 border-b border-paper-200 px-6 py-2.5"
+        className="bg-surface-100 border-b border-surface-200 px-6 py-2.5"
       >
         <div className="max-w-5xl mx-auto flex items-center gap-4 flex-wrap text-dense">
-          <div className="flex items-center gap-1.5 text-brand-700">
+          <div className="flex items-center gap-1.5 text-success-700">
             <ShieldCheck className="size-4" />
             <span className="font-medium">Shared by {contract.org.name}</span>
           </div>
 
-          <div className="flex items-center gap-1 text-ink-500">
-            <Clock className="size-3.5 text-ink-400" />
+          <div className="flex items-center gap-1 text-fg-500">
+            <Clock className="size-3.5 text-fg-400" />
             <span>
               {daysToExpiry != null && daysToExpiry > 0
                 ? <>Expires in <span className="font-medium tabular-nums">{daysToExpiry}d</span></>
@@ -238,7 +238,7 @@ export function ExternalPortalPage() {
           </div>
 
           {shareLink.label && (
-            <span className="text-ink-500 truncate">· {shareLink.label}</span>
+            <span className="text-fg-500 truncate">· {shareLink.label}</span>
           )}
 
           {/* Primary CTAs pushed right. Download is always available on an
@@ -299,7 +299,7 @@ export function ExternalPortalPage() {
 
         {/* Secondary status lines sit just below the trust band. */}
         {uploadSuccess && (
-          <div className="max-w-5xl mx-auto mt-1.5 flex items-center gap-1.5 text-dense text-ink-700">
+          <div className="max-w-5xl mx-auto mt-1.5 flex items-center gap-1.5 text-dense text-fg-700">
             <CheckCircle2 className="size-3.5" />
             Uploaded {uploadSuccess}. The owner has been notified.
           </div>
@@ -323,35 +323,35 @@ export function ExternalPortalPage() {
       )}
 
       {/* Contract header */}
-      <div className="bg-card border-b border-paper-200 px-6 py-5">
+      <div className="bg-card border-b border-surface-200 px-6 py-5">
         <div className="max-w-5xl mx-auto">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               {/* Contract titles run long and arrive from customer data — a
                   180-character title used to push the access label off-screen. */}
-              <h1 className="text-title text-ink-950 break-words">{contract.title}</h1>
+              <h1 className="text-title text-fg-950 break-words">{contract.title}</h1>
               <div className="flex items-center gap-3 mt-2 flex-wrap">
                 <Chip>{contract.type.replace(/_/g, ' ')}</Chip>
                 {contract.counterpartyName && (
-                  <span className="text-dense text-ink-500 flex items-center gap-1">
+                  <span className="text-dense text-fg-500 flex items-center gap-1">
                     <ChevronRight className="size-3" />
                     {contract.counterpartyName}
                   </span>
                 )}
                 {contract.effectiveDate && (
-                  <span className="text-dense text-ink-400">
+                  <span className="text-dense text-fg-400">
                     Effective {formatDate(contract.effectiveDate)}
                   </span>
                 )}
                 {contract.expiryDate && (
-                  <span className="text-dense text-ink-400">
+                  <span className="text-dense text-fg-400">
                     Expires {formatDate(contract.expiryDate)}
                   </span>
                 )}
               </div>
             </div>
             <div className="flex-shrink-0">
-              <span className="text-dense text-ink-400 italic">
+              <span className="text-dense text-fg-400 italic">
                 {canUpload ? 'View + comment + redline' : 'Read-only view'}
               </span>
             </div>
@@ -364,8 +364,8 @@ export function ExternalPortalPage() {
               onClick={() => setActiveTab('document')}
               className={`flex items-center gap-1.5 px-3 py-2 text-body font-medium border-b-2 transition-colors ${
                 activeTab === 'document'
-                  ? 'border-ink-950 text-ink-950'
-                  : 'border-transparent text-ink-500 hover:text-ink-950'
+                  ? 'border-fg-950 text-fg-950'
+                  : 'border-transparent text-fg-500 hover:text-fg-950'
               }`}
             >
               <FileText className="size-3.5" />
@@ -376,8 +376,8 @@ export function ExternalPortalPage() {
                 onClick={() => setActiveTab('comments')}
                 className={`flex items-center gap-1.5 px-3 py-2 text-body font-medium border-b-2 transition-colors ${
                   activeTab === 'comments'
-                    ? 'border-ink-950 text-ink-950'
-                    : 'border-transparent text-ink-500 hover:text-ink-950'
+                    ? 'border-fg-950 text-fg-950'
+                    : 'border-transparent text-fg-500 hover:text-fg-950'
                 }`}
               >
                 <MessageSquare className="size-3.5" />
@@ -398,13 +398,13 @@ export function ExternalPortalPage() {
               <div className="p-8 md:p-12">
                 {!hasDocument ? (
                   <div className="py-12 text-center" data-testid="portal-no-document">
-                    <span className="mb-3 inline-flex size-10 items-center justify-center rounded-card border border-paper-200 bg-paper-100 text-ink-400">
+                    <span className="mb-3 inline-flex size-10 items-center justify-center rounded-card border border-surface-200 bg-surface-100 text-fg-400">
                       <FileWarning className="size-5" />
                     </span>
-                    <p className="text-[13.5px] font-semibold text-ink-950">
+                    <p className="text-[13.5px] font-semibold text-fg-950">
                       No document has been attached to this link yet
                     </p>
-                    <p className="mx-auto mt-1 max-w-md text-dense text-ink-500">
+                    <p className="mx-auto mt-1 max-w-md text-dense text-fg-500">
                       The link is valid and the record exists, but {contract.org.name} has
                       not uploaded a version for you to read.
                       {canComment
@@ -419,7 +419,7 @@ export function ExternalPortalPage() {
                   />
                 ) : (
                   <div className="flex items-center justify-center py-12">
-                    <Loader2 className="size-5 animate-spin text-ink-400" />
+                    <Loader2 className="size-5 animate-spin text-fg-400" />
                   </div>
                 )}
               </div>
@@ -445,8 +445,8 @@ export function ExternalPortalPage() {
         link actually carries, and carries the product identity, which a
         counterparty had no other way to learn.
       */}
-      <footer className="border-t border-paper-200 bg-card px-6 py-4 text-center print:hidden">
-        <p className="text-dense text-ink-400">
+      <footer className="border-t border-surface-200 bg-card px-6 py-4 text-center print:hidden">
+        <p className="text-dense text-fg-400">
           Shared securely by {contract.org.name} ·{' '}
           {canUpload
             ? 'You may comment and return a revised version'
@@ -469,7 +469,7 @@ export function ExternalPortalPage() {
 function ExternalFooter({ className = '' }: { className?: string }) {
   return (
     <div
-      className={`flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-dense text-ink-400 ${className}`}
+      className={`flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-dense text-fg-400 ${className}`}
     >
       <span className="inline-flex items-center gap-1.5">
         Secured by <Wordmark size="sm" />
@@ -477,13 +477,13 @@ function ExternalFooter({ className = '' }: { className?: string }) {
       <span aria-hidden="true">·</span>
       <a
         href="/terms"
-        className="underline decoration-paper-300 underline-offset-2 hover:text-ink-700 hover:decoration-brand-700"
+        className="underline decoration-surface-300 underline-offset-2 hover:text-fg-700 hover:decoration-primary-700"
       >
         Terms
       </a>
       <a
         href="/privacy"
-        className="underline decoration-paper-300 underline-offset-2 hover:text-ink-700 hover:decoration-brand-700"
+        className="underline decoration-surface-300 underline-offset-2 hover:text-fg-700 hover:decoration-primary-700"
       >
         Privacy
       </a>

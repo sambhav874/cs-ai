@@ -18,13 +18,13 @@ export function NotFoundPage() {
 
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center" data-testid="not-found">
-      <Compass className="size-6 text-ink-400" />
-      <h1 className="mt-3 text-title text-ink-950">This page doesn’t exist</h1>
+      <Compass className="size-6 text-fg-400" />
+      <h1 className="mt-3 text-title text-fg-950">This page doesn’t exist</h1>
       {/* Show the path. A user reporting "it's blank" is unactionable; a user
           reporting "/approvals/abc123 says it doesn't exist" is a bug report. */}
-      <p className="mt-1 text-body text-ink-500">
+      <p className="mt-1 text-body text-fg-500">
         Nothing is routed at{' '}
-        <code className="rounded-chip bg-paper-100 px-1.5 py-0.5 font-mono text-[12px] text-ink-700">{pathname}</code>
+        <code className="rounded-chip bg-surface-100 px-1.5 py-0.5 font-mono text-[12px] text-fg-700">{pathname}</code>
       </p>
       <div className="mt-5 flex items-center gap-2">
         <Button size="sm" variant="outline" className="gap-1.5" onClick={() => navigate(-1)}>

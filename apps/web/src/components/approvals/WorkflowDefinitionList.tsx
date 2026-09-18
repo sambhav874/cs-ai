@@ -95,36 +95,36 @@ export function WorkflowDefinitionList() {
   return (
     <>
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-section text-ink-950">Workflow Definitions</h3>
+        <h3 className="text-section text-fg-950">Workflow Definitions</h3>
         <Button size="sm" variant="outline" onClick={openNew}>
           <Plus />New Workflow
         </Button>
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-8"><Loader2 className="size-5 animate-spin text-ink-400" /></div>
+        <div className="flex justify-center py-8"><Loader2 className="size-5 animate-spin text-fg-400" /></div>
       ) : !workflows?.length ? (
-        <div className="text-center py-12 border-2 border-dashed rounded-card border-paper-200">
-          <p className="text-body text-ink-500 mb-3">No workflows yet. Create one to route approvals.</p>
+        <div className="text-center py-12 border-2 border-dashed rounded-card border-surface-200">
+          <p className="text-body text-fg-500 mb-3">No workflows yet. Create one to route approvals.</p>
           <Button size="sm" variant="outline" onClick={openNew}><Plus />Create Workflow</Button>
         </div>
       ) : (
-        <div className="border border-paper-200 rounded-card overflow-hidden">
+        <div className="border border-surface-200 rounded-card overflow-hidden">
           <table className="w-full text-[13px]">
-            <thead className="bg-paper-50 border-b border-paper-200">
+            <thead className="bg-surface-50 border-b border-surface-200">
               <tr>
-                <th className="text-left px-4 py-2 text-eyebrow uppercase text-ink-500">Name</th>
-                <th className="text-left px-4 py-2 text-eyebrow uppercase text-ink-500">Steps</th>
-                <th className="text-left px-4 py-2 text-eyebrow uppercase text-ink-500">Status</th>
+                <th className="text-left px-4 py-2 text-eyebrow uppercase text-fg-500">Name</th>
+                <th className="text-left px-4 py-2 text-eyebrow uppercase text-fg-500">Steps</th>
+                <th className="text-left px-4 py-2 text-eyebrow uppercase text-fg-500">Status</th>
                 <th className="px-4 py-2" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-paper-200">
+            <tbody className="divide-y divide-surface-200">
               {workflows.map(wf => (
-                <tr key={wf.id} className="hover:bg-paper-50 transition-colors">
+                <tr key={wf.id} className="hover:bg-surface-50 transition-colors">
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-ink-950">{wf.name}</span>
+                      <span className="font-medium text-fg-950">{wf.name}</span>
                       {/* "Default" is a designation, not a state waiting on
                           anyone — it loses the amber and stays a plain chip. */}
                       {wf.isDefault && (
@@ -133,9 +133,9 @@ export function WorkflowDefinitionList() {
                         </Chip>
                       )}
                     </div>
-                    {wf.description && <p className="text-[11px] text-ink-400 mt-0.5 truncate max-w-xs">{wf.description}</p>}
+                    {wf.description && <p className="text-[11px] text-fg-400 mt-0.5 truncate max-w-xs">{wf.description}</p>}
                   </td>
-                  <td className="px-4 py-2 text-ink-700 tabular-nums">
+                  <td className="px-4 py-2 text-fg-700 tabular-nums">
                     {Array.isArray(wf.steps) ? wf.steps.length : 0} step{(Array.isArray(wf.steps) ? wf.steps.length : 0) !== 1 ? 's' : ''}
                   </td>
                   <td className="px-4 py-2">
@@ -182,18 +182,18 @@ export function WorkflowDefinitionList() {
         <>
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-ink-950/30 z-40"
+            className="fixed inset-0 bg-scrim/30 z-40"
             onClick={() => { setEditingWorkflow(null); setShowNew(false) }}
           />
           {/* Panel */}
           <div className="fixed inset-y-0 right-0 w-full sm:max-w-lg bg-card shadow-e3 z-50 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-paper-200">
-              <h2 className="text-section text-ink-950">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200">
+              <h2 className="text-section text-fg-950">
                 {editingWorkflow ? 'Edit Workflow' : 'New Workflow'}
               </h2>
               <button
                 onClick={() => { setEditingWorkflow(null); setShowNew(false) }}
-                className="p-1 rounded-md hover:bg-paper-100 text-ink-500"
+                className="p-1 rounded-md hover:bg-surface-100 text-fg-500"
               >
                 ✕
               </button>
@@ -201,30 +201,30 @@ export function WorkflowDefinitionList() {
 
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               <div>
-                <label className="block text-dense font-medium text-ink-700 mb-1">Workflow name *</label>
+                <label className="block text-dense font-medium text-fg-700 mb-1">Workflow name *</label>
                 <Input value={draftName} onChange={e => setDraftName(e.target.value)} placeholder="e.g. Standard Contract Approval" />
               </div>
               <div>
-                <label className="block text-dense font-medium text-ink-700 mb-1">Description</label>
+                <label className="block text-dense font-medium text-fg-700 mb-1">Description</label>
                 <Input value={draftDesc} onChange={e => setDraftDesc(e.target.value)} placeholder="Optional" />
               </div>
-              <label className="flex items-center gap-2 cursor-pointer text-[13px] text-ink-700">
+              <label className="flex items-center gap-2 cursor-pointer text-[13px] text-fg-700">
                 <input
                   type="checkbox"
                   checked={draftIsDefault}
                   onChange={e => setDraftIsDefault(e.target.checked)}
-                  className="size-4 accent-ink-950"
+                  className="size-4 accent-fg-950"
                 />
                 Set as default workflow
               </label>
 
               <div>
-                <label className="block text-dense font-medium text-ink-700 mb-2">Approval steps *</label>
+                <label className="block text-dense font-medium text-fg-700 mb-2">Approval steps *</label>
                 <WorkflowBuilder steps={draftSteps} onChange={setDraftSteps} />
               </div>
             </div>
 
-            <div className="flex gap-2 px-6 py-4 border-t border-paper-200 bg-paper-50">
+            <div className="flex gap-2 px-6 py-4 border-t border-surface-200 bg-surface-50">
               <Button
                 onClick={handleSave}
                 disabled={saveWorkflow.isPending || !draftName.trim() || draftSteps.length === 0}

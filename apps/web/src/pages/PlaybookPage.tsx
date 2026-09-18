@@ -36,8 +36,8 @@ const POSITION_BLURB: Record<string, string> = {
  * nothing is happening, which is exactly what neutral says.
  */
 const POSITION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  preferred:  { bg: 'bg-brand-50',     text: 'text-brand-700',     border: 'border-brand-200' },
-  acceptable: { bg: 'bg-paper-50',     text: 'text-ink-700',       border: 'border-paper-200' },
+  preferred:  { bg: 'bg-success-50',     text: 'text-success-700',     border: 'border-success-200' },
+  acceptable: { bg: 'bg-surface-50',     text: 'text-fg-700',       border: 'border-surface-200' },
   fallback:   { bg: 'bg-attention-50', text: 'text-attention-700', border: 'border-attention-200' },
   walkaway:   { bg: 'bg-risk-50',      text: 'text-risk-700',      border: 'border-risk-200' },
 }
@@ -66,17 +66,17 @@ function PositionCard({
         </span>
         <div className="flex gap-1">
           <button onClick={onEdit} className={cn('p-1 rounded-md hover:opacity-80', c.text)}><Edit2 className="size-3.5" /></button>
-          <button onClick={onDelete} className="p-1 rounded-md text-ink-400 hover:text-risk-600"><Trash2 className="size-3.5" /></button>
+          <button onClick={onDelete} className="p-1 rounded-md text-fg-400 hover:text-risk-600"><Trash2 className="size-3.5" /></button>
         </div>
       </div>
       {position.content && (
         <div
-          className="text-body text-ink-700 mt-2 prose prose-sm max-w-none line-clamp-4"
+          className="text-body text-fg-700 mt-2 prose prose-sm max-w-none line-clamp-4"
           dangerouslySetInnerHTML={{ __html: sanitizeHtml(position.content) }}
         />
       )}
       {position.notes && (
-        <p className="text-[11.5px] text-ink-500 mt-2 italic">{position.notes}</p>
+        <p className="text-[11.5px] text-fg-500 mt-2 italic">{position.notes}</p>
       )}
       {/*
         The bar used to set `background: currentColor` inline on top of a wash
@@ -88,7 +88,7 @@ function PositionCard({
       */}
       <div className="flex items-center gap-2 mt-3">
         <span
-          className="block h-1 w-20 shrink-0 overflow-hidden rounded-full bg-paper-200"
+          className="block h-1 w-20 shrink-0 overflow-hidden rounded-full bg-surface-200"
           role="meter"
           aria-valuenow={Math.round((position.riskThreshold ?? 0.5) * 100)}
           aria-valuemin={0}
@@ -96,11 +96,11 @@ function PositionCard({
           aria-label={`Match threshold ${Math.round((position.riskThreshold ?? 0.5) * 100)} percent`}
         >
           <span
-            className="block h-full rounded-full bg-ink-700"
+            className="block h-full rounded-full bg-fg-700"
             style={{ width: `${(position.riskThreshold ?? 0.5) * 100}%` }}
           />
         </span>
-        <span className="text-[11px] tabular-nums text-ink-500">
+        <span className="text-[11px] tabular-nums text-fg-500">
           matches at {Math.round((position.riskThreshold ?? 0.5) * 100)}%+
         </span>
       </div>
@@ -124,11 +124,11 @@ function EmptyRung({ type, onAdd }: { type: string; onAdd: () => void }) {
       type="button"
       onClick={onAdd}
       data-testid={`playbook-empty-${type}`}
-      className="rounded-card border border-dashed border-paper-300 p-4 text-left transition-colors hover:border-ink-400 hover:bg-paper-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="rounded-card border border-dashed border-surface-300 p-4 text-left transition-colors hover:border-fg-400 hover:bg-surface-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <span className="text-eyebrow uppercase text-ink-400">{type}</span>
-      <p className="text-dense text-ink-500 mt-2">{POSITION_BLURB[type]}</p>
-      <span className="mt-2 inline-flex items-center gap-1 text-[11.5px] font-medium text-ink-950">
+      <span className="text-eyebrow uppercase text-fg-400">{type}</span>
+      <p className="text-dense text-fg-500 mt-2">{POSITION_BLURB[type]}</p>
+      <span className="mt-2 inline-flex items-center gap-1 text-[11.5px] font-medium text-fg-950">
         <Plus className="size-3" /> Define this position
       </span>
     </button>
@@ -155,7 +155,7 @@ function CoverageTicks({ filled, name }: { filled: number; name: string }) {
       {POSITION_TYPES.map((_, i) => (
         <span
           key={i}
-          className={cn('block h-2.5 w-[3px] rounded-full', i < filled ? 'bg-ink-700' : 'bg-paper-200')}
+          className={cn('block h-2.5 w-[3px] rounded-full', i < filled ? 'bg-fg-700' : 'bg-surface-200')}
         />
       ))}
     </span>
@@ -195,15 +195,15 @@ function PositionEditor({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40">
       <div className="w-full max-w-3xl h-[90vh] bg-card rounded-card shadow-e3 overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-paper-200">
-          <h2 className="text-section text-ink-950">{position ? 'Edit Position' : 'New Position'}</h2>
-          <button onClick={onClose}><X className="size-4 text-ink-400 hover:text-ink-700" /></button>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200">
+          <h2 className="text-section text-fg-950">{position ? 'Edit Position' : 'New Position'}</h2>
+          <button onClick={onClose}><X className="size-4 text-fg-400 hover:text-fg-700" /></button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
           <div>
-            <label className="text-[11px] font-medium text-ink-700 mb-1 block">Position Type</label>
+            <label className="text-[11px] font-medium text-fg-700 mb-1 block">Position Type</label>
             <div className="flex gap-2">
               {POSITION_TYPES.map(t => (
                 <button
@@ -213,7 +213,7 @@ function PositionEditor({
                     'px-3 py-1.5 rounded-md text-[12.5px] font-semibold border transition-colors',
                     positionType === t
                       ? cn(POSITION_COLORS[t].bg, POSITION_COLORS[t].text, POSITION_COLORS[t].border)
-                      : 'border-paper-200 text-ink-500 hover:bg-paper-50',
+                      : 'border-surface-200 text-fg-500 hover:bg-surface-50',
                   )}
                 >
                   {t}
@@ -222,8 +222,8 @@ function PositionEditor({
             </div>
           </div>
           <div>
-            <label className="text-[11px] font-medium text-ink-700 mb-1 block">Position Language</label>
-            <div className="border border-paper-200 rounded-md overflow-hidden" style={{ height: 280 }}>
+            <label className="text-[11px] font-medium text-fg-700 mb-1 block">Position Language</label>
+            <div className="border border-surface-200 rounded-md overflow-hidden" style={{ height: 280 }}>
               <ContractEditor
                 initialContent={content}
                 onChange={setContent}
@@ -232,7 +232,7 @@ function PositionEditor({
             </div>
           </div>
           <div>
-            <label className="text-[11px] font-medium text-ink-700 mb-1 block">Legal Team Notes</label>
+            <label className="text-[11px] font-medium text-fg-700 mb-1 block">Legal Team Notes</label>
             <Input
               value={notes}
               onChange={e => setNotes(e.target.value)}
@@ -240,7 +240,7 @@ function PositionEditor({
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-ink-700 mb-1 block">
+            <label className="text-[11px] font-medium text-fg-700 mb-1 block">
               Risk Threshold: {Math.round(riskThreshold * 100)}%
             </label>
             <input
@@ -250,15 +250,15 @@ function PositionEditor({
               step={0.05}
               value={riskThreshold}
               onChange={e => setRiskThreshold(Number(e.target.value))}
-              className="w-full accent-ink-950"
+              className="w-full accent-fg-950"
             />
-            <div className="flex justify-between text-[11px] text-ink-400 mt-0.5">
+            <div className="flex justify-between text-[11px] text-fg-400 mt-0.5">
               <span>Walk away</span>
               <span>Preferred</span>
             </div>
           </div>
         </div>
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-paper-200 bg-paper-50">
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-surface-200 bg-surface-50">
           <Button variant="outline" size="md" onClick={onClose}>Cancel</Button>
           <Button size="md" onClick={handleSave} disabled={saving}>
             {saving && <Loader2 className="animate-spin" />}
@@ -280,8 +280,8 @@ function TestPanel({ categoryId }: { categoryId: string }) {
   // Same ladder as POSITION_COLORS — the verdict pill must agree with the card
   // it points at.
   const MATCH_COLORS: Record<string, string> = {
-    preferred: 'text-brand-700 bg-brand-50',
-    acceptable: 'text-ink-700 bg-paper-100',
+    preferred: 'text-success-700 bg-success-50',
+    acceptable: 'text-fg-700 bg-surface-100',
     fallback: 'text-attention-700 bg-attention-50',
     walkaway: 'text-risk-700 bg-risk-50',
   }
@@ -301,17 +301,17 @@ function TestPanel({ categoryId }: { categoryId: string }) {
   }
 
   return (
-    <div className="border border-paper-200 rounded-card p-4 bg-paper-50">
+    <div className="border border-surface-200 rounded-card p-4 bg-surface-50">
       <div className="flex items-center gap-2 mb-3">
-        <Play className="size-4 text-ink-500" />
-        <h3 className="text-section text-ink-950">Test Mode</h3>
+        <Play className="size-4 text-fg-500" />
+        <h3 className="text-section text-fg-950">Test Mode</h3>
       </div>
       <textarea
         value={clauseText}
         onChange={e => setClauseText(e.target.value)}
         rows={4}
         placeholder="Paste a clause to test against your playbook..."
-        className="w-full border border-input rounded-md px-3 py-2 text-[13px] text-ink-950 bg-card placeholder:text-ink-400 outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15 resize-none"
+        className="w-full border border-input rounded-md px-3 py-2 text-[13px] text-fg-950 bg-card placeholder:text-fg-400 outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15 resize-none"
       />
       {/* Outline, not ink — "Add Position" is this screen's one primary. */}
       <Button
@@ -336,12 +336,12 @@ function TestPanel({ categoryId }: { categoryId: string }) {
             {/* bestMatch can come back as something not on the ladder (or
                 absent) — cn() then emits a pill with no colour and the label
                 reads "UNDEFINED MATCH". */}
-            <span className={cn('px-3 py-1 rounded-full text-dense font-semibold', MATCH_COLORS[result.bestMatch] ?? 'text-ink-700 bg-paper-100')}>
+            <span className={cn('px-3 py-1 rounded-full text-dense font-semibold', MATCH_COLORS[result.bestMatch] ?? 'text-fg-700 bg-surface-100')}>
               {result.bestMatch ? `${String(result.bestMatch).toUpperCase()} MATCH` : 'NO CLEAR MATCH'}
             </span>
-            <span className="text-dense tabular-nums text-ink-500">Score: {Math.round((result.score ?? 0) * 100)}%</span>
+            <span className="text-dense tabular-nums text-fg-500">Score: {Math.round((result.score ?? 0) * 100)}%</span>
           </div>
-          <p className="text-body text-ink-700">{result.explanation}</p>
+          <p className="text-body text-fg-700">{result.explanation}</p>
           {result.deviations?.length > 0 && (
             <div className="space-y-1">
               {result.deviations.map((d: any, i: number) => (
@@ -349,7 +349,7 @@ function TestPanel({ categoryId }: { categoryId: string }) {
                   'flex items-start gap-2 p-2 rounded-md text-[11.5px]',
                   d.severity === 'high' ? 'bg-risk-50 text-risk-700' :
                   d.severity === 'medium' ? 'bg-attention-50 text-attention-700' :
-                  'bg-paper-100 text-ink-700',
+                  'bg-surface-100 text-fg-700',
                 )}>
                   <span className="font-semibold capitalize">{d.positionType}:</span>
                   <span>{d.deviation}</span>
@@ -483,13 +483,13 @@ export function PlaybookPage() {
   return (
     <div className="flex h-full">
       {/* ── Category Tree ── */}
-      <div className="w-64 shrink-0 border-r border-paper-200 bg-paper-50 flex flex-col">
-        <div className="px-4 py-4 border-b border-paper-200">
+      <div className="w-64 shrink-0 border-r border-surface-200 bg-surface-50 flex flex-col">
+        <div className="px-4 py-4 border-b border-surface-200">
           <div className="flex items-center gap-2">
-            <Shield className="size-4 text-ink-400" />
-            <h1 className="text-title text-ink-950">Playbook</h1>
+            <Shield className="size-4 text-fg-400" />
+            <h1 className="text-title text-fg-950">Playbook</h1>
           </div>
-          <p className="text-[11.5px] text-ink-500 mt-0.5">Negotiation positions per clause type</p>
+          <p className="text-[11.5px] text-fg-500 mt-0.5">Negotiation positions per clause type</p>
         </div>
         <div className="flex-1 overflow-y-auto p-3">
           {categories.map(cat => (
@@ -502,8 +502,8 @@ export function PlaybookPage() {
                   // ink fill is the app sidebar's; a second one here would
                   // compete with "Add Position" for the eye.
                   selectedCategoryId === cat.id
-                    ? 'bg-paper-100 text-ink-950 font-medium'
-                    : 'text-ink-700 hover:bg-paper-100',
+                    ? 'bg-surface-100 text-fg-950 font-medium'
+                    : 'text-fg-700 hover:bg-surface-100',
                 )}
               >
                 {(cat.children?.length ?? 0) > 0
@@ -513,14 +513,14 @@ export function PlaybookPage() {
                 <CoverageTicks filled={coverageOf(cat.id)} name={cat.name} />
               </button>
               {expandedCategories.has(cat.id) && cat.children?.map(child => (
-                <div key={child.id} className="ml-3 border-l-2 border-paper-200 pl-2">
+                <div key={child.id} className="ml-3 border-l-2 border-surface-200 pl-2">
                   <button
                     onClick={() => setSelectedCategoryId(child.id)}
                     className={cn(
                       'w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[12.5px] transition-colors',
                       selectedCategoryId === child.id
-                        ? 'bg-paper-100 text-ink-950 font-medium'
-                        : 'text-ink-500 hover:bg-paper-100',
+                        ? 'bg-surface-100 text-fg-950 font-medium'
+                        : 'text-fg-500 hover:bg-surface-100',
                     )}
                   >
                     <span className="flex-1 text-left truncate">{child.name}</span>
@@ -548,12 +548,12 @@ export function PlaybookPage() {
               return (
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-title text-ink-950">
+                    <h2 className="text-title text-fg-950">
                       {categoryName(categories, selectedCategoryId) ?? 'Positions'}
                     </h2>
                     {/* Coverage first — it is the answer to "is this category
                         finished?", which is why the user opened it. */}
-                    <p className="text-[11.5px] text-ink-500 mt-0.5">
+                    <p className="text-[11.5px] text-fg-500 mt-0.5">
                       {allFilled
                         ? `All 4 positions defined · ${positions.length} in total`
                         : `${POSITION_TYPES.length - missingTypes.length} of 4 positions defined — missing ${missingTypes.join(', ')}`}
@@ -578,7 +578,7 @@ export function PlaybookPage() {
                       onClick={() => setShowTest(t => !t)}
                       data-testid="playbook-test-btn"
                       aria-pressed={showTest}
-                      className={cn(showTest && 'border-ink-950 bg-paper-100 text-ink-950')}
+                      className={cn(showTest && 'border-fg-950 bg-surface-100 text-fg-950')}
                     >
                       <Play />
                       {showTest ? 'Hide test panel' : 'Test playbook'}
@@ -670,20 +670,20 @@ export function PlaybookPage() {
           role="dialog"
           aria-modal="true"
           aria-label="Delete position"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
           onClick={() => setPendingDelete(undefined)}
           data-testid="playbook-delete-dialog"
         >
           <div className="w-full max-w-sm bg-card rounded-card shadow-e3" onClick={e => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-paper-200">
-              <h2 className="text-section text-ink-950">Delete this position?</h2>
-              <p className="text-dense text-ink-500 mt-1">
-                The <span className="font-medium text-ink-950 capitalize">{pendingDelete.positionType}</span> position
+            <div className="px-5 py-4 border-b border-surface-200">
+              <h2 className="text-section text-fg-950">Delete this position?</h2>
+              <p className="text-dense text-fg-500 mt-1">
+                The <span className="font-medium text-fg-950 capitalize">{pendingDelete.positionType}</span> position
                 for {categoryName(categories, selectedCategoryId) ?? 'this category'} will be removed, and drafting and
                 review will stop scoring against it. This can't be undone.
               </p>
             </div>
-            <div className="px-5 py-3 flex justify-end gap-2 bg-paper-50 rounded-b-card">
+            <div className="px-5 py-3 flex justify-end gap-2 bg-surface-50 rounded-b-card">
               <Button variant="outline" size="xs" onClick={() => setPendingDelete(undefined)}>Cancel</Button>
               <Button
                 variant="destructive"
@@ -774,7 +774,7 @@ function PlaybookExplainer({ categoryCount, onPickFirst }: PlaybookExplainerProp
 
       {/* Ghost preview — 4 sample positions */}
       <div>
-        <p className="text-eyebrow uppercase text-ink-700 mb-2">
+        <p className="text-eyebrow uppercase text-fg-700 mb-2">
           Example — Limitation of Liability
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -789,7 +789,7 @@ function PlaybookExplainer({ categoryCount, onPickFirst }: PlaybookExplainerProp
                 <span className={cn('text-eyebrow uppercase', c.text)}>
                   {p.type}
                 </span>
-                <p className="text-body text-ink-700 mt-2 leading-relaxed">{p.body}</p>
+                <p className="text-body text-fg-700 mt-2 leading-relaxed">{p.body}</p>
               </div>
             )
           })}

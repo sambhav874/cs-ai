@@ -40,7 +40,7 @@ function isValidHex(value: string): boolean {
  * literal rather than a design-system token. Named here so no raw hex sits in a
  * style prop.
  */
-const DEFAULT_BRAND_HEX = '#3B82F6'
+const DEFAULT_BRAND_HEX = '#0E5AAE'
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -92,9 +92,9 @@ export function AdminOrgPage() {
   }
 
   return (
-    <div className="h-full flex bg-paper-50">
+    <div className="h-full flex bg-surface-50">
       {/* Sidebar tabs */}
-      <aside className="w-52 border-r border-paper-200 bg-card flex-shrink-0 p-4">
+      <aside className="w-52 border-r border-surface-200 bg-card flex-shrink-0 p-4">
         <Eyebrow className="mb-3">Organization</Eyebrow>
         <nav className="space-y-0.5">
           {TABS.map(({ id, label, icon: Icon }) => (
@@ -106,8 +106,8 @@ export function AdminOrgPage() {
               // next to this page's Save button.
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-dense transition-colors ${
                 activeTab === id
-                  ? 'bg-paper-100 text-ink-950 font-medium'
-                  : 'text-ink-700 hover:bg-paper-100'
+                  ? 'bg-surface-100 text-fg-950 font-medium'
+                  : 'text-fg-700 hover:bg-surface-100'
               }`}
             >
               <Icon className="size-4" />
@@ -123,15 +123,15 @@ export function AdminOrgPage() {
         {activeTab === 'general' && (
           <div className="max-w-2xl space-y-6">
             <div>
-              <h1 className="text-title text-ink-950">Organization Settings</h1>
-              <p className="text-dense text-ink-500 mt-1">
+              <h1 className="text-title text-fg-950">Organization Settings</h1>
+              <p className="text-dense text-fg-500 mt-1">
                 Manage your organization profile and branding.
               </p>
             </div>
 
             <Card className="p-5 space-y-4">
               <div>
-                <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Organization Name</Label>
+                <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Organization Name</Label>
                 <Input
                   value={orgName}
                   onChange={e => setOrgName(e.target.value)}
@@ -140,10 +140,10 @@ export function AdminOrgPage() {
               </div>
 
               <div>
-                <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Logo</Label>
+                <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Logo</Label>
                 <div className="flex items-start gap-3">
                   {/* Preview — shows uploaded/URLed logo or a subtle placeholder */}
-                  <div className="size-16 rounded-card border border-paper-200 bg-paper-50 flex items-center justify-center overflow-hidden shrink-0">
+                  <div className="size-16 rounded-card border border-surface-200 bg-surface-50 flex items-center justify-center overflow-hidden shrink-0">
                     {logoUrl ? (
                       <img
                         src={logoUrl}
@@ -153,7 +153,7 @@ export function AdminOrgPage() {
                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                       />
                     ) : (
-                      <Building2 className="size-6 text-ink-400" />
+                      <Building2 className="size-6 text-fg-400" />
                     )}
                   </div>
                   <div className="flex-1 space-y-1.5">
@@ -163,7 +163,7 @@ export function AdminOrgPage() {
                       placeholder="https://example.com/logo.png"
                       data-testid="logo-url"
                     />
-                    <p className="text-[11px] text-ink-400 leading-relaxed">
+                    <p className="text-[11px] text-fg-400 leading-relaxed">
                       Paste a URL to your logo (PNG or SVG). Direct file
                       upload lands in v1.1 — for now host on your own CDN
                       or intranet.
@@ -173,7 +173,7 @@ export function AdminOrgPage() {
               </div>
 
               <div>
-                <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Brand Color</Label>
+                <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Brand Color</Label>
                 {/*
                   B.6.24 — native color picker + synced hex input. The
                   picker is the primary affordance (click the swatch to
@@ -193,7 +193,7 @@ export function AdminOrgPage() {
                       className="sr-only"
                     />
                     <span
-                      className="block size-10 rounded-md border border-paper-200 shadow-e1"
+                      className="block size-10 rounded-md border border-surface-200 shadow-e1"
                       style={{ backgroundColor: isValidHex(brandColor) ? brandColor : DEFAULT_BRAND_HEX }}
                       aria-hidden
                     />
@@ -201,7 +201,7 @@ export function AdminOrgPage() {
                   <Input
                     value={brandColor}
                     onChange={e => setBrandColor(e.target.value)}
-                    placeholder="#3B82F6"
+                    placeholder="#0E5AAE"
                     className="max-w-36 font-mono tabular-nums"
                     data-testid="brand-color-hex"
                   />
@@ -212,8 +212,8 @@ export function AdminOrgPage() {
               </div>
 
               <div>
-                <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Subscription Tier</Label>
-                <div className="px-3 py-2 bg-paper-50 rounded-md border border-paper-200 text-body text-ink-700">
+                <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Subscription Tier</Label>
+                <div className="px-3 py-2 bg-surface-50 rounded-md border border-surface-200 text-body text-fg-700">
                   {org?.subscriptionTier ?? 'FREE'}
                 </div>
               </div>
@@ -228,13 +228,13 @@ export function AdminOrgPage() {
               {successMsg && (
                 // Neutral, not brand: saving a settings form is an acknowledgement,
                 // not a binding event. Emerald is reserved for approved/executed/signed.
-                <div className="flex items-center gap-2 p-3 bg-paper-100 border border-paper-200 rounded-md">
-                  <Check className="size-4 text-ink-500 flex-shrink-0" />
-                  <p className="text-dense text-ink-700">{successMsg}</p>
+                <div className="flex items-center gap-2 p-3 bg-surface-100 border border-surface-200 rounded-md">
+                  <Check className="size-4 text-fg-500 flex-shrink-0" />
+                  <p className="text-dense text-fg-700">{successMsg}</p>
                 </div>
               )}
 
-              <div className="flex justify-end pt-2 border-t border-paper-200">
+              <div className="flex justify-end pt-2 border-t border-surface-200">
                 <Button onClick={handleSave} disabled={saveOrg.isPending} className="gap-2">
                   <Save className="size-4" />
                   {saveOrg.isPending ? 'Saving...' : 'Save Changes'}
@@ -265,7 +265,7 @@ export function AdminOrgPage() {
 function PlaceholderTab({ icon: Icon, title }: { icon: React.ElementType; title: string }) {
   return (
     <div className="max-w-2xl">
-      <h1 className="text-title text-ink-950 mb-6">{title}</h1>
+      <h1 className="text-title text-fg-950 mb-6">{title}</h1>
       <EmptyState icon={<Icon />} title="Coming soon" className="py-16" />
     </div>
   )

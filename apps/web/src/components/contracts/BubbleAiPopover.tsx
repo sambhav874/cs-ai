@@ -174,22 +174,22 @@ export function BubbleAiPopover({ editor, open, onClose, selectedText: incomingT
   return (
     <div
       ref={popRef}
-      className="fixed z-[60] rounded-card border border-paper-200 bg-popover shadow-e2"
+      className="fixed z-[60] rounded-card border border-surface-200 bg-popover shadow-e2"
       style={{ top: position.top, left: position.left, width: position.width }}
       data-testid="bubble-ai-popover"
     >
-      <div className="flex items-center justify-between px-3 py-2 border-b border-paper-200">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-surface-200">
         {/* U.2.2 / decision 14a — drop "AI" from primary label; indigo accent. */}
-        <div className="flex items-center gap-1.5 text-dense font-medium text-ink-950">
+        <div className="flex items-center gap-1.5 text-dense font-medium text-fg-950">
           <Sparkles className="size-3.5 text-assist-600" />
           Selection
         </div>
         <button
           onClick={onClose}
-          className="p-0.5 rounded-chip hover:bg-paper-100"
+          className="p-0.5 rounded-chip hover:bg-surface-100"
           aria-label="Close"
         >
-          <X className="size-3.5 text-ink-500" />
+          <X className="size-3.5 text-fg-500" />
         </button>
       </div>
 
@@ -200,10 +200,10 @@ export function BubbleAiPopover({ editor, open, onClose, selectedText: incomingT
               key={a.id}
               onClick={() => runAction(a.id)}
               data-testid={`bubble-ai-action-${a.id}`}
-              className="text-left px-2 py-1.5 rounded-md border border-paper-200 hover:border-assist-200 hover:bg-assist-50 transition-colors"
+              className="text-left px-2 py-1.5 rounded-md border border-surface-200 hover:border-assist-200 hover:bg-assist-50 transition-colors"
             >
-              <div className="text-[11.5px] font-medium text-ink-950">{a.label}</div>
-              <div className="text-[10px] text-ink-500">{a.helper}</div>
+              <div className="text-[11.5px] font-medium text-fg-950">{a.label}</div>
+              <div className="text-[10px] text-fg-500">{a.helper}</div>
             </button>
           ))}
         </div>
@@ -213,13 +213,13 @@ export function BubbleAiPopover({ editor, open, onClose, selectedText: incomingT
         <div className="p-3">
           <div
             className={cn(
-              'text-[12.5px] leading-relaxed text-ink-950 min-h-[40px] whitespace-pre-wrap',
+              'text-[12.5px] leading-relaxed text-fg-950 min-h-[40px] whitespace-pre-wrap',
               streaming && 'after:inline-block after:w-1.5 after:h-3.5 after:ml-0.5 after:bg-assist-600 after:animate-pulse after:align-middle',
             )}
             data-testid="bubble-ai-result"
           >
             {result || (streaming ? (
-              <span className="inline-flex items-center gap-1 text-ink-500">
+              <span className="inline-flex items-center gap-1 text-fg-500">
                 <Loader2 className="size-3 animate-spin" /> Streaming…
               </span>
             ) : null)}
@@ -258,7 +258,7 @@ export function BubbleAiPopover({ editor, open, onClose, selectedText: incomingT
                 size="xs"
                 onClick={() => { setResult(''); setError(null) }}
                 data-testid="bubble-ai-retry"
-                className="ml-auto font-normal text-ink-500"
+                className="ml-auto font-normal text-fg-500"
               >
                 Try another action
               </Button>

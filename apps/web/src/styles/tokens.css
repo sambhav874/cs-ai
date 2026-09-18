@@ -1,0 +1,244 @@
+/* ─── cs-ai design tokens ──────────────────────────────────────────────────────
+   The single source of every colour, radius, shadow and motion value in the
+   app. tailwind.config.ts only points at these; components only use Tailwind
+   names. Change a value here and every screen — lifecycle and intelligence
+   alike — moves together.
+
+   Direction: cool graphite neutrals, one cobalt for action, and colour kept
+   for meaning. Structure comes from hairline borders and spacing, not from
+   shadows or fills.
+
+   Values are RGB channel triplets so Tailwind's opacity modifier works:
+     rgb(var(--c-primary-700) / 0.15)
+
+   Every foreground/background pair a component actually uses is checked
+   against WCAG AA in src/styles/tokens.test.ts. A value that fails does not
+   ship.
+
+   Meaning — five of them, one hue each, never used as decoration:
+     neutral    nothing is happening                 fg-350 dot
+     info       in flight — someone else's turn      azure
+     attention  your turn; the only badge count      amber
+     success    binding — approved, executed, signed green
+     risk       exposure, failure, expiry            red
+   plus one authorship mark:
+     assist     a model wrote this                   violet
+
+   Scale steps mean the same thing in every family:
+     50 wash · 100 pill · 200 border · 500/600 dot, meter · 700 text
+     solid / solid-hover: a fill that carries white text. In dark mode 700
+     becomes a light text tone, so fills must use `solid`, never 700.
+   ────────────────────────────────────────────────────────────────────────── */
+
+:root,
+.light-island,
+.document-canvas {
+  color-scheme: light;
+
+  /* ── Neutrals: cool graphite ─────────────────────────────────────────── */
+  --c-surface-0:   255 255 255; /* #FFFFFF card, page            */
+  --c-surface-50:  246 247 249; /* #F6F7F9 app ground            */
+  --c-surface-100: 238 240 244; /* #EEF0F4 hover, fill           */
+  --c-surface-200: 225 229 235; /* #E1E5EB border                */
+  --c-surface-300: 202 208 218; /* #CAD0DA input, rule           */
+
+  --c-fg-350: 124 132 147;      /* #7C8493 neutral status dot — 3.3:1 on surface-100 */
+  --c-fg-400: 102 110 125;      /* #666E7D metadata, placeholder — 4.8:1 on surface-50 */
+  --c-fg-500:  88  96 112;      /* #586070 muted text          */
+  --c-fg-700:  57  65  80;      /* #394150 secondary text      */
+  --c-fg-950:  15  20  28;      /* #0F141C text                */
+
+  /* ── Action: cobalt ──────────────────────────────────────────────────── */
+  --c-primary-50:  238 244 253; /* #EEF4FD */
+  --c-primary-100: 219 231 250; /* #DBE7FA */
+  --c-primary-200: 184 207 243; /* #B8CFF3 */
+  --c-primary-500:  50 120 214; /* #3278D6 */
+  --c-primary-700:  14  90 174; /* #0E5AAE text, focus */
+  --c-primary-800:  10  72 137; /* #0A4889 */
+  --c-primary-solid:       14  90 174;
+  --c-primary-solid-hover: 10  72 137;
+
+  /* ── Meaning ─────────────────────────────────────────────────────────── */
+  --c-success-50:  237 248 241; /* #EDF8F1 */
+  --c-success-100: 213 239 221; /* #D5EFDD */
+  --c-success-200: 169 221 186; /* #A9DDBA */
+  --c-success-500:  46 158  91; /* #2E9E5B */
+  --c-success-700:  23 122  63; /* #177A3F */
+  --c-success-800:  17  95  49; /* #115F31 */
+  --c-success-solid:       23 122  63;
+  --c-success-solid-hover: 17  95  49;
+
+  --c-info-50:  237 246 254;    /* #EDF6FE */
+  --c-info-100: 214 235 252;    /* #D6EBFC */
+  --c-info-200: 174 214 248;    /* #AED6F8 */
+  --c-info-600:  30 123 207;    /* #1E7BCF */
+  --c-info-700:  20 100 173;    /* #1464AD */
+  --c-info-solid:       20 100 173;
+  --c-info-solid-hover: 16  82 142;
+
+  --c-attention-50:  255 247 232; /* #FFF7E8 */
+  --c-attention-100: 254 237 203; /* #FEEDCB */
+  --c-attention-200: 249 216 148; /* #F9D894 */
+  --c-attention-600: 189 107  11; /* #BD6B0B */
+  --c-attention-700: 154  86   8; /* #9A5608 */
+  --c-attention-solid:       154  86   8;
+  --c-attention-solid-hover: 126  70   6;
+
+  --c-risk-50:  254 243 242;    /* #FEF3F2 */
+  --c-risk-100: 254 228 226;    /* #FEE4E2 */
+  --c-risk-200: 254 205 202;    /* #FECDCA */
+  --c-risk-600: 217  45  32;    /* #D92D20 */
+  --c-risk-700: 180  35  24;    /* #B42318 */
+  --c-risk-900: 122  26  19;    /* #7A1A13 */
+  --c-risk-solid:       217  45  32;
+  --c-risk-solid-hover: 180  35  24;
+
+  --c-assist-50:  244 242 254;  /* #F4F2FE */
+  --c-assist-200: 216 208 251;  /* #D8D0FB */
+  --c-assist-600: 106  72 222;  /* #6A48DE */
+  --c-assist-700:  88  54 196;  /* #5836C4 */
+  --c-assist-900:  50  28 122;  /* #321C7A */
+  --c-assist-solid:       106  72 222;
+  --c-assist-solid-hover:  88  54 196;
+
+  /* ── Semantic roles (shadcn names, used by Radix-based primitives) ───── */
+  --background:           var(--c-surface-50);
+  --foreground:           var(--c-fg-950);
+  --card:                 var(--c-surface-0);
+  --card-foreground:      var(--c-fg-950);
+  --popover:              var(--c-surface-0);
+  --popover-foreground:   var(--c-fg-950);
+  --muted:                var(--c-surface-100);
+  --muted-foreground:     var(--c-fg-500);
+  --border:               var(--c-surface-200);
+  --input:                var(--c-surface-300);
+  --primary:              var(--c-primary-solid);
+  --primary-foreground:   255 255 255;
+  --secondary:            var(--c-surface-100);
+  --secondary-foreground: var(--c-fg-700);
+  --accent:               var(--c-surface-100);
+  --accent-foreground:    var(--c-fg-950);
+  --ring:                 var(--c-primary-700);
+  --destructive:          var(--c-risk-600);
+  --destructive-foreground: 255 255 255;
+  --info:                 var(--c-info-600);
+  --attention:            var(--c-attention-600);
+  --success:              var(--c-success-700);
+  --assist:               var(--c-assist-600);
+  --assist-foreground:    255 255 255;
+  --selection:            var(--c-primary-500);
+  --scrim:                15  20  28;          /* behind modals */
+  --inverse:              var(--c-fg-950);     /* tooltips, code, toasts */
+  --inverse-foreground:   var(--c-surface-50);
+
+  /* ── Shape ───────────────────────────────────────────────────────────── */
+  --radius: 0.5rem;              /* 8px — buttons, fields */
+
+  /* ── Elevation: borders first; shadows are faint and cool ───────────── */
+  --shadow-color: 15 20 28;
+  --shadow-e1: 0 1px 2px rgb(var(--shadow-color) / 0.05);
+  --shadow-e2: 0 1px 2px rgb(var(--shadow-color) / 0.04), 0 6px 16px -4px rgb(var(--shadow-color) / 0.10);
+  --shadow-e3: 0 2px 4px rgb(var(--shadow-color) / 0.04), 0 18px 40px -12px rgb(var(--shadow-color) / 0.24);
+  --shadow-page: 0 0 0 1px rgb(var(--shadow-color) / 0.05), 0 4px 18px -6px rgb(var(--shadow-color) / 0.10);
+
+  /* ── Motion ──────────────────────────────────────────────────────────── */
+  --ease-out:    cubic-bezier(0.2, 0.8, 0.2, 1);   /* enter fast, settle   */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);   /* move between states  */
+  --dur-micro:   140ms;  /* hover, focus, toggle     */
+  --dur-comp:    220ms;  /* menu, popover, accordion */
+  --dur-scene:   420ms;  /* page, drawer             */
+}
+
+/* Dark: layered graphite, not black. Ground < card < hover < border, each a
+   step lighter, so depth reads without shadows. The contract page stays a
+   light sheet on a dark desk — legal text is proofread on paper: the light
+   block above also applies to .document-canvas and to any .light-island. */
+.dark {
+  color-scheme: dark;
+  /* Solid fills darken on hover here, so white text never drops below 4.5:1. */
+
+  --c-surface-0:    22  26  33; /* #161A21 card        */
+  --c-surface-50:   15  18  23; /* #0F1217 ground      */
+  --c-surface-100:  30  35  44; /* #1E232C hover       */
+  --c-surface-200:  42  48  59; /* #2A303B border      */
+  --c-surface-300:  58  65  80; /* #3A4150 input       */
+
+  --c-fg-350: 110 118 134;      /* #6E7686 */
+  --c-fg-400: 138 146 161;      /* #8A92A1 */
+  --c-fg-500: 156 163 176;      /* #9CA3B0 */
+  --c-fg-700: 195 201 211;      /* #C3C9D3 */
+  --c-fg-950: 236 239 244;      /* #ECEFF4 */
+
+  --c-primary-50:   15  29  48;
+  --c-primary-100:  19  40  70;
+  --c-primary-200:  29  59 102;
+  --c-primary-500:  75 143 232;
+  --c-primary-700: 125 177 244;
+  --c-primary-800: 166 202 248;
+  --c-primary-solid:       47 111 208;
+  --c-primary-solid-hover: 41  98 183;
+
+  --c-success-50:   14  33  23;
+  --c-success-100:  18  48  32;
+  --c-success-200:  27  74  48;
+  --c-success-500:  61 186 112;
+  --c-success-700: 111 211 154;
+  --c-success-800: 155 227 186;
+  --c-success-solid:       27 127  67;
+  --c-success-solid-hover: 24 112  59;
+
+  --c-info-50:   15  30  46;
+  --c-info-100:  19  42  66;
+  --c-info-200:  28  63  97;
+  --c-info-600:  74 163 238;
+  --c-info-700: 130 193 245;
+  --c-info-solid:       30 110 190;
+  --c-info-solid-hover: 26  97 167;
+
+  --c-attention-50:   42  29   8;
+  --c-attention-100:  58  40  11;
+  --c-attention-200:  90  62  16;
+  --c-attention-600: 224 146  46;
+  --c-attention-700: 240 180  98;
+  --c-attention-solid:       154  86   8;
+  --c-attention-solid-hover: 136  76   7;
+
+  --c-risk-50:   44  18  17;
+  --c-risk-100:  61  23  21;
+  --c-risk-200:  94  33  29;
+  --c-risk-600: 240  88  75;
+  --c-risk-700: 245 138 128;
+  --c-risk-900: 251 195 189;
+  --c-risk-solid:       214  57  44;
+  --c-risk-solid-hover: 188  50  39;
+
+  --c-assist-50:   27  22  51;
+  --c-assist-200:  55  44 107;
+  --c-assist-600: 139 112 240;
+  --c-assist-700: 169 148 246;
+  --c-assist-900: 214 204 251;
+  --c-assist-solid:       106  72 222;
+  --c-assist-solid-hover: 93  63 196;
+
+  --ring:      var(--c-primary-500);
+  --selection: var(--c-primary-500);
+  --scrim:     0 0 0;
+  --inverse:            236 239 244;
+  --inverse-foreground:  15  18  23;
+
+  --shadow-color: 0 0 0;
+  --shadow-e1: 0 1px 2px rgb(var(--shadow-color) / 0.30);
+  --shadow-e2: 0 1px 2px rgb(var(--shadow-color) / 0.30), 0 8px 20px -6px rgb(var(--shadow-color) / 0.45);
+  --shadow-e3: 0 2px 4px rgb(var(--shadow-color) / 0.30), 0 20px 44px -12px rgb(var(--shadow-color) / 0.60);
+  --shadow-page: 0 0 0 1px rgb(255 255 255 / 0.06), 0 8px 28px -8px rgb(var(--shadow-color) / 0.6);
+}
+
+/* Motion tokens collapse under reduced motion; index.css neutralises the
+   remaining transitions and animations. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-micro: 0ms;
+    --dur-comp:  0ms;
+    --dur-scene: 0ms;
+  }
+}

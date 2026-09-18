@@ -155,16 +155,16 @@ export function DashboardPage() {
       label: 'Active Contracts',
       value: stats?.activeContracts,
       icon: FileText,
-      color: 'text-ink-500',
-      bg: 'bg-paper-100',
+      color: 'text-fg-500',
+      bg: 'bg-surface-100',
       to: '/contracts',
     },
     {
       label: 'Open Requests',
       value: stats?.openRequests,
       icon: ClipboardList,
-      color: 'text-ink-500',
-      bg: 'bg-paper-100',
+      color: 'text-fg-500',
+      bg: 'bg-surface-100',
       to: '/requests',
     },
     {
@@ -176,8 +176,8 @@ export function DashboardPage() {
       label: isAdminLike ? 'Org Approvals' : 'Pending Approvals',
       value: isAdminLike ? (stats?.orgPendingApprovals ?? 0) : stats?.pendingApprovals,
       icon: CheckSquare,
-      color: 'text-ink-500',
-      bg: 'bg-paper-100',
+      color: 'text-fg-500',
+      bg: 'bg-surface-100',
       to: '/approvals',
     },
     {
@@ -194,8 +194,8 @@ export function DashboardPage() {
       icon: AlertCircle,
       // Dim the red when count is zero so we don't cry-wolf about
       // a category that's actually empty.
-      color: (stats?.expiringSoon ?? 0) > 0 ? 'text-risk-600' : 'text-ink-500',
-      bg: (stats?.expiringSoon ?? 0) > 0 ? 'bg-risk-50' : 'bg-paper-100',
+      color: (stats?.expiringSoon ?? 0) > 0 ? 'text-risk-600' : 'text-fg-500',
+      bg: (stats?.expiringSoon ?? 0) > 0 ? 'bg-risk-50' : 'bg-surface-100',
       // B.6.5 — ContractsPage reads this on mount and shows a dismissable
       // "Expiring by <date>" chip so the user understands why the list is
       // scoped.
@@ -214,10 +214,10 @@ export function DashboardPage() {
           and the other 46 page headings in the product are all text-title, so
           the dashboard was the one h1 that didn't match its own siblings. */}
       <div>
-        <h1 className="text-title text-ink-950">
+        <h1 className="text-title text-fg-950">
           Welcome back, {user?.name?.split(' ')[0]}
         </h1>
-        <p className="text-body text-ink-700 mt-1.5">
+        <p className="text-body text-fg-700 mt-1.5">
           Here's what's happening with your contracts today.
         </p>
       </div>
@@ -279,28 +279,28 @@ export function DashboardPage() {
               data-testid={`kpi-card-${slug}`}
               data-kpi-label={label}
               data-kpi-value={value ?? ''}
-              className="rounded-card border border-paper-200 bg-card p-5 space-y-3 text-left transition-colors hover:border-paper-300 hover:bg-paper-50 group"
+              className="rounded-card border border-surface-200 bg-card p-5 space-y-3 text-left transition-colors hover:border-surface-300 hover:bg-surface-50 group"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-ink-500">
+                <span className="text-[11px] text-fg-500">
                   {label}
-                  {hint && <span className="text-ink-400"> · {hint}</span>}
+                  {hint && <span className="text-fg-400"> · {hint}</span>}
                 </span>
                 <div className={`p-1.5 rounded-chip ${bg}`}>
                   <Icon size={16} className={color} />
                 </div>
               </div>
               {isLoading ? (
-                <Loader2 className="size-5 animate-spin text-ink-400" />
+                <Loader2 className="size-5 animate-spin text-fg-400" />
               ) : (
                 <div className="flex items-end justify-between">
                   <p
-                    className="text-[24px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-ink-950"
+                    className="text-[24px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-fg-950"
                     data-testid={`kpi-value-${slug}`}
                   >
                     {value ?? 0}
                   </p>
-                  <ArrowRight className="size-4 text-ink-400 group-hover:text-ink-700 transition-colors" />
+                  <ArrowRight className="size-4 text-fg-400 group-hover:text-fg-700 transition-colors" />
                 </div>
               )}
             </button>
@@ -309,18 +309,18 @@ export function DashboardPage() {
       </div>
 
       {/* Recent Activity */}
-      <div className="rounded-card border border-paper-200 bg-card p-6">
+      <div className="rounded-card border border-surface-200 bg-card p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-section text-ink-950">Recent Activity</h2>
+          <h2 className="text-section text-fg-950">Recent Activity</h2>
           {stats?.recentActivity && stats.recentActivity.length > 0 && (
-            <span className="text-[11px] tabular-nums text-ink-400">
+            <span className="text-[11px] tabular-nums text-fg-400">
               {stats.recentActivity.length} event{stats.recentActivity.length === 1 ? '' : 's'}
             </span>
           )}
         </div>
 
         {isLoading ? (
-          <div className="flex items-center gap-2 text-ink-400 py-4">
+          <div className="flex items-center gap-2 text-fg-400 py-4">
             <Loader2 className="size-4 animate-spin" />
             <span className="text-dense">Loading activity...</span>
           </div>
@@ -332,35 +332,35 @@ export function DashboardPage() {
           // direct-DB seed (no AuditEvent rows yet).
           (stats?.activeContracts ?? 0) > 0 ? (
             <div className="text-center py-10" data-testid="activity-empty-warm">
-              <p className="text-[13.5px] font-semibold text-ink-950">
+              <p className="text-[13.5px] font-semibold text-fg-950">
                 No recent activity to show.
               </p>
-              <p className="text-dense text-ink-500 mt-1">
+              <p className="text-dense text-fg-500 mt-1">
                 Edits, comments, approvals and signatures will appear here as your team works.
               </p>
             </div>
           ) : (
             <div className="text-center py-10" data-testid="activity-empty-cold">
-              <p className="text-[13.5px] font-semibold text-ink-950">
+              <p className="text-[13.5px] font-semibold text-fg-950">
                 No team activity yet.
               </p>
-              <p className="text-dense text-ink-500 mt-1">
+              <p className="text-dense text-fg-500 mt-1">
                 Upload a contract or submit a request to get started.
               </p>
             </div>
           )
         ) : (
-          <ul className="divide-y divide-paper-200">
+          <ul className="divide-y divide-surface-200">
             {stats.recentActivity.map((event) => (
               <li key={event.id}>
                 <button
                   type="button"
                   onClick={() => navigate(resourceLink(event.entityType, event.entityId))}
-                  className="w-full flex items-start gap-2.5 py-2 text-left hover:bg-paper-50 -mx-2 px-2 rounded-md transition-colors group"
+                  className="w-full flex items-start gap-2.5 py-2 text-left hover:bg-surface-50 -mx-2 px-2 rounded-md transition-colors group"
                 >
                   {/* Actor avatar */}
                   <div
-                    className="flex size-6 shrink-0 items-center justify-center rounded-full border border-paper-200 bg-paper-100 text-[9.5px] font-semibold text-ink-700"
+                    className="flex size-6 shrink-0 items-center justify-center rounded-full border border-surface-200 bg-surface-100 text-[9.5px] font-semibold text-fg-700"
                     aria-hidden
                   >
                     {event.actorInitials}
@@ -368,23 +368,23 @@ export function DashboardPage() {
 
                   {/* Sentence */}
                   <div className="min-w-0 flex-1">
-                    <p className="text-dense leading-[1.5] text-ink-700">
-                      <span className="font-medium text-ink-950">{event.actorName}</span>
+                    <p className="text-dense leading-[1.5] text-fg-700">
+                      <span className="font-medium text-fg-950">{event.actorName}</span>
                       {' '}
                       <span>{event.verb}</span>
                       {' '}
-                      <span className="font-medium text-ink-950 underline-offset-2 group-hover:underline decoration-paper-300 truncate">
+                      <span className="font-medium text-fg-950 underline-offset-2 group-hover:underline decoration-surface-300 truncate">
                         {event.entityTitle}
                       </span>
                     </p>
                     {event.secondary && (
-                      <p className="mt-0.5 text-[11px] text-ink-500">{event.secondary}</p>
+                      <p className="mt-0.5 text-[11px] text-fg-500">{event.secondary}</p>
                     )}
                   </div>
 
                   {/* Relative time */}
                   <time
-                    className="text-[11px] text-ink-400 whitespace-nowrap shrink-0 pt-0.5"
+                    className="text-[11px] text-fg-400 whitespace-nowrap shrink-0 pt-0.5"
                     dateTime={event.createdAt}
                     title={absoluteTime(event.createdAt)}
                   >
@@ -445,14 +445,14 @@ function YourDayBand({ yourDay }: YourDayBandProps) {
     return (
       <div
         data-testid="your-day-band"
-        className="rounded-card border border-brand-200 bg-brand-50 px-5 py-4 flex items-center gap-3"
+        className="rounded-card border border-success-200 bg-success-50 px-5 py-4 flex items-center gap-3"
       >
-        <div className="size-8 rounded-full bg-brand-100 flex items-center justify-center">
-          <CircleCheckBig className="size-4 text-brand-700" />
+        <div className="size-8 rounded-full bg-success-100 flex items-center justify-center">
+          <CircleCheckBig className="size-4 text-success-700" />
         </div>
         <div>
-          <p className="text-body font-medium text-brand-700">You're all caught up.</p>
-          <p className="text-dense text-ink-700 mt-0.5">
+          <p className="text-body font-medium text-success-700">You're all caught up.</p>
+          <p className="text-dense text-fg-700 mt-0.5">
             No approvals, requests, or expiring contracts need your attention today.
           </p>
         </div>
@@ -540,12 +540,12 @@ function YourDayBand({ yourDay }: YourDayBandProps) {
   })
 
   return (
-    <div data-testid="your-day-band" className="rounded-card border border-paper-200 bg-card p-4">
+    <div data-testid="your-day-band" className="rounded-card border border-surface-200 bg-card p-4">
       <div className="flex items-center justify-between mb-3">
         <div>
           {/* The one eyebrow in the product allowed a meaning colour — but only
               when something is actually blocked on the user. */}
-          <p className={`text-eyebrow uppercase ${blockedOnYou > 0 ? MEANING_CLASS.turn.fg : 'text-ink-500'}`}>
+          <p className={`text-eyebrow uppercase ${blockedOnYou > 0 ? MEANING_CLASS.turn.fg : 'text-fg-500'}`}>
             {yourDay.total > 0 ? 'Your day' : 'In progress'}
           </p>
           {/* `total` folds four different urgencies into one figure, and on a
@@ -553,10 +553,10 @@ function YourDayBand({ yourDay }: YourDayBandProps) {
               need your attention" was 8 decisions hiding behind 66 things that
               merely happen this quarter. Split it, so the number that means
               "act now" stays believable. */}
-          <p className="text-dense text-ink-500 mt-1">
+          <p className="text-dense text-fg-500 mt-1">
             {blockedOnYou > 0 ? (
               <>
-                <span className="font-medium text-ink-950">
+                <span className="font-medium text-fg-950">
                   {blockedOnYou} {blockedOnYou === 1 ? 'item needs' : 'items need'} your decision
                 </span>
                 {upcoming > 0 && ` · ${upcoming} more coming up`}
@@ -577,16 +577,16 @@ function YourDayBand({ yourDay }: YourDayBandProps) {
               key={c.key}
               onClick={() => navigate(c.to)}
               data-testid={`your-day-chip-${c.key}`}
-              className="inline-flex items-center gap-2 rounded-md border border-paper-200 bg-card px-3 py-2 text-left text-ink-950 transition-colors hover:border-paper-300 hover:bg-paper-50"
+              className="inline-flex items-center gap-2 rounded-md border border-surface-200 bg-card px-3 py-2 text-left text-fg-950 transition-colors hover:border-surface-300 hover:bg-surface-50"
             >
               <span className={`size-1.5 shrink-0 rounded-full ${s.dot}`} />
               <c.icon className={`size-3.5 ${s.fg}`} />
               <span className="text-dense">
                 <span className="font-semibold tabular-nums">{c.count}</span>{' '}
                 <span className="font-medium">{c.label}</span>{' '}
-                <span className="text-ink-500">{c.verb}</span>
+                <span className="text-fg-500">{c.verb}</span>
               </span>
-              <ArrowRight className="size-3.5 text-ink-400" />
+              <ArrowRight className="size-3.5 text-fg-400" />
             </button>
           )
         })}
@@ -619,7 +619,7 @@ function YourDayBand({ yourDay }: YourDayBandProps) {
                 return (
                   <>
                     {r.value && (
-                      <span className="font-medium tabular-nums text-ink-950">
+                      <span className="font-medium tabular-nums text-fg-950">
                         {(r.currency ?? 'USD')} {r.value.toLocaleString()}
                       </span>
                     )}
@@ -635,7 +635,7 @@ function YourDayBand({ yourDay }: YourDayBandProps) {
                       </span>
                     )}
                     {typeof r.daysSinceUpdate === 'number' && (
-                      <span className="text-ink-500">
+                      <span className="text-fg-500">
                         updated {r.daysSinceUpdate === 0 ? 'today' : `${r.daysSinceUpdate}d ago`}
                       </span>
                     )}
@@ -654,7 +654,7 @@ function YourDayBand({ yourDay }: YourDayBandProps) {
               renderMeta={(r) => (
                 <>
                   {r.value && (
-                    <span className="font-medium tabular-nums text-ink-950">
+                    <span className="font-medium tabular-nums text-fg-950">
                       {(r.currency ?? 'USD')} {r.value.toLocaleString()}
                     </span>
                   )}
@@ -662,7 +662,7 @@ function YourDayBand({ yourDay }: YourDayBandProps) {
                     // Inside 30 days is exposure; inside 60 it is the owner's
                     // turn to act; beyond that it is just a date — so the
                     // thresholds name meanings and MEANING_CLASS colours them.
-                    <span className={r.daysToExpiry <= 30 ? `${MEANING_CLASS.risk.fg} font-medium` : r.daysToExpiry <= 60 ? `${MEANING_CLASS.turn.fg} font-medium` : 'text-ink-500'}>
+                    <span className={r.daysToExpiry <= 30 ? `${MEANING_CLASS.risk.fg} font-medium` : r.daysToExpiry <= 60 ? `${MEANING_CLASS.turn.fg} font-medium` : 'text-fg-500'}>
                       {r.daysToExpiry < 0 ? `${-r.daysToExpiry}d overdue` :
                        r.daysToExpiry === 0 ? 'expires today' :
                        `expires in ${r.daysToExpiry}d`}
@@ -694,24 +694,24 @@ function YourDayList({ title, icon: Icon, meaning, rows, renderMeta, onClickRow 
   const headerColor = MEANING_CLASS[meaning].fg
 
   return (
-    <div className="rounded-card border border-paper-200 bg-paper-50 overflow-hidden" data-testid={`your-day-list-${title.toLowerCase().replace(/\s+/g, '-')}`}>
-      <div className="px-3 py-2 border-b border-paper-200 bg-paper-100 flex items-center gap-1.5">
+    <div className="rounded-card border border-surface-200 bg-surface-50 overflow-hidden" data-testid={`your-day-list-${title.toLowerCase().replace(/\s+/g, '-')}`}>
+      <div className="px-3 py-2 border-b border-surface-200 bg-surface-100 flex items-center gap-1.5">
         <Icon className={`size-3.5 ${headerColor}`} />
-        <h3 className="text-eyebrow uppercase text-ink-700">{title}</h3>
-        <span className="text-[11px] tabular-nums text-ink-400">· {rows.length}</span>
+        <h3 className="text-eyebrow uppercase text-fg-700">{title}</h3>
+        <span className="text-[11px] tabular-nums text-fg-400">· {rows.length}</span>
       </div>
-      <ul className="divide-y divide-paper-200">
+      <ul className="divide-y divide-surface-200">
         {rows.map(r => (
           <li
             key={r.id}
             onClick={() => onClickRow(r)}
-            className="px-3 py-2 hover:bg-paper-100 cursor-pointer transition-colors"
+            className="px-3 py-2 hover:bg-surface-100 cursor-pointer transition-colors"
             data-testid={`your-day-row-${r.id}`}
           >
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium text-ink-950 truncate">{r.title}</div>
-                <div className="text-[11.5px] text-ink-500 flex items-center gap-2 mt-0.5 flex-wrap">
+                <div className="text-[13px] font-medium text-fg-950 truncate">{r.title}</div>
+                <div className="text-[11.5px] text-fg-500 flex items-center gap-2 mt-0.5 flex-wrap">
                   {r.counterpartyName && (
                     <span className="inline-flex items-center gap-1">
                       <Building2 className="size-3" />
@@ -721,7 +721,7 @@ function YourDayList({ title, icon: Icon, meaning, rows, renderMeta, onClickRow 
                   {renderMeta(r)}
                 </div>
               </div>
-              <ArrowRight className="size-3.5 text-ink-400 flex-shrink-0" />
+              <ArrowRight className="size-3.5 text-fg-400 flex-shrink-0" />
             </div>
           </li>
         ))}

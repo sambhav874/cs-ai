@@ -49,16 +49,16 @@ export interface RenewalAdvice {
 // meaning: renewing keeps the contract binding, renegotiating puts the ball
 // back in our court, and letting it lapse is the exposure case.
 const REC_META: Record<string, { label: string; cls: string; Icon: React.ComponentType<{ className?: string }> }> = {
-  renew:       { label: 'Renew',       cls: 'bg-brand-100 text-brand-700 border-brand-200',             Icon: CheckCircle2 },
+  renew:       { label: 'Renew',       cls: 'bg-success-100 text-success-700 border-success-200',             Icon: CheckCircle2 },
   renegotiate: { label: 'Renegotiate', cls: 'bg-attention-100 text-attention-700 border-attention-200', Icon: Repeat },
   let_expire:  { label: 'Let expire',  cls: 'bg-risk-100 text-risk-700 border-risk-200',                Icon: LogOut },
-  pause:       { label: 'Pause',       cls: 'bg-paper-100 text-ink-700 border-paper-300',               Icon: Pause },
+  pause:       { label: 'Pause',       cls: 'bg-surface-100 text-fg-700 border-surface-300',               Icon: Pause },
 }
 
 const SEV_CLS: Record<string, string> = {
   high:   'text-risk-700 border-risk-200 bg-risk-50',
   medium: 'text-attention-700 border-attention-200 bg-attention-50',
-  low:    'text-ink-500 border-paper-200 bg-paper-50',
+  low:    'text-fg-500 border-surface-200 bg-surface-50',
 }
 
 /* This rail already normalised to midnight; the rest of the app now shares it
@@ -115,7 +115,7 @@ export function RenewalAdviceRailSection({
     >
       <div className="space-y-2" data-testid="renewal-advice-section">
         <div className="flex items-center gap-1.5 text-[11px]">
-          <span className={`font-medium ${days !== null && days <= 30 ? 'text-risk-700' : days !== null && days <= 90 ? 'text-attention-700' : 'text-ink-700'}`}>
+          <span className={`font-medium ${days !== null && days <= 30 ? 'text-risk-700' : days !== null && days <= 90 ? 'text-attention-700' : 'text-fg-700'}`}>
             {daysLabel}
           </span>
           <span className="text-muted-foreground">· {new Date(expiryDate).toLocaleDateString()}</span>
@@ -160,14 +160,14 @@ export function RenewalAdviceRailSection({
               </div>
 
               {advice.rationale && (
-                <p className="text-[11.5px] text-ink-950 leading-snug" data-testid="renewal-rationale">
+                <p className="text-[11.5px] text-fg-950 leading-snug" data-testid="renewal-rationale">
                   {advice.rationale}
                 </p>
               )}
 
               {advice.negotiationPoints && advice.negotiationPoints.length > 0 && (
                 <div className="mt-1">
-                  <div className="text-[9.5px] font-semibold uppercase tracking-[0.07em] text-ink-500 mb-0.5">
+                  <div className="text-[9.5px] font-semibold uppercase tracking-[0.07em] text-fg-500 mb-0.5">
                     Negotiation points
                   </div>
                   <ul className="space-y-1" data-testid="renewal-negotiation-points">
@@ -178,12 +178,12 @@ export function RenewalAdviceRailSection({
                         data-testid={`renewal-point-${i}`}
                       >
                         <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-ink-950">{p.topic}</span>
+                          <span className="font-medium text-fg-950">{p.topic}</span>
                           <span className={`text-[9px] uppercase tracking-wider rounded-chip px-1 border ${SEV_CLS[p.severity] ?? SEV_CLS.medium}`}>
                             {p.severity}
                           </span>
                         </div>
-                        <div className="text-[11px] text-ink-700 mt-0.5 leading-snug">{p.ourPosition}</div>
+                        <div className="text-[11px] text-fg-700 mt-0.5 leading-snug">{p.ourPosition}</div>
                         <div className="text-[10.5px] text-muted-foreground mt-0.5 italic">{p.reasoning}</div>
                       </li>
                     ))}
@@ -193,7 +193,7 @@ export function RenewalAdviceRailSection({
 
               {advice.riskFlags && advice.riskFlags.length > 0 && (
                 <div className="mt-1">
-                  <div className="text-[9.5px] font-semibold uppercase tracking-[0.07em] text-ink-500 mb-0.5">
+                  <div className="text-[9.5px] font-semibold uppercase tracking-[0.07em] text-fg-500 mb-0.5">
                     Risk flags
                   </div>
                   <ul className="space-y-0.5" data-testid="renewal-risk-flags">
@@ -219,7 +219,7 @@ export function RenewalAdviceRailSection({
         {/* Decision buttons — always present so the owner can log a
             decision even without running the advisor. */}
         <div className="pt-2 border-t border-border mt-2">
-          <div className="text-[9.5px] font-semibold uppercase tracking-[0.07em] text-ink-500 mb-1">
+          <div className="text-[9.5px] font-semibold uppercase tracking-[0.07em] text-fg-500 mb-1">
             Log decision
           </div>
           <div className="flex gap-1.5 flex-wrap">
@@ -235,7 +235,7 @@ export function RenewalAdviceRailSection({
                   className={`text-[10.5px] px-2 py-0.5 rounded-md border transition-colors ${
                     active
                       ? meta.cls
-                      : 'border-border text-ink-700 hover:bg-paper-100'
+                      : 'border-border text-fg-700 hover:bg-surface-100'
                   }`}
                 >
                   {meta.label}
@@ -258,7 +258,7 @@ export function RenewalAdviceRailSection({
               onClick={() => run.mutate()}
               disabled={run.isPending}
               data-testid="renewal-advice-rerun-btn"
-              className="ml-2 underline hover:text-ink-950"
+              className="ml-2 underline hover:text-fg-950"
             >
               <RefreshCw className="size-2.5 inline mr-0.5" />
               {run.isPending ? 're-running…' : 're-run'}

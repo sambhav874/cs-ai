@@ -76,7 +76,7 @@ export function DefinedTermsRailSection({ editor }: { editor: Editor | null }) {
           </div>
         ) : (
           <>
-            <div className="text-[11px] text-ink-700" data-testid="defined-terms-flag-count">
+            <div className="text-[11px] text-fg-700" data-testid="defined-terms-flag-count">
               <span className="font-medium text-assist-700 tabular-nums">{state.flags.length} inconsistent usage{state.flags.length === 1 ? '' : 's'}</span> — the author typed a variant of a defined term.
             </div>
             <ul className="space-y-1">
@@ -89,7 +89,7 @@ export function DefinedTermsRailSection({ editor }: { editor: Editor | null }) {
                   <span>
                     <span className="font-mono text-assist-700 underline decoration-dotted">{f.found}</span>
                     {' → '}
-                    <span className="font-mono font-medium text-ink-950">{f.term}</span>
+                    <span className="font-mono font-medium text-fg-950">{f.term}</span>
                   </span>
                 </li>
               ))}

@@ -140,8 +140,8 @@ export function SignerPortal() {
   if (isLoading) {
     return (
       <Centered>
-        <Loader2 className="size-6 animate-spin text-ink-400 mb-3" />
-        <p className="text-ink-500 text-body">Loading document to sign…</p>
+        <Loader2 className="size-6 animate-spin text-fg-400 mb-3" />
+        <p className="text-fg-500 text-body">Loading document to sign…</p>
       </Centered>
     )
   }
@@ -157,17 +157,17 @@ export function SignerPortal() {
      */
     return (
       <Centered>
-        <div className="w-full max-w-md rounded-card border border-paper-200 bg-card p-8 text-center shadow-e1">
+        <div className="w-full max-w-md rounded-card border border-surface-200 bg-card p-8 text-center shadow-e1">
           <span className="mb-4 inline-flex size-11 items-center justify-center rounded-full bg-risk-50">
             <AlertCircle className="size-5 text-risk-600" />
           </span>
-          <h1 className="text-title text-ink-950">Link unavailable</h1>
-          <p className="mt-2 text-body text-ink-500">
+          <h1 className="text-title text-fg-950">Link unavailable</h1>
+          <p className="mt-2 text-body text-fg-500">
             {detail ?? 'This signing link is invalid, has expired, or has been revoked.'}
           </p>
-          <div className="mt-5 rounded-md border border-paper-200 bg-paper-50 px-4 py-3 text-left text-dense text-ink-700">
-            <p className="font-medium text-ink-950">What to do next</p>
-            <ul className="mt-1.5 space-y-1 text-ink-500">
+          <div className="mt-5 rounded-md border border-surface-200 bg-surface-50 px-4 py-3 text-left text-dense text-fg-700">
+            <p className="font-medium text-fg-950">What to do next</p>
+            <ul className="mt-1.5 space-y-1 text-fg-500">
               <li>· If you already signed, no further action is needed — the sender has your signature.</li>
               <li>· Otherwise, reply to the email that carried this link and ask for a fresh one.</li>
               <li>· Signing links are single-recipient. Forwarding one does not work.</li>
@@ -194,10 +194,10 @@ export function SignerPortal() {
   const remaining = Math.max(0, signatureRequest.totalSigners - (signatureRequest.signedCount + 1))
 
   return (
-    <div className="min-h-screen bg-paper-50 flex flex-col pb-32 sm:pb-24" data-testid="signer-portal">
+    <div className="min-h-screen bg-surface-50 flex flex-col pb-32 sm:pb-24" data-testid="signer-portal">
       {/* ── Slim branded strip ─────────────────────────────────── */}
       <header
-        className={`px-6 py-3 flex items-center justify-between ${brandColor ? '' : 'bg-ink-950'}`}
+        className={`px-6 py-3 flex items-center justify-between ${brandColor ? '' : 'bg-primary-solid'}`}
         style={brandColor ? { backgroundColor: brandColor } : undefined}
       >
         <div className="flex items-center gap-2">
@@ -224,20 +224,20 @@ export function SignerPortal() {
       </header>
 
       {/* ── Banner: who you are + progress ─────────────────────── */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-paper-200 bg-card px-6 py-2 text-dense text-ink-500">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-surface-200 bg-card px-6 py-2 text-dense text-fg-500">
         <span>
-          Signing as <span className="font-medium text-ink-950">{signer.name}</span>
-          {signer.role && <span className="text-ink-400"> · {signer.role}</span>}
+          Signing as <span className="font-medium text-fg-950">{signer.name}</span>
+          {signer.role && <span className="text-fg-400"> · {signer.role}</span>}
         </span>
-        <span className="text-ink-400">·</span>
+        <span className="text-fg-400">·</span>
         <span className="font-mono">v{version.versionNumber}</span>
-        <span className="text-ink-400">·</span>
+        <span className="text-fg-400">·</span>
         <span>
           <span className="tabular-nums">{signatureRequest.signedCount} / {signatureRequest.totalSigners}</span> signed
         </span>
         {signatureRequest.signOrder === 'SEQUENTIAL' && (
           <>
-            <span className="text-ink-400">·</span>
+            <span className="text-fg-400">·</span>
             {/* Sequential signing changes what a signer should expect from this
                 page, so it is stated rather than left to be discovered. */}
             <span>signed in order</span>
@@ -250,7 +250,7 @@ export function SignerPortal() {
           type="button"
           onClick={() => window.print()}
           data-testid="signer-print"
-          className="ml-auto inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-ink-700 hover:bg-paper-100 hover:text-ink-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring print:hidden"
+          className="ml-auto inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-fg-700 hover:bg-surface-100 hover:text-fg-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring print:hidden"
         >
           <Printer className="size-3.5" />
           Print or save a copy
@@ -277,17 +277,17 @@ export function SignerPortal() {
       <main className="flex-1 px-4 py-6">
         <div className="max-w-4xl mx-auto">
           <div className="mb-4">
-            <h1 className="text-title text-ink-950 break-words">{contract.title}</h1>
-            <div className="flex flex-wrap items-center gap-2 mt-1 text-dense text-ink-500">
+            <h1 className="text-title text-fg-950 break-words">{contract.title}</h1>
+            <div className="flex flex-wrap items-center gap-2 mt-1 text-dense text-fg-500">
               <span className="text-eyebrow uppercase">{contract.type.replace(/_/g, ' ')}</span>
               {contract.counterpartyName && <span>· {contract.counterpartyName}</span>}
-              <span className="text-ink-400">· sent by {contract.org.name}</span>
+              <span className="text-fg-400">· sent by {contract.org.name}</span>
             </div>
           </div>
           {/* A note from the sender describes nothing about the document's
               state, so it takes no meaning color — just a quiet paper card. */}
           {signatureRequest.message && (
-            <div className="mb-4 p-3 rounded-md border border-paper-200 bg-paper-100 text-body text-ink-950">
+            <div className="mb-4 p-3 rounded-md border border-surface-200 bg-surface-100 text-body text-fg-950">
               <strong>Message from sender:</strong> {signatureRequest.message}
             </div>
           )}
@@ -302,13 +302,13 @@ export function SignerPortal() {
                  * cannot read. Say so instead.
                  */
                 <div className="py-10 text-center" data-testid="signer-no-document">
-                  <span className="mb-3 inline-flex size-10 items-center justify-center rounded-card border border-paper-200 bg-paper-100 text-ink-400">
+                  <span className="mb-3 inline-flex size-10 items-center justify-center rounded-card border border-surface-200 bg-surface-100 text-fg-400">
                     <FileWarning className="size-5" />
                   </span>
-                  <p className="text-[13.5px] font-semibold text-ink-950">
+                  <p className="text-[13.5px] font-semibold text-fg-950">
                     This request has no readable document attached
                   </p>
-                  <p className="mx-auto mt-1 max-w-md text-dense text-ink-500">
+                  <p className="mx-auto mt-1 max-w-md text-dense text-fg-500">
                     Nothing was included for you to review, so there is nothing to
                     sign. Contact {contract.org.name} and ask them to re-send the
                     request with the executed form of agreement attached.
@@ -321,7 +321,7 @@ export function SignerPortal() {
                 />
               ) : (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="size-5 animate-spin text-ink-400" />
+                  <Loader2 className="size-5 animate-spin text-fg-400" />
                 </div>
               )}
             </div>
@@ -335,16 +335,16 @@ export function SignerPortal() {
       <div
         role="region"
         aria-label="Sign bar"
-        className="fixed bottom-0 inset-x-0 bg-card border-t border-paper-200 z-40 print:hidden"
+        className="fixed bottom-0 inset-x-0 bg-card border-t border-surface-200 z-40 print:hidden"
       >
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
           {alreadySigned ? (
             <div data-testid="signer-confirmation">
-              <p className="inline-flex items-center gap-2 text-body font-medium text-brand-700">
+              <p className="inline-flex items-center gap-2 text-body font-medium text-success-700">
                 <CheckCircle2 className="size-4" />
                 You've signed this document.
               </p>
-              <p className="mt-0.5 text-dense text-ink-500">
+              <p className="mt-0.5 text-dense text-fg-500">
                 {remaining > 0
                   ? `Waiting on ${remaining} more signature${remaining === 1 ? '' : 's'}. ${contract.org.name} will send the fully executed copy once everyone has signed.`
                   : `That was the last signature. ${contract.org.name} will send the fully executed copy.`}
@@ -355,7 +355,7 @@ export function SignerPortal() {
               <p className="text-body font-medium text-risk-700">
                 You declined to sign this document.
               </p>
-              <p className="mt-0.5 text-dense text-ink-500">
+              <p className="mt-0.5 text-dense text-fg-500">
                 {contract.org.name} has been notified. This link is now closed — if
                 you meant to sign, ask them to send a new request.
               </p>
@@ -365,21 +365,21 @@ export function SignerPortal() {
               {/* The prompt has to agree with the buttons: telling someone to
                   "click Sign" next to a disabled Sign is how a page loses
                   trust. */}
-              <p className="text-body text-ink-700">
+              <p className="text-body text-fg-700">
                 {notYourTurn ? (
                   <>
                     <span className="font-medium">Waiting on earlier signers.</span>
-                    <span className="text-ink-500"> Nothing to do yet — keep this link.</span>
+                    <span className="text-fg-500"> Nothing to do yet — keep this link.</span>
                   </>
                 ) : !hasDocument ? (
                   <>
                     <span className="font-medium">Nothing to sign.</span>
-                    <span className="text-ink-500"> No document was attached to this request.</span>
+                    <span className="text-fg-500"> No document was attached to this request.</span>
                   </>
                 ) : (
                   <>
                     <span className="font-medium">Ready to sign?</span>
-                    <span className="text-ink-500"> Review the document above, then click Sign.</span>
+                    <span className="text-fg-500"> Review the document above, then click Sign.</span>
                   </>
                 )}
               </p>
@@ -396,7 +396,7 @@ export function SignerPortal() {
                   Decline
                 </Button>
                 <Button
-                  variant="brand"
+                  variant="success"
                   size="md"
                   onClick={() => setShowSignDialog(true)}
                   // Nothing to read means nothing to execute.
@@ -415,16 +415,16 @@ export function SignerPortal() {
       {/* ── Decline dialog ──────────────────────────────────────── */}
       {showDeclineDialog && (
         <Overlay onDismiss={() => setShowDeclineDialog(false)} label="Decline to sign">
-          <h2 className="text-section text-ink-950">Decline to sign?</h2>
-          <p className="mt-2 text-body text-ink-500">
+          <h2 className="text-section text-fg-950">Decline to sign?</h2>
+          <p className="mt-2 text-body text-fg-500">
             {contract.org.name} is told immediately, and this signing link closes.
             You cannot undo it — they would have to send a new request.
           </p>
           <label
             htmlFor="decline-reason"
-            className="mt-4 block text-dense font-medium text-ink-700"
+            className="mt-4 block text-dense font-medium text-fg-700"
           >
-            Reason <span className="font-normal text-ink-400">(optional, shared with the sender)</span>
+            Reason <span className="font-normal text-fg-400">(optional, shared with the sender)</span>
           </label>
           <textarea
             id="decline-reason"
@@ -434,7 +434,7 @@ export function SignerPortal() {
             autoFocus
             data-testid="signer-decline-reason"
             placeholder="e.g. the indemnity in clause 9 still needs to be resolved"
-            className="mt-1.5 w-full resize-y rounded-md border border-input bg-card px-[11px] py-2 text-[13px] text-ink-950 transition-colors placeholder:text-ink-400 focus-visible:border-brand-700 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+            className="mt-1.5 w-full resize-y rounded-md border border-input bg-card px-[11px] py-2 text-[13px] text-fg-950 transition-colors placeholder:text-fg-400 focus-visible:border-primary-700 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
           />
           {decline.isError && (
             <p className="mt-2 text-dense text-risk-700">
@@ -463,12 +463,12 @@ export function SignerPortal() {
       {showSignDialog && (
         <Overlay onDismiss={() => setShowSignDialog(false)} label="Confirm signature">
           <div className="flex items-start justify-between mb-3">
-              <h2 className="text-section text-ink-950">Sign this document</h2>
+              <h2 className="text-section text-fg-950">Sign this document</h2>
               <Button
                 variant="ghost"
                 size="icon-xs"
                 onClick={() => setShowSignDialog(false)}
-                className="text-ink-400"
+                className="text-fg-400"
                 aria-label="Close"
               >
                 <X />
@@ -477,15 +477,15 @@ export function SignerPortal() {
             {/* Restate what is being signed. By the time this dialog is open the
                 title has scrolled away, and "sign this document" is not enough
                 to act on when a signer has three of these links open. */}
-            <p className="mb-3 rounded-md border border-paper-200 bg-paper-50 px-3 py-2 text-dense text-ink-700">
-              <span className="font-medium text-ink-950">{contract.title}</span>
-              <span className="text-ink-400"> · v{version.versionNumber}</span>
+            <p className="mb-3 rounded-md border border-surface-200 bg-surface-50 px-3 py-2 text-dense text-fg-700">
+              <span className="font-medium text-fg-950">{contract.title}</span>
+              <span className="text-fg-400"> · v{version.versionNumber}</span>
             </p>
-            <p className="text-body text-ink-500 mb-4">
+            <p className="text-body text-fg-500 mb-4">
               Type your full legal name to sign. Your signature, IP address, and timestamp
               will be captured + included in the signed audit trail.
             </p>
-            <label htmlFor="signer-name" className="block text-dense font-medium text-ink-700 mb-1.5">Your full legal name</label>
+            <label htmlFor="signer-name" className="block text-dense font-medium text-fg-700 mb-1.5">Your full legal name</label>
             <Input
               id="signer-name"
               type="text"
@@ -496,13 +496,13 @@ export function SignerPortal() {
               autoFocus
             />
             {/* Wave 2.7 — explicit ESIGN/UETA consent, required before signing. */}
-            <label className="mt-4 flex items-start gap-2 text-dense text-ink-500 cursor-pointer">
+            <label className="mt-4 flex items-start gap-2 text-dense text-fg-500 cursor-pointer">
               <input
                 type="checkbox"
                 checked={consent}
                 onChange={(e) => setConsent(e.target.checked)}
                 data-testid="signer-consent"
-                className="mt-0.5 size-4 rounded-chip border-input text-brand-700 focus:ring-brand-700"
+                className="mt-0.5 size-4 rounded-chip border-input text-success-700 focus:ring-primary-700"
               />
               <span>
                 I agree to conduct this transaction and sign electronically. I understand my
@@ -524,7 +524,7 @@ export function SignerPortal() {
                 Cancel
               </Button>
               <Button
-                variant="brand"
+                variant="success"
                 size="md"
                 onClick={() => sign.mutate()}
                 disabled={!signedName.trim() || !consent || sign.isPending}
@@ -542,7 +542,7 @@ export function SignerPortal() {
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-paper-50 flex flex-col items-center justify-center gap-6 p-4">
+    <div className="min-h-screen bg-surface-50 flex flex-col items-center justify-center gap-6 p-4">
       {children}
     </div>
   )
@@ -567,7 +567,7 @@ function Overlay({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 print:hidden">
-      <div className="absolute inset-0 bg-ink-950/40" onClick={onDismiss} aria-hidden="true" />
+      <div className="absolute inset-0 bg-scrim/40" onClick={onDismiss} aria-hidden="true" />
       <div
         role="dialog"
         aria-modal="true"
@@ -588,7 +588,7 @@ function Overlay({
 function ExternalFooter({ className = '' }: { className?: string }) {
   return (
     <footer
-      className={`mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-dense text-ink-400 ${className}`}
+      className={`mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-dense text-fg-400 ${className}`}
     >
       <span className="inline-flex items-center gap-1.5">
         Secured by <Wordmark size="sm" />
@@ -596,13 +596,13 @@ function ExternalFooter({ className = '' }: { className?: string }) {
       <span aria-hidden="true">·</span>
       <a
         href="/terms"
-        className="underline decoration-paper-300 underline-offset-2 hover:text-ink-700 hover:decoration-brand-700"
+        className="underline decoration-surface-300 underline-offset-2 hover:text-fg-700 hover:decoration-primary-700"
       >
         Terms
       </a>
       <a
         href="/privacy"
-        className="underline decoration-paper-300 underline-offset-2 hover:text-ink-700 hover:decoration-brand-700"
+        className="underline decoration-surface-300 underline-offset-2 hover:text-fg-700 hover:decoration-primary-700"
       >
         Privacy
       </a>

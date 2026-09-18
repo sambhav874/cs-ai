@@ -154,15 +154,15 @@ export function NegotiationStatusStrip({
     <div
       role="region"
       aria-label="Negotiation status"
-      className="border-b border-paper-200 bg-paper-50"
+      className="border-b border-surface-200 bg-surface-50"
     >
-      <div className="px-6 py-2 flex items-center gap-3 text-dense text-ink-500 flex-wrap">
+      <div className="px-6 py-2 flex items-center gap-3 text-dense text-fg-500 flex-wrap">
         <div className="flex items-center gap-1.5 shrink-0">
-          <ArrowRight className="size-3 text-ink-400" />
-          <span className="text-ink-400">You</span>
-          <ArrowRight className="size-3 text-ink-400" />
+          <ArrowRight className="size-3 text-fg-400" />
+          <span className="text-fg-400">You</span>
+          <ArrowRight className="size-3 text-fg-400" />
           <span className={cn(
-            'font-medium text-ink-950',
+            'font-medium text-fg-950',
             status === 'UNDER_NEGOTIATION' && (blockedOnUs ? 'text-attention-700' : 'text-info-700'),
             status === 'PENDING_APPROVAL' && 'text-info-700',
           )}>
@@ -171,31 +171,31 @@ export function NegotiationStatusStrip({
         </div>
 
         {waitDays != null && (
-          <div className="flex items-center gap-1 text-ink-500 shrink-0" title={new Date(waitingSince!).toLocaleString()}>
+          <div className="flex items-center gap-1 text-fg-500 shrink-0" title={new Date(waitingSince!).toLocaleString()}>
             <Hourglass className="size-3" />
             Waiting {waitDays === 0 ? 'today' : `${waitDays}d`}
           </div>
         )}
 
         {last && (
-          <div className="flex items-center gap-1 text-ink-500 truncate">
-            <span className="text-ink-400 shrink-0">Last:</span>
+          <div className="flex items-center gap-1 text-fg-500 truncate">
+            <span className="text-fg-400 shrink-0">Last:</span>
             <span className="shrink-0">{last.icon}</span>
             <span className="truncate">{last.label}</span>
           </div>
         )}
 
         {next && (
-          <div className="flex items-center gap-1 text-ink-500 shrink-0">
-            <span className="text-ink-400">Next:</span>
-            <span className="text-ink-700">{next}</span>
+          <div className="flex items-center gap-1 text-fg-500 shrink-0">
+            <span className="text-fg-400">Next:</span>
+            <span className="text-fg-700">{next}</span>
           </div>
         )}
 
         {onNudge && (
           <button
             onClick={onNudge}
-            className="ml-auto inline-flex items-center gap-1 text-dense text-ink-700 hover:text-ink-950 font-medium shrink-0"
+            className="ml-auto inline-flex items-center gap-1 text-dense text-fg-700 hover:text-fg-950 font-medium shrink-0"
             title="Send a nudge"
           >
             <Send className="size-3" />

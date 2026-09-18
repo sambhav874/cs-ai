@@ -165,48 +165,48 @@ export function AiConfigTab() {
           Configuring the model is admin work, not machine-authored output, so
           nothing on this tab wears the assist indigo or the diamond.
         */}
-        <h1 className="text-title text-ink-950 flex items-center gap-2">
-          <Cpu className="size-5 text-ink-700" />
+        <h1 className="text-title text-fg-950 flex items-center gap-2">
+          <Cpu className="size-5 text-fg-700" />
           AI Config
         </h1>
-        <p className="text-dense text-ink-500 mt-1">
+        <p className="text-dense text-fg-500 mt-1">
           Control how this organization's AI calls are routed, billed, and audited.
         </p>
       </div>
 
       {/* ─── Section: Model routing ───────────────────────────────────── */}
-      <section className="bg-card rounded-card border border-paper-200 p-5 space-y-4">
+      <section className="bg-card rounded-card border border-surface-200 p-5 space-y-4">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-section text-ink-950 flex items-center gap-2">
-              <Sparkles className="size-4 text-ink-700" />
+            <h2 className="text-section text-fg-950 flex items-center gap-2">
+              <Sparkles className="size-4 text-fg-700" />
               Model routing
             </h2>
-            <p className="text-dense text-ink-500 mt-1">
+            <p className="text-dense text-fg-500 mt-1">
               Leave a tier on <span className="font-medium">Platform default</span> to let us pick the best available model,
               or pin it to a specific provider + model for reproducibility.
             </p>
           </div>
         </header>
 
-        {isLoading && <div className="text-dense text-ink-400">Loading…</div>}
+        {isLoading && <div className="text-dense text-fg-400">Loading…</div>}
 
         {settings && (
-          <div className="divide-y divide-paper-200 -mx-2">
+          <div className="divide-y divide-surface-200 -mx-2">
             {TIER_META.map(({ key, platformKey, label, description }) => {
               const candidates = settings.platformRouting[platformKey] ?? []
               const value = draft[key] ?? '' // '' = platform default
               return (
                 <div key={key} className="grid grid-cols-[minmax(0,140px)_1fr] gap-4 items-start px-2 py-3.5">
                   <div>
-                    <div className="text-body font-medium text-ink-950">{label}</div>
-                    <div className="text-[11px] text-ink-400 leading-snug mt-0.5">{description}</div>
+                    <div className="text-body font-medium text-fg-950">{label}</div>
+                    <div className="text-[11px] text-fg-400 leading-snug mt-0.5">{description}</div>
                   </div>
                   <div className="space-y-1.5">
                     <select
                       value={value}
                       onChange={e => setDraft(d => ({ ...d, [key]: e.target.value || null }))}
-                      className="w-full h-8 text-[13px] text-ink-950 rounded-md border border-input bg-card px-[11px] focus:outline-none focus:ring-[3px] focus:ring-brand-700/15 focus:border-brand-700 transition-colors"
+                      className="w-full h-8 text-[13px] text-fg-950 rounded-md border border-input bg-card px-[11px] focus:outline-none focus:ring-[3px] focus:ring-primary-700/15 focus:border-primary-700 transition-colors"
                     >
                       <option value="">
                         Platform default{candidates[0] ? ` — ${candidates[0].provider}/${candidates[0].model}` : ''}
@@ -222,7 +222,7 @@ export function AiConfigTab() {
                     </select>
                     {/* A pin is a configuration fact, not a status — neutral. */}
                     {value && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-ink-700">
+                      <div className="flex items-center gap-1.5 text-[11px] text-fg-700">
                         <CheckCircle2 className="size-3" />
                         Override active — always uses <span className="font-mono">{value}</span>
                       </div>
@@ -237,16 +237,16 @@ export function AiConfigTab() {
         {/* Info banner: explains where the platform-default list comes from */}
         {/* Standing documentation, not a state — info blue would have implied
             something was in flight. */}
-        <div className="flex items-start gap-2.5 p-3 bg-paper-100 border border-paper-200 rounded-md">
-          <Info className="size-4 text-ink-500 flex-shrink-0 mt-0.5" />
-          <div className="text-[11px] text-ink-700 leading-relaxed">
+        <div className="flex items-start gap-2.5 p-3 bg-surface-100 border border-surface-200 rounded-md">
+          <Info className="size-4 text-fg-500 flex-shrink-0 mt-0.5" />
+          <div className="text-[11px] text-fg-700 leading-relaxed">
             Platform defaults resolve in order of the tier's candidate list; the first provider with a
             configured key wins. Configure a BYOK key below to use your own provider account for any tier.
           </div>
         </div>
 
         {/* Save / Reset footer */}
-        <div className="flex items-center justify-end gap-2 pt-3 border-t border-paper-200">
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-surface-200">
           {isDirty && (
             <Button variant="outline" onClick={handleReset} disabled={save.isPending}>
               Discard
@@ -333,14 +333,14 @@ function AuditLogSection() {
     })
 
   return (
-    <section className="bg-card rounded-card border border-paper-200 p-5 space-y-4">
+    <section className="bg-card rounded-card border border-surface-200 p-5 space-y-4">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-section text-ink-950 flex items-center gap-2">
-            <ScrollText className="size-4 text-ink-700" />
+          <h2 className="text-section text-fg-950 flex items-center gap-2">
+            <ScrollText className="size-4 text-fg-700" />
             Audit log
           </h2>
-          <p className="text-dense text-ink-500 mt-1">
+          <p className="text-dense text-fg-500 mt-1">
             Every change to model routing, BYOK keys, and the cost cap. Append-only —
             entries can never be edited or removed. Plaintext keys are never logged.
           </p>
@@ -349,7 +349,7 @@ function AuditLogSection() {
           <select
             value={actionFilter}
             onChange={e => setActionFilter(e.target.value)}
-            className="text-[13px] text-ink-950 rounded-md border border-input bg-card px-2.5 py-1.5 focus:outline-none focus:ring-[3px] focus:ring-brand-700/15 focus:border-brand-700"
+            className="text-[13px] text-fg-950 rounded-md border border-input bg-card px-2.5 py-1.5 focus:outline-none focus:ring-[3px] focus:ring-primary-700/15 focus:border-primary-700"
             data-testid="audit-filter"
           >
             {AI_ACTIONS.map(a => (
@@ -359,22 +359,22 @@ function AuditLogSection() {
         </div>
       </header>
 
-      {isLoading && <div className="text-dense text-ink-400">Loading…</div>}
+      {isLoading && <div className="text-dense text-fg-400">Loading…</div>}
 
       {data && data.events.length === 0 && (
-        <div className="py-10 text-center border border-dashed border-paper-200 rounded-md">
-          <ScrollText className="size-6 text-ink-400 mx-auto mb-2" />
-          <p className="text-body text-ink-950 font-semibold">
+        <div className="py-10 text-center border border-dashed border-surface-200 rounded-md">
+          <ScrollText className="size-6 text-fg-400 mx-auto mb-2" />
+          <p className="text-body text-fg-950 font-semibold">
             {actionFilter ? `No "${AI_ACTIONS.find(a => a.value === actionFilter)?.label.toLowerCase()}" events yet` : 'No changes yet'}
           </p>
-          <p className="text-[11px] text-ink-500 mt-1">
+          <p className="text-[11px] text-fg-500 mt-1">
             Events will appear here as soon as an admin modifies AI settings or BYOK keys.
           </p>
         </div>
       )}
 
       {data && data.events.length > 0 && (
-        <div className="divide-y divide-paper-200 -mx-2">
+        <div className="divide-y divide-surface-200 -mx-2">
           {data.events.map(ev => (
             <AuditRow key={ev.id} event={ev} isOpen={expanded.has(ev.id)} onToggle={() => toggle(ev.id)} />
           ))}
@@ -383,7 +383,7 @@ function AuditLogSection() {
 
       {data && data.events.length >= 50 && (
         <div className="text-center py-2">
-          <span className="text-[11px] text-ink-400">
+          <span className="text-[11px] text-fg-400">
             Showing the most recent 50 events. Export is coming in the first post-D0 iteration.
           </span>
         </div>
@@ -397,7 +397,7 @@ function AuditRow({ event, isOpen, onToggle }: { event: AuditEvent; isOpen: bool
   const summary = summarizeEvent(event)
 
   return (
-    <div className="px-2 py-2.5 hover:bg-paper-50 transition-colors">
+    <div className="px-2 py-2.5 hover:bg-surface-50 transition-colors">
       <button
         type="button"
         onClick={onToggle}
@@ -409,27 +409,27 @@ function AuditRow({ event, isOpen, onToggle }: { event: AuditEvent; isOpen: bool
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-[12px] text-ink-950" dangerouslySetInnerHTML={{ __html: sanitizeHtml(summary) }} />
-            <span className="text-[10px] text-ink-400 tabular-nums ml-auto flex-shrink-0" title={new Date(event.createdAt).toLocaleString()}>
+            <span className="text-[12px] text-fg-950" dangerouslySetInnerHTML={{ __html: sanitizeHtml(summary) }} />
+            <span className="text-[10px] text-fg-400 tabular-nums ml-auto flex-shrink-0" title={new Date(event.createdAt).toLocaleString()}>
               {formatRel(event.createdAt)}
             </span>
           </div>
-          <div className="text-[10px] text-ink-400 mt-0.5 truncate">
+          <div className="text-[10px] text-fg-400 mt-0.5 truncate">
             {event.actor?.email ?? 'system'}
             {event.ipAddress && <> · {event.ipAddress}</>}
           </div>
         </div>
       </button>
       {isOpen && (
-        <div className="mt-2 ml-10 p-2.5 bg-paper-50 border border-paper-200 rounded-md">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-400 mb-1.5">
+        <div className="mt-2 ml-10 p-2.5 bg-surface-50 border border-surface-200 rounded-md">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-400 mb-1.5">
             Metadata
           </div>
-          <pre className="text-[10px] font-mono text-ink-700 whitespace-pre-wrap break-all leading-relaxed">
+          <pre className="text-[10px] font-mono text-fg-700 whitespace-pre-wrap break-all leading-relaxed">
 {JSON.stringify(event.metadata, null, 2)}
           </pre>
           {event.userAgent && (
-            <div className="mt-2 text-[10px] text-ink-400">
+            <div className="mt-2 text-[10px] text-fg-400">
               <span className="font-medium">User-Agent:</span> <span className="font-mono break-all">{event.userAgent}</span>
             </div>
           )}
@@ -447,12 +447,12 @@ function AuditRow({ event, isOpen, onToggle }: { event: AuditEvent; isOpen: bool
  */
 function actionVisual(action: string): { icon: React.ElementType; color: string; bg: string } {
   switch (action) {
-    case 'AI_SETTINGS_UPDATED': return { icon: Sparkles,    color: 'text-ink-700',  bg: 'bg-paper-100' }
-    case 'AI_KEY_CREATED':      return { icon: Plus,        color: 'text-ink-700',  bg: 'bg-paper-100' }
-    case 'AI_KEY_UPDATED':      return { icon: RotateCw,    color: 'text-ink-700',  bg: 'bg-paper-100' }
+    case 'AI_SETTINGS_UPDATED': return { icon: Sparkles,    color: 'text-fg-700',  bg: 'bg-surface-100' }
+    case 'AI_KEY_CREATED':      return { icon: Plus,        color: 'text-fg-700',  bg: 'bg-surface-100' }
+    case 'AI_KEY_UPDATED':      return { icon: RotateCw,    color: 'text-fg-700',  bg: 'bg-surface-100' }
     case 'AI_KEY_DELETED':      return { icon: Trash2,      color: 'text-risk-700', bg: 'bg-risk-50'   }
-    case 'AI_KEY_TESTED':       return { icon: ShieldCheck, color: 'text-ink-700',  bg: 'bg-paper-100' }
-    default:                    return { icon: Info,        color: 'text-ink-700',  bg: 'bg-paper-100' }
+    case 'AI_KEY_TESTED':       return { icon: ShieldCheck, color: 'text-fg-700',  bg: 'bg-surface-100' }
+    default:                    return { icon: Info,        color: 'text-fg-700',  bg: 'bg-surface-100' }
   }
 }
 
@@ -504,7 +504,7 @@ function summarizeEvent(ev: AuditEvent): string {
       return `<b>${actor}</b> removed the <b>${esc(provider ?? 'BYOK')}</b> API key (was <code>${esc(String(m.keyPrefix ?? ''))}</code>)`
     case 'AI_KEY_TESTED': {
       const ok = m.ok === true
-      return `<b>${actor}</b> tested <b>${esc(provider ?? 'BYOK')}</b> key — ${ok ? '<span class="text-brand-700 font-medium">verified</span>' : '<span class="text-risk-700 font-medium">failed</span>'}`
+      return `<b>${actor}</b> tested <b>${esc(provider ?? 'BYOK')}</b> key — ${ok ? '<span class="text-success-700 font-medium">verified</span>' : '<span class="text-risk-700 font-medium">failed</span>'}`
     }
     default:
       return `<b>${actor}</b> performed <code>${esc(ev.action)}</code>`
@@ -626,22 +626,22 @@ function ApiKeysSection() {
   const rowByProvider = new Map((data?.data ?? []).map(r => [r.provider, r]))
 
   return (
-    <section className="bg-card rounded-card border border-paper-200 p-5 space-y-4">
+    <section className="bg-card rounded-card border border-surface-200 p-5 space-y-4">
       <header>
-        <h2 className="text-section text-ink-950 flex items-center gap-2">
-          <KeyRound className="size-4 text-ink-700" />
+        <h2 className="text-section text-fg-950 flex items-center gap-2">
+          <KeyRound className="size-4 text-fg-700" />
           API keys (BYOK)
         </h2>
-        <p className="text-dense text-ink-500 mt-1">
+        <p className="text-dense text-fg-500 mt-1">
           Use your own provider accounts. When a key is set for a provider, this org's calls to that provider
           bill your account and skip the platform cost cap.
         </p>
       </header>
 
-      {isLoading && <div className="text-dense text-ink-400">Loading…</div>}
+      {isLoading && <div className="text-dense text-fg-400">Loading…</div>}
 
       {data && (
-        <div className="divide-y divide-paper-200 -mx-2">
+        <div className="divide-y divide-surface-200 -mx-2">
           {PROVIDER_META.map(({ id, label, placeholder, liveTest }) => {
             const row = rowByProvider.get(id)
             const isEditing = editing === id
@@ -652,15 +652,15 @@ function ApiKeysSection() {
                   {/* Provider glyph — plain text for now; swap for brand marks later */}
                   {/* Provider marks stay neutral — a vendor's brand hue would
                       collide with the five meanings this palette reserves. */}
-                  <div className="size-9 rounded-md border border-paper-200 bg-paper-50 flex items-center justify-center text-[10px] font-bold uppercase tracking-[0.08em] text-ink-500 flex-shrink-0">
+                  <div className="size-9 rounded-md border border-surface-200 bg-surface-50 flex items-center justify-center text-[10px] font-bold uppercase tracking-[0.08em] text-fg-500 flex-shrink-0">
                     {label.slice(0, 3)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-body font-medium text-ink-950">{label}</span>
+                      <span className="text-body font-medium text-fg-950">{label}</span>
                       <KeyStatusPill row={row ?? null} liveTest={liveTest} />
                     </div>
-                    <div className="text-[11px] text-ink-400 mt-0.5">
+                    <div className="text-[11px] text-fg-400 mt-0.5">
                       {row?.configured && row.keyPrefix ? (
                         <>
                           <span className="font-mono">{row.keyPrefix}••••••</span>
@@ -724,9 +724,9 @@ function ApiKeysSection() {
 
                 {/* ─── Inline editor ───────────────────────────────────── */}
                 {isEditing && (
-                  <div className="mt-3 ml-12 p-3 bg-paper-50 border border-paper-200 rounded-md space-y-2.5">
+                  <div className="mt-3 ml-12 p-3 bg-surface-50 border border-surface-200 rounded-md space-y-2.5">
                     <div>
-                      <label className="text-[11.5px] text-ink-950 font-semibold block mb-1.5">
+                      <label className="text-[11.5px] text-fg-950 font-semibold block mb-1.5">
                         {row?.configured ? `New ${label} key (replaces current)` : `${label} API key`}
                       </label>
                       <Input
@@ -742,7 +742,7 @@ function ApiKeysSection() {
                         className="font-mono text-[11px]"
                         data-testid={`byok-input-${id}`}
                       />
-                      <p className="text-[10px] text-ink-400 mt-1.5 leading-relaxed">
+                      <p className="text-[10px] text-fg-400 mt-1.5 leading-relaxed">
                         The key is encrypted at rest (AES-256-GCM) and never leaves this server in plaintext.
                         We store only the first 8 characters for display.
                       </p>
@@ -772,9 +772,9 @@ function ApiKeysSection() {
 
       {/* Neutral, not attention: this note is always on screen. Amber that never
           goes away stops meaning "your turn" — the Untested pill carries that. */}
-      <div className="flex items-start gap-2.5 p-3 bg-paper-100 border border-paper-200 rounded-md">
-        <AlertTriangle className="size-4 text-ink-500 flex-shrink-0 mt-0.5" />
-        <div className="text-[11px] text-ink-700 leading-relaxed">
+      <div className="flex items-start gap-2.5 p-3 bg-surface-100 border border-surface-200 rounded-md">
+        <AlertTriangle className="size-4 text-fg-500 flex-shrink-0 mt-0.5" />
+        <div className="text-[11px] text-fg-700 leading-relaxed">
           Rotating a key invalidates its prior verification — we clear the tested-at timestamp and prompt
           you to test again. The action is logged in the audit trail with the old and new key prefixes
           (never the plaintext).
@@ -789,7 +789,7 @@ function ApiKeysSection() {
         body={
           <>
             Calls to{' '}
-            <span className="font-medium text-ink-950">
+            <span className="font-medium text-fg-950">
               {PROVIDER_META.find(p => p.id === pendingDelete)?.label ?? pendingDelete}
             </span>{' '}
             fall back to the platform key. If your org has no platform key for this
@@ -918,17 +918,17 @@ function CostCapSection() {
   // meaning ramp — headroom is binding, 80%+ is genuine risk of a hard stop.
   const pct = capStatus ? Math.min(1, Math.max(0, capStatus.pctUsed)) : 0
   const zone = pct < 0.5 ? 'green' : pct < 0.8 ? 'amber' : 'red'
-  const barColor = zone === 'green' ? 'bg-brand-500' : zone === 'amber' ? 'bg-attention-600' : 'bg-risk-600'
-  const trackColor = zone === 'green' ? 'bg-brand-50' : zone === 'amber' ? 'bg-attention-50' : 'bg-risk-50'
+  const barColor = zone === 'green' ? 'bg-success-500' : zone === 'amber' ? 'bg-attention-600' : 'bg-risk-600'
+  const trackColor = zone === 'green' ? 'bg-success-50' : zone === 'amber' ? 'bg-attention-50' : 'bg-risk-50'
 
   return (
-    <section className="bg-card rounded-card border border-paper-200 p-5 space-y-4">
+    <section className="bg-card rounded-card border border-surface-200 p-5 space-y-4">
       <header>
-        <h2 className="text-section text-ink-950 flex items-center gap-2">
-          <Gauge className="size-4 text-ink-700" />
+        <h2 className="text-section text-fg-950 flex items-center gap-2">
+          <Gauge className="size-4 text-fg-700" />
           Cost cap
         </h2>
-        <p className="text-dense text-ink-500 mt-1">
+        <p className="text-dense text-fg-500 mt-1">
           Daily USD ceiling for platform-paid calls. BYOK calls (where you've pasted your own key above)
           bypass this cap — you bill your own provider directly.
         </p>
@@ -939,18 +939,18 @@ function CostCapSection() {
         <div className="space-y-2">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <div className="text-title text-ink-950 tabular-nums">
+              <div className="text-title text-fg-950 tabular-nums">
                 ${capStatus.usedUsd.toFixed(4)}
-                <span className="text-body font-normal text-ink-400"> / ${capStatus.capUsd.toFixed(2)}</span>
+                <span className="text-body font-normal text-fg-400"> / ${capStatus.capUsd.toFixed(2)}</span>
               </div>
-              <div className="text-[11px] text-ink-500 mt-0.5 tabular-nums">
+              <div className="text-[11px] text-fg-500 mt-0.5 tabular-nums">
                 {(capStatus.pctUsed * 100).toFixed(1)}% of today's cap used
                 {capStatus.remainingUsd > 0 && <> · ${capStatus.remainingUsd.toFixed(4)} remaining</>}
               </div>
             </div>
             <div className="text-right">
-              <div className="text-[11px] text-ink-400 uppercase tracking-[0.08em] tabular-nums">{capStatus.date}</div>
-              <div className="text-[10px] text-ink-400">resets at 00:00 UTC</div>
+              <div className="text-[11px] text-fg-400 uppercase tracking-[0.08em] tabular-nums">{capStatus.date}</div>
+              <div className="text-[10px] text-fg-400">resets at 00:00 UTC</div>
             </div>
           </div>
           <div
@@ -974,11 +974,11 @@ function CostCapSection() {
       {/* ─── Controls ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
         <div>
-          <label className="text-[11.5px] text-ink-950 font-semibold block mb-1.5">
+          <label className="text-[11.5px] text-fg-950 font-semibold block mb-1.5">
             Daily cap (USD)
           </label>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-ink-400 pointer-events-none">$</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-fg-400 pointer-events-none">$</span>
             <Input
               type="number"
               min={0}
@@ -991,7 +991,7 @@ function CostCapSection() {
               data-testid="cost-cap-input"
             />
           </div>
-          <p className="text-[10px] text-ink-400 mt-1 leading-relaxed">
+          <p className="text-[10px] text-fg-400 mt-1 leading-relaxed">
             Leave blank to inherit the platform default ($50/day). Max $100,000.
           </p>
           {!capValid && (
@@ -1000,10 +1000,10 @@ function CostCapSection() {
         </div>
 
         <div>
-          <label className="text-[11.5px] text-ink-950 font-semibold block mb-1.5">
+          <label className="text-[11.5px] text-fg-950 font-semibold block mb-1.5">
             Enforcement policy
           </label>
-          <div className="inline-flex rounded-md border border-paper-200 p-0.5 bg-paper-50" role="radiogroup" aria-label="Enforcement policy">
+          <div className="inline-flex rounded-md border border-surface-200 p-0.5 bg-surface-50" role="radiogroup" aria-label="Enforcement policy">
             <PolicyChip
               value="block"
               current={policyDraft}
@@ -1019,7 +1019,7 @@ function CostCapSection() {
               description="Log + let the call through."
             />
           </div>
-          <p className="text-[10px] text-ink-400 mt-1.5 leading-relaxed">
+          <p className="text-[10px] text-fg-400 mt-1.5 leading-relaxed">
             {policyDraft === 'block'
               ? 'Platform calls will return a CostCapExceededError once today\'s spend exceeds the cap.'
               : 'Platform calls will keep working; a warning is logged and surfaces in the audit trail.'}
@@ -1028,7 +1028,7 @@ function CostCapSection() {
       </div>
 
       {/* ─── Save footer ─────────────────────────────────────────────── */}
-      <div className="flex items-center justify-end gap-2 pt-3 border-t border-paper-200">
+      <div className="flex items-center justify-end gap-2 pt-3 border-t border-surface-200">
         {isDirty && (
           <Button variant="outline" onClick={handleReset} disabled={save.isPending}>
             Discard
@@ -1070,32 +1070,32 @@ function UsageSection() {
   })
 
   return (
-    <section className="bg-card rounded-card border border-paper-200 p-5 space-y-4">
+    <section className="bg-card rounded-card border border-surface-200 p-5 space-y-4">
       <header className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-section text-ink-950 flex items-center gap-2">
-            <Activity className="size-4 text-ink-700" />
+          <h2 className="text-section text-fg-950 flex items-center gap-2">
+            <Activity className="size-4 text-fg-700" />
             Usage
           </h2>
-          <p className="text-dense text-ink-500 mt-1">
+          <p className="text-dense text-fg-500 mt-1">
             Platform-paid AI spend over the last {data?.windowDays ?? 30} days.
             BYOK traffic isn't tracked here — that bills your provider account directly.
           </p>
         </div>
         {data?.since && (
-          <div className="text-[11px] text-ink-400 tabular-nums">
+          <div className="text-[11px] text-fg-400 tabular-nums">
             since {data.since}
           </div>
         )}
       </header>
 
-      {isLoading && <div className="text-dense text-ink-400">Loading…</div>}
+      {isLoading && <div className="text-dense text-fg-400">Loading…</div>}
 
       {data && data.totals.callCount === 0 && (
-        <div className="py-10 text-center border border-dashed border-paper-200 rounded-md">
-          <Activity className="size-6 text-ink-400 mx-auto mb-2" />
-          <p className="text-body text-ink-950 font-semibold">No platform-paid calls yet</p>
-          <p className="text-[11px] text-ink-500 mt-1 max-w-md mx-auto leading-relaxed">
+        <div className="py-10 text-center border border-dashed border-surface-200 rounded-md">
+          <Activity className="size-6 text-fg-400 mx-auto mb-2" />
+          <p className="text-body text-fg-950 font-semibold">No platform-paid calls yet</p>
+          <p className="text-[11px] text-fg-500 mt-1 max-w-md mx-auto leading-relaxed">
             Usage fills in as the agents service records costs via <span className="font-mono">OrgUsageDaily</span>.
             BYOK calls (pasted above) do not appear here.
           </p>
@@ -1143,9 +1143,9 @@ function UsageSection() {
         </>
       )}
 
-      <div className="flex items-start gap-2.5 p-3 bg-paper-50 border border-paper-200 rounded-md">
-        <Info className="size-4 text-ink-500 flex-shrink-0 mt-0.5" />
-        <div className="text-[11px] text-ink-500 leading-relaxed">
+      <div className="flex items-start gap-2.5 p-3 bg-surface-50 border border-surface-200 rounded-md">
+        <Info className="size-4 text-fg-500 flex-shrink-0 mt-0.5" />
+        <div className="text-[11px] text-fg-500 leading-relaxed">
           Totals reflect completed calls only. For per-request prompts, tool invocations, and latency
           traces, open Langfuse — every call the agents service makes is recorded there with a link
           back to the contract or thread that triggered it.
@@ -1157,10 +1157,10 @@ function UsageSection() {
 
 function UsageTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="border border-paper-200 rounded-card p-3">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-400">{label}</div>
-      <div className="text-title text-ink-950 mt-0.5 tabular-nums">{value}</div>
-      {sub && <div className="text-[11px] text-ink-400 mt-0.5 tabular-nums">{sub}</div>}
+    <div className="border border-surface-200 rounded-card p-3">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-400">{label}</div>
+      <div className="text-title text-fg-950 mt-0.5 tabular-nums">{value}</div>
+      {sub && <div className="text-[11px] text-fg-400 mt-0.5 tabular-nums">{sub}</div>}
     </div>
   )
 }
@@ -1168,22 +1168,22 @@ function UsageTile({ label, value, sub }: { label: string; value: string; sub?: 
 function UsageBarCard({ title, rows }: { title: string; rows: Array<{ label: string; cost: number; calls: number }> }) {
   const max = Math.max(...rows.map(r => r.cost), 0)
   return (
-    <div className="border border-paper-200 rounded-card p-3 space-y-2">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-400">{title}</div>
-      {rows.length === 0 && <div className="text-[11px] text-ink-400">No data</div>}
+    <div className="border border-surface-200 rounded-card p-3 space-y-2">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-400">{title}</div>
+      {rows.length === 0 && <div className="text-[11px] text-fg-400">No data</div>}
       {rows.map(r => (
         <div key={r.label} className="space-y-1">
           <div className="flex items-baseline justify-between text-[11px] gap-2">
-            <span className="text-ink-700 font-medium truncate">{r.label}</span>
-            <span className="text-ink-500 tabular-nums flex-shrink-0">
+            <span className="text-fg-700 font-medium truncate">{r.label}</span>
+            <span className="text-fg-500 tabular-nums flex-shrink-0">
               ${r.cost.toFixed(2)} · {r.calls.toLocaleString()}
             </span>
           </div>
           {/* A share-of-spend bar carries no meaning — it's ink on paper, not a
               meter that turns amber. */}
-          <div className="h-1 rounded-full bg-paper-100 overflow-hidden">
+          <div className="h-1 rounded-full bg-surface-100 overflow-hidden">
             <div
-              className="h-full bg-ink-700"
+              className="h-full bg-fg-700"
               style={{ width: `${max > 0 ? (r.cost / max) * 100 : 0}%` }}
             />
           </div>
@@ -1232,8 +1232,8 @@ function PolicyChip({
       className={
         'px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors ' +
         (active
-          ? 'bg-ink-950 text-white shadow-e1'
-          : 'text-ink-500 hover:bg-card')
+          ? 'bg-card text-fg-950 shadow-e1'
+          : 'text-fg-500 hover:bg-card')
       }
     >
       {label}

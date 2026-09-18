@@ -20,7 +20,7 @@ export const DropdownMenuContent = React.forwardRef<
       sideOffset={sideOffset}
       align={align}
       className={cn(
-        'z-50 min-w-[12rem] overflow-hidden rounded-md border border-paper-200 bg-card p-1 shadow-e2',
+        'z-50 min-w-[12rem] overflow-hidden rounded-md border border-surface-200 bg-card p-1 shadow-e2',
         'animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-1',
         className,
       )}
@@ -37,8 +37,8 @@ export const DropdownMenuItem = React.forwardRef<
   <Radix.Item
     ref={ref}
     className={cn(
-      'flex items-center gap-2 rounded-md px-3 py-2 text-dense text-ink-700 cursor-pointer outline-none',
-      'hover:bg-paper-100 focus:bg-paper-100 hover:text-ink-950 focus:text-ink-950',
+      'flex items-center gap-2 rounded-md px-3 py-2 text-dense text-fg-700 cursor-pointer outline-none',
+      'hover:bg-surface-100 focus:bg-surface-100 hover:text-fg-950 focus:text-fg-950',
       'data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed',
       // Destructive rows opt in with `data-variant="destructive"` — risk is the
       // one meaning a menu row is allowed to carry, and it must not be a hover
@@ -58,7 +58,7 @@ export const DropdownMenuSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <Radix.Separator
     ref={ref}
-    className={cn('my-1 h-px bg-paper-200', className)}
+    className={cn('my-1 h-px bg-surface-200', className)}
     {...props}
   />
 ))
@@ -70,7 +70,7 @@ export const DropdownMenuLabel = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <Radix.Label
     ref={ref}
-    className={cn('px-3 py-1.5 text-eyebrow uppercase text-ink-400', className)}
+    className={cn('px-3 py-1.5 text-eyebrow uppercase text-fg-400', className)}
     {...props}
   />
 ))

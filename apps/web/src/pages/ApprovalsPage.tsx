@@ -144,13 +144,13 @@ export function ApprovalsPage() {
   const showNoWorkflowsWarning = workflowList !== null && workflowList.length === 0
 
   return (
-    <div className="h-full flex flex-col bg-paper-50">
+    <div className="h-full flex flex-col bg-surface-50">
       {/* Header */}
-      <div className="bg-card border-b border-paper-200 px-6 py-4">
+      <div className="bg-card border-b border-surface-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-title text-ink-950">Approvals</h1>
-            <p className="text-body text-ink-500 mt-0.5">
+            <h1 className="text-title text-fg-950">Approvals</h1>
+            <p className="text-body text-fg-500 mt-0.5">
               {pendingCount > 0
                 ? `${pendingCount} contract${pendingCount === 1 ? '' : 's'} waiting on your decision.`
                 : 'Decisions routed to you, and the org-wide view of everything in flight.'}
@@ -159,7 +159,7 @@ export function ApprovalsPage() {
         </div>
 
         {/* Tabs — the selected tab is a selection, so ink carries it. */}
-        <div className="flex gap-1 mt-3 border-b border-paper-200 -mb-px">
+        <div className="flex gap-1 mt-3 border-b border-surface-200 -mb-px">
           {([
             { id: 'queue' as Tab,     label: 'My Queue', icon: <CheckSquare className="size-4" />, badge: pendingCount },
             ...(canSeeAll ? [{ id: 'all' as Tab, label: 'All approvals', icon: <Globe2 className="size-4" />, badge: allCount }] : []),
@@ -170,8 +170,8 @@ export function ApprovalsPage() {
               onClick={() => setTab(t.id)}
               className={`flex items-center gap-1.5 px-3 py-2.5 text-[13px] font-medium border-b-2 transition-colors ${
                 tab === t.id
-                  ? 'border-ink-950 text-ink-950'
-                  : 'border-transparent text-ink-500 hover:text-ink-950'
+                  ? 'border-fg-950 text-fg-950'
+                  : 'border-transparent text-fg-500 hover:text-fg-950'
               }`}
             >
               {t.icon}
@@ -203,7 +203,7 @@ export function ApprovalsPage() {
               <p className="text-body font-semibold text-attention-700">
                 No approval workflows defined yet.
               </p>
-              <p className="text-dense text-ink-700 mt-0.5">
+              <p className="text-dense text-fg-700 mt-0.5">
                 Until someone creates a workflow, the "Submit for Approval"
                 button on contracts won't know where to route decisions and
                 will fail quietly. Create one to unblock your team.
@@ -211,7 +211,7 @@ export function ApprovalsPage() {
             </div>
             <button
               onClick={() => setTab('workflows')}
-              className="text-dense font-semibold text-ink-950 underline underline-offset-2 decoration-paper-300 hover:decoration-ink-950 shrink-0"
+              className="text-dense font-semibold text-fg-950 underline underline-offset-2 decoration-surface-300 hover:decoration-fg-950 shrink-0"
             >
               Create workflow →
             </button>
@@ -223,7 +223,7 @@ export function ApprovalsPage() {
           <>
             {isLoading ? (
               <div className="flex justify-center items-center py-20">
-                <Loader2 className="size-6 animate-spin text-ink-400" />
+                <Loader2 className="size-6 animate-spin text-fg-400" />
               </div>
             ) : items.length === 0 ? (
               <div className="max-w-3xl mx-auto">
@@ -240,9 +240,9 @@ export function ApprovalsPage() {
                     {/* The count is already in the header and on the tab. What a
                         queue owner cannot see anywhere else is how bad the
                         backlog has got, so spend this line on the oldest wait. */}
-                    <span className="text-dense text-ink-500">
+                    <span className="text-dense text-fg-500">
                       Oldest first · longest wait is{' '}
-                      <span className="font-medium text-ink-950 tabular-nums">
+                      <span className="font-medium text-fg-950 tabular-nums">
                         {Math.max(...items.map(i => waitingDaysSince(i.instance.submittedAt)))} days
                       </span>
                     </span>
@@ -288,7 +288,7 @@ export function ApprovalsPage() {
           <>
             {allLoading ? (
               <div className="flex justify-center items-center py-20">
-                <Loader2 className="size-6 animate-spin text-ink-400" />
+                <Loader2 className="size-6 animate-spin text-fg-400" />
               </div>
             ) : allItems.length === 0 ? (
               <div className="max-w-3xl mx-auto">
@@ -300,12 +300,12 @@ export function ApprovalsPage() {
               </div>
             ) : (
               <div className="max-w-5xl mx-auto" data-testid="all-approvals-list">
-                <p className="text-body text-ink-500 mb-3">
+                <p className="text-body text-fg-500 mb-3">
                   Every approval in flight across the org, oldest wait first.
                   {stuckCount > 0 && (
                     <>
                       {' '}
-                      <span className="font-medium text-ink-950">
+                      <span className="font-medium text-fg-950">
                         {stuckCount} {stuckCount === 1 ? 'has' : 'have'} been waiting a week or more.
                       </span>
                     </>
@@ -319,11 +319,11 @@ export function ApprovalsPage() {
                     </>
                   )}
                 </p>
-                <div className="rounded-card border border-paper-200 bg-card overflow-hidden">
+                <div className="rounded-card border border-surface-200 bg-card overflow-hidden">
                   <div className="overflow-x-auto">
                   <table className="w-full table-fixed text-[13px]">
-                    <thead className="bg-paper-50">
-                      <tr className="text-left text-eyebrow uppercase text-ink-500">
+                    <thead className="bg-surface-50">
+                      <tr className="text-left text-eyebrow uppercase text-fg-500">
                         <th className="px-4 py-2 font-semibold">Contract</th>
                         <th className="px-3 py-2 font-semibold w-[19%]">Current step</th>
                         <th className="px-3 py-2 font-semibold w-[15%]">Awaiting</th>
@@ -332,7 +332,7 @@ export function ApprovalsPage() {
                         <th className="px-3 py-2 w-[64px]"></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-paper-200">
+                    <tbody className="divide-y divide-surface-200">
                       {allItems.map(row => {
                         // Age of a stuck approval. A week idle is exposure and
                         // three days is someone's turn — but a fresh one is not
@@ -340,7 +340,7 @@ export function ApprovalsPage() {
                         // contract wears. Nothing has happened yet: neutral.
                         const dotClass = row.waitingDays >= 7 ? 'bg-risk-600' :
                                          row.waitingDays >= 3 ? 'bg-attention-600' :
-                                         'bg-ink-350'
+                                         'bg-fg-350'
                         const waitingText = row.waitingDays === 0 ? 'today' :
                                             row.waitingDays === 1 ? '1d' :
                                             `${row.waitingDays}d`
@@ -358,23 +358,23 @@ export function ApprovalsPage() {
                         // weeks. Name it.
                         const unrouted = row.totalSteps === 0 && !row.currentStepName
                         return (
-                          <tr key={row.instanceId} className="hover:bg-paper-50 transition-colors">
+                          <tr key={row.instanceId} className="hover:bg-surface-50 transition-colors">
                             <td className="px-4 py-2">
                               <Link
                                 to={`/contracts/${row.contract?.id}`}
-                                className="font-medium text-ink-950 hover:underline underline-offset-2 decoration-paper-300 truncate block"
+                                className="font-medium text-fg-950 hover:underline underline-offset-2 decoration-surface-300 truncate block"
                                 title={row.contract?.title}
                               >
                                 {row.contract?.title ?? 'Unknown'}
                               </Link>
                               {(row.contract?.counterpartyName || valueText) && (
-                                <div className="text-[11px] text-ink-500 mt-0.5 truncate">
+                                <div className="text-[11px] text-fg-500 mt-0.5 truncate">
                                   {row.contract?.counterpartyName}
                                   {valueText && <span className="tabular-nums">{row.contract?.counterpartyName ? ' · ' : ''}{valueText}</span>}
                                 </div>
                               )}
                             </td>
-                            <td className="px-3 py-2 text-ink-700 text-[11.5px]">
+                            <td className="px-3 py-2 text-fg-700 text-[11.5px]">
                               {unrouted ? (
                                 <span
                                   className="inline-flex items-center gap-1 font-medium text-risk-700"
@@ -386,13 +386,13 @@ export function ApprovalsPage() {
                               ) : (
                                 <>
                                   <div className="font-medium truncate" title={row.currentStepName ?? undefined}>{row.currentStepName ?? '—'}</div>
-                                  <div className="text-ink-400 mt-0.5 tabular-nums">{stepLabel(row.currentStepOrder, row.totalSteps)}</div>
+                                  <div className="text-fg-400 mt-0.5 tabular-nums">{stepLabel(row.currentStepOrder, row.totalSteps)}</div>
                                 </>
                               )}
                             </td>
-                            <td className="px-3 py-2 text-ink-700 text-[13px]">
+                            <td className="px-3 py-2 text-fg-700 text-[13px]">
                               <div className="truncate" title={row.currentApproverName ?? 'unassigned'}>
-                                {row.currentApproverName ?? <span className="text-ink-400 italic text-[11.5px]">nobody</span>}
+                                {row.currentApproverName ?? <span className="text-fg-400 italic text-[11.5px]">nobody</span>}
                               </div>
                               {isMine && (
                                 <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-attention-700">
@@ -401,12 +401,12 @@ export function ApprovalsPage() {
                                 </span>
                               )}
                             </td>
-                            <td className="px-3 py-2 text-ink-500 text-[11.5px]">
+                            <td className="px-3 py-2 text-fg-500 text-[11.5px]">
                               <div className="truncate" title={row.submittedByName}>{row.submittedByName}</div>
-                              <div className="text-ink-400 mt-0.5 tabular-nums">{new Date(row.submittedAt).toLocaleDateString()}</div>
+                              <div className="text-fg-400 mt-0.5 tabular-nums">{new Date(row.submittedAt).toLocaleDateString()}</div>
                             </td>
                             <td className="px-3 py-2">
-                              <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium tabular-nums text-ink-700">
+                              <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium tabular-nums text-fg-700">
                                 <span className={`size-1.5 rounded-full shrink-0 ${dotClass}`} />
                                 {waitingText}
                               </span>
@@ -414,7 +414,7 @@ export function ApprovalsPage() {
                             <td className="px-3 py-2 text-right">
                               <Link
                                 to={`/contracts/${row.contract?.id}`}
-                                className="inline-flex items-center gap-1 text-[11.5px] font-medium text-ink-950 hover:text-ink-700"
+                                className="inline-flex items-center gap-1 text-[11.5px] font-medium text-fg-950 hover:text-fg-700"
                               >
                                 Open
                                 <ArrowRight className="size-3" />
@@ -435,7 +435,7 @@ export function ApprovalsPage() {
         {/* ── Manage Workflows ────────────────────────────────────────── */}
         {tab === 'workflows' && (
           <div className="max-w-3xl mx-auto">
-            <p className="text-body text-ink-500 mb-5">
+            <p className="text-body text-fg-500 mb-5">
               Workflow definitions control how contracts are routed for approval.
               Set a default workflow so contracts are auto-routed on submission.
             </p>
@@ -518,19 +518,19 @@ function BulkDecisionDialog({
   const valid = selected.size > 0 && (!isRejecting || comment.trim().length > 0) && !progress
 
   return (
-    <div role="dialog" className="fixed inset-0 z-50 bg-ink-950/40 flex items-center justify-center p-4 overflow-auto" onClick={onClose} data-testid="bulk-decision-dialog">
+    <div role="dialog" className="fixed inset-0 z-50 bg-scrim/40 flex items-center justify-center p-4 overflow-auto" onClick={onClose} data-testid="bulk-decision-dialog">
       <div className="bg-card rounded-card max-w-2xl w-full shadow-e3 my-8" onClick={(e) => e.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-paper-200 flex items-start justify-between">
+        <div className="px-6 py-4 border-b border-surface-200 flex items-start justify-between">
           <div>
-            <h2 className="text-section text-ink-950 flex items-center gap-2">
-              <ListChecks className="size-4 text-ink-400" />
+            <h2 className="text-section text-fg-950 flex items-center gap-2">
+              <ListChecks className="size-4 text-fg-400" />
               Bulk decision
             </h2>
-            <p className="text-dense text-ink-500 mt-1">
+            <p className="text-dense text-fg-500 mt-1">
               Apply a single decision (with optional comment) to multiple pending approvals.
             </p>
           </div>
-          <button onClick={onClose} className="p-1 rounded-md hover:bg-paper-100 text-ink-400">×</button>
+          <button onClick={onClose} className="p-1 rounded-md hover:bg-surface-100 text-fg-400">×</button>
         </div>
 
         <div className="px-6 py-5 space-y-4">
@@ -541,7 +541,7 @@ function BulkDecisionDialog({
               onClick={() => setDecision('APPROVED')}
               data-testid="bulk-decision-approve"
               className={`flex-1 p-3 rounded-md border text-[13px] font-medium transition-colors ${
-                decision === 'APPROVED' ? 'border-brand-700 bg-brand-50 text-brand-700' : 'border-paper-200 hover:border-paper-300 text-ink-700'
+                decision === 'APPROVED' ? 'border-success-700 bg-success-50 text-success-700' : 'border-surface-200 hover:border-surface-300 text-fg-700'
               }`}
             >Approve all selected</button>
             <button
@@ -549,34 +549,34 @@ function BulkDecisionDialog({
               onClick={() => setDecision('REJECTED')}
               data-testid="bulk-decision-reject"
               className={`flex-1 p-3 rounded-md border text-[13px] font-medium transition-colors ${
-                decision === 'REJECTED' ? 'border-risk-600 bg-risk-50 text-risk-700' : 'border-paper-200 hover:border-paper-300 text-ink-700'
+                decision === 'REJECTED' ? 'border-risk-600 bg-risk-50 text-risk-700' : 'border-surface-200 hover:border-surface-300 text-fg-700'
               }`}
             >Reject all selected</button>
           </div>
 
           {/* Selection list */}
-          <div className="border border-paper-200 rounded-md max-h-72 overflow-y-auto">
-            <div className="px-3 py-2 bg-paper-50 border-b border-paper-200 text-[11.5px] flex items-center justify-between">
-              <span className="text-ink-700 tabular-nums">{selected.size} of {items.length} selected</span>
+          <div className="border border-surface-200 rounded-md max-h-72 overflow-y-auto">
+            <div className="px-3 py-2 bg-surface-50 border-b border-surface-200 text-[11.5px] flex items-center justify-between">
+              <span className="text-fg-700 tabular-nums">{selected.size} of {items.length} selected</span>
               <button
                 onClick={() => setSelected(new Set(selected.size === items.length ? [] : items.map(i => i.stepId)))}
-                className="font-medium text-ink-950 hover:text-ink-700"
+                className="font-medium text-fg-950 hover:text-fg-700"
               >
                 {selected.size === items.length ? 'Deselect all' : 'Select all'}
               </button>
             </div>
-            <ul className="divide-y divide-paper-200">
+            <ul className="divide-y divide-surface-200">
               {items.map(it => (
-                <li key={it.stepId} className="px-3 py-2 hover:bg-paper-50 flex items-center gap-2">
+                <li key={it.stepId} className="px-3 py-2 hover:bg-surface-50 flex items-center gap-2">
                   <input
                     type="checkbox"
                     checked={selected.has(it.stepId)}
                     onChange={() => toggle(it.stepId)}
-                    className="size-4 accent-ink-950"
+                    className="size-4 accent-fg-950"
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-medium text-ink-950 truncate">{it.contract.title}</div>
-                    <div className="text-[11.5px] text-ink-500 truncate">
+                    <div className="text-[13px] font-medium text-fg-950 truncate">{it.contract.title}</div>
+                    <div className="text-[11.5px] text-fg-500 truncate">
                       {it.contract.type} · {it.stepName} · submitted by {it.instance.submittedByName ?? 'unknown'}
                     </div>
                   </div>
@@ -586,16 +586,16 @@ function BulkDecisionDialog({
           </div>
 
           <div>
-            <label className="block text-dense font-semibold text-ink-700 mb-1">
+            <label className="block text-dense font-semibold text-fg-700 mb-1">
               Comment {isRejecting && <span className="text-risk-600">*</span>}
-              {!isRejecting && <span className="text-ink-400 font-normal"> (optional)</span>}
+              {!isRejecting && <span className="text-fg-400 font-normal"> (optional)</span>}
             </label>
             <textarea
               value={comment}
               onChange={e => setComment(e.target.value)}
               placeholder={isRejecting ? 'Reason for rejection — applied to every selected item' : 'Optional note recorded against each decision'}
               rows={2}
-              className="w-full text-[13px] text-ink-950 bg-card border border-input rounded-md px-3 py-2 placeholder:text-ink-400 focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15 resize-y"
+              className="w-full text-[13px] text-fg-950 bg-card border border-input rounded-md px-3 py-2 placeholder:text-fg-400 focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15 resize-y"
             />
           </div>
 
@@ -614,7 +614,7 @@ function BulkDecisionDialog({
                   </span>
                 ) : (
                   // Every decision landed — the run is binding, so brand is earned.
-                  <span className="text-brand-700 tabular-nums">
+                  <span className="text-success-700 tabular-nums">
                     ✓ {progress.done} of {progress.total} processed
                   </span>
                 )
@@ -638,7 +638,7 @@ function BulkDecisionDialog({
             >
               {failures.map(f => (
                 <div key={f.stepId} className="px-3 py-2">
-                  <div className="font-medium text-ink-950 truncate">{f.title}</div>
+                  <div className="font-medium text-fg-950 truncate">{f.title}</div>
                   <div className="text-[11.5px] text-risk-700">{f.detail}</div>
                 </div>
               ))}
@@ -651,13 +651,13 @@ function BulkDecisionDialog({
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-paper-200 flex justify-end gap-2 bg-paper-50 rounded-b-card">
+        <div className="px-6 py-4 border-t border-surface-200 flex justify-end gap-2 bg-surface-50 rounded-b-card">
           <Button variant="outline" onClick={onClose} disabled={!!progress}>Cancel</Button>
           <Button
             onClick={submit}
             disabled={!valid}
             data-testid="bulk-decision-confirm"
-            variant={isRejecting ? 'danger' : 'brand'}
+            variant={isRejecting ? 'danger' : 'success'}
           >
             {isRejecting ? `Reject ${selected.size}` : `Approve ${selected.size}`}
           </Button>

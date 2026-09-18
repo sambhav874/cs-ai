@@ -84,20 +84,20 @@ function daysUntil(iso: string | null): number | null {
 }
 
 function dueLabel(iso: string | null, status: string): { text: string; tone: string } {
-  if (!iso) return { text: 'No due date', tone: 'text-ink-400' }
+  if (!iso) return { text: 'No due date', tone: 'text-fg-400' }
   const d = daysUntil(iso)
   // A completed obligation is discharged — binding, not "on time".
-  if (status === 'COMPLETED') return { text: new Date(iso).toLocaleDateString(), tone: 'text-brand-700' }
+  if (status === 'COMPLETED') return { text: new Date(iso).toLocaleDateString(), tone: 'text-success-700' }
   // A waived obligation was excused, so it cannot be late. Without this it
   // read "66d overdue" in red next to a neutral "Waived" pill — the Due and
   // Status columns contradicting each other on the same row.
-  if (status === 'WAIVED') return { text: new Date(iso).toLocaleDateString(), tone: 'text-ink-500' }
-  if (d == null) return { text: new Date(iso).toLocaleDateString(), tone: 'text-ink-700' }
+  if (status === 'WAIVED') return { text: new Date(iso).toLocaleDateString(), tone: 'text-fg-500' }
+  if (d == null) return { text: new Date(iso).toLocaleDateString(), tone: 'text-fg-700' }
   if (d < 0)  return { text: `${-d}d overdue`, tone: 'text-risk-700 font-medium' }
   if (d === 0) return { text: 'Due today',     tone: 'text-attention-700 font-medium' }
   if (d === 1) return { text: 'Due tomorrow',  tone: 'text-attention-700 font-medium' }
   if (d <= 14) return { text: `Due in ${d}d`,  tone: 'text-attention-700 font-medium' }
-  return { text: `Due in ${d}d`, tone: 'text-ink-500' }
+  return { text: `Due in ${d}d`, tone: 'text-fg-500' }
 }
 
 /**
@@ -188,8 +188,8 @@ export function ObligationsPage() {
     <div className="px-6 py-6 max-w-7xl mx-auto" data-testid="obligations-page">
       <div className="flex items-center justify-between gap-4 mb-1">
         <div className="flex items-center gap-2">
-          <ListTodo className="size-4 text-ink-400" />
-          <h1 className="text-title text-ink-950">Obligations</h1>
+          <ListTodo className="size-4 text-fg-400" />
+          <h1 className="text-title text-fg-950">Obligations</h1>
         </div>
         <Button
           variant="outline"
@@ -207,7 +207,7 @@ export function ObligationsPage() {
           Export CSV
         </Button>
       </div>
-      <p className="text-body text-ink-500 mb-5">
+      <p className="text-body text-fg-500 mb-5">
         Every commitment extracted from your executed contracts — payments, SLAs, renewals, audits, and reports.
       </p>
 
@@ -220,7 +220,7 @@ export function ObligationsPage() {
       </div>
 
       {/* Filter tabs + search */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 border-b border-paper-200 pb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 border-b border-surface-200 pb-2">
         <div className="flex items-center gap-1 -mb-2 overflow-x-auto">
           {BUCKETS.map(b => {
             const isActive = bucket === b.key
@@ -235,8 +235,8 @@ export function ObligationsPage() {
                 data-testid={`bucket-${b.key}`}
                 className={`inline-flex items-center gap-1.5 px-3 py-2 text-[13px] border-b-2 transition-colors whitespace-nowrap ${
                   isActive
-                    ? 'border-ink-950 text-ink-950 font-medium'
-                    : 'border-transparent text-ink-500 hover:text-ink-950'
+                    ? 'border-fg-950 text-fg-950 font-medium'
+                    : 'border-transparent text-fg-500 hover:text-fg-950'
                 }`}
               >
                 {b.label}
@@ -250,7 +250,7 @@ export function ObligationsPage() {
           })}
         </div>
         <div className="relative">
-          <Search className="absolute left-2.5 top-2 size-4 text-ink-400" />
+          <Search className="absolute left-2.5 top-2 size-4 text-fg-400" />
           <Input
             type="search"
             placeholder="Search description or contract"
@@ -265,7 +265,7 @@ export function ObligationsPage() {
       {/* Table */}
       {isLoading ? (
         <div className="flex items-center justify-center py-16">
-          <Loader2 className="size-5 animate-spin text-ink-400" />
+          <Loader2 className="size-5 animate-spin text-fg-400" />
         </div>
       ) : isError ? (
         <div className="flex items-start gap-2 p-4 rounded-md bg-risk-50 border border-risk-200 text-body text-risk-700">
@@ -293,8 +293,8 @@ export function ObligationsPage() {
           />
         </div>
       ) : (
-        <div className="bg-card border border-paper-200 rounded-card overflow-hidden">
-          <div className="px-5 py-2 text-[11px] text-ink-500 bg-paper-50 border-b border-paper-200 flex items-center justify-between">
+        <div className="bg-card border border-surface-200 rounded-card overflow-hidden">
+          <div className="px-5 py-2 text-[11px] text-fg-500 bg-surface-50 border-b border-surface-200 flex items-center justify-between">
             <span className="tabular-nums">{total} {total === 1 ? 'obligation' : 'obligations'}</span>
           </div>
           {/* Fixed layout, not content-driven. Six auto-width columns measured
@@ -305,7 +305,7 @@ export function ObligationsPage() {
               line, where it reads as the property of the commitment it is. */}
           <div className="overflow-x-auto">
           <table className="w-full table-fixed text-[13px]" data-testid="obligations-table">
-            <thead className="bg-paper-50 text-eyebrow uppercase text-ink-500">
+            <thead className="bg-surface-50 text-eyebrow uppercase text-fg-500">
               <tr>
                 <th className="text-left px-4 py-2 font-semibold">Description</th>
                 <th className="text-left px-3 py-2 font-semibold w-[24%]">Contract</th>
@@ -314,22 +314,22 @@ export function ObligationsPage() {
                 <th className="text-right px-4 py-2 font-semibold w-[122px]"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-paper-200">
+            <tbody className="divide-y divide-surface-200">
               {items.map(o => {
                 const TypeIcon = TYPE_ICON[o.type] ?? Bell
                 const due = dueLabel(o.dueDate, o.status)
                 const sevMeaning = SEVERITY_MEANING[o.severity] ?? 'turn'
                 const overdue = isOverdue(o)
                 return (
-                  <tr key={o.id} className="hover:bg-paper-50 align-top" data-testid={`obligation-row-${o.id}`}>
+                  <tr key={o.id} className="hover:bg-surface-50 align-top" data-testid={`obligation-row-${o.id}`}>
                     <td className="px-4 py-2">
                       <div className="flex items-start gap-2">
-                        <TypeIcon className="size-3.5 text-ink-400 mt-0.5 flex-shrink-0" />
+                        <TypeIcon className="size-3.5 text-fg-400 mt-0.5 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-ink-950 truncate" title={o.description}>
+                          <div className="font-medium text-fg-950 truncate" title={o.description}>
                             {o.description}
                           </div>
-                          <div className="text-[11px] text-ink-500 mt-0.5 flex items-center gap-1.5 truncate">
+                          <div className="text-[11px] text-fg-500 mt-0.5 flex items-center gap-1.5 truncate">
                             {/* Severity used to own a column of its own, which
                                 cost 107px to say one word. It is a property of
                                 the commitment, so it rides with the commitment —
@@ -344,7 +344,7 @@ export function ObligationsPage() {
                             {o.recurrence !== 'one-time' && o.recurrence !== 'unknown' && (
                               // Recurrence is a property of the obligation, not a
                               // state — it gets no meaning colour.
-                              <span className="text-ink-700 shrink-0">↻ {o.recurrence}</span>
+                              <span className="text-fg-700 shrink-0">↻ {o.recurrence}</span>
                             )}
                           </div>
                         </div>
@@ -354,16 +354,16 @@ export function ObligationsPage() {
                       {o.contract ? (
                         <Link
                           to={`/contracts/${o.contract.id}`}
-                          className="text-[11.5px] block truncate hover:underline underline-offset-2 decoration-paper-300"
+                          className="text-[11.5px] block truncate hover:underline underline-offset-2 decoration-surface-300"
                           title={`${o.contract.title}${o.contract.counterpartyName ? ` · ${o.contract.counterpartyName}` : ''}`}
                         >
-                          <span className="font-medium text-ink-950">{o.contract.title}</span>
+                          <span className="font-medium text-fg-950">{o.contract.title}</span>
                           {o.contract.counterpartyName && (
-                            <div className="text-ink-500 truncate">{o.contract.counterpartyName}</div>
+                            <div className="text-fg-500 truncate">{o.contract.counterpartyName}</div>
                           )}
                         </Link>
                       ) : (
-                        <span className="text-[11.5px] text-ink-400">(deleted)</span>
+                        <span className="text-[11.5px] text-fg-400">(deleted)</span>
                       )}
                     </td>
                     <td className={`px-3 py-2 text-[11.5px] tabular-nums ${due.tone}`}>
@@ -391,7 +391,7 @@ export function ObligationsPage() {
                           type="button"
                           variant="outline"
                           size="xs"
-                          className="text-brand-700 border-brand-200 hover:bg-brand-50"
+                          className="text-success-700 border-success-200 hover:bg-success-50"
                           onClick={() => setCompleteTarget({ id: o.id, description: o.description })}
                           data-testid={`complete-btn-${o.id}`}
                         >
@@ -435,12 +435,12 @@ function StatCard({ label, value, meaning, ...rest }: {
   'data-testid'?: string
 }) {
   return (
-    <div className="border border-paper-200 rounded-card p-3 bg-card" {...rest}>
-      <div className="flex items-center gap-1.5 text-[11px] text-ink-500">
+    <div className="border border-surface-200 rounded-card p-3 bg-card" {...rest}>
+      <div className="flex items-center gap-1.5 text-[11px] text-fg-500">
         <MeaningDot meaning={meaning} label={label} />
         {label}
       </div>
-      <div className="text-[24px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-ink-950 mt-1.5">
+      <div className="text-[24px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-fg-950 mt-1.5">
         {value}
       </div>
     </div>

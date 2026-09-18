@@ -159,8 +159,8 @@ export function DecisionStrip({
           {/* A machine-produced number, so it takes the machine's one glyph —
               the diamond — rather than a second sparkle that means the same. */}
           <AssistMark confidence={confidenceBand} />
-          <span className="text-ink-500">Confidence</span>
-          <span className="font-semibold text-ink-950 tabular-nums">{confidence}%</span>
+          <span className="text-fg-500">Confidence</span>
+          <span className="font-semibold text-fg-950 tabular-nums">{confidence}%</span>
         </div>
 
         {/* Risk score */}
@@ -183,14 +183,14 @@ export function DecisionStrip({
             onClick={() => topRisk.clauseId && onJumpToClause?.(topRisk.clauseId)}
             disabled={!topRisk.clauseId || !onJumpToClause}
             className={cn(
-              'flex items-center gap-1 text-dense text-ink-700 truncate max-w-[260px]',
+              'flex items-center gap-1 text-dense text-fg-700 truncate max-w-[260px]',
               topRisk.clauseId && onJumpToClause
                 ? 'hover:text-attention-700 hover:underline cursor-pointer'
                 : 'opacity-70 cursor-default',
             )}
             title={topRisk.description}
           >
-            <span className="text-ink-400">Top blocker:</span>
+            <span className="text-fg-400">Top blocker:</span>
             <span className="font-medium truncate">{topRisk.title}</span>
             {topRisk.clauseId && onJumpToClause && <ArrowRight className="size-3 shrink-0" />}
           </button>
@@ -201,7 +201,7 @@ export function DecisionStrip({
         <div className="ml-auto flex items-center gap-1.5 shrink-0">
           <Button
             size="sm"
-            variant="brand"
+            variant="success"
             onClick={() => setPending('APPROVED')}
             className="gap-1"
           >
@@ -241,7 +241,7 @@ export function DecisionStrip({
                 value={comment}
                 onChange={e => setComment(e.target.value)}
                 placeholder="Reason for rejection (required) — helps the submitter fix and re-submit…"
-                className="w-full text-[13px] text-ink-950 bg-card px-2.5 py-1.5 border border-risk-200 rounded-md placeholder:text-ink-400 focus:outline-none focus:border-risk-600 focus:ring-[3px] focus:ring-risk-600/15 resize-y min-h-[52px]"
+                className="w-full text-[13px] text-fg-950 bg-card px-2.5 py-1.5 border border-risk-200 rounded-md placeholder:text-fg-400 focus:outline-none focus:border-risk-600 focus:ring-[3px] focus:ring-risk-600/15 resize-y min-h-[52px]"
               />
             )}
             {pending === 'DELEGATED' && (
@@ -259,7 +259,7 @@ export function DecisionStrip({
                 value={comment}
                 onChange={e => setComment(e.target.value)}
                 placeholder="Optional note for the audit trail…"
-                className="w-full text-[13px] text-ink-950 bg-card px-2.5 py-1.5 border border-brand-200 rounded-md placeholder:text-ink-400 focus:outline-none focus:border-brand-700 focus:ring-[3px] focus:ring-brand-700/15"
+                className="w-full text-[13px] text-fg-950 bg-card px-2.5 py-1.5 border border-success-200 rounded-md placeholder:text-fg-400 focus:outline-none focus:border-primary-700 focus:ring-[3px] focus:ring-primary-700/15"
               />
             )}
           </div>
@@ -269,7 +269,7 @@ export function DecisionStrip({
               variant="ghost"
               onClick={() => { setPending(null); setComment(''); setDelegateTo('') }}
               disabled={decide.isPending}
-              className="text-ink-500"
+              className="text-fg-500"
             >
               Cancel
             </Button>
@@ -277,7 +277,7 @@ export function DecisionStrip({
                 ink while approve/reject keep their decision colors. */}
             <Button
               size="sm"
-              variant={pending === 'APPROVED' ? 'brand' : pending === 'REJECTED' ? 'danger' : 'default'}
+              variant={pending === 'APPROVED' ? 'success' : pending === 'REJECTED' ? 'danger' : 'default'}
               onClick={() => decide.mutate({
                 decision:   pending,
                 comment:    comment.trim() || undefined,

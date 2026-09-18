@@ -84,33 +84,33 @@ function CommentThread({
   })
 
   return (
-    <div className={`border border-paper-200 rounded-card overflow-hidden ${comment.resolved ? 'opacity-60' : ''}`}>
+    <div className={`border border-surface-200 rounded-card overflow-hidden ${comment.resolved ? 'opacity-60' : ''}`}>
       <div className="px-4 py-3 bg-card">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-start gap-2.5 flex-1 min-w-0">
-            <div className="size-7 rounded-full border border-paper-200 bg-paper-100 flex-shrink-0 flex items-center justify-center text-ink-700 text-[11px] font-semibold">
+            <div className="size-7 rounded-full border border-surface-200 bg-surface-100 flex-shrink-0 flex items-center justify-center text-fg-700 text-[11px] font-semibold">
               {authorDisplay(comment.authorId)[0].toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-body font-semibold text-ink-950">{authorDisplay(comment.authorId)}</span>
+                <span className="text-body font-semibold text-fg-950">{authorDisplay(comment.authorId)}</span>
                 {comment.clauseRef && (
                   // A section pointer, not a state — mono and neutral.
-                  <span className="text-[11px] bg-paper-100 text-ink-700 px-1.5 py-0.5 rounded-chip font-mono">
+                  <span className="text-[11px] bg-surface-100 text-fg-700 px-1.5 py-0.5 rounded-chip font-mono">
                     {comment.clauseRef}
                   </span>
                 )}
-                <span className="text-[11px] text-ink-400">{timeAgo(comment.createdAt)}</span>
-                {comment.resolved && <span className="text-[11px] text-brand-700 font-medium">Resolved</span>}
+                <span className="text-[11px] text-fg-400">{timeAgo(comment.createdAt)}</span>
+                {comment.resolved && <span className="text-[11px] text-success-700 font-medium">Resolved</span>}
               </div>
-              <p className="text-body text-ink-700 mt-1 leading-relaxed">{comment.body}</p>
+              <p className="text-body text-fg-700 mt-1 leading-relaxed">{comment.body}</p>
             </div>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
             {comment.replies.length > 0 && (
               <button
                 onClick={() => setExpanded(e => !e)}
-                className="p-1 text-ink-400 hover:text-ink-700 rounded-chip"
+                className="p-1 text-fg-400 hover:text-fg-700 rounded-chip"
               >
                 {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
               </button>
@@ -119,7 +119,7 @@ function CommentThread({
               <button
                 onClick={() => onResolve(comment.id)}
                 title="Mark resolved"
-                className="p-1 text-ink-400 hover:text-brand-700 rounded-chip transition-colors"
+                className="p-1 text-fg-400 hover:text-primary-700 rounded-chip transition-colors"
               >
                 <Check className="size-3.5" />
               </button>
@@ -128,7 +128,7 @@ function CommentThread({
               <button
                 onClick={() => onDelete(comment.id)}
                 title="Delete"
-                className="p-1 text-ink-400 hover:text-risk-600 rounded-chip transition-colors"
+                className="p-1 text-fg-400 hover:text-risk-600 rounded-chip transition-colors"
               >
                 <Trash2 className="size-3.5" />
               </button>
@@ -136,7 +136,7 @@ function CommentThread({
             {canComment && (
               <button
                 onClick={() => setShowReply(r => !r)}
-                className="p-1 text-ink-400 hover:text-ink-950 rounded-chip transition-colors"
+                className="p-1 text-fg-400 hover:text-fg-950 rounded-chip transition-colors"
                 title="Reply"
               >
                 <Reply className="size-3.5" />
@@ -147,18 +147,18 @@ function CommentThread({
 
         {/* Replies */}
         {expanded && comment.replies.length > 0 && (
-          <div className="mt-3 pl-9 space-y-2.5 border-l-2 border-paper-200 ml-3.5">
+          <div className="mt-3 pl-9 space-y-2.5 border-l-2 border-surface-200 ml-3.5">
             {comment.replies.map(reply => (
               <div key={reply.id} className="flex items-start gap-2">
-                <div className="size-6 rounded-full border border-paper-200 bg-paper-100 flex-shrink-0 flex items-center justify-center text-ink-700 text-[11px] font-semibold">
+                <div className="size-6 rounded-full border border-surface-200 bg-surface-100 flex-shrink-0 flex items-center justify-center text-fg-700 text-[11px] font-semibold">
                   {authorDisplay(reply.authorId)[0].toUpperCase()}
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-semibold text-ink-700">{authorDisplay(reply.authorId)}</span>
-                    <span className="text-[11px] text-ink-400">{timeAgo(reply.createdAt)}</span>
+                    <span className="text-[11px] font-semibold text-fg-700">{authorDisplay(reply.authorId)}</span>
+                    <span className="text-[11px] text-fg-400">{timeAgo(reply.createdAt)}</span>
                   </div>
-                  <p className="text-dense text-ink-700 mt-0.5">{reply.body}</p>
+                  <p className="text-dense text-fg-700 mt-0.5">{reply.body}</p>
                 </div>
               </div>
             ))}
@@ -181,7 +181,7 @@ function CommentThread({
                 onChange={e => setReplyBody(e.target.value)}
                 placeholder="Write a reply…"
                 rows={2}
-                className="flex-1 text-[13px] text-ink-950 bg-card border border-input rounded-md px-[11px] py-1.5 placeholder:text-ink-400 focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15 resize-none"
+                className="flex-1 text-[13px] text-fg-950 bg-card border border-input rounded-md px-[11px] py-1.5 placeholder:text-fg-400 focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15 resize-none"
               />
               <Button
                 size="sm"
@@ -227,7 +227,9 @@ export function CommentsPanel({
   })
 
   const addComment = useMutation({
-    mutationFn: () => {
+    // Two endpoints with different bodies; the caller only needs to know it
+    // resolved, so the response is typed loosely.
+    mutationFn: (): Promise<unknown> => {
       if (portalMode && portalToken) {
         return api.post(`/portal/${portalToken}/comments`, {
           body: body.trim(),
@@ -269,13 +271,13 @@ export function CommentsPanel({
     <div className="flex flex-col gap-4">
       {/* Filter tabs (internal mode only) */}
       {!portalMode && (
-        <div className="flex items-center gap-1 p-0.5 bg-paper-100 rounded-md w-fit">
+        <div className="flex items-center gap-1 p-0.5 bg-surface-100 rounded-md w-fit">
           {(['unresolved', 'all', 'resolved'] as const).map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={`px-3 py-1 rounded-chip text-[11.5px] font-semibold transition-colors capitalize ${
-                filter === f ? 'bg-card shadow-e1 text-ink-950' : 'text-ink-500 hover:text-ink-950'
+                filter === f ? 'bg-card shadow-e1 text-fg-950' : 'text-fg-500 hover:text-fg-950'
               }`}
             >
               {f}
@@ -287,7 +289,7 @@ export function CommentsPanel({
       {/* Add comment */}
       {canComment && (
         <Card className="p-4 space-y-3">
-          <p className="text-section text-ink-950">Add a comment</p>
+          <p className="text-section text-fg-950">Add a comment</p>
           {portalMode && (
             <Input
               value={authorName}
@@ -305,7 +307,7 @@ export function CommentsPanel({
             onChange={e => setBody(e.target.value)}
             placeholder="Write your comment…"
             rows={3}
-            className="w-full text-[13px] text-ink-950 bg-card border border-input rounded-md px-[11px] py-2 placeholder:text-ink-400 focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15 resize-none"
+            className="w-full text-[13px] text-fg-950 bg-card border border-input rounded-md px-[11px] py-2 placeholder:text-fg-400 focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15 resize-none"
           />
           <div className="flex justify-end">
             <Button
@@ -323,7 +325,7 @@ export function CommentsPanel({
       {/* Comment threads */}
       {commentsQuery.isLoading ? (
         <div className="flex items-center justify-center py-8">
-          <Loader2 className="size-5 animate-spin text-ink-400" />
+          <Loader2 className="size-5 animate-spin text-fg-400" />
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState icon={<MessageSquare />} title="No comments yet" />

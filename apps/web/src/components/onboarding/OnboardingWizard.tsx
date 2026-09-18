@@ -99,20 +99,20 @@ export function OnboardingWizard() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/40 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-3xl rounded-card border border-paper-200 bg-card shadow-e3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4 backdrop-blur-sm">
+      <div className="relative w-full max-w-3xl rounded-card border border-surface-200 bg-card shadow-e3">
         {/* Top bar: 2-dot step indicator + skip */}
-        <div className="flex items-center justify-between border-b border-paper-200 px-6 py-4">
-          <div className="flex items-center gap-2 text-dense text-ink-500">
+        <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4">
+          <div className="flex items-center gap-2 text-dense text-fg-500">
             <Dot active={step === 1} done={step > 1} />
-            <span className={step === 1 ? 'font-medium text-ink-950' : ''}>Industry</span>
-            <span className="mx-1 text-ink-400">·</span>
+            <span className={step === 1 ? 'font-medium text-fg-950' : ''}>Industry</span>
+            <span className="mx-1 text-fg-400">·</span>
             <Dot active={step === 2} done={false} />
-            <span className={step === 2 ? 'font-medium text-ink-950' : ''}>First contract</span>
+            <span className={step === 2 ? 'font-medium text-fg-950' : ''}>First contract</span>
           </div>
           <button
             onClick={() => complete(null)}
-            className="text-dense text-ink-500 hover:text-ink-950"
+            className="text-dense text-fg-500 hover:text-fg-950"
             data-testid="onboarding-skip-all"
           >
             Skip setup
@@ -145,10 +145,10 @@ function Step1Industry({
 }) {
   return (
     <div className="px-6 py-10 sm:px-10">
-      <h1 className="text-title text-ink-950">
+      <h1 className="text-title text-fg-950">
         What does your team work on?
       </h1>
-      <p className="mt-2 text-body text-ink-500">
+      <p className="mt-2 text-body text-fg-500">
         We&apos;ll preload the right contract types, templates, clauses, and playbook positions — you
         can change anything later.
       </p>
@@ -164,13 +164,13 @@ function Step1Industry({
               onClick={() => onPick(opt.id)}
               disabled={loading}
               data-testid={`onboarding-industry-${opt.id}`}
-              className="group flex flex-col items-start gap-2 rounded-card border border-paper-200 bg-paper-50 p-4 text-left transition-colors hover:border-ink-950 hover:bg-paper-100 disabled:cursor-not-allowed disabled:opacity-50"
+              className="group flex flex-col items-start gap-2 rounded-card border border-surface-200 bg-surface-50 p-4 text-left transition-colors hover:border-fg-950 hover:bg-surface-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <span className="grid size-9 place-items-center rounded-md bg-paper-100 text-ink-700">
+              <span className="grid size-9 place-items-center rounded-md bg-surface-100 text-fg-700">
                 <Icon className="size-4" />
               </span>
-              <span className="text-body font-semibold text-ink-950">{opt.label}</span>
-              <span className="text-dense text-ink-500">{opt.blurb}</span>
+              <span className="text-body font-semibold text-fg-950">{opt.label}</span>
+              <span className="text-dense text-fg-500">{opt.blurb}</span>
             </button>
           )
         })}
@@ -178,20 +178,20 @@ function Step1Industry({
           onClick={() => onPick('other')}
           disabled={loading}
           data-testid="onboarding-industry-other"
-          className="group flex flex-col items-start gap-2 rounded-card border border-dashed border-paper-300 bg-paper-50 p-4 text-left transition-colors hover:border-ink-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="group flex flex-col items-start gap-2 rounded-card border border-dashed border-surface-300 bg-surface-50 p-4 text-left transition-colors hover:border-fg-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <span className="grid size-9 place-items-center rounded-md bg-paper-100 text-ink-500">
+          <span className="grid size-9 place-items-center rounded-md bg-surface-100 text-fg-500">
             <CircleHelp className="size-4" />
           </span>
-          <span className="text-body font-semibold text-ink-950">Other / not sure</span>
-          <span className="text-dense text-ink-500">
+          <span className="text-body font-semibold text-fg-950">Other / not sure</span>
+          <span className="text-dense text-fg-500">
             Skip the pack — you can install one later from Settings.
           </span>
         </button>
       </div>
 
       {loading && (
-        <div className="mt-6 flex items-center gap-2 text-dense text-ink-500">
+        <div className="mt-6 flex items-center gap-2 text-dense text-fg-500">
           <Loader2 className="size-3.5 animate-spin" /> Installing pack…
         </div>
       )}
@@ -272,15 +272,15 @@ function Step2FirstContract({
     <div className="px-6 py-10 sm:px-10">
       {picked && (
         // "Pack installed" is a setup fact, not a binding state — neutral chip.
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-paper-200 bg-paper-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-700">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-surface-200 bg-surface-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-700">
           <CheckCircle2 className="size-3" />
           {picked} pack installed
         </span>
       )}
-      <h1 className="mt-3 text-title text-ink-950">
+      <h1 className="mt-3 text-title text-fg-950">
         See what an agent does with a real contract.
       </h1>
-      <p className="mt-2 text-body text-ink-500">
+      <p className="mt-2 text-body text-fg-500">
         Drop a PDF or DOCX — our agents parse, classify, extract key terms, score risk, and index
         it for search. Takes about 30 seconds.
       </p>
@@ -289,19 +289,19 @@ function Step2FirstContract({
         {...getRootProps()}
         className={`mt-8 flex cursor-pointer flex-col items-center justify-center rounded-card border-2 border-dashed p-10 text-center transition-colors ${
           isDragActive
-            ? 'border-ink-950 bg-paper-100'
-            : 'border-paper-300 bg-paper-50 hover:border-ink-400 hover:bg-paper-100'
+            ? 'border-fg-950 bg-surface-100'
+            : 'border-surface-300 bg-surface-50 hover:border-fg-400 hover:bg-surface-100'
         }`}
         data-testid="onboarding-dropzone"
       >
         <input {...getInputProps()} />
-        <span className="grid size-12 place-items-center rounded-full bg-paper-100 text-ink-700">
+        <span className="grid size-12 place-items-center rounded-full bg-surface-100 text-fg-700">
           {uploading ? <Loader2 className="size-5 animate-spin" /> : <UploadIcon className="size-5" />}
         </span>
-        <div className="mt-3 text-body font-medium text-ink-950">
+        <div className="mt-3 text-body font-medium text-fg-950">
           {uploading ? 'Uploading…' : 'Drop a contract here, or click to browse'}
         </div>
-        <div className="mt-1 text-dense text-ink-500">PDF, DOCX, or TXT</div>
+        <div className="mt-1 text-dense text-fg-500">PDF, DOCX, or TXT</div>
       </div>
 
       <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
@@ -343,11 +343,11 @@ function Step2FirstContract({
 // Step position is chrome, not meaning: the current and completed steps read as
 // ink (the "you are here" treatment), and nothing here is binding.
 function Dot({ active, done }: { active: boolean; done: boolean }) {
-  if (done) return <CheckCircle2 className="size-3.5 text-ink-950" />
+  if (done) return <CheckCircle2 className="size-3.5 text-fg-950" />
   return (
     <span
       className={`inline-block size-2 rounded-full ${
-        active ? 'bg-ink-950' : 'bg-paper-300'
+        active ? 'bg-primary-500' : 'bg-surface-300'
       }`}
     />
   )

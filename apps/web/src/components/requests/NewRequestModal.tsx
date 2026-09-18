@@ -95,7 +95,7 @@ export function NewRequestModal({ onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 backdrop-blur-sm"
       data-testid="new-request-modal"
     >
       <div className="bg-card rounded-card shadow-e3 w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
@@ -105,19 +105,19 @@ export function NewRequestModal({ onClose }: Props) {
             Brand would read as "done", so this stays neutral like every other
             "we heard you" confirmation in the product. */}
         {submitted && (
-          <div className="px-6 py-4 bg-paper-100 border-b border-paper-200 flex items-center gap-2 text-ink-950 text-body font-medium">
-            <CheckCircle2 className="size-4 text-ink-500" />
+          <div className="px-6 py-4 bg-surface-100 border-b border-surface-200 flex items-center gap-2 text-fg-950 text-body font-medium">
+            <CheckCircle2 className="size-4 text-fg-500" />
             Request submitted! AI is classifying it now.
           </div>
         )}
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-paper-200">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200">
           <div>
-            <h2 className="text-section text-ink-950">New Contract Request</h2>
-            <p className="text-dense text-ink-500 mt-0.5">AI will classify and extract key terms automatically</p>
+            <h2 className="text-section text-fg-950">New Contract Request</h2>
+            <p className="text-dense text-fg-500 mt-0.5">AI will classify and extract key terms automatically</p>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-paper-100 rounded-md transition-colors">
-            <X className="size-4 text-ink-500" />
+          <button onClick={onClose} className="p-1.5 hover:bg-surface-100 rounded-md transition-colors">
+            <X className="size-4 text-fg-500" />
           </button>
         </div>
 
@@ -125,7 +125,7 @@ export function NewRequestModal({ onClose }: Props) {
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           {/* Title */}
           <div>
-            <label className="block text-dense font-medium text-ink-700 mb-1.5">
+            <label className="block text-dense font-medium text-fg-700 mb-1.5">
               Request title <span className="text-risk-600">*</span>
             </label>
             <Input
@@ -140,11 +140,11 @@ export function NewRequestModal({ onClose }: Props) {
           {/* Type + Priority row */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-dense font-medium text-ink-700 mb-1.5">Contract type</label>
+              <label className="block text-dense font-medium text-fg-700 mb-1.5">Contract type</label>
               <select
                 value={form.type}
                 onChange={set('type')}
-                className="w-full h-9 text-[13px] text-ink-950 border border-input rounded-md px-2.5 bg-card focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+                className="w-full h-9 text-[13px] text-fg-950 border border-input rounded-md px-2.5 bg-card focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
               >
                 {CONTRACT_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label}</option>
@@ -152,11 +152,11 @@ export function NewRequestModal({ onClose }: Props) {
               </select>
             </div>
             <div>
-              <label className="block text-dense font-medium text-ink-700 mb-1.5">Priority</label>
+              <label className="block text-dense font-medium text-fg-700 mb-1.5">Priority</label>
               <select
                 value={form.priority}
                 onChange={set('priority')}
-                className="w-full h-9 text-[13px] text-ink-950 border border-input rounded-md px-2.5 bg-card focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+                className="w-full h-9 text-[13px] text-fg-950 border border-input rounded-md px-2.5 bg-card focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
               >
                 {PRIORITIES.map(p => (
                   <option key={p.value} value={p.value}>{p.label}</option>
@@ -170,7 +170,7 @@ export function NewRequestModal({ onClose }: Props) {
               existing rows as the user types. */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-dense font-medium text-ink-700 mb-1.5">Counterparty</label>
+              <label className="block text-dense font-medium text-fg-700 mb-1.5">Counterparty</label>
               <CounterpartyPicker
                 value={counterparty}
                 onChange={(sel) => {
@@ -182,7 +182,7 @@ export function NewRequestModal({ onClose }: Props) {
               />
             </div>
             <div>
-              <label className="block text-dense font-medium text-ink-700 mb-1.5">Estimated value (USD)</label>
+              <label className="block text-dense font-medium text-fg-700 mb-1.5">Estimated value (USD)</label>
               <Input
                 type="number"
                 value={form.estimatedValue}
@@ -196,7 +196,7 @@ export function NewRequestModal({ onClose }: Props) {
 
           {/* Description */}
           <div>
-            <label className="block text-dense font-medium text-ink-700 mb-1.5">
+            <label className="block text-dense font-medium text-fg-700 mb-1.5">
               Description <span className="text-risk-600">*</span>
             </label>
             <textarea
@@ -204,27 +204,27 @@ export function NewRequestModal({ onClose }: Props) {
               onChange={set('description')}
               placeholder="Describe the purpose, key terms, deadlines, or any special requirements…"
               rows={4}
-              className="w-full text-[13px] text-ink-950 border border-input rounded-md px-3 py-2 bg-card resize-none placeholder:text-ink-400 focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+              className="w-full text-[13px] text-fg-950 border border-input rounded-md px-3 py-2 bg-card resize-none placeholder:text-fg-400 focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
               data-testid="request-description"
             />
           </div>
 
           {/* Optional document attachment */}
           <div>
-            <label className="block text-dense font-medium text-ink-700 mb-1.5">
-              Attach document <span className="text-ink-400 font-normal">(optional — PDF or DOCX)</span>
+            <label className="block text-dense font-medium text-fg-700 mb-1.5">
+              Attach document <span className="text-fg-400 font-normal">(optional — PDF or DOCX)</span>
             </label>
             {attachedFile ? (
               // An attached file is a fact about the form, not a state — paper, not info.
-              <div className="flex items-center gap-2 px-3 py-2 border border-paper-200 bg-paper-100 rounded-md text-[13px]">
-                <FileText className="size-4 text-ink-500 flex-shrink-0" />
-                <span className="flex-1 truncate text-ink-950 font-medium">{attachedFile.name}</span>
-                <span className="text-[11px] tabular-nums text-ink-500 flex-shrink-0">
+              <div className="flex items-center gap-2 px-3 py-2 border border-surface-200 bg-surface-100 rounded-md text-[13px]">
+                <FileText className="size-4 text-fg-500 flex-shrink-0" />
+                <span className="flex-1 truncate text-fg-950 font-medium">{attachedFile.name}</span>
+                <span className="text-[11px] tabular-nums text-fg-500 flex-shrink-0">
                   {(attachedFile.size / 1024 / 1024).toFixed(1)} MB
                 </span>
                 <button
                   onClick={() => setAttachedFile(null)}
-                  className="text-ink-400 hover:text-ink-950 ml-1"
+                  className="text-fg-400 hover:text-fg-950 ml-1"
                 >
                   <X className="size-3.5" />
                 </button>
@@ -233,7 +233,7 @@ export function NewRequestModal({ onClose }: Props) {
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="w-full flex items-center gap-2 px-3 py-2 border border-dashed border-paper-300 rounded-md text-[13px] text-ink-500 hover:border-ink-400 hover:text-ink-950 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 border border-dashed border-surface-300 rounded-md text-[13px] text-fg-500 hover:border-fg-400 hover:text-fg-950 transition-colors"
               >
                 <Paperclip className="size-4" />
                 Click to attach a draft contract for AI analysis
@@ -258,7 +258,7 @@ export function NewRequestModal({ onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-paper-200">
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-surface-200">
           <Button variant="ghost" size="sm" onClick={onClose} disabled={create.isPending}>
             Cancel
           </Button>

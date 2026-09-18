@@ -33,9 +33,9 @@ const STATUS_LABEL: Record<string, string> = {
  * it stays the loudest thing in the header.
  */
 const PRIORITY: Record<string, { label: string; cls: string; dot?: string }> = {
-  LOW:    { label: 'Low priority',    cls: 'text-ink-500' },
-  MEDIUM: { label: 'Medium priority', cls: 'text-ink-500' },
-  HIGH:   { label: 'High priority',   cls: 'text-ink-700 font-medium' },
+  LOW:    { label: 'Low priority',    cls: 'text-fg-500' },
+  MEDIUM: { label: 'Medium priority', cls: 'text-fg-500' },
+  HIGH:   { label: 'High priority',   cls: 'text-fg-700 font-medium' },
   URGENT: { label: 'Urgent',          cls: 'text-attention-700 font-medium', dot: 'bg-attention-600' },
 }
 
@@ -167,7 +167,7 @@ export function RequestDetailPanel({ request, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-40 flex">
       {/* Backdrop */}
-      <div className="flex-1 bg-ink-950/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="flex-1 bg-scrim/30 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
       <div
@@ -179,11 +179,11 @@ export function RequestDetailPanel({ request, onClose }: Props) {
         className="w-full max-w-md bg-card shadow-e3 flex flex-col h-full overflow-hidden focus:outline-none"
       >
         {/* Header */}
-        <div className="flex items-start justify-between px-5 py-4 border-b border-paper-200">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-surface-200">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               {request.requestNumber && (
-                <span className="text-[10px] font-mono text-ink-400">{request.requestNumber}</span>
+                <span className="text-[10px] font-mono text-fg-400">{request.requestNumber}</span>
               )}
               <StatusPill status={request.status}>{STATUS_LABEL[request.status]}</StatusPill>
               <span className={`inline-flex items-center gap-1 text-[10.5px] ${pri.cls}`}>
@@ -191,10 +191,10 @@ export function RequestDetailPanel({ request, onClose }: Props) {
                 {pri.label}
               </span>
             </div>
-            <h2 className="text-section text-ink-950 mt-1.5">{request.title}</h2>
+            <h2 className="text-section text-fg-950 mt-1.5">{request.title}</h2>
           </div>
-          <button onClick={onClose} className="ml-3 p-1.5 hover:bg-paper-100 rounded-md flex-shrink-0">
-            <X className="size-4 text-ink-400" />
+          <button onClick={onClose} className="ml-3 p-1.5 hover:bg-surface-100 rounded-md flex-shrink-0">
+            <X className="size-4 text-fg-400" />
           </button>
         </div>
 
@@ -246,9 +246,9 @@ export function RequestDetailPanel({ request, onClose }: Props) {
                   return terms.length > 0 ? (
                     <div className="grid grid-cols-2 gap-1.5 pt-1">
                       {terms.map(([label, val]) => (
-                        <div key={label} className="bg-card rounded-md px-2.5 py-1.5 border border-paper-200">
-                          <p className="text-[9px] uppercase tracking-[0.08em] text-ink-400">{label}</p>
-                          <p className="text-dense font-medium text-ink-950 truncate">{val}</p>
+                        <div key={label} className="bg-card rounded-md px-2.5 py-1.5 border border-surface-200">
+                          <p className="text-[9px] uppercase tracking-[0.08em] text-fg-400">{label}</p>
+                          <p className="text-dense font-medium text-fg-950 truncate">{val}</p>
                         </div>
                       ))}
                     </div>
@@ -263,43 +263,43 @@ export function RequestDetailPanel({ request, onClose }: Props) {
           {/* Meta */}
           <div className="space-y-3">
             <div className="flex items-center justify-between text-dense">
-              <span className="text-ink-500">Contract type</span>
+              <span className="text-fg-500">Contract type</span>
               <Chip>{request.type.replace(/_/g, ' ')}</Chip>
             </div>
             {request.counterpartyName && (
               <div className="flex items-center justify-between text-dense">
-                <span className="text-ink-500">Counterparty</span>
-                <span className="font-medium text-ink-950">{request.counterpartyName}</span>
+                <span className="text-fg-500">Counterparty</span>
+                <span className="font-medium text-fg-950">{request.counterpartyName}</span>
               </div>
             )}
             {request.estimatedValue && (
               <div className="flex items-center justify-between text-dense">
-                <span className="text-ink-500">Est. value</span>
-                <span className="font-medium tabular-nums text-ink-950">${Number(request.estimatedValue).toLocaleString()}</span>
+                <span className="text-fg-500">Est. value</span>
+                <span className="font-medium tabular-nums text-fg-950">${Number(request.estimatedValue).toLocaleString()}</span>
               </div>
             )}
             <div className="flex items-center justify-between text-dense">
-              <span className="text-ink-500">Submitted</span>
-              <span className="text-ink-700 tabular-nums">{new Date(request.createdAt).toLocaleDateString()}</span>
+              <span className="text-fg-500">Submitted</span>
+              <span className="text-fg-700 tabular-nums">{new Date(request.createdAt).toLocaleDateString()}</span>
             </div>
           </div>
 
           {/* Description */}
           <div>
             <Eyebrow className="mb-1.5">Description</Eyebrow>
-            <p className="text-body text-ink-700 whitespace-pre-wrap">{request.description}</p>
+            <p className="text-body text-fg-700 whitespace-pre-wrap">{request.description}</p>
           </div>
 
           {/* Assignee */}
           <div>
             <Eyebrow className="mb-1.5">Assignee</Eyebrow>
             <div className="relative">
-              <User className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-ink-400 pointer-events-none" />
+              <User className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-fg-400 pointer-events-none" />
               <select
                 value={selectedAssignee}
                 onChange={e => handleAssign(e.target.value)}
                 disabled={!isActionable || patch.isPending}
-                className="w-full h-9 text-[13px] text-ink-950 border border-input rounded-md pl-8 pr-3 bg-card focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full h-9 text-[13px] text-fg-950 border border-input rounded-md pl-8 pr-3 bg-card focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="">Unassigned</option>
                 {users.map((u) => (
@@ -312,7 +312,7 @@ export function RequestDetailPanel({ request, onClose }: Props) {
 
         {/* Action footer */}
         {isActionable ? (
-          <div className="border-t border-paper-200 px-5 py-4 space-y-2">
+          <div className="border-t border-surface-200 px-5 py-4 space-y-2">
             {actionError && (
               <div
                 role="alert"
@@ -329,7 +329,7 @@ export function RequestDetailPanel({ request, onClose }: Props) {
                  who gets "Rejected" and nothing else has to come and ask. */
               <div className="space-y-2" data-testid="request-reject-confirm">
                 <Eyebrow>Reject this request?</Eyebrow>
-                <p className="text-dense text-ink-500">
+                <p className="text-dense text-fg-500">
                   “{request.title}” closes and leaves the queue. The requester
                   is not told why — follow up with them directly.
                 </p>
@@ -357,7 +357,7 @@ export function RequestDetailPanel({ request, onClose }: Props) {
                 {/* Accepting a request commits it — this is the decision surface
                     where brand and danger are allowed to sit on buttons. */}
                 <Button
-                  variant="brand"
+                  variant="success"
                   className="w-full"
                   size="sm"
                   onClick={() => convert.mutate()}
@@ -408,14 +408,14 @@ export function RequestDetailPanel({ request, onClose }: Props) {
             stopped, with no statement of the outcome and no way back. A
             reviewer who rejected something in error had to go to the database.
           */
-          <div className="border-t border-paper-200 px-5 py-4 space-y-2" data-testid="request-settled-footer">
+          <div className="border-t border-surface-200 px-5 py-4 space-y-2" data-testid="request-settled-footer">
             {actionError && (
               <div role="alert" className="flex items-start gap-2 text-dense text-risk-900 bg-risk-50 border border-risk-200 rounded-md px-3 py-2">
                 <AlertTriangle className="size-3.5 flex-shrink-0 mt-0.5 text-risk-600" />
                 <span className="min-w-0 break-words">{actionError}</span>
               </div>
             )}
-            <p className="text-dense text-ink-500">
+            <p className="text-dense text-fg-500">
               This request is settled ({STATUS_LABEL[request.status] ?? request.status.toLowerCase()}).
               {typeof request.metadata?.rejectionReason === 'string' && request.metadata.rejectionReason
                 ? ` Reason given: “${request.metadata.rejectionReason}”`

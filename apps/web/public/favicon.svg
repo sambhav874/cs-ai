@@ -1,17 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <!-- draftLegal favicon — emerald rounded square with white dL.
-       Reads as a brand mark at every size from 16×16 (browser tab) to
-       180×180 (Apple touch icon). The white dL keeps the wordmark
-       letters intact; the emerald background ties to the "Legal" half
-       of the brand split. -->
-  <rect width="32" height="32" rx="7" ry="7" fill="#047857"/>
-  <text
-    x="16" y="22"
-    text-anchor="middle"
-    font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    font-size="18"
-    font-weight="700"
-    letter-spacing="-0.4"
-    fill="#ffffff"
-  >dL</text>
+  <!-- The product mark: an open C with a point beside it, white on cobalt.
+       Mirrors <BrandMark /> in src/components/brand/Wordmark.tsx. -->
+  <rect width="32" height="32" rx="8" fill="#0E5AAE"/>
+  <path d="M19.95 11.05A7 7 0 1 0 19.95 20.95" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/>
+  <circle cx="23" cy="16" r="2" fill="#fff"/>
 </svg>

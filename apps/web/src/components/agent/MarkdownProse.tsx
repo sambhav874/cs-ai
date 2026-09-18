@@ -33,7 +33,7 @@ export function MarkdownProse({ text, compact = false }: Props) {
         '[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.9em] [&_code]:font-mono',
         '[&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:overflow-x-auto [&_pre]:my-2 [&_pre>code]:bg-transparent [&_pre>code]:p-0',
         // Links follow the Button `link` variant: ink at rest, brand on hover.
-        '[&_a]:text-ink-950 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-paper-300 hover:[&_a]:text-brand-700 hover:[&_a]:decoration-brand-700',
+        '[&_a]:text-fg-950 [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-surface-300 hover:[&_a]:text-primary-700 hover:[&_a]:decoration-primary-700',
         '[&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0',
         '[&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2 [&_ul]:space-y-1',
         '[&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2 [&_ol]:space-y-1',

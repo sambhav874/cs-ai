@@ -34,6 +34,7 @@ import {
   X,
   Sparkles,
 } from 'lucide-react'
+import { PRODUCT_NAME } from '@/lib/brand'
 
 type Org = {
   settings?: {
@@ -152,14 +153,14 @@ export function WelcomeChecklist() {
     // isn't a binding state — so the card is a plain paper card now and the
     // colored elements are gone with it.
     <div
-      className="relative overflow-hidden rounded-card border border-paper-200 bg-card p-5"
+      className="relative overflow-hidden rounded-card border border-surface-200 bg-card p-5"
       data-testid="welcome-checklist"
     >
       <Button
         variant="ghost"
         size="icon-xs"
         onClick={() => dismiss.mutate()}
-        className="absolute right-3 top-3 text-ink-400"
+        className="absolute right-3 top-3 text-fg-400"
         aria-label="Dismiss welcome checklist"
         data-testid="welcome-checklist-dismiss"
       >
@@ -167,12 +168,12 @@ export function WelcomeChecklist() {
       </Button>
 
       <div className="flex items-center gap-2">
-        <span className="grid size-7 place-items-center rounded-md bg-paper-100 text-ink-500">
+        <span className="grid size-7 place-items-center rounded-md bg-surface-100 text-fg-500">
           <Sparkles className="size-3.5" />
         </span>
         <div>
-          <h2 className="text-section text-ink-950">Get the most out of draftLegal</h2>
-          <p className="text-dense text-ink-500">
+          <h2 className="text-section text-fg-950">Get the most out of {PRODUCT_NAME}</h2>
+          <p className="text-dense text-fg-500">
             {doneCount} of {items.length} done — these all live on their own pages so you can
             come back any time.
           </p>
@@ -185,31 +186,31 @@ export function WelcomeChecklist() {
           return (
             <li
               key={item.id}
-              className={`flex items-start gap-3 rounded-md border border-paper-200 bg-card p-3 transition-colors ${
-                item.done ? 'opacity-60' : 'hover:border-paper-300'
+              className={`flex items-start gap-3 rounded-md border border-surface-200 bg-card p-3 transition-colors ${
+                item.done ? 'opacity-60' : 'hover:border-surface-300'
               }`}
             >
               {/* A finished setup step is a neutral fact — the strike-through
                   and the dimmed row carry "done", so the tick stays ink. */}
               <span className="mt-0.5">
                 {item.done ? (
-                  <CheckCircle2 className="size-4 text-ink-700" />
+                  <CheckCircle2 className="size-4 text-fg-700" />
                 ) : (
-                  <Circle className="size-4 text-ink-400" />
+                  <Circle className="size-4 text-fg-400" />
                 )}
               </span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <Icon className="size-3.5 text-ink-400" />
+                  <Icon className="size-3.5 text-fg-400" />
                   <span
                     className={`text-body font-medium ${
-                      item.done ? 'line-through text-ink-500' : 'text-ink-950'
+                      item.done ? 'line-through text-fg-500' : 'text-fg-950'
                     }`}
                   >
                     {item.label}
                   </span>
                 </div>
-                <p className="mt-0.5 text-dense text-ink-500">{item.sub}</p>
+                <p className="mt-0.5 text-dense text-fg-500">{item.sub}</p>
                 {!item.done && (
                   <Button
                     asChild

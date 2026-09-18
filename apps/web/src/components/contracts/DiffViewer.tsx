@@ -41,11 +41,11 @@ export function DiffViewer({ diffHtml, stats, v1Label = 'Original', v2Label = 'C
             {stats.deletions} deletion{stats.deletions !== 1 ? 's' : ''}
           </span>
         </div>
-        <div className="flex items-center gap-1 p-0.5 bg-paper-100 rounded-md">
+        <div className="flex items-center gap-1 p-0.5 bg-surface-100 rounded-md">
           <button
             onClick={() => setMode('unified')}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-chip text-[11.5px] font-semibold transition-colors ${
-              mode === 'unified' ? 'bg-card shadow-e1 text-ink-950' : 'text-ink-500 hover:text-ink-950'
+              mode === 'unified' ? 'bg-card shadow-e1 text-fg-950' : 'text-fg-500 hover:text-fg-950'
             }`}
           >
             <AlignLeft className="size-3.5" /> Unified
@@ -53,7 +53,7 @@ export function DiffViewer({ diffHtml, stats, v1Label = 'Original', v2Label = 'C
           <button
             onClick={() => setMode('side-by-side')}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-chip text-[11.5px] font-semibold transition-colors ${
-              mode === 'side-by-side' ? 'bg-card shadow-e1 text-ink-950' : 'text-ink-500 hover:text-ink-950'
+              mode === 'side-by-side' ? 'bg-card shadow-e1 text-fg-950' : 'text-fg-500 hover:text-fg-950'
             }`}
           >
             <ArrowLeftRight className="size-3.5" /> Side by side
@@ -62,7 +62,7 @@ export function DiffViewer({ diffHtml, stats, v1Label = 'Original', v2Label = 'C
       </div>
 
       {mode === 'unified' ? (
-        <div className="bg-card border border-paper-200 rounded-card overflow-hidden">
+        <div className="bg-card border border-surface-200 rounded-card overflow-hidden">
           <div
             className="diff-unified prose prose-sm max-w-none p-6 overflow-auto max-h-[70vh]"
             dangerouslySetInnerHTML={{ __html: sanitizeHtml(diffHtml) }}
@@ -70,8 +70,8 @@ export function DiffViewer({ diffHtml, stats, v1Label = 'Original', v2Label = 'C
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-card border border-paper-200 rounded-card overflow-hidden">
-            <div className="px-4 py-2 border-b border-paper-200 bg-paper-50 text-[10px] font-bold text-ink-400 uppercase tracking-[0.09em]">
+          <div className="bg-card border border-surface-200 rounded-card overflow-hidden">
+            <div className="px-4 py-2 border-b border-surface-200 bg-surface-50 text-[10px] font-bold text-fg-400 uppercase tracking-[0.09em]">
               {v1Label}
             </div>
             <div
@@ -79,8 +79,8 @@ export function DiffViewer({ diffHtml, stats, v1Label = 'Original', v2Label = 'C
               dangerouslySetInnerHTML={{ __html: sanitizeHtml(diffHtml) }}
             />
           </div>
-          <div className="bg-card border border-paper-200 rounded-card overflow-hidden">
-            <div className="px-4 py-2 border-b border-paper-200 bg-paper-50 text-[10px] font-bold text-ink-400 uppercase tracking-[0.09em]">
+          <div className="bg-card border border-surface-200 rounded-card overflow-hidden">
+            <div className="px-4 py-2 border-b border-surface-200 bg-surface-50 text-[10px] font-bold text-fg-400 uppercase tracking-[0.09em]">
               {v2Label}
             </div>
             <div
@@ -113,8 +113,8 @@ export function DiffViewer({ diffHtml, stats, v1Label = 'Original', v2Label = 'C
         /* Unified: show both ins and del */
         .diff-unified ins,
         .diff-right ins {
-          background: hsl(var(--info) / 0.10);
-          color: hsl(var(--info));
+          background: rgb(var(--info) / 0.10);
+          color: rgb(var(--info));
           text-decoration: underline;
           text-decoration-thickness: 1.5px;
           text-underline-offset: 2px;
@@ -123,8 +123,8 @@ export function DiffViewer({ diffHtml, stats, v1Label = 'Original', v2Label = 'C
         }
         .diff-unified del,
         .diff-left del {
-          background: hsl(var(--info) / 0.06);
-          color: hsl(var(--info));
+          background: rgb(var(--info) / 0.06);
+          color: rgb(var(--info));
           text-decoration: line-through;
           text-decoration-thickness: 1.5px;
           border-radius: 2px;

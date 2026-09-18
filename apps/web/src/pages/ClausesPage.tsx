@@ -44,8 +44,8 @@ function CategoryTreeNode({
           // This tree is the page's navigation, so the active item takes the
           // system's nav-active treatment: ink fill, not a colored wash.
           selected === category.id
-            ? 'bg-ink-950 text-white font-medium'
-            : 'text-ink-700 hover:bg-paper-100',
+            ? 'bg-primary-50 text-primary-700 font-medium'
+            : 'text-fg-700 hover:bg-surface-100',
         )}
         onClick={() => { onSelect(category.id); if (hasChildren) setOpen(o => !o) }}
       >
@@ -134,15 +134,15 @@ function ClauseRow({
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect() }
       }}
       className={cn(
-        'px-4 py-2 border-b border-paper-100 cursor-pointer hover:bg-paper-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        selected && 'bg-paper-100 border-l-2 border-l-ink-950',
+        'px-4 py-2 border-b border-surface-100 cursor-pointer hover:bg-surface-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        selected && 'bg-surface-100 border-l-2 border-l-fg-950',
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-medium text-ink-950 truncate" title={clause.title}>{clause.title}</p>
+          <p className="text-[13px] font-medium text-fg-950 truncate" title={clause.title}>{clause.title}</p>
           {showCategory && clause.category?.name && (
-            <p className="text-[11px] text-ink-500 truncate mt-0.5">{clause.category.name}</p>
+            <p className="text-[11px] text-fg-500 truncate mt-0.5">{clause.category.name}</p>
           )}
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {!clause.isApproved && (
@@ -150,20 +150,20 @@ function ClauseRow({
             )}
             {unfavorable && <StatusPill meaning="risk">Unfavourable</StatusPill>}
             {clause.riskRating && !unfavorable && (
-              <span className="text-[11px] px-1.5 py-0.5 rounded-chip border border-paper-200 bg-paper-100 text-ink-700 capitalize">
+              <span className="text-[11px] px-1.5 py-0.5 rounded-chip border border-surface-200 bg-surface-100 text-fg-700 capitalize">
                 {clause.riskRating}
               </span>
             )}
             {/* Every clause in this library is used 0 times, so "used 0×" on
                 every row was a column of noise. It appears when it says something. */}
             {clause.usageCount > 0 && (
-              <span className="text-[11px] tabular-nums text-ink-500">used {clause.usageCount}×</span>
+              <span className="text-[11px] tabular-nums text-fg-500">used {clause.usageCount}×</span>
             )}
           </div>
           {clause.tags.length > 0 && (
             <div className="flex gap-1 mt-1 flex-wrap">
               {clause.tags.slice(0, 3).map(t => (
-                <span key={t} className="text-[11px] px-1 py-0.5 bg-paper-100 text-ink-500 rounded-chip">{t}</span>
+                <span key={t} className="text-[11px] px-1 py-0.5 bg-surface-100 text-fg-500 rounded-chip">{t}</span>
               ))}
             </div>
           )}
@@ -174,10 +174,10 @@ function ClauseRow({
             aria-pressed={clause.isApproved}
             aria-label={clause.isApproved ? `Withdraw approval of ${clause.title}` : `Approve ${clause.title}`}
             className={cn(
-              'p-1 rounded-md hover:bg-paper-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'p-1 rounded-md hover:bg-surface-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               // The toggle shows its state by glyph — filled vs hollow — not by
               // a third shade of green in a column of 106 rows.
-              clause.isApproved ? 'text-ink-700 hover:text-ink-950' : 'text-info-700 hover:text-ink-950',
+              clause.isApproved ? 'text-fg-700 hover:text-fg-950' : 'text-info-700 hover:text-fg-950',
             )}
             title={clause.isApproved ? 'Approved — click to withdraw approval' : 'Not approved — click to approve'}
           >
@@ -187,7 +187,7 @@ function ClauseRow({
             onClick={e => { e.stopPropagation(); onDelete() }}
             aria-label={`Delete ${clause.title}`}
             title="Delete clause"
-            className="p-1 rounded-md hover:bg-risk-50 text-ink-400 hover:text-risk-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="p-1 rounded-md hover:bg-risk-50 text-fg-400 hover:text-risk-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Trash2 className="size-3.5" />
           </button>
@@ -231,8 +231,8 @@ function ClauseDetailPanel({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-paper-200 flex items-center justify-between">
-        <h3 className="text-section text-ink-950">{clause ? 'Edit Clause' : 'New Clause'}</h3>
+      <div className="px-4 py-3 border-b border-surface-200 flex items-center justify-between">
+        <h3 className="text-section text-fg-950">{clause ? 'Edit Clause' : 'New Clause'}</h3>
         <div className="flex gap-2">
           {/* The editor pane's one primary — it is the only ink fill on screen
               whenever the pane is open. */}
@@ -244,7 +244,7 @@ function ClauseDetailPanel({
         </div>
       </div>
 
-      <div className="p-4 space-y-3 border-b border-paper-200">
+      <div className="p-4 space-y-3 border-b border-surface-200">
         <Input
           value={title}
           onChange={e => setTitle(e.target.value)}
@@ -253,11 +253,11 @@ function ClauseDetailPanel({
         />
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-[11px] text-ink-500 mb-1 block">Risk Rating</label>
+            <label className="text-[11px] text-fg-500 mb-1 block">Risk Rating</label>
             <select
               value={riskRating}
               onChange={e => setRiskRating(e.target.value)}
-              className="w-full h-8 rounded-md border border-input bg-card px-2 text-[12.5px] text-ink-950 outline-none"
+              className="w-full h-8 rounded-md border border-input bg-card px-2 text-[12.5px] text-fg-950 outline-none"
             >
               <option value="">None</option>
               <option value="favorable">Favorable</option>
@@ -267,7 +267,7 @@ function ClauseDetailPanel({
             </select>
           </div>
           <div>
-            <label className="text-[11px] text-ink-500 mb-1 block">Tags (comma-separated)</label>
+            <label className="text-[11px] text-fg-500 mb-1 block">Tags (comma-separated)</label>
             <Input
               value={tags}
               onChange={e => setTags(e.target.value)}
@@ -285,8 +285,8 @@ function ClauseDetailPanel({
       </div>
 
       {clause && (
-        <div className="px-4 py-2 border-t border-paper-200 bg-paper-50">
-          <p className="text-[11px] tabular-nums text-ink-400">
+        <div className="px-4 py-2 border-t border-surface-200 bg-surface-50">
+          <p className="text-[11px] tabular-nums text-fg-400">
             {Array.isArray(clause.versions) ? clause.versions.length : 0} version(s) · used {clause.usageCount}×
           </p>
         </div>
@@ -400,10 +400,10 @@ export function ClausesPage() {
   return (
     <div className="flex h-full">
       {/* ── Category Tree (Left) ── */}
-      <div className="w-56 shrink-0 border-r border-paper-200 bg-paper-50 flex flex-col">
-        <div className="flex items-center justify-between px-3 py-3 border-b border-paper-200">
-          <p className="text-eyebrow uppercase text-ink-700">Categories</p>
-          <button onClick={() => handleAddCategory()} className="text-ink-400 hover:text-ink-950">
+      <div className="w-56 shrink-0 border-r border-surface-200 bg-surface-50 flex flex-col">
+        <div className="flex items-center justify-between px-3 py-3 border-b border-surface-200">
+          <p className="text-eyebrow uppercase text-fg-700">Categories</p>
+          <button onClick={() => handleAddCategory()} className="text-fg-400 hover:text-fg-950">
             <Plus className="size-4" />
           </button>
         </div>
@@ -412,7 +412,7 @@ export function ClausesPage() {
             onClick={() => setSelectedCategoryId(null)}
             className={cn(
               'px-2 py-1.5 rounded-md text-[12.5px] cursor-pointer mb-1',
-              !selectedCategoryId ? 'bg-ink-950 text-white font-medium' : 'text-ink-700 hover:bg-paper-100',
+              !selectedCategoryId ? 'bg-primary-50 text-primary-700 font-medium' : 'text-fg-700 hover:bg-surface-100',
             )}
           >
             All Clauses
@@ -430,7 +430,7 @@ export function ClausesPage() {
       </div>
 
       {/* ── Clause List (Center) ── */}
-      <div className="w-80 shrink-0 border-r border-paper-200 flex flex-col">
+      <div className="w-80 shrink-0 border-r border-surface-200 flex flex-col">
         <div className="flex items-center gap-2 px-3 pt-3 pb-2">
           <Input
             value={q}
@@ -469,7 +469,7 @@ export function ClausesPage() {
           language we've marked against us". Both are server-side filters, so
           they answer across the whole library rather than the loaded page.
         */}
-        <div className="flex items-center gap-1.5 px-3 pb-3 border-b border-paper-200">
+        <div className="flex items-center gap-1.5 px-3 pb-3 border-b border-surface-200">
           <Chip
             selected={onlyUnapproved}
             onClick={() => setOnlyUnapproved(v => !v)}
@@ -489,7 +489,7 @@ export function ClausesPage() {
         <div className="flex-1 overflow-y-auto">
           {clausesLoading && (
             <div className="flex items-center justify-center h-16">
-              <Loader2 className="size-5 text-ink-400 animate-spin" />
+              <Loader2 className="size-5 text-fg-400 animate-spin" />
             </div>
           )}
           {!clausesLoading && !clauses.length && (
@@ -536,8 +536,8 @@ export function ClausesPage() {
             </div>
           )}
         </div>
-        <div className="px-3 py-2 border-t border-paper-200 bg-paper-50">
-          <p className="text-[11px] tabular-nums text-ink-400">
+        <div className="px-3 py-2 border-t border-surface-200 bg-surface-50">
+          <p className="text-[11px] tabular-nums text-fg-400">
             {hasMore ? `Showing ${clauses.length} of ${total} clauses` : `${total} ${total === 1 ? 'clause' : 'clauses'}`}
           </p>
         </div>
@@ -592,19 +592,19 @@ export function ClausesPage() {
           role="dialog"
           aria-modal="true"
           aria-label="Delete clause"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
           onClick={() => setPendingDelete(null)}
           data-testid="clause-delete-dialog"
         >
           <div className="w-full max-w-sm bg-card rounded-card shadow-e3" onClick={e => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-paper-200">
-              <h2 className="text-section text-ink-950">Delete this clause?</h2>
-              <p className="text-dense text-ink-500 mt-1">
-                <span className="font-medium text-ink-950">{pendingDelete.title}</span> will be removed
+            <div className="px-5 py-4 border-b border-surface-200">
+              <h2 className="text-section text-fg-950">Delete this clause?</h2>
+              <p className="text-dense text-fg-500 mt-1">
+                <span className="font-medium text-fg-950">{pendingDelete.title}</span> will be removed
                 from the library, along with its version history. This can't be undone.
               </p>
             </div>
-            <div className="px-5 py-3 flex justify-end gap-2 bg-paper-50 rounded-b-card">
+            <div className="px-5 py-3 flex justify-end gap-2 bg-surface-50 rounded-b-card">
               <Button variant="outline" size="xs" onClick={() => setPendingDelete(null)}>Cancel</Button>
               <Button
                 variant="destructive"

@@ -76,7 +76,7 @@ function push(args: Omit<Toast, 'id'>) {
 // the generic success-green the system removed. (ProfilePage and SettingsPage
 // already render their own inline "saved" state neutral for the same reason.)
 const KIND_META: Record<Kind, { icon: typeof CheckCircle2; cls: string }> = {
-  success: { icon: CheckCircle2, cls: 'bg-card border-paper-200 text-ink-950' },
+  success: { icon: CheckCircle2, cls: 'bg-card border-surface-200 text-fg-950' },
   error:   { icon: AlertCircle,  cls: 'bg-card border-risk-200  text-risk-700' },
   info:    { icon: Info,         cls: 'bg-card border-info-200  text-info-700' },
 }

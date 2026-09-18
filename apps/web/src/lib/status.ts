@@ -50,11 +50,11 @@ export const MEANING_CLASS: Record<
     // ink-350, not 400 — see the palette note: the dot needs to stay separable
     // from brand emerald for red-green colour-vision deficiency, which the
     // darker text-grade neutral is not.
-    dot: 'bg-ink-350',
-    fg: 'text-ink-700',
-    wash: 'bg-paper-100',
-    washFg: 'text-ink-700',
-    washBorder: 'border-paper-200',
+    dot: 'bg-fg-350',
+    fg: 'text-fg-700',
+    wash: 'bg-surface-100',
+    washFg: 'text-fg-700',
+    washBorder: 'border-surface-200',
   },
   inflight: {
     dot: 'bg-info-600',
@@ -71,11 +71,11 @@ export const MEANING_CLASS: Record<
     washBorder: 'border-attention-200',
   },
   binding: {
-    dot: 'bg-brand-700',
-    fg: 'text-brand-700',
-    wash: 'bg-brand-100',
-    washFg: 'text-brand-700',
-    washBorder: 'border-brand-200',
+    dot: 'bg-success-700',
+    fg: 'text-success-700',
+    wash: 'bg-success-100',
+    washFg: 'text-success-700',
+    washBorder: 'border-success-200',
   },
   risk: {
     dot: 'bg-risk-600',
@@ -230,7 +230,7 @@ export function riskBand(score: number): RiskBand {
 
 /** Meter fill per band — the only place the two vocabularies are allowed to meet. */
 export const RISK_BAND_CLASS: Record<RiskBand, string> = {
-  low: 'bg-brand-700',
+  low: 'bg-success-700',
   medium: 'bg-attention-600',
   high: 'bg-risk-600',
 }

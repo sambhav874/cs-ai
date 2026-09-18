@@ -140,7 +140,7 @@ export function ObligationsRailSection({
                 onClick={() => extract.mutate()}
                 disabled={extract.isPending}
                 data-testid="obligations-extract-btn"
-                className="text-[11px] font-medium text-ink-950 hover:underline disabled:opacity-50"
+                className="text-[11px] font-medium text-fg-950 hover:underline disabled:opacity-50"
               >
                 {extract.isPending ? 'Extracting…' : 'Extract anyway →'}
               </button>
@@ -191,20 +191,20 @@ export function ObligationsRailSection({
                   data-status={o.status ?? 'OPEN'}
                   className={`group text-[11.5px] border rounded-md px-2 py-1.5 ${
                     o.status === 'COMPLETED'
-                      ? 'border-brand-200 bg-brand-50 opacity-90'
+                      ? 'border-success-200 bg-success-50 opacity-90'
                       : 'border-border bg-card'
                   }`}
                 >
                   <div className="flex items-start gap-1.5">
-                    <Icon className={`size-3 mt-0.5 flex-shrink-0 ${o.status === 'COMPLETED' ? 'text-brand-700' : 'text-ink-500'}`} />
+                    <Icon className={`size-3 mt-0.5 flex-shrink-0 ${o.status === 'COMPLETED' ? 'text-success-700' : 'text-fg-500'}`} />
                     <div className="flex-1 min-w-0">
-                      <div className={`font-medium text-[11.5px] leading-tight ${o.status === 'COMPLETED' ? 'text-ink-500 line-through' : 'text-ink-950'}`}>
+                      <div className={`font-medium text-[11.5px] leading-tight ${o.status === 'COMPLETED' ? 'text-fg-500 line-through' : 'text-fg-950'}`}>
                         {o.description}
                       </div>
                       <div className="mt-0.5 flex items-center gap-1.5 flex-wrap text-[10px]">
-                        <span className="font-mono uppercase tracking-wider text-ink-400">{o.type}</span>
+                        <span className="font-mono uppercase tracking-wider text-fg-400">{o.type}</span>
                         <span className="text-muted-foreground">· {o.owner}</span>
-                        {o.sectionRef && <span className="font-mono text-ink-500">§{o.sectionRef}</span>}
+                        {o.sectionRef && <span className="font-mono text-fg-500">§{o.sectionRef}</span>}
                         {o.dueDate && (
                           <span className={dueColor}>
                             {days == null ? new Date(o.dueDate).toLocaleDateString()
@@ -224,7 +224,7 @@ export function ObligationsRailSection({
                             // `opacity-0 group-hover:opacity-100` alone meant a
                             // keyboard user could Tab onto "complete" and never
                             // see where they were.
-                            className="ml-auto inline-flex items-center gap-0.5 text-ink-700 hover:text-ink-950 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-chip"
+                            className="ml-auto inline-flex items-center gap-0.5 text-fg-700 hover:text-fg-950 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-chip"
                           >
                             <CheckCircle2 className="size-3" />
                             <span className="font-medium">complete</span>
@@ -233,7 +233,7 @@ export function ObligationsRailSection({
                         {/* The verb is an action (ink); the past tense is a
                             settled state, which is what brand is for. */}
                         {o.status === 'COMPLETED' && (
-                          <span className="ml-auto inline-flex items-center gap-0.5 text-brand-700">
+                          <span className="ml-auto inline-flex items-center gap-0.5 text-success-700">
                             <CheckCircle2 className="size-3" />
                             done
                           </span>
@@ -255,7 +255,7 @@ export function ObligationsRailSection({
               type="button"
               onClick={() => setShowAll(v => !v)}
               data-testid="obligations-toggle-all"
-              className="text-[10.5px] font-medium text-ink-950 hover:underline mt-1.5"
+              className="text-[10.5px] font-medium text-fg-950 hover:underline mt-1.5"
             >
               {showAll ? `Show fewer` : `Show all ${sorted.length}`}
             </button>
@@ -267,7 +267,7 @@ export function ObligationsRailSection({
               onClick={() => extract.mutate()}
               disabled={extract.isPending}
               data-testid="obligations-refresh-btn"
-              className="ml-2 underline hover:text-ink-950"
+              className="ml-2 underline hover:text-fg-950"
             >
               {extract.isPending ? 're-running…' : 're-run'}
             </button>

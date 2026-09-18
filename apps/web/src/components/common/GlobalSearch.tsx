@@ -164,11 +164,11 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl mx-4 bg-card rounded-card shadow-e3 overflow-hidden border border-paper-200"
+        className="w-full max-w-xl mx-4 bg-card rounded-card shadow-e3 overflow-hidden border border-surface-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-paper-200">
-          <Search className="size-4 text-ink-400 shrink-0" />
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-surface-200">
+          <Search className="size-4 text-fg-400 shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -177,12 +177,12 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
             onKeyDown={onKeyDown}
             placeholder="Search contracts, counterparties, templates, clauses, requests…"
             data-testid="global-search-input"
-            className="flex-1 outline-none text-[13px] text-ink-950 placeholder:text-ink-400 bg-transparent"
+            className="flex-1 outline-none text-[13px] text-fg-950 placeholder:text-fg-400 bg-transparent"
           />
           <button
             onClick={onClose}
             aria-label="Close"
-            className="p-1 rounded-md hover:bg-paper-100 text-ink-400 hover:text-ink-700"
+            className="p-1 rounded-md hover:bg-surface-100 text-fg-400 hover:text-fg-700"
           >
             <X className="size-4" />
           </button>
@@ -190,12 +190,12 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
 
         <div className="max-h-[50vh] overflow-y-auto">
           {!debounced ? (
-            <p className="px-4 py-6 text-dense text-ink-500">
+            <p className="px-4 py-6 text-dense text-fg-500">
               Start typing to search across your workspace.
             </p>
           ) : hits.length === 0 ? (
-            <p className="px-4 py-6 text-dense text-ink-500">
-              No matches for <span className="font-medium text-ink-700">"{debounced}"</span>.
+            <p className="px-4 py-6 text-dense text-fg-500">
+              No matches for <span className="font-medium text-fg-700">"{debounced}"</span>.
             </p>
           ) : (
             (Object.keys(KIND_META) as Hit['kind'][]).map((kind) => {
@@ -216,14 +216,14 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
                         data-testid={`global-search-hit-${h.kind}`}
                         className={cn(
                           'w-full flex items-center gap-3 px-4 py-2 text-left',
-                          isActive ? 'bg-paper-100' : 'hover:bg-paper-100',
+                          isActive ? 'bg-surface-100' : 'hover:bg-surface-100',
                         )}
                       >
-                        <KindIcon className="size-4 text-ink-400 shrink-0" />
+                        <KindIcon className="size-4 text-fg-400 shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-body text-ink-950 truncate">{h.title}</p>
+                          <p className="text-body text-fg-950 truncate">{h.title}</p>
                           {h.subtitle && (
-                            <p className="text-[11px] text-ink-400 truncate">{h.subtitle}</p>
+                            <p className="text-[11px] text-fg-400 truncate">{h.subtitle}</p>
                           )}
                         </div>
                       </button>
@@ -235,7 +235,7 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
           )}
         </div>
 
-        <div className="flex items-center gap-4 px-4 py-2 border-t border-paper-200 text-[11px] text-ink-400 bg-paper-50">
+        <div className="flex items-center gap-4 px-4 py-2 border-t border-surface-200 text-[11px] text-fg-400 bg-surface-50">
           <span className="flex items-center gap-1"><CornerDownLeft className="size-3" /> Go</span>
           <span className="flex items-center gap-1"><ArrowUp className="size-3" /><ArrowDown className="size-3" /> Navigate</span>
           <span>Esc to close</span>

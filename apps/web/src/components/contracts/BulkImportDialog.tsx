@@ -73,17 +73,17 @@ export function BulkImportDialog({ onClose, onSuccess }: { onClose: () => void; 
       data-testid="bulk-import-dialog"
     >
       <div className="bg-card rounded-card max-w-2xl w-full shadow-e3 my-8" onClick={(e) => e.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-paper-200 flex items-start justify-between">
+        <div className="px-6 py-4 border-b border-surface-200 flex items-start justify-between">
           <div>
-            <h2 className="text-section text-ink-950 flex items-center gap-2">
-              <Upload className="size-4 text-ink-500" />
+            <h2 className="text-section text-fg-950 flex items-center gap-2">
+              <Upload className="size-4 text-fg-500" />
               Bulk import contracts
             </h2>
-            <p className="text-dense text-ink-500 mt-1">
+            <p className="text-dense text-fg-500 mt-1">
               Upload a CSV with one row per contract. Up to 1,000 rows per file.
             </p>
           </div>
-          <button onClick={onClose} className="p-1 rounded-chip hover:bg-paper-100 text-ink-400">
+          <button onClick={onClose} className="p-1 rounded-chip hover:bg-surface-100 text-fg-400">
             <X className="size-4" />
           </button>
         </div>
@@ -103,23 +103,23 @@ export function BulkImportDialog({ onClose, onSuccess }: { onClose: () => void; 
               data-testid="csv-drop-zone"
               className={`rounded-card border-2 border-dashed p-8 text-center transition-colors ${
                 dragActive
-                  ? 'border-brand-700 bg-brand-50'
-                  : 'border-paper-300 hover:border-ink-400 hover:bg-paper-50'
+                  ? 'border-success-700 bg-success-50'
+                  : 'border-surface-300 hover:border-fg-400 hover:bg-surface-50'
               }`}
             >
               {file ? (
                 <div className="flex items-center justify-center gap-2">
-                  <FileText className="size-4 text-ink-500" />
-                  <span className="font-medium text-ink-950">{file.name}</span>
-                  <span className="text-dense text-ink-500 tabular-nums">({Math.round(file.size / 1024)} KB)</span>
+                  <FileText className="size-4 text-fg-500" />
+                  <span className="font-medium text-fg-950">{file.name}</span>
+                  <span className="text-dense text-fg-500 tabular-nums">({Math.round(file.size / 1024)} KB)</span>
                   <button onClick={() => setFile(null)} className="ml-2 text-dense text-risk-700">remove</button>
                 </div>
               ) : (
                 <>
-                  <Upload className="size-6 text-ink-400 mx-auto mb-2" />
-                  <p className="text-body font-semibold text-ink-950 mb-1">Drop a CSV here or click to browse</p>
-                  <p className="text-dense text-ink-500 mb-3">
-                    Required column: <code className="bg-paper-100 px-1 rounded-chip font-mono">title</code>
+                  <Upload className="size-6 text-fg-400 mx-auto mb-2" />
+                  <p className="text-body font-semibold text-fg-950 mb-1">Drop a CSV here or click to browse</p>
+                  <p className="text-dense text-fg-500 mb-3">
+                    Required column: <code className="bg-surface-100 px-1 rounded-chip font-mono">title</code>
                   </p>
                   <Button
                     variant="outline"
@@ -140,9 +140,9 @@ export function BulkImportDialog({ onClose, onSuccess }: { onClose: () => void; 
               />
             </div>
 
-            <div className="text-dense text-ink-500">
+            <div className="text-dense text-fg-500">
               <p className="mb-1">Supported columns:</p>
-              <code className="block bg-paper-50 border border-paper-200 rounded-chip px-2 py-1.5 font-mono text-[10.5px] leading-relaxed">
+              <code className="block bg-surface-50 border border-surface-200 rounded-chip px-2 py-1.5 font-mono text-[10.5px] leading-relaxed">
                 title (required) · type · status · counterpartyName · value · currency · effectiveDate · expiryDate · jurisdiction
               </code>
               <Button
@@ -166,11 +166,11 @@ export function BulkImportDialog({ onClose, onSuccess }: { onClose: () => void; 
             <div className="flex items-center gap-3 mb-4">
               {/* An imported row is a contract that now exists — binding, so
                   this is one of the few places emerald is earned. */}
-              <div className="size-10 rounded-card bg-brand-50 flex items-center justify-center">
-                <CheckCircle2 className="size-5 text-brand-700" />
+              <div className="size-10 rounded-card bg-success-50 flex items-center justify-center">
+                <CheckCircle2 className="size-5 text-success-700" />
               </div>
               <div>
-                <div className="text-section text-ink-950 tabular-nums">
+                <div className="text-section text-fg-950 tabular-nums">
                   Imported {result.created} of {result.total} contracts
                 </div>
                 {result.failed > 0 && (
@@ -179,29 +179,29 @@ export function BulkImportDialog({ onClose, onSuccess }: { onClose: () => void; 
               </div>
             </div>
 
-            <div className="bg-card border border-paper-200 rounded-card overflow-hidden max-h-72 overflow-y-auto">
+            <div className="bg-card border border-surface-200 rounded-card overflow-hidden max-h-72 overflow-y-auto">
               <table className="w-full text-dense" data-testid="bulk-import-results">
-                <thead className="bg-paper-50 text-ink-400 sticky top-0">
+                <thead className="bg-surface-50 text-fg-400 sticky top-0">
                   <tr>
                     <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-[0.09em] w-12">Row</th>
                     <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-[0.09em]">Title / Error</th>
                     <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-[0.09em] w-20">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-paper-100">
+                <tbody className="divide-y divide-surface-100">
                   {result.results.map(r => (
                     <tr key={r.row}>
-                      <td className="px-3 py-2 text-ink-500 tabular-nums">{r.row}</td>
+                      <td className="px-3 py-2 text-fg-500 tabular-nums">{r.row}</td>
                       <td className="px-3 py-2">
                         {r.ok ? (
-                          <span className="text-ink-950">{r.title}</span>
+                          <span className="text-fg-950">{r.title}</span>
                         ) : (
                           <span className="text-risk-700">{r.title ?? '—'} — {r.error}</span>
                         )}
                       </td>
                       <td className="px-3 py-2">
                         {r.ok ? (
-                          <span className="inline-flex items-center gap-1 text-brand-700">
+                          <span className="inline-flex items-center gap-1 text-success-700">
                             <CheckCircle2 className="size-3" /> created
                           </span>
                         ) : (
@@ -218,7 +218,7 @@ export function BulkImportDialog({ onClose, onSuccess }: { onClose: () => void; 
           </div>
         )}
 
-        <div className="px-6 py-4 border-t border-paper-200 flex justify-end gap-2 bg-paper-50 rounded-b-card">
+        <div className="px-6 py-4 border-t border-surface-200 flex justify-end gap-2 bg-surface-50 rounded-b-card">
           {!result ? (
             <>
               <Button variant="outline" onClick={onClose}>Cancel</Button>

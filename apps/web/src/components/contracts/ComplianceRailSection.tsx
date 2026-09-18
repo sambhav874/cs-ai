@@ -50,14 +50,14 @@ export interface ComplianceReport {
  * and "not applicable" asserts nothing, so it stays neutral.
  */
 const FW_BADGE: Record<ComplianceFrameworkResult['status'], { label: string; cls: string; Icon: React.ComponentType<{ className?: string }> }> = {
-  compliant:      { label: 'compliant',     cls: 'text-brand-700 bg-brand-50 border-brand-200',             Icon: ShieldCheck },
+  compliant:      { label: 'compliant',     cls: 'text-success-700 bg-success-50 border-success-200',             Icon: ShieldCheck },
   gaps:           { label: 'gaps',          cls: 'text-attention-700 bg-attention-50 border-attention-200', Icon: ShieldAlert },
   non_compliant:  { label: 'non-compliant', cls: 'text-risk-700 bg-risk-50 border-risk-200',                Icon: ShieldX },
-  not_applicable: { label: 'n/a',           cls: 'text-ink-500 bg-paper-50 border-paper-200',               Icon: ShieldQuestion },
+  not_applicable: { label: 'n/a',           cls: 'text-fg-500 bg-surface-50 border-surface-200',               Icon: ShieldQuestion },
 }
 
 const CHECK_DOT: Record<ComplianceCheckItem['status'], string> = {
-  present: 'bg-brand-700',
+  present: 'bg-success-700',
   partial: 'bg-attention-600',
   missing: 'bg-risk-600',
   risky:   'bg-risk-700',
@@ -152,14 +152,14 @@ export function ComplianceRailSection({
                     className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left"
                     data-testid={`compliance-fw-toggle-${fw.framework}`}
                   >
-                    {open ? <ChevronDown className="size-3 text-ink-400 flex-shrink-0" /> : <ChevronRight className="size-3 text-ink-400 flex-shrink-0" />}
-                    <span className="font-medium text-ink-950">{fw.framework}</span>
+                    {open ? <ChevronDown className="size-3 text-fg-400 flex-shrink-0" /> : <ChevronRight className="size-3 text-fg-400 flex-shrink-0" />}
+                    <span className="font-medium text-fg-950">{fw.framework}</span>
                     <span className={`inline-flex items-center gap-1 text-[9.5px] uppercase tracking-wider border rounded-chip px-1 ${badge.cls}`}>
                       <badge.Icon className="size-2.5" />
                       {badge.label}
                     </span>
                     {fw.applicable && (
-                      <span className="ml-auto font-mono text-[10px] text-ink-500 tabular-nums">{fw.score}/100</span>
+                      <span className="ml-auto font-mono text-[10px] text-fg-500 tabular-nums">{fw.score}/100</span>
                     )}
                   </button>
                   {open && (
@@ -175,9 +175,9 @@ export function ComplianceRailSection({
                               <div className="flex items-start gap-1.5">
                                 <span className={`h-1.5 w-1.5 rounded-full mt-1 flex-shrink-0 ${CHECK_DOT[c.status]}`} />
                                 <div className="min-w-0">
-                                  <span className="font-medium text-ink-950">{c.requirement}</span>
-                                  <span className="text-ink-400"> · {c.status}</span>
-                                  {c.sectionRef && <span className="font-mono text-ink-500"> §{c.sectionRef}</span>}
+                                  <span className="font-medium text-fg-950">{c.requirement}</span>
+                                  <span className="text-fg-400"> · {c.status}</span>
+                                  {c.sectionRef && <span className="font-mono text-fg-500"> §{c.sectionRef}</span>}
                                   {(c.severity === 'critical' || c.severity === 'high') && c.status !== 'present' && (
                                     <span className="ml-1 text-[9px] uppercase tracking-wider text-risk-700 bg-risk-50 border border-risk-200 rounded-chip px-1">
                                       {c.severity}
@@ -185,14 +185,14 @@ export function ComplianceRailSection({
                                   )}
                                   <div className="text-muted-foreground leading-snug">{c.finding}</div>
                                   {c.quote && (
-                                    <div className="mt-0.5 border-l-2 border-paper-200 pl-1.5 italic text-ink-500 leading-snug">
+                                    <div className="mt-0.5 border-l-2 border-surface-200 pl-1.5 italic text-fg-500 leading-snug">
                                       “{c.quote}”
                                     </div>
                                   )}
                                   {/* A recommendation is something to do, not a
                                       state — so it reads as ink, not as info. */}
                                   {c.recommendation && c.status !== 'present' && (
-                                    <div className="mt-0.5 text-ink-950 leading-snug">→ {c.recommendation}</div>
+                                    <div className="mt-0.5 text-fg-950 leading-snug">→ {c.recommendation}</div>
                                   )}
                                 </div>
                               </div>
@@ -218,7 +218,7 @@ export function ComplianceRailSection({
               onClick={() => check.mutate()}
               disabled={check.isPending}
               data-testid="compliance-rerun-btn"
-              className="ml-2 underline hover:text-ink-950"
+              className="ml-2 underline hover:text-fg-950"
             >
               {check.isPending ? 're-running…' : 're-run'}
             </button>

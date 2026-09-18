@@ -104,17 +104,17 @@ const DAY_MS = 24 * 60 * 60 * 1000
  * invoices are exempt: they are settled or contested, not late.
  */
 function dueReading(inv: ApiInvoice): { text: string; tone: string } {
-  if (!inv.dueDate) return { text: '—', tone: 'text-ink-400' }
+  if (!inv.dueDate) return { text: '—', tone: 'text-fg-400' }
   const dateStr = formatDate(inv.dueDate)
   if (inv.status === 'RECONCILED' || inv.status === 'DISPUTED') {
-    return { text: dateStr, tone: 'text-ink-500' }
+    return { text: dateStr, tone: 'text-fg-500' }
   }
   const d = Math.round((new Date(inv.dueDate).getTime() - Date.now()) / DAY_MS)
-  if (!Number.isFinite(d)) return { text: dateStr, tone: 'text-ink-500' }
+  if (!Number.isFinite(d)) return { text: dateStr, tone: 'text-fg-500' }
   if (d < 0)   return { text: `${-d}d overdue`, tone: 'text-risk-700 font-medium' }
   if (d === 0) return { text: 'Due today',      tone: 'text-attention-700 font-medium' }
   if (d <= 14) return { text: `Due in ${d}d`,   tone: 'text-attention-700 font-medium' }
-  return { text: dateStr, tone: 'text-ink-500' }
+  return { text: dateStr, tone: 'text-fg-500' }
 }
 
 /*
@@ -188,8 +188,8 @@ export function InvoicesPage() {
         <div className="flex items-center gap-3">
           {/* Amber means "blocked on you"; an invoice queue is not, by itself,
               your turn — so the page chrome is ink. */}
-          <Receipt className="size-4 text-ink-400" />
-          <h1 className="text-title text-ink-950">Invoices</h1>
+          <Receipt className="size-4 text-fg-400" />
+          <h1 className="text-title text-fg-950">Invoices</h1>
         </div>
         <Button
           onClick={() => setCreateOpen(true)}
@@ -200,7 +200,7 @@ export function InvoicesPage() {
           Add invoice
         </Button>
       </div>
-      <p className="text-dense text-ink-500 mb-5">
+      <p className="text-dense text-fg-500 mb-5">
         Match incoming vendor invoices to the payment obligations on your executed contracts.
       </p>
 
@@ -222,7 +222,7 @@ export function InvoicesPage() {
       </div>
 
       {/* Filter tabs + search */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 border-b border-paper-200 pb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 border-b border-surface-200 pb-2">
         <div className="flex items-center gap-1 -mb-2 overflow-x-auto">
           {FILTERS.map(f => {
             const active = status === f.key
@@ -236,8 +236,8 @@ export function InvoicesPage() {
                 className={`px-3 py-2 text-dense border-b-2 transition-colors whitespace-nowrap ${
                   // A selected tab is an action state, so it underlines in ink.
                   active
-                    ? 'border-ink-950 text-ink-950 font-semibold'
-                    : 'border-transparent text-ink-500 hover:text-ink-950'
+                    ? 'border-fg-950 text-fg-950 font-semibold'
+                    : 'border-transparent text-fg-500 hover:text-fg-950'
                 }`}
               >
                 {f.label}
@@ -250,7 +250,7 @@ export function InvoicesPage() {
           })}
         </div>
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-ink-400" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-fg-400" />
           <Input
             type="search"
             placeholder="Search vendor or invoice #"
@@ -265,7 +265,7 @@ export function InvoicesPage() {
       {/* Table */}
       {isLoading ? (
         <div className="flex items-center justify-center py-16">
-          <Loader2 className="size-5 animate-spin text-ink-400" />
+          <Loader2 className="size-5 animate-spin text-fg-400" />
         </div>
       ) : isError ? (
         <div className="flex items-start gap-2 p-4 rounded-md bg-risk-50 border border-risk-200 text-dense text-risk-700">
@@ -273,12 +273,12 @@ export function InvoicesPage() {
           Failed to load invoices.
         </div>
       ) : items.length === 0 ? (
-        <div className="text-center py-16 px-6 border border-dashed border-paper-300 rounded-card" data-testid="invoices-empty">
-          <Receipt className="size-6 text-ink-400 mx-auto mb-2" />
-          <p className="text-dense text-ink-500 mb-1">
+        <div className="text-center py-16 px-6 border border-dashed border-surface-300 rounded-card" data-testid="invoices-empty">
+          <Receipt className="size-6 text-fg-400 mx-auto mb-2" />
+          <p className="text-dense text-fg-500 mb-1">
             {q ? `No invoices match "${q}".` : 'No invoices yet.'}
           </p>
-          <p className="text-[11.5px] text-ink-400 mb-3">
+          <p className="text-[11.5px] text-fg-400 mb-3">
             Add an invoice to auto-match it against the payment obligations on your contracts.
           </p>
           <Button
@@ -292,8 +292,8 @@ export function InvoicesPage() {
           </Button>
         </div>
       ) : (
-        <div className="bg-card border border-paper-200 rounded-card overflow-hidden">
-          <div className="px-5 py-2 text-[11.5px] text-ink-500 bg-paper-50 border-b border-paper-200">
+        <div className="bg-card border border-surface-200 rounded-card overflow-hidden">
+          <div className="px-5 py-2 text-[11.5px] text-fg-500 bg-surface-50 border-b border-surface-200">
             <span className="tabular-nums">{total}</span> {total === 1 ? 'invoice' : 'invoices'}
           </div>
           {/* Six auto-width columns needed more room than the shell has, so the
@@ -304,7 +304,7 @@ export function InvoicesPage() {
               parallel axis to scan. */}
           <div className="overflow-x-auto">
             <table className="w-full table-fixed text-dense" data-testid="invoices-table">
-              <thead className="bg-paper-50 text-[10px] uppercase tracking-[0.09em] text-ink-400">
+              <thead className="bg-surface-50 text-[10px] uppercase tracking-[0.09em] text-fg-400">
                 <tr>
                   <th className="text-left px-4 py-2 font-semibold">Vendor / match</th>
                   <th className="text-right px-3 py-2 font-semibold w-[112px]">Amount</th>
@@ -313,17 +313,17 @@ export function InvoicesPage() {
                   <th className="text-right px-4 py-2 font-semibold w-[150px]">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-paper-100">
+              <tbody className="divide-y divide-surface-100">
                 {items.map(inv => {
                   const due = dueReading(inv)
                   const actionable = inv.status === 'PENDING' || inv.status === 'MATCHED'
                   return (
-                  <tr key={inv.id} className="hover:bg-paper-50 align-top" data-testid={`invoice-row-${inv.id}`}>
+                  <tr key={inv.id} className="hover:bg-surface-50 align-top" data-testid={`invoice-row-${inv.id}`}>
                     <td className="px-4 py-2.5">
-                      <div className="text-[13px] font-medium text-ink-950 truncate" title={inv.vendorName}>
+                      <div className="text-[13px] font-medium text-fg-950 truncate" title={inv.vendorName}>
                         {inv.vendorName}
                       </div>
-                      <div className="text-[11px] text-ink-400 mt-0.5 truncate">
+                      <div className="text-[11px] text-fg-400 mt-0.5 truncate">
                         {inv.invoiceNumber && <span className="font-mono">#{inv.invoiceNumber}</span>}
                         {inv.invoiceNumber && ' · '}
                         <span className="tabular-nums">issued {formatDate(inv.invoiceDate)}</span>
@@ -335,12 +335,12 @@ export function InvoicesPage() {
                           <div className="min-w-0">
                             <Link
                               to={`/contracts/${inv.contract.id}`}
-                              className="text-[11.5px] font-medium text-ink-950 hover:text-brand-700 truncate block"
+                              className="text-[11.5px] font-medium text-fg-950 hover:text-primary-700 truncate block"
                               title={inv.contract.title}
                             >
                               {inv.contract.title}
                             </Link>
-                            <div className="text-[10.5px] text-ink-500 truncate" title={inv.matchedObligation.description}>
+                            <div className="text-[10.5px] text-fg-500 truncate" title={inv.matchedObligation.description}>
                               {inv.matchedObligation.description}
                             </div>
                           </div>
@@ -349,7 +349,7 @@ export function InvoicesPage() {
                           </span>
                         </div>
                       ) : (
-                        <div className="text-[11.5px] text-ink-400 italic mt-1">
+                        <div className="text-[11.5px] text-fg-400 italic mt-1">
                           No match{actionable ? ' — rematch or link manually' : ''}
                         </div>
                       )}
@@ -361,7 +361,7 @@ export function InvoicesPage() {
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-right whitespace-nowrap font-medium text-ink-950 tabular-nums">
+                    <td className="px-3 py-2.5 text-right whitespace-nowrap font-medium text-fg-950 tabular-nums">
                       {formatMoney(inv.amount, inv.currency)}
                     </td>
                     <td className={`px-3 py-2.5 whitespace-nowrap tabular-nums text-[11.5px] ${due.tone}`}>
@@ -387,7 +387,7 @@ export function InvoicesPage() {
                             data-testid={`reconcile-${inv.id}`}
                             // Reconciling settles the invoice — the one binding
                             // decision in this row group.
-                            className="inline-flex items-center gap-1 text-[11.5px] text-brand-700 hover:text-brand-800 font-medium disabled:opacity-50"
+                            className="inline-flex items-center gap-1 text-[11.5px] text-success-700 hover:text-primary-800 font-medium disabled:opacity-50"
                           >
                             <CheckCircle2 className="size-3.5" />
                             Reconcile
@@ -400,7 +400,7 @@ export function InvoicesPage() {
                             disabled={rematch.isPending}
                             data-testid={`rematch-${inv.id}`}
                             aria-label="Re-run the auto-matcher for this invoice"
-                            className="inline-flex items-center gap-1 text-[11.5px] text-ink-700 hover:text-ink-950 font-medium"
+                            className="inline-flex items-center gap-1 text-[11.5px] text-fg-700 hover:text-fg-950 font-medium"
                             title="Re-run auto-matcher"
                           >
                             <RotateCw className="size-3.5" />
@@ -427,7 +427,7 @@ export function InvoicesPage() {
                             to={`/contracts/${inv.contract.id}`}
                             aria-label={`Open ${inv.contract.title}`}
                             title="Open contract"
-                            className="inline-flex items-center gap-1 text-[11.5px] text-ink-700 hover:text-ink-950 font-medium"
+                            className="inline-flex items-center gap-1 text-[11.5px] text-fg-700 hover:text-fg-950 font-medium"
                           >
                             <FileText className="size-3.5" />
                             Contract
@@ -480,15 +480,15 @@ function StatCard({ label, value, tone, subtitle, ...rest }: {
   // figure sat directly above a green "Matched" pill. The figure stays ink; the
   // meaning rides on the dot beside the label, the same way the obligations
   // strip carries it, so the two post-signature queues read alike.
-  const toneClass = tone === 'turn' ? 'text-attention-700' : 'text-ink-950'
+  const toneClass = tone === 'turn' ? 'text-attention-700' : 'text-fg-950'
   return (
-    <div className="border border-paper-200 rounded-card p-4 bg-card" {...rest}>
-      <div className="flex items-center gap-1.5 text-[11px] text-ink-500">
+    <div className="border border-surface-200 rounded-card p-4 bg-card" {...rest}>
+      <div className="flex items-center gap-1.5 text-[11px] text-fg-500">
         <MeaningDot meaning={tone} label={label} />
         {label}
       </div>
       <div className={`text-[24px] font-semibold tracking-[-0.02em] tabular-nums mt-0.5 ${toneClass}`}>{value}</div>
-      {subtitle && <div className="text-[10.5px] text-ink-500 mt-0.5">{subtitle}</div>}
+      {subtitle && <div className="text-[10.5px] text-fg-500 mt-0.5">{subtitle}</div>}
     </div>
   )
 }
@@ -514,29 +514,29 @@ function DisputeInvoiceDialog({
     <div
       role="dialog"
       aria-label="Dispute invoice"
-      className="fixed inset-0 z-50 bg-ink-950/40 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-scrim/40 flex items-center justify-center p-4"
       onClick={onClose}
       data-testid="dispute-invoice-dialog"
     >
       <div className="bg-card rounded-card max-w-md w-full shadow-e3" onClick={e => e.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-paper-200 flex items-start justify-between gap-3">
+        <div className="px-6 py-4 border-b border-surface-200 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-section text-ink-950 flex items-center gap-2">
+            <h2 className="text-section text-fg-950 flex items-center gap-2">
               <Flag className="size-4 text-risk-600" />
               Dispute invoice
             </h2>
-            <p className="text-[11.5px] text-ink-500 mt-1 truncate">
+            <p className="text-[11.5px] text-fg-500 mt-1 truncate">
               {invoice.vendorName} · {formatMoney(invoice.amount, invoice.currency)}
               {invoice.invoiceNumber && ` · #${invoice.invoiceNumber}`}
             </p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="p-1 rounded-md hover:bg-paper-100 text-ink-400">
+          <button onClick={onClose} aria-label="Close" className="p-1 rounded-md hover:bg-surface-100 text-fg-400">
             <X className="size-4" />
           </button>
         </div>
         <div className="px-6 py-5 space-y-3">
           <div>
-            <label htmlFor="dispute-reason" className="block text-[11px] font-medium text-ink-700 mb-1">
+            <label htmlFor="dispute-reason" className="block text-[11px] font-medium text-fg-700 mb-1">
               Reason <span className="text-risk-600">*</span>
             </label>
             <textarea
@@ -547,9 +547,9 @@ function DisputeInvoiceDialog({
               autoFocus
               placeholder="e.g. Amount exceeds the committed rate card by $4,200; PO number does not match."
               data-testid="dispute-reason"
-              className="w-full text-[13px] text-ink-950 border border-input bg-card rounded-md px-3 py-2 placeholder:text-ink-400 focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15 resize-y"
+              className="w-full text-[13px] text-fg-950 border border-input bg-card rounded-md px-3 py-2 placeholder:text-fg-400 focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15 resize-y"
             />
-            <p className="text-[10.5px] text-ink-400 mt-1">
+            <p className="text-[10.5px] text-fg-400 mt-1">
               Recorded on the invoice and shown to whoever picks it up next.
             </p>
           </div>
@@ -557,7 +557,7 @@ function DisputeInvoiceDialog({
             <div className="text-dense text-risk-700 bg-risk-50 border border-risk-200 rounded-md px-3 py-2">{error}</div>
           )}
         </div>
-        <div className="px-6 py-4 border-t border-paper-200 flex justify-end gap-2 bg-paper-50 rounded-b-card">
+        <div className="px-6 py-4 border-t border-surface-200 flex justify-end gap-2 bg-surface-50 rounded-b-card">
           <Button variant="outline" onClick={onClose} disabled={pending}>Cancel</Button>
           <Button
             variant="danger"
@@ -619,15 +619,15 @@ function CreateInvoiceDialog({ onClose, onCreated }: { onClose: () => void; onCr
 
   if (matchPreview) {
     return (
-      <div role="dialog" className="fixed inset-0 z-50 bg-ink-950/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div role="dialog" className="fixed inset-0 z-50 bg-scrim/40 flex items-center justify-center p-4" onClick={onClose}>
         <div className="bg-card rounded-card max-w-md w-full shadow-e3 p-6" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-2 mb-3">
             {/* This whole dialog reports what the matcher concluded, so it is
                 marked machine-authored rather than tinted an arbitrary blue. */}
             <Sparkles className="size-4 text-assist-600" />
-            <h2 className="text-section text-ink-950">Match found</h2>
+            <h2 className="text-section text-fg-950">Match found</h2>
           </div>
-          <p className="text-body text-ink-700 mb-4">
+          <p className="text-body text-fg-700 mb-4">
             We linked this invoice to <strong>{matchPreview.vendor}</strong> at <strong>{matchPreview.score}%</strong> confidence.
           </p>
           <AssistCard className="mb-4">{matchPreview.obligation}</AssistCard>
@@ -643,40 +643,40 @@ function CreateInvoiceDialog({ onClose, onCreated }: { onClose: () => void; onCr
     <div
       role="dialog"
       aria-label="Add invoice"
-      className="fixed inset-0 z-50 bg-ink-950/40 flex items-center justify-center p-4 overflow-auto"
+      className="fixed inset-0 z-50 bg-scrim/40 flex items-center justify-center p-4 overflow-auto"
       onClick={onClose}
       data-testid="create-invoice-dialog"
     >
       <div className="bg-card rounded-card max-w-lg w-full shadow-e3 my-8" onClick={(e) => e.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-paper-200 flex items-start justify-between">
+        <div className="px-6 py-4 border-b border-surface-200 flex items-start justify-between">
           <div>
-            <h2 className="text-section text-ink-950 flex items-center gap-2">
-              <Receipt className="size-4 text-ink-400" />
+            <h2 className="text-section text-fg-950 flex items-center gap-2">
+              <Receipt className="size-4 text-fg-400" />
               Add invoice
             </h2>
-            <p className="text-[11.5px] text-ink-500 mt-1">
+            <p className="text-[11.5px] text-fg-500 mt-1">
               Auto-matches against open payment obligations on your contracts.
             </p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="p-1 rounded-md hover:bg-paper-100 text-ink-400">
+          <button onClick={onClose} aria-label="Close" className="p-1 rounded-md hover:bg-surface-100 text-fg-400">
             <X className="size-4" />
           </button>
         </div>
 
         <div className="px-6 py-5 space-y-4">
           <div>
-            <label className="block text-[11px] font-medium text-ink-700 mb-1">Vendor name</label>
+            <label className="block text-[11px] font-medium text-fg-700 mb-1">Vendor name</label>
             <Input
               value={vendorName}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVendorName(e.target.value)}
               placeholder="Acme Corp"
               data-testid="invoice-vendor"
             />
-            <p className="text-[10.5px] text-ink-400 mt-1">Match works best when this matches the contract counterparty.</p>
+            <p className="text-[10.5px] text-fg-400 mt-1">Match works best when this matches the contract counterparty.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] font-medium text-ink-700 mb-1">Amount</label>
+              <label className="block text-[11px] font-medium text-fg-700 mb-1">Amount</label>
               <Input
                 type="number"
                 step="0.01"
@@ -687,11 +687,11 @@ function CreateInvoiceDialog({ onClose, onCreated }: { onClose: () => void; onCr
               />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-ink-700 mb-1">Currency</label>
+              <label className="block text-[11px] font-medium text-fg-700 mb-1">Currency</label>
               <select
                 value={currency}
                 onChange={e => setCurrency(e.target.value)}
-                className="w-full h-8 text-[13px] text-ink-950 border border-input rounded-md px-2.5 bg-card focus:outline-none focus-visible:border-brand-700"
+                className="w-full h-8 text-[13px] text-fg-950 border border-input rounded-md px-2.5 bg-card focus:outline-none focus-visible:border-primary-700"
                 data-testid="invoice-currency"
               >
                 <option value="USD">USD</option>
@@ -703,7 +703,7 @@ function CreateInvoiceDialog({ onClose, onCreated }: { onClose: () => void; onCr
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] font-medium text-ink-700 mb-1">Invoice date</label>
+              <label className="block text-[11px] font-medium text-fg-700 mb-1">Invoice date</label>
               <Input
                 type="date"
                 value={invoiceDate}
@@ -712,7 +712,7 @@ function CreateInvoiceDialog({ onClose, onCreated }: { onClose: () => void; onCr
               />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-ink-700 mb-1">Due date <span className="text-ink-400 font-normal">(optional)</span></label>
+              <label className="block text-[11px] font-medium text-fg-700 mb-1">Due date <span className="text-fg-400 font-normal">(optional)</span></label>
               <Input
                 type="date"
                 value={dueDate}
@@ -722,7 +722,7 @@ function CreateInvoiceDialog({ onClose, onCreated }: { onClose: () => void; onCr
             </div>
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-ink-700 mb-1">Invoice number <span className="text-ink-400 font-normal">(optional)</span></label>
+            <label className="block text-[11px] font-medium text-fg-700 mb-1">Invoice number <span className="text-fg-400 font-normal">(optional)</span></label>
             <Input
               value={invoiceNumber}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInvoiceNumber(e.target.value)}
@@ -731,14 +731,14 @@ function CreateInvoiceDialog({ onClose, onCreated }: { onClose: () => void; onCr
             />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-ink-700 mb-1">Description <span className="text-ink-400 font-normal">(optional)</span></label>
+            <label className="block text-[11px] font-medium text-fg-700 mb-1">Description <span className="text-fg-400 font-normal">(optional)</span></label>
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Q2 2026 retainer, monthly hosting fee, etc."
               rows={2}
               data-testid="invoice-description"
-              className="w-full text-[13px] text-ink-950 border border-input bg-card rounded-md px-3 py-2 placeholder:text-ink-400 focus:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15 resize-y"
+              className="w-full text-[13px] text-fg-950 border border-input bg-card rounded-md px-3 py-2 placeholder:text-fg-400 focus:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15 resize-y"
             />
           </div>
           {error && (
@@ -746,7 +746,7 @@ function CreateInvoiceDialog({ onClose, onCreated }: { onClose: () => void; onCr
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-paper-200 flex justify-end gap-2 bg-paper-50 rounded-b-card">
+        <div className="px-6 py-4 border-t border-surface-200 flex justify-end gap-2 bg-surface-50 rounded-b-card">
           <Button variant="outline" onClick={onClose} disabled={create.isPending}>Cancel</Button>
           <Button
             onClick={() => create.mutate()}

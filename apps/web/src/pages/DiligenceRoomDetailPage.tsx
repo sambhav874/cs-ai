@@ -78,11 +78,11 @@ const LOW_CONFIDENCE = 0.7
  * across and cost half that.
  */
 function formatTerm(eff: string | null, exp: string | null): React.ReactNode {
-  if (!eff && !exp) return <span className="text-ink-400">—</span>
+  if (!eff && !exp) return <span className="text-fg-400">—</span>
   return (
     <span className="block tabular-nums leading-tight">
       <span className="block">{eff ?? '—'}</span>
-      <span className="block text-ink-500">→ {exp ?? '—'}</span>
+      <span className="block text-fg-500">→ {exp ?? '—'}</span>
     </span>
   )
 }
@@ -163,7 +163,7 @@ export function DiligenceRoomDetailPage() {
   }
 
   if (roomLoading) {
-    return <div className="flex items-center justify-center py-16"><Loader2 className="size-5 animate-spin text-ink-400" /></div>
+    return <div className="flex items-center justify-center py-16"><Loader2 className="size-5 animate-spin text-fg-400" /></div>
   }
   if (!room) {
     return (
@@ -172,7 +172,7 @@ export function DiligenceRoomDetailPage() {
           <AlertCircle className="size-4 mt-0.5" />
           Room not found.
         </div>
-        <Link to="/diligence" className="text-dense text-ink-950 hover:text-brand-700 mt-4 inline-flex items-center gap-1">
+        <Link to="/diligence" className="text-dense text-fg-950 hover:text-primary-700 mt-4 inline-flex items-center gap-1">
           <ArrowLeft className="size-3.5" /> Back to all rooms
         </Link>
       </div>
@@ -193,19 +193,19 @@ export function DiligenceRoomDetailPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-2">
         <div className="flex-1 min-w-0">
-          <Link to="/diligence" className="text-[11.5px] text-ink-500 hover:text-ink-950 inline-flex items-center gap-1 mb-2">
+          <Link to="/diligence" className="text-[11.5px] text-fg-500 hover:text-fg-950 inline-flex items-center gap-1 mb-2">
             <ArrowLeft className="size-3.5" /> All rooms
           </Link>
           <div className="flex items-center gap-3">
-            <FolderOpen className="size-4 text-ink-400" />
-            <h1 className="text-title text-ink-950">{room.name}</h1>
+            <FolderOpen className="size-4 text-fg-400" />
+            <h1 className="text-title text-fg-950">{room.name}</h1>
             {/* An archived room looked exactly like a live one, which is how a
                 reviewer spends an afternoon in last quarter's diligence. */}
             {room.status && room.status !== 'ACTIVE' && (
               <StatusPill status={room.status} />
             )}
           </div>
-          {room.description && <p className="text-dense text-ink-500 mt-1">{room.description}</p>}
+          {room.description && <p className="text-dense text-fg-500 mt-1">{room.description}</p>}
         </div>
         <Button
           onClick={handleExport}
@@ -278,14 +278,14 @@ export function DiligenceRoomDetailPage() {
         } ${
           dragActive
             // The drop target is an action surface, so the "armed" state is ink.
-            ? 'border-ink-950 bg-paper-100'
-            : 'border-paper-300 bg-card hover:border-ink-400 hover:bg-paper-50'
+            ? 'border-fg-950 bg-surface-100'
+            : 'border-surface-300 bg-card hover:border-fg-400 hover:bg-surface-50'
         }`}
       >
         {roomHasDocs ? (
           <div className="flex items-center justify-center gap-3 flex-wrap">
-            <span className="text-[11.5px] text-ink-500 inline-flex items-center gap-1.5">
-              <Upload className={`size-3.5 ${dragActive ? 'text-ink-950' : 'text-ink-400'}`} />
+            <span className="text-[11.5px] text-fg-500 inline-flex items-center gap-1.5">
+              <Upload className={`size-3.5 ${dragActive ? 'text-fg-950' : 'text-fg-400'}`} />
               {upload.isPending ? 'Uploading…' : 'Drop more contracts here — PDF or DOCX, up to 50 per upload'}
             </span>
             <Button
@@ -304,11 +304,11 @@ export function DiligenceRoomDetailPage() {
           </div>
         ) : (
           <>
-            <Upload className={`size-6 mx-auto mb-2 ${dragActive ? 'text-ink-950' : 'text-ink-400'}`} />
-            <div className="text-body font-medium text-ink-950 mb-1">
+            <Upload className={`size-6 mx-auto mb-2 ${dragActive ? 'text-fg-950' : 'text-fg-400'}`} />
+            <div className="text-body font-medium text-fg-950 mb-1">
               {upload.isPending ? 'Uploading…' : 'Drop contracts here or click to browse'}
             </div>
-            <div className="text-[11.5px] text-ink-500 mb-3">PDF or DOCX · up to 50 files per upload</div>
+            <div className="text-[11.5px] text-fg-500 mb-3">PDF or DOCX · up to 50 files per upload</div>
             <Button
               onClick={() => fileInputRef.current?.click()}
               disabled={upload.isPending}
@@ -342,24 +342,24 @@ export function DiligenceRoomDetailPage() {
 
       {/* Results table */}
       {items.length === 0 ? (
-        <div className="text-center py-12 px-6 border border-dashed border-paper-300 rounded-card">
-          <FileText className="size-6 text-ink-400 mx-auto mb-2" />
-          <p className="text-dense text-ink-500">
+        <div className="text-center py-12 px-6 border border-dashed border-surface-300 rounded-card">
+          <FileText className="size-6 text-fg-400 mx-auto mb-2" />
+          <p className="text-dense text-fg-500">
             {showFailedOnly
               ? 'No failed documents — every extraction in this room succeeded.'
               : 'No documents in this room yet. Upload some to start.'}
           </p>
         </div>
       ) : (
-        <div className="bg-card border border-paper-200 rounded-card overflow-hidden">
-          <header className="flex items-center justify-between px-5 py-3 bg-paper-50 border-b border-paper-200">
+        <div className="bg-card border border-surface-200 rounded-card overflow-hidden">
+          <header className="flex items-center justify-between px-5 py-3 bg-surface-50 border-b border-surface-200">
             {/* Every value in this table was read out of a PDF by the model, so
                 the table carries the machine mark. */}
-            <h3 className="text-section text-ink-950 flex items-center gap-2">
+            <h3 className="text-section text-fg-950 flex items-center gap-2">
               <AssistMark />
               Cross-document extraction
             </h3>
-            <span className="text-[11.5px] tabular-nums text-ink-500">
+            <span className="text-[11.5px] tabular-nums text-fg-500">
               {showFailedOnly ? `${items.length} failed of ${allItems.length}` : `${items.length} ${items.length === 1 ? 'doc' : 'docs'}`}
             </span>
           </header>
@@ -372,7 +372,7 @@ export function DiligenceRoomDetailPage() {
           */}
           <div className="overflow-x-auto">
             <table className="w-full text-dense" data-testid="results-table">
-              <thead className="bg-paper-50 text-[10px] uppercase tracking-[0.09em] text-ink-400 border-b border-paper-200">
+              <thead className="bg-surface-50 text-[10px] uppercase tracking-[0.09em] text-fg-400 border-b border-surface-200">
                 <tr>
                   <th className="text-left px-3 py-2 font-semibold">Title</th>
                   <th className="text-left px-3 py-2 font-semibold">Counterparty</th>
@@ -382,7 +382,7 @@ export function DiligenceRoomDetailPage() {
                   <th className="text-right px-3 py-2 font-semibold"><span className="sr-only">Open</span></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-paper-100">
+              <tbody className="divide-y divide-surface-100">
                 {items.map(d => {
                   const failed = d.analysisStatus === 'FAILED'
                   const lowConfidence =
@@ -390,15 +390,15 @@ export function DiligenceRoomDetailPage() {
                   return (
                     <tr
                       key={d.id}
-                      className={`hover:bg-paper-50 ${failed ? 'bg-risk-50/60' : ''}`}
+                      className={`hover:bg-surface-50 ${failed ? 'bg-risk-50/60' : ''}`}
                       data-testid={`result-row-${d.id}`}
                       data-analysis-status={d.analysisStatus}
                     >
                       <td className={`px-3 py-2 max-w-[220px] ${failed ? 'border-l-2 border-l-risk-600' : ''}`}>
-                        <div className="text-[13px] font-medium text-ink-950 truncate" title={d.title}>{d.title}</div>
+                        <div className="text-[13px] font-medium text-fg-950 truncate" title={d.title}>{d.title}</div>
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           {d.type && d.type !== 'OTHER' && (
-                            <span className="text-[10px] uppercase tracking-[0.09em] font-mono text-ink-400">
+                            <span className="text-[10px] uppercase tracking-[0.09em] font-mono text-fg-400">
                               {d.type}
                             </span>
                           )}
@@ -424,7 +424,7 @@ export function DiligenceRoomDetailPage() {
                               diamond for a reading the model itself doubts. */}
                           {lowConfidence && (
                             <span
-                              className="inline-flex items-center gap-1 text-[10px] text-ink-500"
+                              className="inline-flex items-center gap-1 text-[10px] text-fg-500"
                               title={`Model confidence ${Math.round((d.overallConfidence ?? 0) * 100)}% — verify against the document`}
                             >
                               <AssistMark confidence="low" />
@@ -433,27 +433,27 @@ export function DiligenceRoomDetailPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-ink-700">
-                        {d.counterpartyName ?? <span className="text-ink-400">—</span>}
+                      <td className="px-3 py-2 text-fg-700">
+                        {d.counterpartyName ?? <span className="text-fg-400">—</span>}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-right font-medium text-ink-950 tabular-nums">
+                      <td className="px-3 py-2 whitespace-nowrap text-right font-medium text-fg-950 tabular-nums">
                         {formatMoney(d.value, d.currency ?? 'USD')}
                       </td>
-                      <td className="px-3 py-2 text-ink-700 whitespace-nowrap text-[11.5px]">
+                      <td className="px-3 py-2 text-fg-700 whitespace-nowrap text-[11.5px]">
                         {formatTerm(d.effectiveDate, d.expiryDate)}
                       </td>
                       <td className="px-3 py-2">
                         {d.riskScore != null ? (
                           <RiskMeter score={d.riskScore} className="w-[72px]" />
                         ) : (
-                          <span className="text-ink-400" title={failed ? 'Extraction failed — never scored' : 'Not scored'}>—</span>
+                          <span className="text-fg-400" title={failed ? 'Extraction failed — never scored' : 'Not scored'}>—</span>
                         )}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <Link
                           to={`/contracts/${d.id}`}
                           aria-label={`Open ${d.title}`}
-                          className="inline-flex items-center gap-0.5 text-[11.5px] text-ink-950 hover:text-brand-700 font-medium"
+                          className="inline-flex items-center gap-0.5 text-[11.5px] text-fg-950 hover:text-primary-700 font-medium"
                         >
                           Open <ArrowRight className="size-3" />
                         </Link>
@@ -478,19 +478,19 @@ function ProgressCard({ label, value, tone, icon: Icon, animate }: {
   animate?: boolean
 }) {
   const toneClass = {
-    neutral:  'text-ink-700 bg-paper-100',
-    binding:  'text-brand-700 bg-brand-100',
+    neutral:  'text-fg-700 bg-surface-100',
+    binding:  'text-success-700 bg-success-100',
     inflight: 'text-info-700 bg-info-100',
     risk:     'text-risk-700 bg-risk-100',
   }[tone]
   return (
-    <div className="border border-paper-200 rounded-card p-4 bg-card flex items-center gap-3">
+    <div className="border border-surface-200 rounded-card p-4 bg-card flex items-center gap-3">
       <div className={`size-9 rounded-card flex items-center justify-center ${toneClass}`}>
         <Icon className={`size-4 ${animate ? 'animate-spin' : ''}`} />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[11px] text-ink-500">{label}</div>
-        <div className="text-[24px] font-semibold tracking-[-0.02em] tabular-nums text-ink-950">{value}</div>
+        <div className="text-[11px] text-fg-500">{label}</div>
+        <div className="text-[24px] font-semibold tracking-[-0.02em] tabular-nums text-fg-950">{value}</div>
       </div>
     </div>
   )

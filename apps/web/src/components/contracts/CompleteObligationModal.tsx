@@ -82,20 +82,20 @@ export function CompleteObligationModal({ obligationId, description, open, onClo
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-paper-200 flex items-start justify-between">
+        <div className="px-6 py-4 border-b border-surface-200 flex items-start justify-between">
           <div>
-            <h2 className="text-section text-ink-950 flex items-center gap-2">
+            <h2 className="text-section text-fg-950 flex items-center gap-2">
               {/* The emerald is spent on the decision button below, so the
                   header glyph stays neutral — one colored element. */}
-              <CheckCircle2 className="size-4 text-ink-500" />
+              <CheckCircle2 className="size-4 text-fg-500" />
               Mark obligation complete
             </h2>
-            <p className="text-dense text-ink-500 mt-1 leading-relaxed line-clamp-2">{description}</p>
+            <p className="text-dense text-fg-500 mt-1 leading-relaxed line-clamp-2">{description}</p>
           </div>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="p-1 rounded-chip hover:bg-paper-100 text-ink-400"
+            className="p-1 rounded-chip hover:bg-surface-100 text-fg-400"
           >
             <X className="size-4" />
           </button>
@@ -105,8 +105,8 @@ export function CompleteObligationModal({ obligationId, description, open, onClo
         <div className="px-6 py-5 space-y-4">
           {/* Note */}
           <div>
-            <label className="block text-body font-medium text-ink-700 mb-1">
-              Completion note <span className="text-ink-400 font-normal">(optional)</span>
+            <label className="block text-body font-medium text-fg-700 mb-1">
+              Completion note <span className="text-fg-400 font-normal">(optional)</span>
             </label>
             <textarea
               value={note}
@@ -114,37 +114,37 @@ export function CompleteObligationModal({ obligationId, description, open, onClo
               placeholder="What was done? Reference numbers, payment date, etc."
               rows={3}
               data-testid="obligation-note"
-              className="w-full text-[13px] text-ink-950 bg-card border border-input rounded-md px-[11px] py-2 placeholder:text-ink-400 focus:border-brand-700 focus:outline-none focus:ring-[3px] focus:ring-brand-700/15 resize-y"
+              className="w-full text-[13px] text-fg-950 bg-card border border-input rounded-md px-[11px] py-2 placeholder:text-fg-400 focus:border-primary-700 focus:outline-none focus:ring-[3px] focus:ring-primary-700/15 resize-y"
             />
           </div>
 
           {/* Evidence */}
           <div>
-            <label className="block text-body font-medium text-ink-700 mb-1">
-              Evidence file <span className="text-ink-400 font-normal">(optional, 25MB max)</span>
+            <label className="block text-body font-medium text-fg-700 mb-1">
+              Evidence file <span className="text-fg-400 font-normal">(optional, 25MB max)</span>
             </label>
             {!file ? (
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 data-testid="obligation-pick-file"
-                className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-paper-300 rounded-md hover:border-ink-400 hover:bg-paper-50 transition-colors text-body text-ink-700"
+                className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-surface-300 rounded-md hover:border-fg-400 hover:bg-surface-50 transition-colors text-body text-fg-700"
               >
                 <Paperclip className="size-4" />
                 Attach evidence (PDF, image, CSV…)
               </button>
             ) : (
-              <div className="flex items-center gap-2 px-3 py-2 bg-paper-50 border border-paper-200 rounded-md text-body" data-testid="obligation-attached-file">
-                <Paperclip className="size-4 text-ink-500 flex-shrink-0" />
+              <div className="flex items-center gap-2 px-3 py-2 bg-surface-50 border border-surface-200 rounded-md text-body" data-testid="obligation-attached-file">
+                <Paperclip className="size-4 text-fg-500 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-ink-950 truncate">{file.name}</div>
-                  <div className="text-[11px] text-ink-500 tabular-nums">{formatBytes(file.size)}</div>
+                  <div className="font-medium text-fg-950 truncate">{file.name}</div>
+                  <div className="text-[11px] text-fg-500 tabular-nums">{formatBytes(file.size)}</div>
                 </div>
                 <button
                   type="button"
                   onClick={() => onPickFile(null)}
                   data-testid="obligation-remove-file"
-                  className="text-ink-400 hover:text-risk-600"
+                  className="text-fg-400 hover:text-risk-600"
                   aria-label="Remove file"
                 >
                   <X className="size-4" />
@@ -167,14 +167,14 @@ export function CompleteObligationModal({ obligationId, description, open, onClo
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-paper-200 flex justify-end gap-2 bg-paper-50 rounded-b-card">
+        <div className="px-6 py-4 border-t border-surface-200 flex justify-end gap-2 bg-surface-50 rounded-b-card">
           <Button variant="outline" onClick={onClose} disabled={complete.isPending}>
             Cancel
           </Button>
           {/* Marking an obligation done is a binding act, which is what the
               brand variant exists for. */}
           <Button
-            variant="brand"
+            variant="success"
             onClick={() => complete.mutate()}
             disabled={complete.isPending}
             data-testid="obligation-complete-confirm"

@@ -92,15 +92,15 @@ export function StatusPill({ status, className }: { status: string; className?: 
         aria-label={`Contract status: ${label}. Click to see lifecycle.`}
         aria-expanded={open}
         className={cn(
-          'inline-flex items-center gap-[7px] rounded-full border border-paper-200 bg-paper-100 py-0.5 pl-2 pr-2.5',
+          'inline-flex items-center gap-[7px] rounded-full border border-surface-200 bg-surface-100 py-0.5 pl-2 pr-2.5',
           'text-[11.5px] font-medium transition-colors',
-          'hover:border-paper-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+          'hover:border-surface-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
           tone.fg,
         )}
       >
         <span className={cn('size-1.5 shrink-0 rounded-full', tone.dot)} aria-hidden />
         <span>{label}</span>
-        <ChevronDown className={cn('size-3 text-ink-400 transition-transform', open && 'rotate-180')} aria-hidden />
+        <ChevronDown className={cn('size-3 text-fg-400 transition-transform', open && 'rotate-180')} aria-hidden />
       </button>
 
       {open && (
@@ -108,7 +108,7 @@ export function StatusPill({ status, className }: { status: string; className?: 
           ref={popRef}
           role="dialog"
           aria-label="Contract lifecycle"
-          className="absolute z-50 left-0 top-full mt-2 w-64 rounded-card border border-paper-200 bg-popover p-3 shadow-e2"
+          className="absolute z-50 left-0 top-full mt-2 w-64 rounded-card border border-surface-200 bg-popover p-3 shadow-e2"
         >
           <Eyebrow className="mb-2.5">Lifecycle</Eyebrow>
 
@@ -119,7 +119,7 @@ export function StatusPill({ status, className }: { status: string; className?: 
                 <span className={cn('size-2 rounded-full', tone.dot)} aria-hidden />
                 {label}
               </div>
-              <p className="text-dense text-ink-500 pl-4">
+              <p className="text-dense text-fg-500 pl-4">
                 This contract is off the active lifecycle. No further automatic transitions.
               </p>
             </div>
@@ -138,9 +138,9 @@ export function StatusPill({ status, className }: { status: string; className?: 
                           // current node borrows the status's own meaning —
                           // in flight while signing, binding once executed —
                           // rather than painting every "here" the same color.
-                          done    && 'bg-brand-700 border-brand-700 text-white',
+                          done    && 'bg-success-solid border-success-solid text-white',
                           current && ['bg-card border-current', tone.fg],
-                          !done && !current && 'bg-card border-paper-300 text-paper-300',
+                          !done && !current && 'bg-card border-surface-300 text-surface-300',
                         )}
                       >
                         {done ? (
@@ -150,12 +150,12 @@ export function StatusPill({ status, className }: { status: string; className?: 
                         )}
                       </div>
                       {i < STEPS.length - 1 && (
-                        <span className={cn('w-px flex-1 min-h-[14px] mt-1', done ? 'bg-brand-200' : 'bg-paper-200')} aria-hidden />
+                        <span className={cn('w-px flex-1 min-h-[14px] mt-1', done ? 'bg-success-200' : 'bg-surface-200')} aria-hidden />
                       )}
                     </div>
                     <span className={cn(
                       'text-dense leading-4 pt-[1px]',
-                      current ? 'text-ink-950 font-medium' : done ? 'text-ink-700' : 'text-ink-400',
+                      current ? 'text-fg-950 font-medium' : done ? 'text-fg-700' : 'text-fg-400',
                     )}>
                       {step.label}
                     </span>

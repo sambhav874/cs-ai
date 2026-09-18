@@ -30,7 +30,7 @@ const PHASE_LABEL: Record<string, string> = {
 // The type dot used to carry a hue per contract type. Type is a category, not a
 // meaning, and the system spends color only on meaning — so the dot is neutral
 // and the type is read from the subtitle line right beside it.
-const TYPE_DOT = 'bg-paper-300'
+const TYPE_DOT = 'bg-surface-300'
 
 // One screenful of rows per request. The plain /contracts route pages by cursor,
 // so "Load more" appends; the advanced-search route takes a size but has no
@@ -366,20 +366,20 @@ export function ContractsPage() {
   const truncated = needsEs && !hasNextPage && total > contracts.length
 
   return (
-    <div className="h-full flex flex-col bg-paper-50">
+    <div className="h-full flex flex-col bg-surface-50">
       {/* Header */}
-      <div className="bg-card border-b border-paper-200 px-6 py-4">
+      <div className="bg-card border-b border-surface-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-title text-ink-950">Contract Repository</h1>
-            <p className="text-dense text-ink-500 mt-1 tabular-nums">{total} contract{total !== 1 ? 's' : ''}</p>
+            <h1 className="text-title text-fg-950">Contract Repository</h1>
+            <p className="text-dense text-fg-500 mt-1 tabular-nums">{total} contract{total !== 1 ? 's' : ''}</p>
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setShowFacets(!showFacets)}
-              className={`gap-1.5 ${activeFilterCount > 0 ? 'border-ink-950 text-ink-950' : ''}`}
+              className={`gap-1.5 ${activeFilterCount > 0 ? 'border-fg-950 text-fg-950' : ''}`}
             >
               <SlidersHorizontal className="size-4" />
               Filters
@@ -422,21 +422,21 @@ export function ContractsPage() {
       </div>
 
       {/* Search bar */}
-      <div className="bg-card border-b border-paper-200 px-6 py-3">
+      <div className="bg-card border-b border-surface-200 px-6 py-3">
         <div className="flex items-center gap-3">
           <div className="relative flex-1 max-w-lg">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-ink-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-fg-400" />
             <Input
               value={search}
               onChange={e => handleSearch(e.target.value)}
               placeholder="Search by title, counterparty, or content…"
-              className="pl-9 bg-paper-50 border-paper-200"
+              className="pl-9 bg-surface-50 border-surface-200"
             />
           </div>
           {hasFilters && (
             <button
               onClick={() => { setFilters({}); setSearch(''); setDebouncedSearch('') }}
-              className="flex items-center gap-1 text-[11.5px] text-ink-400 hover:text-ink-700"
+              className="flex items-center gap-1 text-[11.5px] text-fg-400 hover:text-fg-700"
             >
               <X className="size-3.5" /> Clear all
             </button>
@@ -484,7 +484,7 @@ export function ContractsPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Facets sidebar */}
         {showFacets && (
-          <aside className="w-facets border-r border-paper-200 bg-card overflow-y-auto flex-shrink-0 p-4 space-y-5">
+          <aside className="w-facets border-r border-surface-200 bg-card overflow-y-auto flex-shrink-0 p-4 space-y-5">
             <FacetGroup title="Type">
               {(facets.types ?? []).map((b: any) => (
                 <FacetItem key={b.key} label={b.key.replace(/_/g, ' ')} count={b.doc_count}
@@ -581,8 +581,8 @@ export function ContractsPage() {
         {/* Contract list */}
         <div className="flex-1 overflow-auto">
           {isLoading ? (
-            <div className="flex items-center justify-center h-64 gap-2 text-ink-400">
-              <div className="size-5 border-2 border-paper-300 border-t-ink-950 rounded-full animate-spin" />
+            <div className="flex items-center justify-center h-64 gap-2 text-fg-400">
+              <div className="size-5 border-2 border-surface-300 border-t-fg-950 rounded-full animate-spin" />
               <span className="text-body">Loading contracts…</span>
             </div>
           ) : contracts.length === 0 ? (
@@ -626,13 +626,13 @@ export function ContractsPage() {
                   <div
                     role="row"
                     aria-rowindex={1}
-                    className={`grid ${GRID_COLS} gap-4 px-6 py-2 border-b border-paper-200 bg-paper-50`}
+                    className={`grid ${GRID_COLS} gap-4 px-6 py-2 border-b border-surface-200 bg-surface-50`}
                   >
-                    <span role="columnheader" className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.09em]">Contract</span>
-                    <span role="columnheader" className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.09em]">Status</span>
-                    <span role="columnheader" className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.09em]">Counterparty</span>
-                    <span role="columnheader" className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.09em]">Expires</span>
-                    <span role="columnheader" className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.09em]">Risk</span>
+                    <span role="columnheader" className="text-[10px] font-bold text-fg-400 uppercase tracking-[0.09em]">Contract</span>
+                    <span role="columnheader" className="text-[10px] font-bold text-fg-400 uppercase tracking-[0.09em]">Status</span>
+                    <span role="columnheader" className="text-[10px] font-bold text-fg-400 uppercase tracking-[0.09em]">Counterparty</span>
+                    <span role="columnheader" className="text-[10px] font-bold text-fg-400 uppercase tracking-[0.09em]">Expires</span>
+                    <span role="columnheader" className="text-[10px] font-bold text-fg-400 uppercase tracking-[0.09em]">Risk</span>
                     {/* The chevron column is decorative, but a header cell with no
                         name leaves the row a cell short of the others. */}
                     <span role="columnheader"><span className="sr-only">Open</span></span>
@@ -659,7 +659,7 @@ export function ContractsPage() {
                       if ((e.target as HTMLElement).closest('a, button')) return
                       navigate(`/contracts/${c.id}`)
                     }}
-                    className={`grid ${GRID_COLS} gap-4 items-center px-6 py-2 border-b border-paper-100 hover:bg-paper-50 cursor-pointer transition-colors group`}
+                    className={`grid ${GRID_COLS} gap-4 items-center px-6 py-2 border-b border-surface-100 hover:bg-surface-50 cursor-pointer transition-colors group`}
                   >
                     {/* Title + type */}
                     <div role="cell" className="min-w-0 flex items-center gap-3">
@@ -668,7 +668,7 @@ export function ContractsPage() {
                         <div className="flex items-center gap-2">
                           <Link
                             to={`/contracts/${c.id}`}
-                            className="text-[13px] font-medium text-ink-950 truncate hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                            className="text-[13px] font-medium text-fg-950 truncate hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {displayTitle(c)}
@@ -706,7 +706,7 @@ export function ContractsPage() {
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-ink-400 mt-0.5">
+                        <p className="text-[11px] text-fg-400 mt-0.5">
                           {c.type.replace(/_/g, ' ')} ·{' '}
                           <span title={new Date(c.createdAt).toLocaleString()}>{formatRelativeTime(c.createdAt)}</span>
                         </p>
@@ -735,12 +735,12 @@ export function ContractsPage() {
                             // Nothing is blocked on the user here — it just says
                             // which field matched — so this drops amber for neutral.
                             <p
-                              className="text-[10.5px] text-ink-700 bg-paper-100 border border-paper-200 rounded-chip px-1.5 py-0.5 mt-1 inline-block"
+                              className="text-[10.5px] text-fg-700 bg-surface-100 border border-surface-200 rounded-chip px-1.5 py-0.5 mt-1 inline-block"
                               data-testid={`match-${c.id}`}
                               title={plain}
                             >
                               <span className="font-medium">Matched in {matchedField}:</span>{' '}
-                              <span className="text-ink-500">{plain.length > 60 ? plain.slice(0, 60) + '…' : plain}</span>
+                              <span className="text-fg-500">{plain.length > 60 ? plain.slice(0, 60) + '…' : plain}</span>
                             </p>
                           )
                         })()}
@@ -753,12 +753,12 @@ export function ContractsPage() {
                     </div>
 
                     {/* Counterparty */}
-                    <p role="cell" className="text-[12.5px] text-ink-700 truncate">{c.counterpartyName ?? c.counterparty?.name ?? <span className="text-ink-400">—</span>}</p>
+                    <p role="cell" className="text-[12.5px] text-fg-700 truncate">{c.counterpartyName ?? c.counterparty?.name ?? <span className="text-fg-400">—</span>}</p>
 
                     {/* Expiry — the date carries its own urgency; see expiryMeta. */}
                     {(() => {
                       const e = expiryMeta(c.expiryDate, c.status)
-                      if (!e) return <p role="cell" className="text-[12.5px] text-ink-400 tabular-nums">—</p>
+                      if (!e) return <p role="cell" className="text-[12.5px] text-fg-400 tabular-nums">—</p>
                       return (
                         <p role="cell" className="text-[12.5px] tabular-nums">
                           <span className={`${MEANING_CLASS[e.meaning].fg}${e.meaning === 'risk' ? ' font-medium' : ''}`}>
@@ -775,12 +775,12 @@ export function ContractsPage() {
                     <div role="cell">
                       {c.riskScore != null ? (
                         <RiskMeter score={c.riskScore} />
-                      ) : <span className="text-ink-400 text-[12.5px]">—</span>}
+                      ) : <span className="text-fg-400 text-[12.5px]">—</span>}
                     </div>
 
                     {/* Arrow */}
                     <div role="cell">
-                      <ChevronRight aria-hidden="true" className="size-4 text-paper-300 group-hover:text-ink-400 transition-colors" />
+                      <ChevronRight aria-hidden="true" className="size-4 text-surface-300 group-hover:text-fg-400 transition-colors" />
                     </div>
                   </div>
                   ))}
@@ -792,9 +792,9 @@ export function ContractsPage() {
                   all of them". */}
               <div
                 data-testid="contracts-pagination"
-                className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 border-t border-paper-200 px-6 py-3"
+                className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 border-t border-surface-200 px-6 py-3"
               >
-                <p className="text-dense text-ink-500 tabular-nums" aria-live="polite">
+                <p className="text-dense text-fg-500 tabular-nums" aria-live="polite">
                   Showing {contracts.length} of {total} {total === 1 ? 'contract' : 'contracts'}
                 </p>
                 {hasNextPage && (
@@ -867,12 +867,12 @@ function FacetItem({ label, count, active, onClick }: {
     <button
       onClick={onClick}
       className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-dense transition-colors ${
-        active ? 'bg-ink-950 text-white' : 'text-ink-700 hover:bg-paper-100'
+        active ? 'bg-primary-50 text-primary-700' : 'text-fg-700 hover:bg-surface-100'
       }`}
     >
       <span className="truncate">{label}</span>
       {count !== undefined && (
-        <span className={`text-[10px] tabular-nums flex-shrink-0 ml-1 ${active ? 'text-white/60' : 'text-ink-400'}`}>{count}</span>
+        <span className={`text-[10px] tabular-nums flex-shrink-0 ml-1 ${active ? 'text-white/60' : 'text-fg-400'}`}>{count}</span>
       )}
     </button>
   )

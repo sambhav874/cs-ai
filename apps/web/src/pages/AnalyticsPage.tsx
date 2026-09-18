@@ -17,6 +17,7 @@ import {
   Cell, LineChart, Line, CartesianGrid, Legend, LabelList,
 } from 'recharts'
 import { api } from '@/lib/api'
+import { token } from '@/lib/paint'
 import { MEANING_CLASS, statusMeaning, statusMeta, type Meaning } from '@/lib/status'
 import { Eyebrow } from '@/components/ui/primitives'
 import {
@@ -88,36 +89,34 @@ function humanizeEnum(key: string): string {
 }
 
 /*
- * Recharts paints with literal colors, not classes, so the palette has to be
- * restated as hex. Every value below is a stop from tailwind.config.ts — a bar
- * on this page carries exactly the same five meanings as a pill anywhere else,
- * so a reader who has learned the colors once does not relearn them here.
+ * Recharts paints with literal colors, not classes, so each series reads its
+ * token at render time (lib/paint). A bar on this page carries exactly the same
+ * five meanings as a pill anywhere else, so a reader who has learned the colors
+ * once does not relearn them here. Getters, so a theme switch is picked up on
+ * the next render.
  */
 const PAINT = {
-  brand:     '#047857', // brand-700  — binding: approved, executed
-  info:      '#2563EB', // info-600   — in flight: someone else's turn
-  attention: '#CC7005', // attention-600 — your turn
-  risk:      '#DC2626', // risk-600   — exposure
-  riskDeep:  '#B91C1C', // risk-700   — the far end of the same family
-  neutral:   '#757369', // ink-400    — nothing is happening
-  grid:      '#E7E6E3', // paper-200
-  // Axis ticks are text, so they answer to 4.5:1, not the 3:1 a bar or a dot
-  // gets. ink-400 measures 4.76:1 on white but only 4.56:1 on paper-50, and at
-  // 11px inside a busy plot it reads as a smudge — ink-500 is the same voice
-  // with 5.6:1 behind it.
-  axis:      '#6A6862', // ink-500
-  ink:       '#17161A', // ink-950
-  inkMuted:  '#57554F', // ink-700
-  card:      '#FFFFFF', // paper-0
-} as const
+  get brand()     { return token('success-700') },   // binding: approved, executed
+  get info()      { return token('info-600') },      // in flight
+  get attention() { return token('attention-600') }, // your turn
+  get risk()      { return token('risk-600') },      // exposure
+  get riskDeep()  { return token('risk-700') },
+  get neutral()   { return token('fg-400') },        // nothing is happening
+  get grid()      { return token('surface-200') },
+  // Axis ticks are text, so they answer to 4.5:1 — fg-500, not fg-400.
+  get axis()      { return token('fg-500') },
+  get ink()       { return token('fg-950') },
+  get inkMuted()  { return token('fg-700') },
+  get card()      { return token('surface-0') },
+}
 
 /** Meaning → series color, so status bars agree with the status pills. */
 const MEANING_PAINT: Record<Meaning, string> = {
-  neutral:  PAINT.neutral,
-  inflight: PAINT.info,
-  turn:     PAINT.attention,
-  binding:  PAINT.brand,
-  risk:     PAINT.risk,
+  get neutral()  { return PAINT.neutral },
+  get inflight() { return PAINT.info },
+  get turn()     { return PAINT.attention },
+  get binding()  { return PAINT.brand },
+  get risk()     { return PAINT.risk },
 }
 
 /*
@@ -126,30 +125,30 @@ const MEANING_PAINT: Record<Meaning, string> = {
  * risk family so the meaning never changes, only its depth.
  */
 const RISK_PAINT: Record<string, string> = {
-  low:      PAINT.brand,
-  medium:   PAINT.attention,
-  high:     PAINT.risk,
-  critical: PAINT.riskDeep,
-  none:     PAINT.neutral,
+  get low()      { return PAINT.brand },
+  get medium()   { return PAINT.attention },
+  get high()     { return PAINT.risk },
+  get critical() { return PAINT.riskDeep },
+  get none()     { return PAINT.neutral },
 }
 
 /*
- * Recharts styles the tooltip inline, so the tokens are restated literally:
- * paper-200 border, rounded-md (6px), shadow-e2. A tooltip floats above the
+ * Recharts styles the tooltip inline, so it reads the tokens: surface-200
+ * border, rounded-md (8px), shadow-e2. A tooltip floats above the
  * page but is not a dialog, so it stops at e2 — e3 stays for overlays.
  */
 const TOOLTIP_CONTENT: React.CSSProperties = {
-  background:   PAINT.card,
-  border:       `1px solid ${PAINT.grid}`,
-  borderRadius: 6,
-  boxShadow:    '0 4px 12px -2px rgba(23,22,26,0.08)',
+  get background()   { return PAINT.card },
+  get border()       { return `1px solid ${PAINT.grid}` },
+  borderRadius: 8,
+  boxShadow:    'var(--shadow-e2)',
   fontSize:     12.5,
   padding:      '8px 10px',
 }
-const TOOLTIP_LABEL: React.CSSProperties = { color: PAINT.ink, fontWeight: 600, marginBottom: 2 }
-const TOOLTIP_ITEM:  React.CSSProperties = { color: PAINT.inkMuted }
-const AXIS_TICK = { fontSize: 11.5, fill: PAINT.axis }
-const LEGEND_STYLE: React.CSSProperties = { fontSize: 11.5, color: PAINT.inkMuted }
+const TOOLTIP_LABEL: React.CSSProperties = { get color() { return PAINT.ink }, fontWeight: 600, marginBottom: 2 }
+const TOOLTIP_ITEM:  React.CSSProperties = { get color() { return PAINT.inkMuted } }
+const AXIS_TICK = { fontSize: 11.5, get fill() { return PAINT.axis } }
+const LEGEND_STYLE: React.CSSProperties = { fontSize: 11.5, get color() { return PAINT.inkMuted } }
 
 /**
  * Square points for the "Executed" series.
@@ -257,10 +256,10 @@ export function AnalyticsPage() {
   return (
     <div className="px-6 py-6 max-w-7xl mx-auto" data-testid="analytics-page">
       <div className="flex items-center gap-3 mb-1">
-        <BarChart2 className="size-4 text-ink-400" />
-        <h1 className="text-title text-ink-950">Analytics</h1>
+        <BarChart2 className="size-4 text-fg-400" />
+        <h1 className="text-title text-fg-950">Analytics</h1>
       </div>
-      <p className="text-dense text-ink-500 mb-5">
+      <p className="text-dense text-fg-500 mb-5">
         Portfolio KPIs, cycle time, and contract distribution at a glance.
       </p>
 
@@ -353,13 +352,13 @@ export function AnalyticsPage() {
           {/* The "Window:" text was a bare span, so the control announced
               itself as an unlabelled combobox. A real label also makes the
               word a click target for the select. */}
-          <label htmlFor="analytics-window-select" className="text-[11px] text-ink-500">Window:</label>
+          <label htmlFor="analytics-window-select" className="text-[11px] text-fg-500">Window:</label>
           <select
             id="analytics-window-select"
             value={windowDays}
             onChange={e => setWindowDays(Number(e.target.value))}
             data-testid="analytics-window"
-            className="h-8 rounded-md border border-input bg-card px-2.5 text-[13px] text-ink-950 transition-colors focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+            className="h-8 rounded-md border border-input bg-card px-2.5 text-[13px] text-fg-950 transition-colors focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
           >
             <option value={30}>Last 30 days</option>
             <option value={90}>Last 90 days</option>
@@ -500,9 +499,9 @@ export function AnalyticsPage() {
           footer={
             riskUnscored > 0 ? (
               <span className="flex items-center gap-2">
-                <span className="inline-block size-1.5 shrink-0 rounded-full bg-ink-350" />
+                <span className="inline-block size-1.5 shrink-0 rounded-full bg-fg-350" />
                 <span>
-                  <span className="tabular-nums font-medium text-ink-700">{riskUnscored}</span> more
+                  <span className="tabular-nums font-medium text-fg-700">{riskUnscored}</span> more
                   {' '}({Math.round((riskUnscored / (riskScored + riskUnscored)) * 100)}% of the portfolio)
                   {' '}carry no risk score and are not plotted.
                 </span>
@@ -571,18 +570,18 @@ export function AnalyticsPage() {
       </div>
 
       {/* Top counterparties */}
-      <div className="bg-card border border-paper-200 rounded-card overflow-hidden mb-6">
-        <header className="flex items-center justify-between px-5 py-3 border-b border-paper-200 bg-paper-50">
-          <h3 className="text-section text-ink-950 flex items-center gap-2">
-            <Building2 className="size-4 text-ink-400" />
+      <div className="bg-card border border-surface-200 rounded-card overflow-hidden mb-6">
+        <header className="flex items-center justify-between px-5 py-3 border-b border-surface-200 bg-surface-50">
+          <h3 className="text-section text-fg-950 flex items-center gap-2">
+            <Building2 className="size-4 text-fg-400" />
             Top counterparties by executed value
           </h3>
         </header>
         {!tops?.data?.length ? (
-          <div className="text-dense text-ink-500 px-5 py-8 text-center">No executed contracts yet.</div>
+          <div className="text-dense text-fg-500 px-5 py-8 text-center">No executed contracts yet.</div>
         ) : (
           <table className="w-full text-dense" data-testid="top-counterparties-table">
-            <thead className="text-[10px] uppercase tracking-[0.09em] text-ink-400">
+            <thead className="text-[10px] uppercase tracking-[0.09em] text-fg-400">
               <tr>
                 <th className="text-left px-5 py-2 font-semibold">Counterparty</th>
                 <th className="text-right px-5 py-2 font-semibold">Contracts</th>
@@ -590,16 +589,16 @@ export function AnalyticsPage() {
                 <th className="text-right px-5 py-2 font-semibold"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-paper-100">
+            <tbody className="divide-y divide-surface-100">
               {tops.data.map(cp => (
-                <tr key={cp.counterparty} className="hover:bg-paper-50">
-                  <td className="px-5 py-2 font-medium text-ink-950">{cp.counterparty}</td>
-                  <td className="px-5 py-2 text-right text-ink-700 tabular-nums">{cp.count}</td>
+                <tr key={cp.counterparty} className="hover:bg-surface-50">
+                  <td className="px-5 py-2 font-medium text-fg-950">{cp.counterparty}</td>
+                  <td className="px-5 py-2 text-right text-fg-700 tabular-nums">{cp.count}</td>
                   {/* Rounded to 2dp, so two counterparties a few thousand apart
                       print the same figure and the sort looks arbitrary. The
                       exact number is one hover away. */}
                   <td
-                    className="px-5 py-2 text-right font-medium text-ink-950 tabular-nums"
+                    className="px-5 py-2 text-right font-medium text-fg-950 tabular-nums"
                     title={formatMoneyExact(cp.value, cp.currency)}
                   >
                     {formatMoney(cp.value, cp.currency)}
@@ -608,12 +607,12 @@ export function AnalyticsPage() {
                     {cp.counterpartyId ? (
                       <Link
                         to={`/contracts?counterpartyId=${encodeURIComponent(cp.counterpartyId)}&filterLabel=${encodeURIComponent(cp.counterparty)}`}
-                        className="inline-flex items-center gap-0.5 text-[11.5px] font-medium text-ink-950 hover:text-brand-700"
+                        className="inline-flex items-center gap-0.5 text-[11.5px] font-medium text-fg-950 hover:text-primary-700"
                       >
                         View <ArrowRight className="size-3" />
                       </Link>
                     ) : (
-                      <span className="text-[11.5px] text-ink-400">—</span>
+                      <span className="text-[11.5px] text-fg-400">—</span>
                     )}
                   </td>
                 </tr>
@@ -638,19 +637,19 @@ function KpiCard({ label, value, subtitle, icon: Icon, tone, to, loading, ...res
 }) {
   const m = MEANING_CLASS[tone]
   const card = (
-    <div className="h-full border border-paper-200 rounded-card p-4 bg-card transition-colors hover:border-paper-300" {...rest}>
+    <div className="h-full border border-surface-200 rounded-card p-4 bg-card transition-colors hover:border-surface-300" {...rest}>
       <div className="flex items-start justify-between">
-        <div className="text-[11px] text-ink-500">{label}</div>
+        <div className="text-[11px] text-fg-500">{label}</div>
         <div className={`size-6 rounded-md flex items-center justify-center ${m.wash} ${m.washFg}`}>
           <Icon className="size-3.5" />
         </div>
       </div>
-      <div className="text-[24px] font-semibold tracking-[-0.02em] mt-1 tabular-nums text-ink-950">
-        {loading ? <Loader2 className="size-5 animate-spin text-ink-400" /> : value}
+      <div className="text-[24px] font-semibold tracking-[-0.02em] mt-1 tabular-nums text-fg-950">
+        {loading ? <Loader2 className="size-5 animate-spin text-fg-400" /> : value}
       </div>
       {/* Two lines, not an ellipsis: these subtitles carry the definition of the
           number above them, and a truncated definition is worse than none. */}
-      {subtitle && <div className="text-[10.5px] text-ink-500 mt-0.5 leading-snug line-clamp-2">{subtitle}</div>}
+      {subtitle && <div className="text-[10.5px] text-fg-500 mt-0.5 leading-snug line-clamp-2">{subtitle}</div>}
     </div>
   )
   return to ? <Link to={to} className="block h-full">{card}</Link> : card
@@ -663,18 +662,18 @@ function MetricBar({ label, value, subtitle, icon: Icon, tone }: {
   icon:     React.ComponentType<{ className?: string }>
   tone:     'neutral' | 'binding'
 }) {
-  const valueClass = tone === 'binding' ? 'text-brand-700' : 'text-ink-950'
+  const valueClass = tone === 'binding' ? 'text-success-700' : 'text-fg-950'
   return (
-    <div className="border border-paper-200 rounded-card p-4 bg-card flex items-center gap-3">
-      <div className="size-9 rounded-card bg-paper-100 flex items-center justify-center text-ink-500">
+    <div className="border border-surface-200 rounded-card p-4 bg-card flex items-center gap-3">
+      <div className="size-9 rounded-card bg-surface-100 flex items-center justify-center text-fg-500">
         <Icon className="size-4" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[11px] text-ink-500">{label}</div>
+        <div className="text-[11px] text-fg-500">{label}</div>
         <div className={`text-[20px] font-semibold tracking-[-0.015em] tabular-nums ${valueClass}`}>{value}</div>
         {/* Same reasoning as the KPI subtitle: this line defines the metric, and
             "Approved ÷ (Approved + Rej…" defines nothing. */}
-        <div className="text-[10.5px] text-ink-500 leading-snug line-clamp-2">{subtitle}</div>
+        <div className="text-[10.5px] text-fg-500 leading-snug line-clamp-2">{subtitle}</div>
       </div>
     </div>
   )
@@ -699,20 +698,20 @@ function ChartCard({ title, subtitle, footer, empty, emptyLabel, children, ...re
   'data-testid'?: string
 }) {
   return (
-    <div className="bg-card border border-paper-200 rounded-card p-5" {...rest}>
+    <div className="bg-card border border-surface-200 rounded-card p-5" {...rest}>
       <div className="mb-4">
-        <h3 className="text-section text-ink-950">{title}</h3>
-        {subtitle && <p className="text-[11px] tabular-nums text-ink-500 mt-0.5">{subtitle}</p>}
+        <h3 className="text-section text-fg-950">{title}</h3>
+        {subtitle && <p className="text-[11px] tabular-nums text-fg-500 mt-0.5">{subtitle}</p>}
       </div>
       {empty ? (
-        <div className="flex items-center justify-center h-[200px] text-dense text-ink-500">
+        <div className="flex items-center justify-center h-[200px] text-dense text-fg-500">
           {emptyLabel ?? 'Nothing to plot yet.'}
         </div>
       ) : (
         children
       )}
       {!empty && footer && (
-        <p className="text-[11px] text-ink-500 mt-3 pt-3 border-t border-paper-100 leading-relaxed">{footer}</p>
+        <p className="text-[11px] text-fg-500 mt-3 pt-3 border-t border-surface-100 leading-relaxed">{footer}</p>
       )}
     </div>
   )

@@ -120,7 +120,7 @@ export function StatusStepper({
     // Just a labelled dot + step label — used in narrow contexts.
     const step = currentIdx >= 0 ? STEPS[currentIdx] : null
     return (
-      <span className={cn('inline-flex items-center gap-1.5 text-[11.5px] font-medium text-ink-700', className)}>
+      <span className={cn('inline-flex items-center gap-1.5 text-[11.5px] font-medium text-fg-700', className)}>
         <span className="relative flex size-2">
           {/* The halo pings forever — there is no end state to animate towards,
               so it is decoration, and decoration that never stops is the exact
@@ -155,9 +155,9 @@ export function StatusStepper({
                   // A passed step is settled, so it reads binding; the step the
                   // contract is ON borrows that status's own meaning. The halo
                   // stays neutral so only one element in the row is colored.
-                  done    && 'bg-brand-700 border-brand-700 text-white',
-                  current && ['bg-card border-current ring-4 ring-paper-100', tone.fg],
-                  future  && 'bg-card border-paper-300 text-ink-400',
+                  done    && 'bg-success-solid border-success-solid text-white',
+                  current && ['bg-card border-current ring-4 ring-surface-100', tone.fg],
+                  future  && 'bg-card border-surface-300 text-fg-400',
                 )}
               >
                 {done ? (
@@ -172,9 +172,9 @@ export function StatusStepper({
                 className={cn(
                   'mt-1 font-medium whitespace-nowrap',
                   labelSize,
-                  done    && 'text-ink-500',
-                  current && 'text-ink-950',
-                  future  && 'text-ink-400',
+                  done    && 'text-fg-500',
+                  current && 'text-fg-950',
+                  future  && 'text-fg-400',
                 )}
               >
                 {size === 'compact' ? (step.short ?? step.label) : step.label}
@@ -187,7 +187,7 @@ export function StatusStepper({
                 className={cn(
                   'flex-1 mx-2 -mt-5',
                   lineThick,
-                  done ? 'bg-brand-700' : 'bg-paper-200',
+                  done ? 'bg-success-700' : 'bg-surface-200',
                 )}
               />
             )}

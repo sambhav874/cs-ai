@@ -2,15 +2,15 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 
 /*
- * Machine-authored content — design system §04.
+ * Machine-authored content.
  *
- * "One accent, one glyph, one rule: anything the model wrote is marked, and the
- * mark scales with how sure it is." Indigo and the diamond belong to the
- * machine and to nothing else — no button, chip, or nav item outside an agent
- * surface may use them.
+ * One hue, one glyph, one rule: anything a model wrote is marked, and the mark
+ * scales with how sure it is. Violet and the spark belong to the machine and
+ * to nothing else — no button, chip or nav item outside an agent surface may
+ * use them.
  */
 
-/** The diamond. A rotated square, not an icon, so it never reads as clickable. */
+/** The spark. Drawn, not an icon, so it never reads as clickable. */
 export function AssistMark({
   confidence = 'high',
   className,
@@ -20,17 +20,19 @@ export function AssistMark({
   className?: string
 }) {
   return (
-    <span
+    <svg
+      viewBox="0 0 10 10"
       aria-hidden
       className={cn(
-        'inline-block size-[7px] shrink-0 rotate-45',
-        confidence === 'low'
-          ? 'border-[1.5px] border-assist-600'
-          : 'bg-assist-600',
+        'inline-block size-2 shrink-0',
+        confidence === 'low' ? 'fill-none stroke-assist-600' : 'fill-assist-600',
         confidence === 'medium' && 'opacity-60',
         className
       )}
-    />
+      strokeWidth={confidence === 'low' ? 1.1 : undefined}
+    >
+      <path d="M5 0C5.4 3.1 6.9 4.6 10 5 6.9 5.4 5.4 6.9 5 10 4.6 6.9 3.1 5.4 0 5 3.1 4.6 4.6 3.1 5 0Z" />
+    </svg>
   )
 }
 
@@ -52,7 +54,7 @@ export function AssistChip({
         className
       )}
     >
-      {icon ?? <AssistMark className="size-[5px]" />}
+      {icon ?? <AssistMark className="size-[7px]" />}
       {children}
     </span>
   )
@@ -60,7 +62,7 @@ export function AssistChip({
 
 /**
  * AssistCard — a low-confidence suggestion that needs a human decision.
- * The indigo wash is the strongest form of the mark and is the only place the
+ * The violet wash is the strongest form of the mark and is the only place the
  * machine is allowed to take over a surface.
  */
 export function AssistCard({
@@ -75,7 +77,7 @@ export function AssistCard({
   className?: string
 }) {
   return (
-    <div className={cn('rounded-md border border-assist-200 bg-assist-50 p-3', className)}>
+    <div className={cn('rounded-lg border border-assist-200 bg-assist-50 p-3', className)}>
       {eyebrow != null && (
         <div className="mb-2 flex items-center gap-[7px]">
           <AssistMark />

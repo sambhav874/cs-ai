@@ -96,12 +96,12 @@ export function ShareLinkDialog({ contractId, onClose }: ShareLinkDialogProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-card rounded-card shadow-e3 w-full max-w-lg flex flex-col max-h-[85vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-paper-200">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200">
           <div className="flex items-center gap-2">
-            <Link className="size-4 text-ink-400" />
-            <h2 className="text-section text-ink-950">Share Contract</h2>
+            <Link className="size-4 text-fg-400" />
+            <h2 className="text-section text-fg-950">Share Contract</h2>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-md text-ink-400 hover:text-ink-700 hover:bg-paper-100 transition-colors">
+          <button onClick={onClose} className="p-1.5 rounded-md text-fg-400 hover:text-fg-700 hover:bg-surface-100 transition-colors">
             <X className="size-4" />
           </button>
         </div>
@@ -111,8 +111,8 @@ export function ShareLinkDialog({ contractId, onClose }: ShareLinkDialogProps) {
               binding one — this used to be an emerald "success" card, which is
               the decoration emerald is not for. */}
           {newLinkUrl && (
-            <div className="bg-paper-50 border border-paper-200 rounded-card p-4">
-              <p className="text-body font-semibold text-ink-950 mb-2">
+            <div className="bg-surface-50 border border-surface-200 rounded-card p-4">
+              <p className="text-body font-semibold text-fg-950 mb-2">
                 {emailedTo && emailDelivered
                   ? `Link sent to ${emailedTo}`
                   : 'Link created! Share this URL:'}
@@ -127,7 +127,7 @@ export function ShareLinkDialog({ contractId, onClose }: ShareLinkDialogProps) {
                 <input
                   readOnly
                   value={newLinkUrl}
-                  className="flex-1 h-8 text-[11px] font-mono bg-card border border-paper-200 rounded-md px-2 truncate"
+                  className="flex-1 h-8 text-[11px] font-mono bg-card border border-surface-200 rounded-md px-2 truncate"
                 />
                 <Button
                   variant="outline"
@@ -144,9 +144,9 @@ export function ShareLinkDialog({ contractId, onClose }: ShareLinkDialogProps) {
 
           {/* Create form */}
           <div className="space-y-4">
-            <p className="text-section text-ink-950">Create new link</p>
+            <p className="text-section text-fg-950">Create new link</p>
             <div>
-              <label className="text-dense text-ink-500 font-medium mb-1 block">Label (optional)</label>
+              <label className="text-dense text-fg-500 font-medium mb-1 block">Label (optional)</label>
               <Input
                 value={label}
                 onChange={e => setLabel(e.target.value)}
@@ -154,7 +154,7 @@ export function ShareLinkDialog({ contractId, onClose }: ShareLinkDialogProps) {
               />
             </div>
             <div>
-              <label className="text-dense text-ink-500 font-medium mb-1 block">
+              <label className="text-dense text-fg-500 font-medium mb-1 block">
                 Send to (optional)
               </label>
               <Input
@@ -164,28 +164,28 @@ export function ShareLinkDialog({ contractId, onClose }: ShareLinkDialogProps) {
                 placeholder="counsel@counterparty.com"
                 data-testid="share-recipient-email"
               />
-              <p className="text-[11px] text-ink-400 mt-1">
+              <p className="text-[11px] text-fg-400 mt-1">
                 Leave blank to just generate a link you copy yourself.
               </p>
             </div>
             {recipientEmail.trim() && (
               <div>
-                <label className="text-dense text-ink-500 font-medium mb-1 block">Note (optional)</label>
+                <label className="text-dense text-fg-500 font-medium mb-1 block">Note (optional)</label>
                 <textarea
                   value={message}
                   onChange={e => setMessage(e.target.value)}
                   rows={2}
                   placeholder="Happy to walk through the redlines this week."
-                  className="w-full resize-none rounded-md border border-input bg-card px-[11px] py-2 text-[13px] text-ink-950 placeholder:text-ink-400 focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+                  className="w-full resize-none rounded-md border border-input bg-card px-[11px] py-2 text-[13px] text-fg-950 placeholder:text-fg-400 focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
                 />
               </div>
             )}
             <div>
-              <label className="text-dense text-ink-500 font-medium mb-1 block">Expires in</label>
+              <label className="text-dense text-fg-500 font-medium mb-1 block">Expires in</label>
               <select
                 value={expiresInHours}
                 onChange={e => setExpiresInHours(Number(e.target.value))}
-                className="w-full h-8 text-[13px] border border-input bg-card rounded-md px-2.5 focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+                className="w-full h-8 text-[13px] border border-input bg-card rounded-md px-2.5 focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
               >
                 {EXPIRY_OPTIONS.map(opt => (
                   <option key={opt.hours} value={opt.hours}>{opt.label}</option>
@@ -193,14 +193,14 @@ export function ShareLinkDialog({ contractId, onClose }: ShareLinkDialogProps) {
               </select>
             </div>
             <div>
-              <p className="text-dense text-ink-500 font-medium mb-2">Permissions</p>
+              <p className="text-dense text-fg-500 font-medium mb-2">Permissions</p>
               <div className="space-y-2">
                 <label className="flex items-center gap-2.5 cursor-pointer">
-                  <div className="size-4 rounded-chip border-2 border-ink-950 bg-ink-950 flex items-center justify-center flex-shrink-0">
+                  <div className="size-4 rounded-chip border-2 border-primary-solid bg-primary-solid flex items-center justify-center flex-shrink-0">
                     <Check className="size-2.5 text-white" />
                   </div>
-                  <div className="flex items-center gap-1.5 text-body text-ink-700">
-                    <Eye className="size-3.5 text-ink-400" />
+                  <div className="flex items-center gap-1.5 text-body text-fg-700">
+                    <Eye className="size-3.5 text-fg-400" />
                     Read — view contract
                   </div>
                 </label>
@@ -209,10 +209,10 @@ export function ShareLinkDialog({ contractId, onClose }: ShareLinkDialogProps) {
                     type="checkbox"
                     checked={canComment}
                     onChange={e => setCanComment(e.target.checked)}
-                    className="size-4 rounded-chip border-paper-300 accent-ink-950"
+                    className="size-4 rounded-chip border-surface-300 accent-fg-950"
                   />
-                  <div className="flex items-center gap-1.5 text-body text-ink-700">
-                    <MessageSquare className="size-3.5 text-ink-400" />
+                  <div className="flex items-center gap-1.5 text-body text-fg-700">
+                    <MessageSquare className="size-3.5 text-fg-400" />
                     Comment — add comments
                   </div>
                 </label>
@@ -221,16 +221,16 @@ export function ShareLinkDialog({ contractId, onClose }: ShareLinkDialogProps) {
                     type="checkbox"
                     checked={canUpload}
                     onChange={e => setCanUpload(e.target.checked)}
-                    className="size-4 rounded-chip border-paper-300 accent-ink-950"
+                    className="size-4 rounded-chip border-surface-300 accent-fg-950"
                   />
-                  <div className="flex items-center gap-1.5 text-body text-ink-700">
-                    <Upload className="size-3.5 text-ink-400" />
+                  <div className="flex items-center gap-1.5 text-body text-fg-700">
+                    <Upload className="size-3.5 text-fg-400" />
                     Upload — return a revised version
                   </div>
                 </label>
               </div>
               {canUpload && (
-                <p className="text-[11px] text-ink-500 mt-2 leading-relaxed">
+                <p className="text-[11px] text-fg-500 mt-2 leading-relaxed">
                   Lets the counterparty download the document, redline it offline, and
                   upload it back as a new version for you to review.
                 </p>
@@ -249,18 +249,18 @@ export function ShareLinkDialog({ contractId, onClose }: ShareLinkDialogProps) {
           {/* Existing links */}
           {links.length > 0 && (
             <div className="space-y-3">
-              <p className="text-section text-ink-950">Active links</p>
+              <p className="text-section text-fg-950">Active links</p>
               {links.map(link => (
-                <div key={link.id} className="bg-paper-50 border border-paper-200 rounded-card p-3.5 space-y-2">
+                <div key={link.id} className="bg-surface-50 border border-surface-200 rounded-card p-3.5 space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-body font-medium text-ink-950">
+                      <p className="text-body font-medium text-fg-950">
                         {link.label ?? 'Untitled link'}
                       </p>
                       {link.invitedEmail && (
-                        <p className="text-dense text-ink-500 mt-0.5">Sent to {link.invitedEmail}</p>
+                        <p className="text-dense text-fg-500 mt-0.5">Sent to {link.invitedEmail}</p>
                       )}
-                      <p className="text-dense text-ink-400 mt-0.5 tabular-nums">
+                      <p className="text-dense text-fg-400 mt-0.5 tabular-nums">
                         Expires {new Date(link.expiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         {' · '}{link.viewCount} view{link.viewCount !== 1 ? 's' : ''}
                       </p>
@@ -270,22 +270,22 @@ export function ShareLinkDialog({ contractId, onClose }: ShareLinkDialogProps) {
                           three is a meaning, so all three are neutral. */}
                       <div className="flex gap-1">
                         {(link.permissions.includes('upload') || link.permissions.includes('edit')) && (
-                          <span className="text-[11px] bg-paper-100 text-ink-700 px-1.5 py-0.5 rounded-chip font-medium">
+                          <span className="text-[11px] bg-surface-100 text-fg-700 px-1.5 py-0.5 rounded-chip font-medium">
                             upload
                           </span>
                         )}
                         {link.permissions.includes('comment') && (
-                          <span className="text-[11px] bg-paper-100 text-ink-700 px-1.5 py-0.5 rounded-chip font-medium">
+                          <span className="text-[11px] bg-surface-100 text-fg-700 px-1.5 py-0.5 rounded-chip font-medium">
                             comment
                           </span>
                         )}
-                        <span className="text-[11px] bg-paper-100 text-ink-500 px-1.5 py-0.5 rounded-chip font-medium">
+                        <span className="text-[11px] bg-surface-100 text-fg-500 px-1.5 py-0.5 rounded-chip font-medium">
                           read
                         </span>
                       </div>
                       <button
                         onClick={() => revokeLink.mutate(link.id)}
-                        className="p-1 text-ink-400 hover:text-risk-600 rounded-md transition-colors ml-1"
+                        className="p-1 text-fg-400 hover:text-risk-600 rounded-md transition-colors ml-1"
                         title="Revoke link"
                       >
                         <Trash2 className="size-3.5" />

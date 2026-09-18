@@ -77,9 +77,9 @@ export function MatterRailSection({ matterId }: { matterId: string | null | unde
           <Link
             to={`/matters/${matter.id}`}
             data-testid="matter-rail-link"
-            className="flex items-start gap-1.5 text-[12.5px] font-medium text-ink-950 hover:text-brand-700 leading-tight min-w-0"
+            className="flex items-start gap-1.5 text-[12.5px] font-medium text-fg-950 hover:text-primary-700 leading-tight min-w-0"
           >
-            <Briefcase className="size-3.5 text-ink-400 mt-0.5 shrink-0" />
+            <Briefcase className="size-3.5 text-fg-400 mt-0.5 shrink-0" />
             <span className="truncate">{matter.name}</span>
           </Link>
           <StatusPill
@@ -98,11 +98,11 @@ export function MatterRailSection({ matterId }: { matterId: string | null | unde
         )}
 
         {/* Sibling counts */}
-        <div className="text-[11px] text-ink-700 flex items-center gap-1.5 flex-wrap">
+        <div className="text-[11px] text-fg-700 flex items-center gap-1.5 flex-wrap">
           {siblingContracts > 0 ? (
             <Link
               to={`/matters/${matter.id}`}
-              className="text-ink-950 font-medium hover:underline inline-flex items-center gap-0.5"
+              className="text-fg-950 font-medium hover:underline inline-flex items-center gap-0.5"
               data-testid="matter-siblings-link"
             >
               {siblingContracts} other {siblingContracts === 1 ? 'contract' : 'contracts'} in this matter
@@ -122,14 +122,14 @@ export function MatterRailSection({ matterId }: { matterId: string | null | unde
         {/* Counterparty + Owner */}
         <div className="space-y-0.5">
           {matter.counterpartyName && (
-            <div className="text-[11px] text-ink-700 flex items-center gap-1">
-              <Building2 className="size-3 text-ink-400" />
+            <div className="text-[11px] text-fg-700 flex items-center gap-1">
+              <Building2 className="size-3 text-fg-400" />
               <span className="truncate">{matter.counterpartyName}</span>
             </div>
           )}
           {matter.owner?.name && (
-            <div className="text-[11px] text-ink-700 flex items-center gap-1">
-              <UserIcon className="size-3 text-ink-400" />
+            <div className="text-[11px] text-fg-700 flex items-center gap-1">
+              <UserIcon className="size-3 text-fg-400" />
               <span className="truncate">{matter.owner.name}</span>
             </div>
           )}
@@ -141,7 +141,7 @@ export function MatterRailSection({ matterId }: { matterId: string | null | unde
             {matter.tags!.slice(0, 6).map(t => (
               <span
                 key={t}
-                className="inline-flex items-center text-[9.5px] uppercase tracking-wider font-mono px-1.5 py-0.5 rounded-chip bg-paper-100 text-ink-700 border border-paper-200"
+                className="inline-flex items-center text-[9.5px] uppercase tracking-wider font-mono px-1.5 py-0.5 rounded-chip bg-surface-100 text-fg-700 border border-surface-200"
               >
                 #{t}
               </span>

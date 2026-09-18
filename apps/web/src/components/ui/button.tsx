@@ -4,49 +4,43 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 /*
- * Button — design system §04.
+ * Button.
  *
- * "One primary per view." Ink is the only default, so no chromatic hue has to
- * fight for the button. `brand` (emerald) and `danger` (red) are DECISION
- * buttons: they belong on approval and signature surfaces and nowhere else.
- * `assist` is indigo and is reserved for asking the machine to do something.
+ * One primary per view: cobalt, the action colour. `success` (green) and
+ * `danger` (red) are DECISION buttons — approve, sign, reject — and belong on
+ * those surfaces only. `assist` is violet and reserved for asking the model to
+ * do something; pair it with <AssistMark />.
  *
- * The focus ring is emerald — the brand shows up in interaction rather than in
- * fills. It is at FULL opacity, which is a deliberate deviation from the design
- * system's "emerald at 35%": composited over the page, 35% emerald measures
- * 1.69:1 against bg-card and 1.67:1 against paper-50, roughly half the 3:1 that
- * WCAG 1.4.11 requires of a focus indicator — i.e. it would be less visible
- * than the browser default it replaces. Full emerald is 5.48:1 and reads the
- * same way at a glance. The white ring-offset preserves the spec's two-ring
- * look. Revisit only with a designer, not by reverting to /35.
+ * Fills use the -solid tokens so white text stays legible in dark mode.
  */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap font-semibold transition-colors ' +
+  'inline-flex items-center justify-center whitespace-nowrap font-medium ' +
+    'transition-[color,background-color,border-color,box-shadow,transform] duration-micro ease-out active:translate-y-px ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ' +
     'focus-visible:ring-offset-background disabled:pointer-events-none ' +
-    'disabled:border-paper-200 disabled:bg-paper-100 disabled:text-ink-400 ' +
+    'disabled:border-surface-200 disabled:bg-surface-100 disabled:text-fg-400 ' +
     '[&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        // Ink. The default, and the only default.
-        default: 'border border-ink-950 bg-ink-950 text-white hover:bg-ink-700 hover:border-ink-700',
-        outline: 'border border-input bg-card text-ink-700 hover:bg-paper-100 hover:text-ink-950',
-        ghost: 'border border-transparent text-ink-700 hover:bg-paper-100 hover:text-ink-950',
+        // Cobalt. The default, and the only default.
+        default: 'border border-primary-solid bg-primary-solid text-white shadow-e1 hover:bg-primary-solid-hover hover:border-primary-solid-hover',
+        outline: 'border border-input bg-card text-fg-950 shadow-e1 hover:bg-surface-50 hover:border-surface-300',
+        ghost: 'border border-transparent text-fg-700 hover:bg-surface-100 hover:text-fg-950',
         // Decision — approval + signature surfaces only.
-        brand: 'border border-brand-700 bg-brand-700 text-white hover:bg-brand-800 hover:border-brand-800',
+        success: 'border border-success-solid bg-success-solid text-white hover:bg-success-solid-hover hover:border-success-solid-hover',
         danger: 'border border-risk-200 bg-card text-risk-700 hover:bg-risk-50',
         // Destructive fill. For irreversible deletes, not for "Reject".
-        destructive: 'border border-risk-600 bg-risk-600 text-white hover:bg-risk-700 hover:border-risk-700',
+        destructive: 'border border-risk-solid bg-risk-solid text-white hover:bg-risk-solid-hover hover:border-risk-solid-hover',
         // Machine. Pair with <AssistMark /> so the glyph rule holds.
-        assist: 'border border-assist-600 bg-assist-600 text-white hover:bg-assist-700 hover:border-assist-700',
+        assist: 'border border-assist-solid bg-assist-solid text-white hover:bg-assist-solid-hover hover:border-assist-solid-hover',
         assistOutline: 'border border-assist-200 bg-card text-assist-700 hover:bg-assist-50',
-        link: 'border border-transparent text-ink-950 underline underline-offset-2 decoration-paper-300 hover:decoration-brand-700 hover:text-brand-700',
+        link: 'border border-transparent text-fg-950 underline underline-offset-2 decoration-surface-300 hover:decoration-primary-700 hover:text-primary-700',
       },
       size: {
-        xs: 'h-[26px] gap-1.5 rounded-sm px-2.5 text-[11.5px] [&_svg]:size-3',
-        sm: 'h-8 gap-[7px] rounded-md px-3.5 text-[12.5px] [&_svg]:size-3.5',
-        md: 'h-[38px] gap-2 rounded-md px-[18px] text-[13.5px] [&_svg]:size-4',
+        xs: 'h-[26px] gap-1.5 rounded-sm px-2.5 text-[12px] [&_svg]:size-3',
+        sm: 'h-8 gap-[7px] rounded-md px-3.5 text-[13px] [&_svg]:size-3.5',
+        md: 'h-9 gap-2 rounded-md px-4 text-[14px] [&_svg]:size-4',
         icon: 'size-8 rounded-md [&_svg]:size-4',
         'icon-xs': 'size-[26px] rounded-sm [&_svg]:size-3.5',
       },

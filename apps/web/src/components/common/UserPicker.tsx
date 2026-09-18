@@ -52,7 +52,7 @@ interface Props {
 // A role is a neutral fact about a person, not one of the five meanings — it is
 // not in flight, not your turn, not binding. The per-role palette went with the
 // migration: five colors in one row means none of them read.
-const ROLE_PILL = 'rounded-chip px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide bg-paper-100 text-ink-700'
+const ROLE_PILL = 'rounded-chip px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide bg-surface-100 text-fg-700'
 
 function initials(name: string): string {
   return name
@@ -156,18 +156,18 @@ export function UserPicker({
             invalid ? 'border-risk-600 ring-1 ring-risk-200' : 'border-input',
           )}
         >
-          <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-paper-100 ring-1 ring-paper-200 text-[10px] font-semibold text-ink-700">
+          <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-100 ring-1 ring-surface-200 text-[10px] font-semibold text-fg-700">
             {initials(selected.name)}
           </div>
           <div className="flex-1 min-w-0 leading-tight">
-            <p className="text-[13px] font-medium text-ink-950 truncate">{selected.name}</p>
-            <p className="text-[11px] text-ink-500 truncate">{selected.email}</p>
+            <p className="text-[13px] font-medium text-fg-950 truncate">{selected.name}</p>
+            <p className="text-[11px] text-fg-500 truncate">{selected.email}</p>
           </div>
           <button
             type="button"
             onClick={clear}
             aria-label="Clear selected user"
-            className="p-1 rounded-md hover:bg-paper-100 text-ink-400 hover:text-ink-700"
+            className="p-1 rounded-md hover:bg-surface-100 text-fg-400 hover:text-fg-700"
           >
             <X className="size-3.5" />
           </button>
@@ -183,7 +183,7 @@ export function UserPicker({
           placeholder={placeholder}
           data-testid={testId}
           className={cn(
-            'w-full rounded-md border bg-card px-3 py-1.5 text-[13px] text-ink-950 placeholder:text-ink-400',
+            'w-full rounded-md border bg-card px-3 py-1.5 text-[13px] text-fg-950 placeholder:text-fg-400',
             'focus:outline-none focus:ring-1',
             invalid
               ? 'border-risk-600 focus:ring-risk-600'
@@ -194,11 +194,11 @@ export function UserPicker({
 
       {open && !selected && (
         <div
-          className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 overflow-auto rounded-md border border-paper-200 bg-card shadow-e2"
+          className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 overflow-auto rounded-md border border-surface-200 bg-card shadow-e2"
           role="listbox"
         >
           {filtered.length === 0 ? (
-            <div className="px-3 py-2.5 text-dense text-ink-500">
+            <div className="px-3 py-2.5 text-dense text-fg-500">
               {users.length === 0 ? 'Loading teammates…' : 'No teammates match that search.'}
             </div>
           ) : (
@@ -214,31 +214,31 @@ export function UserPicker({
                   onClick={() => pick(u)}
                   className={cn(
                     'w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors',
-                    i === highlighted ? 'bg-paper-100' : 'hover:bg-paper-100',
+                    i === highlighted ? 'bg-surface-100' : 'hover:bg-surface-100',
                   )}
                 >
-                  <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-paper-100 ring-1 ring-paper-200 text-[10px] font-semibold text-ink-700">
+                  <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-100 ring-1 ring-surface-200 text-[10px] font-semibold text-fg-700">
                     {initials(u.name)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <p className="text-[13px] font-medium text-ink-950 truncate">{u.name}</p>
+                      <p className="text-[13px] font-medium text-fg-950 truncate">{u.name}</p>
                       {primaryRole && (
                         <span className={ROLE_PILL}>
                           {primaryRole.replace(/_/g, ' ')}
                         </span>
                       )}
                     </div>
-                    <p className="text-dense text-ink-500 truncate">{u.email}</p>
+                    <p className="text-dense text-fg-500 truncate">{u.email}</p>
                   </div>
                   {i === highlighted && (
-                    <Check className="size-4 text-ink-400 shrink-0" />
+                    <Check className="size-4 text-fg-400 shrink-0" />
                   )}
                 </button>
               )
             })
           )}
-          <div className="border-t border-paper-200 px-3 py-1.5 text-[10px] text-ink-400 bg-paper-50 flex items-center gap-3">
+          <div className="border-t border-surface-200 px-3 py-1.5 text-[10px] text-fg-400 bg-surface-50 flex items-center gap-3">
             <span>↑ ↓ navigate</span>
             <span>↵ select</span>
             <span>esc close</span>

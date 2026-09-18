@@ -59,9 +59,9 @@ const TRIGGER_TYPES = ['mention', 'chip', 'button'] as const
  * weight instead of hue — quiet default, outlined org, inverted for your own.
  */
 const OWNER_BADGE: Record<SkillRow['ownerType'], { label: string; cls: string }> = {
-  built_in: { label: 'Built-in', cls: 'bg-paper-100 text-ink-500 border-paper-200' },
-  org:      { label: 'Org',      cls: 'bg-card text-ink-700 border-paper-300' },
-  user:     { label: 'You',      cls: 'bg-ink-950 text-white border-ink-950' },
+  built_in: { label: 'Built-in', cls: 'bg-surface-100 text-fg-500 border-surface-200' },
+  org:      { label: 'Org',      cls: 'bg-card text-fg-700 border-surface-300' },
+  user:     { label: 'You',      cls: 'bg-primary-50 text-primary-700 border-primary-200' },
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -104,11 +104,11 @@ export function AdminSkillsPage() {
             Sparkles stays neutral: this is the admin surface that *configures*
             the agent, not a surface the agent wrote, so it gets no assist mark.
           */}
-          <h1 className="text-title text-ink-950 flex items-center gap-2">
-            <Sparkles className="size-4 text-ink-700" />
+          <h1 className="text-title text-fg-950 flex items-center gap-2">
+            <Sparkles className="size-4 text-fg-700" />
             Skills
           </h1>
-          <p className="text-dense text-ink-500 mt-1">
+          <p className="text-dense text-fg-500 mt-1">
             Reusable agent workflows. Built-ins ship with the product;
             org skills are created by admins and shared with everyone.
           </p>
@@ -126,21 +126,21 @@ export function AdminSkillsPage() {
 
       <div className="flex items-center gap-2 mb-4">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-2.5 top-2.5 size-3.5 text-ink-400" />
+          <Search className="absolute left-2.5 top-2.5 size-3.5 text-fg-400" />
           <input
             type="text"
             placeholder="Search by slug, name, description"
             value={search}
             onChange={e => setSearch(e.target.value)}
             data-testid="admin-skills-search"
-            className="w-full pl-8 pr-2 py-1.5 text-[13px] rounded-md border border-input bg-card text-ink-950 placeholder:text-ink-400 focus:outline-none focus:border-brand-700 focus:ring-[3px] focus:ring-brand-700/15"
+            className="w-full pl-8 pr-2 py-1.5 text-[13px] rounded-md border border-input bg-card text-fg-950 placeholder:text-fg-400 focus:outline-none focus:border-primary-700 focus:ring-[3px] focus:ring-primary-700/15"
           />
         </div>
         <select
           value={scopeFilter}
           onChange={e => setScopeFilter(e.target.value)}
           data-testid="admin-skills-scope-filter"
-          className="text-[13px] rounded-md border border-input bg-card text-ink-950 px-2 py-1.5"
+          className="text-[13px] rounded-md border border-input bg-card text-fg-950 px-2 py-1.5"
         >
           <option value="all">All scopes</option>
           {CONTEXT_SCOPES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -161,11 +161,11 @@ export function AdminSkillsPage() {
             data-testid={`admin-skill-row-${s.slug.slice(1)}`}
             className="px-4 py-3 flex items-start gap-3 hover:bg-muted/30 transition-colors"
           >
-            <Sparkles className="size-4 mt-0.5 text-ink-400 flex-shrink-0" />
+            <Sparkles className="size-4 mt-0.5 text-fg-400 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-mono text-[12px] text-ink-700">{s.slug}</span>
-                <span className="text-[12px] font-medium text-ink-950">{s.name}</span>
+                <span className="font-mono text-[12px] text-fg-700">{s.slug}</span>
+                <span className="text-[12px] font-medium text-fg-950">{s.name}</span>
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-chip border ${OWNER_BADGE[s.ownerType].cls}`}>
                   {OWNER_BADGE[s.ownerType].label}
                 </span>
@@ -175,7 +175,7 @@ export function AdminSkillsPage() {
                 </span>
                 <span className="text-[10px] text-muted-foreground font-mono tabular-nums">v{s.version}</span>
               </div>
-              <div className="text-[11.5px] text-ink-500 mt-0.5">{s.description}</div>
+              <div className="text-[11.5px] text-fg-500 mt-0.5">{s.description}</div>
               <div className="text-[10.5px] text-muted-foreground mt-1 flex items-center gap-2">
                 <span>Tools: <span className="font-mono">{s.allowedTools.join(', ') || '—'}</span></span>
               </div>
@@ -255,7 +255,7 @@ function SkillEditDrawer({ skillId, onClose, onSaved }: {
           {hidden && (
             // Neutral, not attention: nothing here is waiting on this user — they
             // simply lack the role. The lock carries the message.
-            <div className="mx-4 mt-3 text-[11px] flex items-center gap-1.5 text-ink-700 bg-paper-100 border border-paper-200 rounded-md px-2 py-1.5">
+            <div className="mx-4 mt-3 text-[11px] flex items-center gap-1.5 text-fg-700 bg-surface-100 border border-surface-200 rounded-md px-2 py-1.5">
               <Lock className="size-3" /> You don't have permission to view this prompt (admin role required).
             </div>
           )}
@@ -305,7 +305,7 @@ function SkillEditDrawer({ skillId, onClose, onSaved }: {
                 {TRIGGER_TYPES.map(t => (
                   <label key={t} className="flex items-center gap-1.5">
                     <input
-                      className="rounded-chip border-paper-300 accent-ink-950"
+                      className="rounded-chip border-surface-300 accent-fg-950"
                       type="checkbox"
                       checked={(form.triggerTypes ?? []).includes(t)}
                       onChange={e => {
@@ -519,12 +519,12 @@ function SkillCreateDrawer({ onClose, onCreated }: {
 
 // ─── Shared bits ──────────────────────────────────────────────────────────────
 
-const inputCls = 'w-full text-[13px] text-ink-950 rounded-md border border-input bg-card px-[11px] py-1.5 placeholder:text-ink-400 focus:outline-none focus:ring-[3px] focus:ring-brand-700/15 focus:border-brand-700'
+const inputCls = 'w-full text-[13px] text-fg-950 rounded-md border border-input bg-card px-[11px] py-1.5 placeholder:text-fg-400 focus:outline-none focus:ring-[3px] focus:ring-primary-700/15 focus:border-primary-700'
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[11.5px] font-semibold text-ink-950 mb-1.5">{label}</div>
+      <div className="text-[11.5px] font-semibold text-fg-950 mb-1.5">{label}</div>
       {children}
     </div>
   )
@@ -540,7 +540,7 @@ function Drawer({ onClose, testId, children }: {
       <button
         aria-label="Close drawer"
         onClick={onClose}
-        className="flex-1 bg-ink-950/30"
+        className="flex-1 bg-scrim/30"
       />
       <div className="w-[520px] max-w-[90vw] bg-card border-l border-border shadow-e3 flex flex-col overflow-hidden">
         {children}
@@ -552,8 +552,8 @@ function Drawer({ onClose, testId, children }: {
 function DrawerHeader({ title, onClose }: { title: string; onClose: () => void }) {
   return (
     <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-      <div className="text-section text-ink-950 flex items-center gap-1.5">
-        <Sparkles className="size-3.5 text-ink-400" />
+      <div className="text-section text-fg-950 flex items-center gap-1.5">
+        <Sparkles className="size-3.5 text-fg-400" />
         {title}
       </div>
       <Button variant="ghost" size="icon" onClick={onClose} className="size-7">

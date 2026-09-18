@@ -78,7 +78,7 @@ const SUMMARY_GRACE_MS = 5 * 60 * 1000
 // A low-severity finding is a note, not a warning — it stays neutral. Medium is
 // the reviewer's call to make; high and critical are real exposure.
 const SEVERITY_COLOR: Record<string, string> = {
-  low:      'bg-paper-100 border-paper-200 text-ink-700',
+  low:      'bg-surface-100 border-surface-200 text-fg-700',
   medium:   'bg-attention-50 border-attention-200 text-attention-700',
   high:     'bg-risk-50 border-risk-200 text-risk-700',
   critical: 'bg-risk-100 border-risk-200 text-risk-900',
@@ -137,22 +137,22 @@ export function ApprovalCard({ stepId, instanceId, stepName, escalateAt, contrac
 
   return (
     <div
-      className="bg-card rounded-card border border-paper-200 overflow-hidden"
+      className="bg-card rounded-card border border-surface-200 overflow-hidden"
       data-testid={`approval-card-${stepId}`}
       data-instance-id={instanceId}
       data-contract-id={contract.id}
     >
       {/* Header */}
-      <div className="px-5 py-4 border-b border-paper-200 bg-paper-50">
+      <div className="px-5 py-4 border-b border-surface-200 bg-surface-50">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-eyebrow uppercase text-ink-500">{stepName}</p>
+            <p className="text-eyebrow uppercase text-fg-500">{stepName}</p>
             <button
               onClick={() => navigate(`/contracts/${contract.id}`)}
-              className="text-section text-ink-950 mt-0.5 hover:underline underline-offset-2 decoration-paper-300 transition-colors text-left flex items-center gap-1.5 group"
+              className="text-section text-fg-950 mt-0.5 hover:underline underline-offset-2 decoration-surface-300 transition-colors text-left flex items-center gap-1.5 group"
             >
               {contract.title}
-              <ExternalLink className="size-3.5 text-ink-400 group-hover:text-ink-700 transition-colors" />
+              <ExternalLink className="size-3.5 text-fg-400 group-hover:text-fg-700 transition-colors" />
             </button>
           </div>
           {/* Contract type is a fact about the document, not a state. */}
@@ -162,16 +162,16 @@ export function ApprovalCard({ stepId, instanceId, stepName, escalateAt, contrac
         {/* Contract meta */}
         <div className="flex flex-wrap gap-3 mt-3">
           {contract.counterpartyName && (
-            <span className="flex items-center gap-1 text-[11.5px] text-ink-500">
+            <span className="flex items-center gap-1 text-[11.5px] text-fg-500">
               <Building2 className="size-3" />{contract.counterpartyName}
             </span>
           )}
           {contract.value != null && (
-            <span className="flex items-center gap-1 text-[11.5px] tabular-nums text-ink-500">
+            <span className="flex items-center gap-1 text-[11.5px] tabular-nums text-fg-500">
               <DollarSign className="size-3" />{Number(contract.value).toLocaleString()}
             </span>
           )}
-          <span className="flex items-center gap-1 text-[11.5px] text-ink-500">
+          <span className="flex items-center gap-1 text-[11.5px] text-fg-500">
             <Calendar className="size-3" />
             Submitted {new Date(instance.submittedAt).toLocaleDateString()} by {instance.submittedByName ?? 'Unknown'}
           </span>
@@ -183,18 +183,18 @@ export function ApprovalCard({ stepId, instanceId, stepName, escalateAt, contrac
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
           <span
             className={`inline-flex items-center gap-1.5 text-[11.5px] font-medium tabular-nums ${
-              waited >= 7 ? 'text-risk-700' : waited >= 3 ? 'text-attention-700' : 'text-ink-500'
+              waited >= 7 ? 'text-risk-700' : waited >= 3 ? 'text-attention-700' : 'text-fg-500'
             }`}
           >
             <span className={`size-1.5 rounded-full ${
-              waited >= 7 ? 'bg-risk-600' : waited >= 3 ? 'bg-attention-600' : 'bg-ink-350'
+              waited >= 7 ? 'bg-risk-600' : waited >= 3 ? 'bg-attention-600' : 'bg-fg-350'
             }`} />
             {waited === 0 ? 'Waiting since today' : `Waiting ${waited} day${waited === 1 ? '' : 's'}`}
           </span>
           {escalateIn != null && (
             <span
               className={`inline-flex items-center gap-1 text-[11.5px] tabular-nums ${
-                escalateIn <= 2 ? 'text-risk-700 font-medium' : 'text-ink-500'
+                escalateIn <= 2 ? 'text-risk-700 font-medium' : 'text-fg-500'
               }`}
               title={`This step auto-escalates on ${new Date(escalateAt!).toLocaleDateString()} if no decision is recorded.`}
             >
@@ -211,7 +211,7 @@ export function ApprovalCard({ stepId, instanceId, stepName, escalateAt, contrac
 
       {/* AI Summary */}
       {instance.aiSummary ? (
-        <div className="px-5 py-4 border-b border-paper-200">
+        <div className="px-5 py-4 border-b border-surface-200">
           {/* Machine-authored block. The diamond is the mark — the accent lives
               in <AssistMark/> and <AssistChip/>, not in loose indigo classes. */}
           <div className="flex items-center gap-1.5 mb-2">
@@ -219,12 +219,12 @@ export function ApprovalCard({ stepId, instanceId, stepName, escalateAt, contrac
             <Eyebrow className="flex-none">AI Summary</Eyebrow>
             {rec && <AssistChip className="ml-auto">{rec}</AssistChip>}
           </div>
-          <p className="text-body text-ink-700">{instance.aiSummary}</p>
+          <p className="text-body text-fg-700">{instance.aiSummary}</p>
 
           {hasRisks && (
             <button
               onClick={() => setShowRisks(v => !v)}
-              className="flex items-center gap-1 text-dense text-ink-500 hover:text-ink-950 mt-2"
+              className="flex items-center gap-1 text-dense text-fg-500 hover:text-fg-950 mt-2"
             >
               <AlertTriangle className="size-3.5 text-risk-600" />
               {instance.keyRisks?.length ?? 0} risk{(instance.keyRisks?.length ?? 0) !== 1 ? 's' : ''} identified
@@ -241,8 +241,8 @@ export function ApprovalCard({ stepId, instanceId, stepName, escalateAt, contrac
                 </div>
               ))}
               {instance.nonStandardTerms && instance.nonStandardTerms.length > 0 && (
-                <div className="text-dense text-ink-700 border border-paper-200 rounded-md px-3 py-2 bg-paper-50">
-                  <p className="font-semibold mb-1 text-ink-950">Non-standard terms:</p>
+                <div className="text-dense text-fg-700 border border-surface-200 rounded-md px-3 py-2 bg-surface-50">
+                  <p className="font-semibold mb-1 text-fg-950">Non-standard terms:</p>
                   <ul className="space-y-0.5 list-disc list-inside">
                     {instance.nonStandardTerms.map((t, i) => <li key={i}>{t}</li>)}
                   </ul>
@@ -252,18 +252,18 @@ export function ApprovalCard({ stepId, instanceId, stepName, escalateAt, contrac
           )}
         </div>
       ) : summaryStillLanding ? (
-        <div className="px-5 py-3 border-b border-paper-200 flex items-center gap-2 text-dense text-ink-400">
+        <div className="px-5 py-3 border-b border-surface-200 flex items-center gap-2 text-dense text-fg-400">
           <Loader2 className="size-3.5 animate-spin" />
           AI summary is being generated…
         </div>
       ) : (
         // No spinner: nothing is running. Say what is missing and point at the
         // document, which is the thing the reviewer has to read instead.
-        <div className="px-5 py-3 border-b border-paper-200 flex items-center justify-between gap-2 text-dense text-ink-500">
+        <div className="px-5 py-3 border-b border-surface-200 flex items-center justify-between gap-2 text-dense text-fg-500">
           <span>No AI summary for this submission — review the contract directly.</span>
           <button
             onClick={() => navigate(`/contracts/${contract.id}`)}
-            className="shrink-0 font-medium text-ink-950 hover:underline underline-offset-2 decoration-paper-300"
+            className="shrink-0 font-medium text-fg-950 hover:underline underline-offset-2 decoration-surface-300"
           >
             Open contract →
           </button>
@@ -272,7 +272,7 @@ export function ApprovalCard({ stepId, instanceId, stepName, escalateAt, contrac
 
       {/* Decision area */}
       {submitDecision.isSuccess ? (
-        <div className="px-5 py-4 flex items-center gap-2 text-body text-brand-700">
+        <div className="px-5 py-4 flex items-center gap-2 text-body text-success-700">
           <CheckCircle2 className="size-4" />
           Decision recorded successfully.
         </div>
@@ -285,8 +285,8 @@ export function ApprovalCard({ stepId, instanceId, stepName, escalateAt, contrac
                 row still has a single visual weight. */}
             <Button
               size="sm"
-              variant={decision === 'APPROVED' ? 'brand' : 'outline'}
-              className={decision === 'APPROVED' ? undefined : 'text-brand-700 border-brand-200 hover:bg-brand-50'}
+              variant={decision === 'APPROVED' ? 'success' : 'outline'}
+              className={decision === 'APPROVED' ? undefined : 'text-success-700 border-success-200 hover:bg-success-50'}
               onClick={() => setDecision(d => d === 'APPROVED' ? null : 'APPROVED')}
               data-testid="approval-approve-btn"
             >
@@ -304,7 +304,7 @@ export function ApprovalCard({ stepId, instanceId, stepName, escalateAt, contrac
             <Button
               size="sm"
               variant={decision === 'DELEGATED' ? 'outline' : 'ghost'}
-              className={decision === 'DELEGATED' ? 'border-ink-950 text-ink-950' : undefined}
+              className={decision === 'DELEGATED' ? 'border-fg-950 text-fg-950' : undefined}
               onClick={() => setDecision(d => d === 'DELEGATED' ? null : 'DELEGATED')}
             >
               <ArrowRight />Delegate
@@ -318,7 +318,7 @@ export function ApprovalCard({ stepId, instanceId, stepName, escalateAt, contrac
               value={comment}
               onChange={e => setComment(e.target.value)}
               rows={2}
-              className="w-full rounded-md border border-input bg-card text-[13px] text-ink-950 px-3 py-1.5 resize-none placeholder:text-ink-400 focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+              className="w-full rounded-md border border-input bg-card text-[13px] text-fg-950 px-3 py-1.5 resize-none placeholder:text-fg-400 focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
             />
           )}
 
@@ -337,7 +337,7 @@ export function ApprovalCard({ stepId, instanceId, stepName, escalateAt, contrac
                 value={comment}
                 onChange={e => setComment(e.target.value)}
                 rows={2}
-                className="w-full rounded-md border border-input bg-card text-[13px] text-ink-950 px-3 py-1.5 resize-none placeholder:text-ink-400 focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+                className="w-full rounded-md border border-input bg-card text-[13px] text-fg-950 px-3 py-1.5 resize-none placeholder:text-fg-400 focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
               />
             </div>
           )}

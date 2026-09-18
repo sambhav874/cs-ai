@@ -48,14 +48,14 @@ export function RailSection({
   // and the action coexist without nesting.
   return (
     <section
-      className="border-b border-paper-100 last:border-b-0"
+      className="border-b border-surface-100 last:border-b-0"
       data-testid={`rail-section-${slug}`}
       data-state={open ? 'open' : 'closed'}
     >
       <div
         className={cn(
           'flex w-full items-center gap-2 px-5 py-3 text-left',
-          'hover:bg-paper-50',
+          'hover:bg-surface-50',
         )}
       >
         <button
@@ -70,17 +70,17 @@ export function RailSection({
         >
           <ChevronRight
             className={cn(
-              'size-3.5 text-ink-400 transition-transform flex-shrink-0',
+              'size-3.5 text-fg-400 transition-transform flex-shrink-0',
               open && 'rotate-90',
             )}
             strokeWidth={2.5}
           />
-          <span className="text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-700 flex-1">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-700 flex-1">
             {title}
           </span>
           {showCount && (
             <span
-              className="text-[11px] font-medium text-ink-400 tabular-nums"
+              className="text-[11px] font-medium text-fg-400 tabular-nums"
               data-testid={`rail-section-count-${slug}`}
             >
               {count}
@@ -98,7 +98,7 @@ export function RailSection({
         )}
       </div>
       {open && (
-        <div className="px-5 pb-4 pt-0 text-dense text-ink-700" data-testid={`rail-section-body-${slug}`}>
+        <div className="px-5 pb-4 pt-0 text-dense text-fg-700" data-testid={`rail-section-body-${slug}`}>
           {children}
         </div>
       )}

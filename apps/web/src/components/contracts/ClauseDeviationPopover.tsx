@@ -39,10 +39,10 @@ interface DeviationDetail {
  * (risk). "Off playbook" says nothing about severity, so it stays neutral.
  */
 const POS_HEADLINE: Record<string, { label: string; cls: string; tone: string }> = {
-  market:     { label: 'In line with market practice',   cls: 'bg-brand-50 border-brand-200 text-brand-800',           tone: 'binding' },
+  market:     { label: 'In line with market practice',   cls: 'bg-success-50 border-success-200 text-success-800',           tone: 'binding' },
   aggressive: { label: 'Aggressive — review before send', cls: 'bg-risk-50 border-risk-200 text-risk-900',             tone: 'risk' },
   weak:       { label: 'Weaker than market',             cls: 'bg-attention-50 border-attention-200 text-attention-700', tone: 'turn' },
-  off:        { label: 'Off the standard playbook',      cls: 'bg-paper-50 border-paper-300 text-ink-950',             tone: 'neutral' },
+  off:        { label: 'Off the standard playbook',      cls: 'bg-surface-50 border-surface-300 text-fg-950',             tone: 'neutral' },
 }
 
 export function ClauseDeviationPopover({
@@ -92,7 +92,7 @@ export function ClauseDeviationPopover({
 
   return (
     <div
-      className="fixed z-[60] rounded-card border border-paper-200 shadow-e2 bg-popover"
+      className="fixed z-[60] rounded-card border border-surface-200 shadow-e2 bg-popover"
       style={{ top: detail.anchor.top, left, width }}
       data-testid="clause-deviation-popover"
     >
@@ -109,12 +109,12 @@ export function ClauseDeviationPopover({
       </div>
 
       <div className="p-3 space-y-2">
-        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-ink-500">
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-fg-500">
           <span className="font-mono">{detail.category || 'clause'}</span>
           {detail.keyTerm && (
             <>
               <span>·</span>
-              <span className="font-medium text-ink-700 normal-case tracking-normal">
+              <span className="font-medium text-fg-700 normal-case tracking-normal">
                 Key: <span className="font-mono">{detail.keyTerm}</span>
               </span>
             </>
@@ -122,7 +122,7 @@ export function ClauseDeviationPopover({
         </div>
 
         {detail.reasoning && (
-          <p className="text-[12px] text-ink-950 leading-snug" data-testid="clause-deviation-reasoning">
+          <p className="text-[12px] text-fg-950 leading-snug" data-testid="clause-deviation-reasoning">
             {detail.reasoning}
           </p>
         )}
@@ -154,7 +154,7 @@ export function ClauseDeviationPopover({
             size="xs"
             onClick={() => setDetail(null)}
             data-testid="clause-deviation-dismiss"
-            className="ml-auto font-normal text-ink-500"
+            className="ml-auto font-normal text-fg-500"
           >
             Dismiss
           </Button>

@@ -115,11 +115,11 @@ export function ActionPreview({ action, onApply, onCancel, onUndo }: ActionPrevi
     // "nothing stands", so both read neutral; the icon and the word carry the
     // difference rather than a second colour. Failed is real risk.
     const palette = isApplied
-      ? { border: 'border-brand-200', bg: 'bg-brand-50', text: 'text-brand-700', icon: Check }
+      ? { border: 'border-success-200', bg: 'bg-success-50', text: 'text-success-700', icon: Check }
       : isUndone
-        ? { border: 'border-paper-200', bg: 'bg-paper-50', text: 'text-ink-700', icon: Undo2 }
+        ? { border: 'border-surface-200', bg: 'bg-surface-50', text: 'text-fg-700', icon: Undo2 }
         : isCancelled
-          ? { border: 'border-paper-200', bg: 'bg-paper-50', text: 'text-ink-500', icon: X }
+          ? { border: 'border-surface-200', bg: 'bg-surface-50', text: 'text-fg-500', icon: X }
           : { border: 'border-risk-200', bg: 'bg-risk-50', text: 'text-risk-700', icon: AlertTriangle }
     const Icon = palette.icon
     const label = isApplied ? 'Applied' : isUndone ? 'Undone' : isCancelled ? 'Cancelled' : 'Failed'
@@ -140,7 +140,7 @@ export function ActionPreview({ action, onApply, onCancel, onUndo }: ActionPrevi
             type="button"
             onClick={() => void onUndo?.()}
             data-testid="action-preview-undo"
-            className="ml-auto flex-shrink-0 inline-flex items-center gap-1 text-[10.5px] font-medium text-ink-700 hover:text-ink-950 hover:bg-brand-100 rounded-chip px-1.5 py-0.5 transition-colors"
+            className="ml-auto flex-shrink-0 inline-flex items-center gap-1 text-[10.5px] font-medium text-fg-700 hover:text-fg-950 hover:bg-success-100 rounded-chip px-1.5 py-0.5 transition-colors"
             title="Undo this action (within 15 minutes)"
           >
             <Undo2 className="size-2.5" />
@@ -165,10 +165,10 @@ export function ActionPreview({ action, onApply, onCancel, onUndo }: ActionPrevi
       <div className="flex items-center gap-1.5 px-3 py-2 border-b border-attention-200">
         <AssistMark className="flex-shrink-0" />
         <span className="font-semibold text-attention-700">About to run</span>
-        <span className="font-mono text-[10.5px] text-ink-700">{action.toolName}</span>
+        <span className="font-mono text-[10.5px] text-fg-700">{action.toolName}</span>
         {action.reversible && (
           // Reversibility is a neutral fact about the tool, not a verdict.
-          <span className="ml-auto text-[9.5px] uppercase tracking-wider font-medium text-ink-500 bg-paper-100 border border-paper-200 rounded-chip px-1.5 py-0.5">
+          <span className="ml-auto text-[9.5px] uppercase tracking-wider font-medium text-fg-500 bg-surface-100 border border-surface-200 rounded-chip px-1.5 py-0.5">
             Undoable
           </span>
         )}
@@ -176,11 +176,11 @@ export function ActionPreview({ action, onApply, onCancel, onUndo }: ActionPrevi
 
       <div className="px-3 py-2.5 space-y-2">
         {/* Plain-English summary — always first, always visible */}
-        <div className="text-ink-950 leading-relaxed">{action.summary}</div>
+        <div className="text-fg-950 leading-relaxed">{action.summary}</div>
 
         {/* Target + diff */}
         {action.target && (
-          <div className="text-[10.5px] text-ink-500">
+          <div className="text-[10.5px] text-fg-500">
             <span className="font-medium">Target:</span>{' '}
             <span className="font-mono">{action.target}</span>
           </div>
@@ -188,18 +188,18 @@ export function ActionPreview({ action, onApply, onCancel, onUndo }: ActionPrevi
 
         {action.diff && action.diff.length > 0 && (
           <div className="rounded-chip border border-attention-200 bg-card divide-y divide-attention-200">
-            <div className="px-2 py-1 text-[9.5px] font-medium uppercase tracking-wider text-ink-400">
+            <div className="px-2 py-1 text-[9.5px] font-medium uppercase tracking-wider text-fg-400">
               Changes
             </div>
             {action.diff.map(d => (
               <div key={d.field} className="px-2 py-1.5 text-[11px]">
-                <div className="text-ink-700 font-medium">{d.field}</div>
+                <div className="text-fg-700 font-medium">{d.field}</div>
                 <div className="font-mono text-[10.5px] flex items-baseline gap-1.5">
                   <span className="line-through text-risk-700 bg-risk-50 px-1 rounded-chip">
                     {d.before === null || d.before === '' ? '∅' : String(d.before)}
                   </span>
-                  <span className="text-ink-400">→</span>
-                  <span className="text-brand-700 bg-brand-50 px-1 rounded-chip">
+                  <span className="text-fg-400">→</span>
+                  <span className="text-success-700 bg-success-50 px-1 rounded-chip">
                     {d.after === null || d.after === '' ? '∅' : String(d.after)}
                   </span>
                 </div>
@@ -211,14 +211,14 @@ export function ActionPreview({ action, onApply, onCancel, onUndo }: ActionPrevi
         {/* Args editor — hidden until "Edit" is clicked */}
         {editing && (
           <div>
-            <div className="text-[9.5px] font-medium uppercase tracking-wider text-ink-400 mb-1">
+            <div className="text-[9.5px] font-medium uppercase tracking-wider text-fg-400 mb-1">
               Arguments
             </div>
             <textarea
               value={draftJson}
               onChange={e => { setDraftJson(e.target.value); setJsonError(null) }}
               data-testid="action-preview-args"
-              className="w-full text-[10.5px] font-mono rounded-md border border-input bg-card p-2 text-ink-950 resize-y min-h-[6em] focus:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+              className="w-full text-[10.5px] font-mono rounded-md border border-input bg-card p-2 text-fg-950 resize-y min-h-[6em] focus:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
             />
             {jsonError && (
               <div className="text-[10.5px] text-risk-700 mt-1">Invalid JSON: {jsonError}</div>
@@ -233,7 +233,7 @@ export function ActionPreview({ action, onApply, onCancel, onUndo }: ActionPrevi
               variant="ghost" size="sm"
               onClick={onCancel}
               data-testid="action-preview-cancel"
-              className="h-7 text-[11px] gap-1 text-ink-700 hover:text-risk-700"
+              className="h-7 text-[11px] gap-1 text-fg-700 hover:text-risk-700"
             >
               <X className="size-3" />
               Cancel
@@ -262,7 +262,7 @@ export function ActionPreview({ action, onApply, onCancel, onUndo }: ActionPrevi
 
         {/* Running state — disabled spinner row */}
         {isRunning && (
-          <div className="flex items-center justify-end gap-1.5 pt-1 text-ink-500 text-[11px]">
+          <div className="flex items-center justify-end gap-1.5 pt-1 text-fg-500 text-[11px]">
             <Loader2 className="size-3 animate-spin" />
             Applying…
           </div>

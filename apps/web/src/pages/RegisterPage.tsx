@@ -61,8 +61,8 @@ function scorePassword(pw: string): Strength {
  * good/strong one is "healthy" — the only sense in which the brand green is
  * allowed outside binding states.
  */
-const STRENGTH_COLORS = ['', 'bg-risk-600', 'bg-attention-600', 'bg-brand-500', 'bg-brand-700']
-const STRENGTH_TEXT = ['', 'text-risk-700', 'text-attention-700', 'text-brand-700', 'text-brand-700']
+const STRENGTH_COLORS = ['', 'bg-risk-600', 'bg-attention-600', 'bg-success-500', 'bg-success-700']
+const STRENGTH_TEXT = ['', 'text-risk-700', 'text-attention-700', 'text-success-700', 'text-success-700']
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
@@ -125,11 +125,11 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-paper-50 py-10">
-      <div className="w-full max-w-sm space-y-6 p-8 border border-paper-200 rounded-card bg-card shadow-e1">
+    <div className="min-h-screen flex items-center justify-center bg-surface-50 py-10">
+      <div className="w-full max-w-sm space-y-6 p-8 border border-surface-200 rounded-card bg-card shadow-e1">
         <div>
-          <h1 className="text-title text-ink-950">Create account</h1>
-          <p className="text-body text-ink-500 mt-1">Set up your CLM workspace</p>
+          <h1 className="text-title text-fg-950">Create account</h1>
+          <p className="text-body text-fg-500 mt-1">Set up your CLM workspace</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -198,7 +198,7 @@ export function RegisterPage() {
                       <div
                         key={i}
                         className={`h-1 flex-1 rounded-full transition-colors ${
-                          i <= strength.score ? STRENGTH_COLORS[strength.score] : 'bg-paper-100'
+                          i <= strength.score ? STRENGTH_COLORS[strength.score] : 'bg-surface-100'
                         }`}
                       />
                     ))}
@@ -208,7 +208,7 @@ export function RegisterPage() {
                   </span>
                 </div>
                 {strength.score < 3 && strength.reasons.length > 0 && (
-                  <p className="text-[11px] text-ink-500">
+                  <p className="text-[11px] text-fg-500">
                     Add: {strength.reasons.slice(0, 3).join(' · ')}
                   </p>
                 )}
@@ -243,7 +243,7 @@ export function RegisterPage() {
               // "Verified" is one of the few non-legal senses the brand green
               // keeps — the two fields have actually been checked against
               // each other, so this is a result, not decoration.
-              <p className="flex items-center gap-1 text-dense text-brand-700">
+              <p className="flex items-center gap-1 text-dense text-success-700">
                 <CheckCircle2 className="size-3" />
                 Passwords match
               </p>
@@ -251,22 +251,22 @@ export function RegisterPage() {
           </div>
 
           {/* Terms + privacy */}
-          <label className="flex items-start gap-2 text-dense text-ink-500 cursor-pointer">
+          <label className="flex items-start gap-2 text-dense text-fg-500 cursor-pointer">
             <input
               type="checkbox"
               checked={termsAccepted}
               onChange={(e) => setTermsAccepted(e.target.checked)}
               data-testid="terms-checkbox"
-              className="mt-0.5 size-3.5 rounded-chip border-input text-ink-950 focus:ring-ink-950"
+              className="mt-0.5 size-3.5 rounded-chip border-input text-fg-950 focus:ring-fg-950"
               required
             />
             <span className="leading-snug">
               I agree to the{' '}
-              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-ink-950 underline underline-offset-2 decoration-paper-300 hover:decoration-brand-700 hover:text-brand-700">
+              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-fg-950 underline underline-offset-2 decoration-surface-300 hover:decoration-primary-700 hover:text-primary-700">
                 Terms of Service
               </a>{' '}
               and{' '}
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-ink-950 underline underline-offset-2 decoration-paper-300 hover:decoration-brand-700 hover:text-brand-700">
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-fg-950 underline underline-offset-2 decoration-surface-300 hover:decoration-primary-700 hover:text-primary-700">
                 Privacy Policy
               </a>
               .
@@ -280,9 +280,9 @@ export function RegisterPage() {
           </Button>
         </form>
 
-        <p className="text-body text-center text-ink-500">
+        <p className="text-body text-center text-fg-500">
           Already have an account?{' '}
-          <Link to="/login" className="text-ink-950 underline underline-offset-2 decoration-paper-300 hover:decoration-brand-700 hover:text-brand-700">
+          <Link to="/login" className="text-fg-950 underline underline-offset-2 decoration-surface-300 hover:decoration-primary-700 hover:text-primary-700">
             Sign in
           </Link>
         </p>

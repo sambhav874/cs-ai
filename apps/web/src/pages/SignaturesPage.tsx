@@ -183,10 +183,10 @@ export function SignaturesPage() {
   return (
     <div className="px-6 py-6 max-w-6xl mx-auto" data-testid="signatures-page">
       <div className="flex items-center gap-2 mb-1">
-        <PenSquare className="size-4 text-ink-400" />
-        <h1 className="text-title text-ink-950">Signatures</h1>
+        <PenSquare className="size-4 text-fg-400" />
+        <h1 className="text-title text-fg-950">Signatures</h1>
       </div>
-      <p className="text-body text-ink-500 mb-5">
+      <p className="text-body text-fg-500 mb-5">
         Every contract sent for signature across your organization.
         {mineCount > 0 && (
           <>
@@ -199,7 +199,7 @@ export function SignaturesPage() {
       </p>
 
       {/* Filter tabs — the selected tab is a selection, so it is ink, not brand. */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 border-b border-paper-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 border-b border-surface-200">
         <div className="flex items-center gap-0.5 shrink-0 overflow-x-auto">
           {STATUS_FILTERS.map(f => {
             const isActive = filter === f.key
@@ -212,8 +212,8 @@ export function SignaturesPage() {
                 data-testid={`filter-${f.key.toLowerCase()}`}
                 className={`inline-flex items-center gap-1.5 px-3 py-2 text-[13px] border-b-2 -mb-px transition-colors whitespace-nowrap ${
                   isActive
-                    ? 'border-ink-950 text-ink-950 font-medium'
-                    : 'border-transparent text-ink-500 hover:text-ink-950'
+                    ? 'border-fg-950 text-fg-950 font-medium'
+                    : 'border-transparent text-fg-500 hover:text-fg-950'
                 }`}
               >
                 {f.label}
@@ -225,7 +225,7 @@ export function SignaturesPage() {
           })}
         </div>
         <div className="relative min-w-0 pb-2 sm:pb-1.5">
-          <Search className="absolute left-2.5 top-2 size-4 text-ink-400" />
+          <Search className="absolute left-2.5 top-2 size-4 text-fg-400" />
           <Input
             type="search"
             placeholder="Search contract or signer"
@@ -240,7 +240,7 @@ export function SignaturesPage() {
       {/* List */}
       {isLoading ? (
         <div className="flex items-center justify-center py-16">
-          <Loader2 className="size-5 animate-spin text-ink-400" />
+          <Loader2 className="size-5 animate-spin text-fg-400" />
         </div>
       ) : isError ? (
         <div className="flex items-start gap-2 p-4 rounded-md bg-risk-50 border border-risk-200 text-body text-risk-700">
@@ -258,14 +258,14 @@ export function SignaturesPage() {
           description={<>Open any contract and click <strong>Send for Signature</strong> to get started.</>}
         />
       ) : (
-        <div className="bg-card border border-paper-200 rounded-card overflow-hidden">
+        <div className="bg-card border border-surface-200 rounded-card overflow-hidden">
           {/* The card clipped its own table: five columns needed ~870px inside a
               730px shell, so "Sent" and the Open link were silently cut off with
               no way to scroll to them. Fixed layout keeps every column reachable
               at any width; the scroller is the belt to that braces. */}
           <div className="overflow-x-auto">
             <table className="w-full table-fixed text-[13px]" data-testid="signatures-table">
-              <thead className="bg-paper-50 text-eyebrow uppercase text-ink-500">
+              <thead className="bg-surface-50 text-eyebrow uppercase text-fg-500">
                 <tr>
                   <th className="text-left px-5 py-2 font-semibold">Contract</th>
                   <th className="text-left px-4 py-2 font-semibold w-[32%]">Waiting on</th>
@@ -274,7 +274,7 @@ export function SignaturesPage() {
                   <th className="text-right px-4 py-2 font-semibold w-[74px]">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-paper-200">
+              <tbody className="divide-y divide-surface-200">
                 {items.map(it => {
                   // Only a live request is waiting on anybody. A voided or
                   // expired one still has PENDING signers on it, and naming them
@@ -284,28 +284,28 @@ export function SignaturesPage() {
                   const isMine = !!myEmail && waitingOn.some(s => s.email.toLowerCase() === myEmail)
                   const expIn = it.status === 'PENDING' ? expiryDays(it.expiresAt) : null
                   return (
-                    <tr key={it.id} className="hover:bg-paper-50 align-top" data-testid={`signature-row-${it.id}`}>
+                    <tr key={it.id} className="hover:bg-surface-50 align-top" data-testid={`signature-row-${it.id}`}>
                       <td className="px-5 py-2.5">
                         <Link
                           to={`/contracts/${it.contract?.id ?? ''}`}
-                          className="font-medium text-ink-950 truncate block hover:underline underline-offset-2 decoration-paper-300"
+                          className="font-medium text-fg-950 truncate block hover:underline underline-offset-2 decoration-surface-300"
                           title={it.contract?.title}
                         >
                           {it.contract?.title ?? '(deleted contract)'}
                         </Link>
-                        <div className="text-[11px] text-ink-500 mt-0.5 truncate">
+                        <div className="text-[11px] text-fg-500 mt-0.5 truncate">
                           <span className="uppercase tracking-[0.08em]">{it.contract?.type?.replace(/_/g, ' ') ?? ''}</span>
                           {it.contract?.counterpartyName && <span> · {it.contract.counterpartyName}</span>}
                         </div>
                       </td>
                       <td className="px-4 py-2.5">
-                        <div className="text-[11.5px] text-ink-700">
+                        <div className="text-[11.5px] text-fg-700">
                           {/* Progress first: "1 / 2" is the fact a chaser needs
                               before any name. */}
                           <div className="font-medium tabular-nums">
                             {it.signedCount} / {it.totalSigners} signed
                             {it.signOrder === 'SEQUENTIAL' && it.totalSigners > 1 && (
-                              <span className="font-normal text-ink-400"> · in order</span>
+                              <span className="font-normal text-fg-400"> · in order</span>
                             )}
                           </div>
                           {declinedBy.length > 0 && (
@@ -316,7 +316,7 @@ export function SignaturesPage() {
                             </div>
                           )}
                           {waitingOn.length > 0 ? (
-                            <div className="text-ink-500 mt-0.5 truncate" title={waitingOn.map(s => `${s.name} <${s.email}>`).join(', ')}>
+                            <div className="text-fg-500 mt-0.5 truncate" title={waitingOn.map(s => `${s.name} <${s.email}>`).join(', ')}>
                               {isMine ? (
                                 <span className="font-semibold text-attention-700">You</span>
                               ) : (
@@ -324,12 +324,12 @@ export function SignaturesPage() {
                               )}
                               {waitingOn.length > 1 && ` +${waitingOn.length - 1} more`}
                               {waitingOn[0].role && waitingOn.length === 1 && (
-                                <span className="text-ink-400"> · {waitingOn[0].role}</span>
+                                <span className="text-fg-400"> · {waitingOn[0].role}</span>
                               )}
                             </div>
                           ) : (
                             it.status === 'PENDING' && (
-                              <div className="text-ink-400 mt-0.5 italic">no one outstanding</div>
+                              <div className="text-fg-400 mt-0.5 italic">no one outstanding</div>
                             )
                           )}
                         </div>
@@ -344,11 +344,11 @@ export function SignaturesPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-[11.5px] text-ink-500 tabular-nums">
+                      <td className="px-3 py-2.5 text-[11.5px] text-fg-500 tabular-nums">
                         {relTime(it.createdAt)}
                         {it.completedAt && (
                           // Fully executed — the one binding fact in this row.
-                          <div className="text-brand-700 mt-0.5">
+                          <div className="text-success-700 mt-0.5">
                             done {relTime(it.completedAt)}
                           </div>
                         )}
@@ -357,7 +357,7 @@ export function SignaturesPage() {
                         {it.contract?.id && (
                           <Link
                             to={`/contracts/${it.contract.id}`}
-                            className="inline-flex items-center gap-1 text-[11.5px] font-medium text-ink-950 hover:text-ink-700"
+                            className="inline-flex items-center gap-1 text-[11.5px] font-medium text-fg-950 hover:text-fg-700"
                           >
                             Open
                             <ArrowRight className="size-3.5" />

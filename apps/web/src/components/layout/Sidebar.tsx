@@ -33,6 +33,7 @@ import {
 import { usePermission } from '@/lib/permissions'
 import { CountBadge } from '@/components/ui/primitives'
 import type { LucideIcon } from 'lucide-react'
+import { PRODUCT_NAME } from '@/lib/brand'
 
 // ─── Nav structure ─────────────────────────────────────────────────────────────
 
@@ -300,8 +301,8 @@ export function Sidebar() {
         <NavLink
           to="/dashboard"
           data-testid="logo-home-link"
-          aria-label="draftLegal — go to dashboard"
-          title="draftLegal — Dashboard"
+          aria-label={`${PRODUCT_NAME} — go to dashboard`}
+          title={`${PRODUCT_NAME} — Dashboard`}
           className="hover:opacity-80 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring rounded-md"
         >
           <span className={showMark}><Wordmark size="xl" kind="mark" /></span>
@@ -314,7 +315,7 @@ export function Sidebar() {
         {[...NAV_SECTIONS, ...(canAdmin ? [ADMIN_SECTION] : [])].map((section, i) => (
           <div key={i} className="mb-1">
             {section.label && (
-              <p className={cn('px-3 pt-4 pb-1.5 text-[9.5px] font-bold text-ink-400 uppercase tracking-[0.12em]', showLabelB)}>
+              <p className={cn('px-3 pt-4 pb-1.5 text-[9.5px] font-bold text-fg-400 uppercase tracking-[0.12em]', showLabelB)}>
                 {section.label}
               </p>
             )}
@@ -348,10 +349,10 @@ export function Sidebar() {
                         layoutCls,
                         collapsed ? 'px-2' : 'px-2 lg:px-3',
                         isActive
-                          ? 'bg-ink-950 text-white'
+                          ? 'bg-primary-50 text-primary-700'
                           : isAssistant
                             ? 'text-assist-700 hover:bg-assist-50'
-                            : 'text-ink-700 hover:bg-paper-100 hover:text-ink-950'
+                            : 'text-fg-700 hover:bg-surface-100 hover:text-fg-950'
                       )
                     }
                   >
@@ -369,7 +370,7 @@ export function Sidebar() {
                         className={cn(
                           'absolute top-1 right-1 h-2 w-2 rounded-full',
                           collapsed ? 'inline' : 'lg:hidden',
-                          badgeTone === 'attention' ? 'bg-attention-600' : 'bg-ink-400',
+                          badgeTone === 'attention' ? 'bg-attention-600' : 'bg-fg-400',
                         )}
                       />
                     )}
@@ -378,7 +379,7 @@ export function Sidebar() {
                       // than an attention badge.
                       <span
                         data-testid={`badge-soon-${to.replace(/^\//, '')}`}
-                        className={cn('text-[9.5px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-chip bg-paper-100 text-ink-500 border border-paper-200', showLabelI)}
+                        className={cn('text-[9.5px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-chip bg-surface-100 text-fg-500 border border-surface-200', showLabelI)}
                       >
                         Soon
                       </span>
@@ -402,8 +403,8 @@ export function Sidebar() {
               layoutCls,
               collapsed ? 'px-2' : 'px-2 lg:px-3',
               isActive
-                ? 'bg-ink-950 text-white'
-                : 'text-ink-700 hover:bg-paper-100 hover:text-ink-950'
+                ? 'bg-primary-50 text-primary-700'
+                : 'text-fg-700 hover:bg-surface-100 hover:text-fg-950'
             )
           }
         >
@@ -420,7 +421,7 @@ export function Sidebar() {
           aria-label={collapsed ? 'Expand sidebar (⌘\\)' : 'Collapse sidebar (⌘\\)'}
           title={collapsed ? 'Expand sidebar (⌘\\)' : 'Collapse sidebar (⌘\\)'}
           className={cn(
-            'hidden lg:flex w-full items-center gap-3 py-2 rounded-md text-dense font-medium text-ink-500 hover:bg-paper-100 hover:text-ink-950 transition-colors',
+            'hidden lg:flex w-full items-center gap-3 py-2 rounded-md text-dense font-medium text-fg-500 hover:bg-surface-100 hover:text-fg-950 transition-colors',
             layoutCls,
             collapsed ? 'px-2' : 'px-2 lg:px-3',
           )}

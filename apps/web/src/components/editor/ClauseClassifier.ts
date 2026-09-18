@@ -30,6 +30,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorView } from '@tiptap/pm/view'
 import { api } from '@/lib/api'
+import { tokenVar } from '@/lib/paint'
 
 export type Position = 'market' | 'aggressive' | 'weak' | 'off' | 'skip'
 
@@ -60,10 +61,10 @@ export interface ClauseClassifierOptions {
  *   off        → neutral (a fact about the clause, not a verdict)
  */
 const POS_META: Record<Position, { label: string; bg: string; fg: string; border: string; title: string }> = {
-  market:     { label: 'MARKET', bg: '#D1FAE5', fg: '#065F46', border: '#A7F3D0', title: 'In line with common market practice' },
-  aggressive: { label: 'AGGR.',  bg: '#FEE2E2', fg: '#7F1D1D', border: '#FECACA', title: 'Heavily favors one side — review before sending' },
-  weak:       { label: 'WEAK',   bg: '#FEF3C7', fg: '#B45309', border: '#FDE68A', title: 'Materially weaker than market — consider tightening' },
-  off:        { label: 'OFF',    bg: '#F4F4F2', fg: '#57554F', border: '#D3D2CE', title: 'Not in the standard playbook — custom language' },
+  market:     { label: 'MARKET', bg: tokenVar('success-100'),   fg: tokenVar('success-800'), border: tokenVar('success-200'),   title: 'In line with common market practice' },
+  aggressive: { label: 'AGGR.',  bg: tokenVar('risk-100'),      fg: tokenVar('risk-900'),    border: tokenVar('risk-200'),      title: 'Heavily favors one side — review before sending' },
+  weak:       { label: 'WEAK',   bg: tokenVar('attention-100'), fg: tokenVar('attention-700'), border: tokenVar('attention-200'), title: 'Materially weaker than market — consider tightening' },
+  off:        { label: 'OFF',    bg: tokenVar('surface-100'),   fg: tokenVar('fg-700'),      border: tokenVar('surface-300'),   title: 'Not in the standard playbook — custom language' },
   skip:       { label: '',       bg: '',        fg: '',        border: '',        title: '' },
 }
 

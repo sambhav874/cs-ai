@@ -62,10 +62,10 @@ export function CoachMarks() {
     >
       {/* The one coach mark is an "ask draftLegal" affordance, so it keeps the
           machine accent rather than becoming generic chrome. */}
-      <div className="bg-assist-600 text-white rounded-card shadow-e2 px-4 py-3 max-w-xs flex items-start gap-2.5 animate-pulse-once">
+      <div className="bg-assist-solid text-white rounded-card shadow-e2 px-4 py-3 max-w-xs flex items-start gap-2.5 animate-pulse-once">
         <Sparkles className="size-4 text-assist-200 mt-0.5 shrink-0" />
         <div className="flex-1 text-[12.5px] leading-relaxed">
-          I'm focused on this contract — ask me anything or press <kbd className="px-1 py-0.5 rounded-chip bg-assist-700 text-[10.5px] font-mono">⌘K</kbd>
+          I'm focused on this contract — ask me anything or press <kbd className="px-1 py-0.5 rounded-chip bg-assist-solid-hover text-[10.5px] font-mono">⌘K</kbd>
         </div>
         <button
           onClick={dismiss}

@@ -66,7 +66,7 @@ export function Header(_props: HeaderProps) {
         type="button"
         onClick={() => setSearchOpen(true)}
         data-testid="global-search-trigger"
-        className="inline-flex h-8 items-center gap-2 rounded-md border border-paper-200 bg-paper-50 px-[11px] text-[12.5px] text-ink-400 hover:bg-paper-100 hover:text-ink-700 transition-colors min-w-[16rem]"
+        className="inline-flex h-8 items-center gap-2 rounded-md border border-surface-200 bg-surface-50 px-[11px] text-[12.5px] text-fg-400 hover:bg-surface-100 hover:text-fg-700 transition-colors min-w-[16rem]"
         aria-label="Open global search"
       >
         <Search className="size-3.5" />
@@ -86,40 +86,40 @@ export function Header(_props: HeaderProps) {
           <button
             onClick={() => setShowUserMenu(prev => !prev)}
             data-testid="user-menu-trigger"
-            className="flex items-center gap-2 text-[12.5px] text-ink-700 hover:text-ink-950 transition-colors rounded-full pl-1 pr-2 py-1 hover:bg-paper-100"
+            className="flex items-center gap-2 text-[12.5px] text-fg-700 hover:text-fg-950 transition-colors rounded-full pl-1 pr-2 py-1 hover:bg-surface-100"
             aria-label="Account menu"
           >
             {/* The avatar is a person, not a machine — indigo belongs to agent
                 surfaces only, so the initials read as neutral paper + ink. */}
             <span
               aria-hidden
-              className="size-7 rounded-full bg-paper-100 text-ink-700 flex items-center justify-center text-[10.5px] font-semibold tracking-wide ring-1 ring-paper-200"
+              className="size-7 rounded-full bg-surface-100 text-fg-700 flex items-center justify-center text-[10.5px] font-semibold tracking-wide ring-1 ring-surface-200"
             >
               {initialsOf(user?.name)}
             </span>
             <span className="max-w-[8rem] truncate hidden sm:inline">{user?.name}</span>
-            <ChevronDown size={12} className="text-ink-400" />
+            <ChevronDown size={12} className="text-fg-400" />
           </button>
 
           {showUserMenu && (
             <div
               data-testid="user-menu"
-              className="absolute right-0 top-full mt-1.5 w-60 bg-card rounded-card border border-paper-200 shadow-e2 z-20 py-1 overflow-hidden"
+              className="absolute right-0 top-full mt-1.5 w-60 bg-card rounded-card border border-surface-200 shadow-e2 z-20 py-1 overflow-hidden"
               role="menu"
             >
               {/* Identity block — answers "am I logged in as the right person?" */}
               <div className="px-3 pt-3 pb-3 border-b border-border flex items-center gap-2.5">
                 <span
                   aria-hidden
-                  className="size-9 rounded-full bg-paper-100 text-ink-700 flex items-center justify-center text-dense font-semibold tracking-wide ring-1 ring-paper-200 shrink-0"
+                  className="size-9 rounded-full bg-surface-100 text-fg-700 flex items-center justify-center text-dense font-semibold tracking-wide ring-1 ring-surface-200 shrink-0"
                 >
                   {initialsOf(user?.name)}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[13px] font-medium text-ink-950 truncate" data-testid="user-menu-name">
+                  <p className="text-[13px] font-medium text-fg-950 truncate" data-testid="user-menu-name">
                     {user?.name ?? 'Signed-in user'}
                   </p>
-                  <p className="text-[11px] text-ink-500 truncate" data-testid="user-menu-email">
+                  <p className="text-[11px] text-fg-500 truncate" data-testid="user-menu-email">
                     {user?.email ?? ''}
                   </p>
                 </div>
@@ -130,20 +130,20 @@ export function Header(_props: HeaderProps) {
                   to="/profile"
                   onClick={() => setShowUserMenu(false)}
                   data-testid="user-menu-profile"
-                  className="flex items-center gap-2 px-3 py-2 text-[12.5px] text-ink-700 hover:text-ink-950 hover:bg-paper-100 transition-colors"
+                  className="flex items-center gap-2 px-3 py-2 text-[12.5px] text-fg-700 hover:text-fg-950 hover:bg-surface-100 transition-colors"
                   role="menuitem"
                 >
-                  <User size={14} className="text-ink-400" />
+                  <User size={14} className="text-fg-400" />
                   Profile
                 </Link>
                 <Link
                   to="/settings"
                   onClick={() => setShowUserMenu(false)}
                   data-testid="user-menu-settings"
-                  className="flex items-center gap-2 px-3 py-2 text-[12.5px] text-ink-700 hover:text-ink-950 hover:bg-paper-100 transition-colors"
+                  className="flex items-center gap-2 px-3 py-2 text-[12.5px] text-fg-700 hover:text-fg-950 hover:bg-surface-100 transition-colors"
                   role="menuitem"
                 >
-                  <Settings size={14} className="text-ink-400" />
+                  <Settings size={14} className="text-fg-400" />
                   Settings
                 </Link>
               </div>

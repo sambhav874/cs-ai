@@ -155,15 +155,15 @@ function daysUntil(iso: string | null): number | null {
 }
 
 function dueText(iso: string | null): { text: string; tone: string } {
-  if (!iso) return { text: 'No date', tone: 'text-ink-400' }
+  if (!iso) return { text: 'No date', tone: 'text-fg-400' }
   const d = daysUntil(iso)
   const dateStr = new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  if (d == null) return { text: dateStr, tone: 'text-ink-700' }
+  if (d == null) return { text: dateStr, tone: 'text-fg-700' }
   if (d < 0)  return { text: `${dateStr} · ${-d}d ago`,        tone: 'text-risk-700 font-medium' }
   if (d === 0) return { text: `${dateStr} · today`,             tone: 'text-attention-700 font-medium' }
   if (d <= 7)  return { text: `${dateStr} · in ${d}d`,          tone: 'text-attention-700 font-medium' }
   if (d <= 30) return { text: `${dateStr} · in ${d}d`,          tone: 'text-attention-700' }
-  return { text: `${dateStr} · in ${d}d`, tone: 'text-ink-500' }
+  return { text: `${dateStr} · in ${d}d`, tone: 'text-fg-500' }
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -202,7 +202,7 @@ function noticeDeadline(r: RenewalRow): {
   if (days == null || !expiry || isNaN(expiry.getTime())) {
     return {
       text:   'Auto-renews · notice period unknown',
-      tone:   'text-ink-500',
+      tone:   'text-fg-500',
       title:  'This contract auto-renews, but no notice-to-terminate period was extracted, so the deadline to stop it is unknown.',
       atRisk: false,
     }
@@ -214,11 +214,11 @@ function noticeDeadline(r: RenewalRow): {
   const title    = `Auto-renews. ${days} days' notice to terminate, so notice must be served by ${dateStr}.`
   const risky    = 'text-risk-700 font-medium'
 
-  if (d == null) return { text: `Notice by ${dateStr}`, tone: 'text-ink-500', title, atRisk: false }
+  if (d == null) return { text: `Notice by ${dateStr}`, tone: 'text-fg-500', title, atRisk: false }
   if (d < 0)     return { text: `Notice deadline passed · ${dateStr}`, tone: risky, title, atRisk: true }
   if (d === 0)   return { text: `Notice due today · ${dateStr}`,       tone: risky, title, atRisk: true }
   if (d <= 30)   return { text: `Notice by ${dateStr} · ${d}d left`,   tone: risky, title, atRisk: true }
-  return { text: `Notice by ${dateStr}`, tone: 'text-ink-500', title, atRisk: false }
+  return { text: `Notice by ${dateStr}`, tone: 'text-fg-500', title, atRisk: false }
 }
 
 function formatMoney(n: number, currency = 'USD'): string {
@@ -283,8 +283,8 @@ export function RenewalsPage() {
     <div className="px-6 py-6 max-w-7xl mx-auto" data-testid="renewals-page">
       <div className="flex items-center justify-between gap-4 mb-1">
         <div className="flex items-center gap-2">
-          <CalendarDays className="size-4 text-ink-400" />
-          <h1 className="text-title text-ink-950">Renewals</h1>
+          <CalendarDays className="size-4 text-fg-400" />
+          <h1 className="text-title text-fg-950">Renewals</h1>
         </div>
         <Button
           variant="outline"
@@ -302,7 +302,7 @@ export function RenewalsPage() {
           Export CSV
         </Button>
       </div>
-      <p className="text-body text-ink-500 mb-5">
+      <p className="text-body text-fg-500 mb-5">
         Every executed contract heading toward its expiry — grouped by month so you can see what decisions are needed when.
       </p>
 
@@ -324,7 +324,7 @@ export function RenewalsPage() {
       {/* Filter rows. Buckets and controls used to share one line, which at
           sidebar-plus-rail width scrolled four of the six windows out of sight —
           including Overdue. Two rows, each free to use the full width. */}
-      <div className="flex flex-col gap-2 mb-5 border-b border-paper-200 pb-2">
+      <div className="flex flex-col gap-2 mb-5 border-b border-surface-200 pb-2">
         <div className="flex items-center gap-1 overflow-x-auto">
           {BUCKETS.map(b => {
             const active = bucket === b.key
@@ -337,8 +337,8 @@ export function RenewalsPage() {
                 data-testid={`renewal-bucket-${b.key}`}
                 className={`inline-flex items-center gap-1.5 px-3 py-2 text-[13px] border-b-2 transition-colors whitespace-nowrap ${
                   active
-                    ? 'border-ink-950 text-ink-950 font-medium'
-                    : 'border-transparent text-ink-500 hover:text-ink-950'
+                    ? 'border-fg-950 text-fg-950 font-medium'
+                    : 'border-transparent text-fg-500 hover:text-fg-950'
                 }`}
               >
                 {b.label}
@@ -360,7 +360,7 @@ export function RenewalsPage() {
               className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-[11.5px] font-medium whitespace-nowrap transition-colors ${
                 noticeOnly
                   ? 'border-risk-600 bg-risk-50 text-risk-700'
-                  : 'border-input bg-card text-ink-700 hover:bg-paper-100'
+                  : 'border-input bg-card text-fg-700 hover:bg-surface-100'
               }`}
             >
               <AlertTriangle className="size-3.5 text-risk-600" />
@@ -373,14 +373,14 @@ export function RenewalsPage() {
             onChange={e => setStatusFilter(e.target.value as StatusFilter)}
             aria-label="Filter by renewal decision"
             data-testid="renewal-decision-filter"
-            className="h-8 text-[13px] text-ink-950 border border-input rounded-md px-2 bg-card focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+            className="h-8 text-[13px] text-fg-950 border border-input rounded-md px-2 bg-card focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
           >
             <option value="all">All decisions</option>
             <option value="pending">No decision yet</option>
             <option value="decided">Decided</option>
           </select>
           <div className="relative flex-1 min-w-[180px]">
-            <Search className="absolute left-2.5 top-2 size-4 text-ink-400" />
+            <Search className="absolute left-2.5 top-2 size-4 text-fg-400" />
             <Input
               type="search"
               placeholder="Search title or counterparty"
@@ -396,7 +396,7 @@ export function RenewalsPage() {
       {/* Month groups */}
       {isLoading ? (
         <div className="flex items-center justify-center py-16">
-          <Loader2 className="size-5 animate-spin text-ink-400" />
+          <Loader2 className="size-5 animate-spin text-fg-400" />
         </div>
       ) : isError ? (
         <div className="flex items-start gap-2 p-4 rounded-md bg-risk-50 border border-risk-200 text-body text-risk-700">
@@ -425,22 +425,22 @@ export function RenewalsPage() {
             <section
               key={m.month}
               data-testid={`renewal-month-${m.month}`}
-              className="bg-card border border-paper-200 rounded-card overflow-hidden"
+              className="bg-card border border-surface-200 rounded-card overflow-hidden"
             >
-              <header className="flex items-center justify-between bg-paper-50 px-5 py-2 border-b border-paper-200">
+              <header className="flex items-center justify-between bg-surface-50 px-5 py-2 border-b border-surface-200">
                 <div className="flex items-baseline gap-2">
-                  <h3 className="text-section text-ink-950">{m.label}</h3>
-                  <span className="text-[11px] tabular-nums text-ink-500">
+                  <h3 className="text-section text-fg-950">{m.label}</h3>
+                  <span className="text-[11px] tabular-nums text-fg-500">
                     {m.rows.length} {m.rows.length === 1 ? 'renewal' : 'renewals'}
                   </span>
                 </div>
                 {m.totalValue > 0 && (
-                  <span className="text-[11px] font-medium text-ink-700 tabular-nums">
+                  <span className="text-[11px] font-medium text-fg-700 tabular-nums">
                     {formatMoney(m.totalValue, m.currency)} ACV
                   </span>
                 )}
               </header>
-              <ul className="divide-y divide-paper-200">
+              <ul className="divide-y divide-surface-200">
                 {m.rows.map(r => {
                   const due = dueText(r.expiryDate)
                   const notice = noticeDeadline(r)
@@ -453,22 +453,22 @@ export function RenewalsPage() {
                       key={r.id}
                       data-testid={`renewal-row-${r.id}`}
                       data-decision={r.renewalDecision ?? 'none'}
-                      className="flex items-center px-5 py-2 gap-3 hover:bg-paper-50"
+                      className="flex items-center px-5 py-2 gap-3 hover:bg-surface-50"
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <Link
                             to={`/contracts/${r.id}`}
-                            className="text-[13px] font-medium text-ink-950 hover:underline underline-offset-2 decoration-paper-300 truncate max-w-[400px]"
+                            className="text-[13px] font-medium text-fg-950 hover:underline underline-offset-2 decoration-surface-300 truncate max-w-[400px]"
                             title={r.title}
                           >
                             {r.title}
                           </Link>
-                          <span className="text-[10px] uppercase tracking-[0.08em] font-mono text-ink-400">
+                          <span className="text-[10px] uppercase tracking-[0.08em] font-mono text-fg-400">
                             {r.type.replace(/_/g, ' ')}
                           </span>
                         </div>
-                        <div className="text-[11px] text-ink-500 mt-0.5 flex items-center gap-2">
+                        <div className="text-[11px] text-fg-500 mt-0.5 flex items-center gap-2">
                           {r.counterpartyName && <span>{r.counterpartyName}</span>}
                           {r.value && <span>· {formatMoney(Number(r.value), r.currency ?? 'USD')}</span>}
                           {r.ownerName && <span>· {r.ownerName}</span>}
@@ -500,7 +500,7 @@ export function RenewalsPage() {
                         ) : (
                           <Link
                             to={`/contracts/${r.id}#renewal`}
-                            className="inline-flex items-center gap-1 text-[11.5px] font-medium text-ink-950 hover:text-ink-700"
+                            className="inline-flex items-center gap-1 text-[11.5px] font-medium text-fg-950 hover:text-fg-700"
                           >
                             <RefreshCw className="size-3.5" />
                             Decide
@@ -508,7 +508,7 @@ export function RenewalsPage() {
                         )}
                         <Link
                           to={`/contracts/${r.id}`}
-                          className="inline-flex items-center gap-1 text-[11.5px] font-medium text-ink-950 hover:text-ink-700 ml-2"
+                          className="inline-flex items-center gap-1 text-[11.5px] font-medium text-fg-950 hover:text-fg-700 ml-2"
                         >
                           Open
                           <ArrowRight className="size-3" />
@@ -537,15 +537,15 @@ function StatCard({ label, value, meaning, icon: Icon, subtitle, ...rest }: {
   'data-testid'?: string
 }) {
   return (
-    <div className="border border-paper-200 rounded-card p-3 bg-card" {...rest}>
-      <div className="flex items-center gap-1.5 text-[11px] text-ink-500">
+    <div className="border border-surface-200 rounded-card p-3 bg-card" {...rest}>
+      <div className="flex items-center gap-1.5 text-[11px] text-fg-500">
         <Icon className={`size-3.5 ${MEANING_CLASS[meaning].fg}`} />
         {label}
       </div>
-      <div className="text-[24px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-ink-950 mt-1.5">
+      <div className="text-[24px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-fg-950 mt-1.5">
         {value}
       </div>
-      {subtitle && <div className="text-[10.5px] tabular-nums text-ink-500 mt-1">{subtitle}</div>}
+      {subtitle && <div className="text-[10.5px] tabular-nums text-fg-500 mt-1">{subtitle}</div>}
     </div>
   )
 }

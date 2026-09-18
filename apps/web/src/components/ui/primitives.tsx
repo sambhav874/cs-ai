@@ -21,11 +21,11 @@ export function Eyebrow({
 }) {
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <span className="flex-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-700">
+      <span className="flex-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-700">
         {children}
       </span>
       {count != null && (
-        <span className="text-[11px] tabular-nums text-ink-400">{count}</span>
+        <span className="text-[11px] tabular-nums text-fg-400">{count}</span>
       )}
     </div>
   )
@@ -100,9 +100,9 @@ export function Chip({
         'inline-flex w-fit items-center gap-1.5 rounded-full border py-0.5 pl-2.5 text-[11.5px]',
         onRemove ? 'pr-2' : 'pr-2.5',
         selected
-          ? 'border-ink-950 bg-ink-950 text-white'
-          : 'border-paper-200 bg-paper-100 text-ink-950',
-        onClick && 'transition-colors hover:border-paper-300',
+          ? 'border-primary-200 bg-primary-50 text-primary-700'
+          : 'border-surface-200 bg-surface-100 text-fg-950',
+        onClick && 'transition-colors hover:border-surface-300',
         className
       )}
     >
@@ -122,7 +122,7 @@ export function Chip({
             '-m-[6.5px] inline-flex size-6 shrink-0 items-center justify-center',
             'cursor-pointer rounded-full leading-none',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            selected ? 'text-white/60 hover:text-white' : 'text-ink-400 hover:text-ink-700'
+            selected ? 'text-primary-700/60 hover:text-primary-700' : 'text-fg-400 hover:text-fg-700'
           )}
         >
           <svg
@@ -161,8 +161,8 @@ export function CountBadge({
         'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5',
         'text-[11px] font-semibold tabular-nums',
         tone === 'attention' && 'bg-attention-100 text-attention-700',
-        tone === 'ink' && 'bg-ink-950 text-white',
-        tone === 'neutral' && 'bg-paper-100 text-ink-700',
+        tone === 'ink' && 'bg-primary-solid text-white',
+        tone === 'neutral' && 'bg-surface-100 text-fg-700',
         className
       )}
     >
@@ -189,7 +189,7 @@ export function RiskMeter({
   return (
     <span className={cn('flex items-center gap-2.5', className)}>
       <span
-        className="block h-1 flex-1 overflow-hidden rounded-full bg-paper-100"
+        className="block h-1 flex-1 overflow-hidden rounded-full bg-surface-100"
         role="meter"
         aria-valuenow={pct}
         aria-valuemin={0}
@@ -202,7 +202,7 @@ export function RiskMeter({
         />
       </span>
       {showValue && (
-        <span className="w-6 text-right text-[11px] tabular-nums text-ink-500">{pct}</span>
+        <span className="w-6 text-right text-[11px] tabular-nums text-fg-500">{pct}</span>
       )}
     </span>
   )
@@ -213,8 +213,8 @@ export function Kbd({ children, className }: { children: React.ReactNode; classN
   return (
     <kbd
       className={cn(
-        'rounded-chip border border-paper-200 bg-paper-50 px-1.5 py-0.5',
-        'font-mono text-[10.5px] font-normal text-ink-700',
+        'rounded-chip border border-surface-200 bg-surface-50 px-1.5 py-0.5',
+        'font-mono text-[10.5px] font-normal text-fg-700',
         className
       )}
     >
@@ -225,7 +225,7 @@ export function Kbd({ children, className }: { children: React.ReactNode; classN
 
 /** Machine-generated identifier — ids, hashes, timestamps. */
 export function Mono({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <span className={cn('font-mono text-[11px] text-ink-400', className)}>{children}</span>
+  return <span className={cn('font-mono text-[11px] text-fg-400', className)}>{children}</span>
 }
 
 /**
@@ -248,7 +248,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'rounded-md border border-paper-200 bg-paper-50 px-5 py-8 text-center',
+        'rounded-md border border-surface-200 bg-surface-50 px-5 py-8 text-center',
         className
       )}
     >
@@ -256,13 +256,13 @@ export function EmptyState({
         // Decorative: the title below already says what the empty list is.
         <span
           aria-hidden="true"
-          className="mb-3.5 inline-flex size-10 items-center justify-center rounded-card border border-paper-200 bg-paper-100 text-ink-400 [&_svg]:size-5"
+          className="mb-3.5 inline-flex size-10 items-center justify-center rounded-card border border-surface-200 bg-surface-100 text-fg-400 [&_svg]:size-5"
         >
           {icon}
         </span>
       )}
-      <p className="text-[13.5px] font-semibold text-ink-950">{title}</p>
-      {description && <p className="mt-1 text-dense text-ink-500">{description}</p>}
+      <p className="text-[13.5px] font-semibold text-fg-950">{title}</p>
+      {description && <p className="mt-1 text-dense text-fg-500">{description}</p>}
       {action && <div className="mt-4 flex justify-center gap-2">{action}</div>}
     </div>
   )
@@ -276,7 +276,7 @@ export function Card({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn('rounded-card border border-paper-200 bg-card', className)}
+      className={cn('rounded-card border border-surface-200 bg-card', className)}
       {...props}
     >
       {children}

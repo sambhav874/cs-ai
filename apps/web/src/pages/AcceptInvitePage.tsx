@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, AlertCircle, Mail, Building2 } from 'lucide-react'
+import { PRODUCT_NAME } from '@/lib/brand'
 
 interface InvitePreview {
   email: string
@@ -86,8 +87,8 @@ export function AcceptInvitePage() {
     return (
       <Shell>
         <div className="flex flex-col items-center justify-center py-8 gap-3" data-testid="invite-loading">
-          <Loader2 className="size-5 text-ink-400 animate-spin" />
-          <p className="text-body text-ink-500">Validating invite…</p>
+          <Loader2 className="size-5 text-fg-400 animate-spin" />
+          <p className="text-body text-fg-500">Validating invite…</p>
         </div>
       </Shell>
     )
@@ -103,12 +104,12 @@ export function AcceptInvitePage() {
           <div className="size-12 rounded-full bg-risk-50 flex items-center justify-center">
             <AlertCircle className="size-6 text-risk-600" />
           </div>
-          <h1 className="text-title text-ink-950">Invalid or expired invite</h1>
-          <p className="text-body text-ink-500 max-w-xs">
+          <h1 className="text-title text-fg-950">Invalid or expired invite</h1>
+          <p className="text-body text-fg-500 max-w-xs">
             This invite link is no longer valid. It may have been used already,
             expired, or the URL is incorrect. Ask your admin to send a new one.
           </p>
-          <Link to="/login" className="text-body text-ink-950 underline underline-offset-2 decoration-paper-300 hover:decoration-brand-700 hover:text-brand-700 mt-2">
+          <Link to="/login" className="text-body text-fg-950 underline underline-offset-2 decoration-surface-300 hover:decoration-primary-700 hover:text-primary-700 mt-2">
             Go to sign in
           </Link>
         </div>
@@ -122,34 +123,34 @@ export function AcceptInvitePage() {
   return (
     <Shell>
       <div data-testid="invite-valid">
-        <h1 className="text-title text-ink-950">Accept Invite</h1>
-        <p className="text-body text-ink-500 mt-1">Set up your account to join draftLegal</p>
+        <h1 className="text-title text-fg-950">Accept Invite</h1>
+        <p className="text-body text-fg-500 mt-1">Set up your account to join {PRODUCT_NAME}</p>
 
         {/* Inviter context — F-09 explicit ask: tell the user what
             they're accepting into BEFORE they fill the form. Both icons are
             quiet ink: they label facts, they don't carry a state. */}
-        <div className="mt-4 rounded-md border border-paper-200 bg-paper-50 px-3.5 py-3 space-y-1.5">
-          <div className="flex items-center gap-2 text-dense text-ink-700">
-            <Building2 className="size-3.5 text-ink-400" />
+        <div className="mt-4 rounded-md border border-surface-200 bg-surface-50 px-3.5 py-3 space-y-1.5">
+          <div className="flex items-center gap-2 text-dense text-fg-700">
+            <Building2 className="size-3.5 text-fg-400" />
             <span>You're joining</span>
-            <span className="font-semibold text-ink-950" data-testid="invite-org">{data.orgName}</span>
+            <span className="font-semibold text-fg-950" data-testid="invite-org">{data.orgName}</span>
           </div>
-          <div className="flex items-center gap-2 text-dense text-ink-700">
-            <Mail className="size-3.5 text-ink-400" />
+          <div className="flex items-center gap-2 text-dense text-fg-700">
+            <Mail className="size-3.5 text-fg-400" />
             <span>as</span>
-            <span className="font-mono text-ink-950" data-testid="invite-email">{data.email}</span>
+            <span className="font-mono text-fg-950" data-testid="invite-email">{data.email}</span>
           </div>
         </div>
 
         {success ? (
           // Accepted — the invite is now binding, which is what brand means.
-          <div className="mt-5 text-body px-3 py-2 rounded-md bg-brand-50 text-brand-700 border border-brand-200">
+          <div className="mt-5 text-body px-3 py-2 rounded-md bg-success-50 text-success-700 border border-success-200">
             Invite accepted! Redirecting to login…
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="mt-5 space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="invite-name">Your name <span className="text-ink-500 font-normal">(optional)</span></Label>
+              <Label htmlFor="invite-name">Your name <span className="text-fg-500 font-normal">(optional)</span></Label>
               <Input
                 id="invite-name"
                 type="text"
@@ -196,9 +197,9 @@ export function AcceptInvitePage() {
           </form>
         )}
 
-        <p className="text-body text-center text-ink-500 mt-5">
+        <p className="text-body text-center text-fg-500 mt-5">
           Already have an account?{' '}
-          <Link to="/login" className="text-ink-950 underline underline-offset-2 decoration-paper-300 hover:decoration-brand-700 hover:text-brand-700">
+          <Link to="/login" className="text-fg-950 underline underline-offset-2 decoration-surface-300 hover:decoration-primary-700 hover:text-primary-700">
             Sign in
           </Link>
         </p>
@@ -211,8 +212,8 @@ export function AcceptInvitePage() {
 // consistent with the same card framing.
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-paper-50">
-      <div className="w-full max-w-sm space-y-6 p-8 border border-paper-200 rounded-card bg-card shadow-e1">
+    <div className="min-h-screen flex items-center justify-center bg-surface-50">
+      <div className="w-full max-w-sm space-y-6 p-8 border border-surface-200 rounded-card bg-card shadow-e1">
         {children}
       </div>
     </div>

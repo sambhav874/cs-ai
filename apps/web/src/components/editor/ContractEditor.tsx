@@ -98,7 +98,7 @@ function ToolbarBtn({
       title={title}
       // Active is a pressed state, not a status — it stays in ink rather than
       // taking the blue it used to wear.
-      className={cn(active && 'bg-paper-100 text-ink-950')}
+      className={cn(active && 'bg-surface-100 text-fg-950')}
     >
       {children}
     </Button>
@@ -129,7 +129,7 @@ function SectionOutline({ html }: { html: string }) {
   }
 
   return (
-    <div className="w-52 shrink-0 border-r border-paper-200 bg-paper-50 overflow-y-auto p-3 hidden lg:block">
+    <div className="w-52 shrink-0 border-r border-surface-200 bg-surface-50 overflow-y-auto p-3 hidden lg:block">
       <Eyebrow className="mb-2">Sections</Eyebrow>
       <nav className="space-y-0.5">
         {parsed.map((h, i) => (
@@ -137,7 +137,7 @@ function SectionOutline({ html }: { html: string }) {
             key={i}
             onClick={() => scrollToHeading(i)}
             className={cn(
-              'text-dense text-ink-500 cursor-pointer hover:text-ink-950 truncate py-0.5',
+              'text-dense text-fg-500 cursor-pointer hover:text-fg-950 truncate py-0.5',
               h.level === 3 && 'pl-3 text-[11.5px]',
             )}
           >
@@ -191,15 +191,15 @@ function ClauseLibraryPanel({
   }, [debouncedQ])
 
   return (
-    <div className="w-72 shrink-0 border-l border-paper-200 bg-card flex flex-col">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-paper-200">
-        <div className="flex items-center gap-1.5 text-dense font-medium text-ink-700">
+    <div className="w-72 shrink-0 border-l border-surface-200 bg-card flex flex-col">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-surface-200">
+        <div className="flex items-center gap-1.5 text-dense font-medium text-fg-700">
           <BookOpen className="size-3.5" />
           Clause Library
         </div>
-        <Button onClick={onClose} variant="ghost" size="icon-xs" className="text-ink-400"><X /></Button>
+        <Button onClick={onClose} variant="ghost" size="icon-xs" className="text-fg-400"><X /></Button>
       </div>
-      <div className="px-3 py-2 border-b border-paper-200">
+      <div className="px-3 py-2 border-b border-surface-200">
         <Input
           value={q}
           onChange={e => setQ(e.target.value)}
@@ -207,24 +207,24 @@ function ClauseLibraryPanel({
         />
       </div>
       <div className="flex-1 overflow-y-auto">
-        {loading && <p className="text-dense text-ink-400 p-3">Loading...</p>}
+        {loading && <p className="text-dense text-fg-400 p-3">Loading...</p>}
         {!loading && !clauses.length && (
-          <p className="text-dense text-ink-400 p-3">No clauses found</p>
+          <p className="text-dense text-fg-400 p-3">No clauses found</p>
         )}
         {clauses.map(c => {
           const rating = MEANING_CLASS[CLAUSE_RISK_MEANING[c.riskRating ?? ''] ?? 'neutral']
           return (
             <div
               key={c.id}
-              className="px-3 py-2 border-b border-paper-200 hover:bg-paper-100 cursor-pointer group"
+              className="px-3 py-2 border-b border-surface-200 hover:bg-surface-100 cursor-pointer group"
               onClick={() => onInsert(c.content)}
             >
               <div className="flex items-start justify-between gap-1">
-                <p className="text-dense font-medium text-ink-950 leading-snug">{c.title}</p>
-                <ChevronRight className="size-3.5 text-paper-300 group-hover:text-ink-700 shrink-0 mt-0.5" />
+                <p className="text-dense font-medium text-fg-950 leading-snug">{c.title}</p>
+                <ChevronRight className="size-3.5 text-surface-300 group-hover:text-fg-700 shrink-0 mt-0.5" />
               </div>
               {c.category?.name && (
-                <p className="text-[11.5px] text-ink-400 mt-0.5">{c.category.name}</p>
+                <p className="text-[11.5px] text-fg-400 mt-0.5">{c.category.name}</p>
               )}
               {c.riskRating && (
                 <span className={cn(
@@ -259,8 +259,8 @@ function FindReplacePanel({
   return (
     // Find & replace is a tool, not a state — nothing here is blocked on the
     // user, so the amber it used to wear was decoration and it goes neutral.
-    <div className="flex items-center gap-2 px-3 py-1.5 bg-paper-50 border-b border-paper-200 text-dense">
-      <Search className="size-4 text-ink-400" />
+    <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-50 border-b border-surface-200 text-dense">
+      <Search className="size-4 text-fg-400" />
       <Input
         value={find}
         onChange={e => setFind(e.target.value)}
@@ -283,7 +283,7 @@ function FindReplacePanel({
         variant="outline"
         size="xs"
       >Replace All</Button>
-      <Button onClick={onClose} variant="ghost" size="icon-xs" className="text-ink-400"><X /></Button>
+      <Button onClick={onClose} variant="ghost" size="icon-xs" className="text-fg-400"><X /></Button>
     </div>
   )
 }
@@ -436,13 +436,14 @@ export function ContractEditor({
     const insertedFrom = range.from
     const insertedTo = editor.state.selection.from
 
-    // Flash the inserted range in the assist wash (assist-200) + scroll into
+    // Flash the inserted range in the assist wash (assist-200, as a literal:
+    // TipTap writes highlight colours into the document itself) + scroll into
     // view. It was a green highlight, but green means BINDING in this system
     // and machine-authored text is what this range actually is.
     if (insertedFrom < insertedTo) {
       editor.chain()
         .setTextSelection({ from: insertedFrom, to: insertedTo })
-        .setHighlight({ color: '#C7D2FE' })
+        .setHighlight({ color: '#D8D0FB' })
         .scrollIntoView()
         .run()
 
@@ -543,7 +544,7 @@ export function ContractEditor({
   const currentHtml = editor.getHTML()
 
   return (
-    <div className="relative flex flex-col h-full bg-card border border-paper-200 rounded-card overflow-hidden">
+    <div className="relative flex flex-col h-full bg-card border border-surface-200 rounded-card overflow-hidden">
       {exportError && (
         <div
           role="alert"
@@ -561,44 +562,44 @@ export function ContractEditor({
         </div>
       )}
       {/* ── Toolbar ── */}
-      <div className="flex items-center flex-wrap gap-0.5 px-2 py-1.5 border-b border-paper-200 bg-paper-50">
+      <div className="flex items-center flex-wrap gap-0.5 px-2 py-1.5 border-b border-surface-200 bg-surface-50">
         {/* History */}
         <ToolbarBtn onClick={() => editor.chain().focus().undo().run()} title="Undo"><Undo /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().redo().run()} title="Redo"><Redo /></ToolbarBtn>
-        <div className="w-px h-5 bg-paper-300 mx-1" />
+        <div className="w-px h-5 bg-surface-300 mx-1" />
 
         {/* Headings */}
         <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive('heading', { level: 1 })} title="Heading 1"><Heading1 /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive('heading', { level: 2 })} title="Heading 2"><Heading2 /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive('heading', { level: 3 })} title="Heading 3"><Heading3 /></ToolbarBtn>
-        <div className="w-px h-5 bg-paper-300 mx-1" />
+        <div className="w-px h-5 bg-surface-300 mx-1" />
 
         {/* Inline formatting */}
         <ToolbarBtn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive('bold')} title="Bold"><Bold /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive('italic')} title="Italic"><Italic /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive('underline')} title="Underline"><UnderlineIcon /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleStrike().run()} active={editor.isActive('strike')} title="Strikethrough"><Strikethrough /></ToolbarBtn>
-        <div className="w-px h-5 bg-paper-300 mx-1" />
+        <div className="w-px h-5 bg-surface-300 mx-1" />
 
         {/* Alignment */}
         <ToolbarBtn onClick={() => editor.chain().focus().setTextAlign('left').run()} active={editor.isActive({ textAlign: 'left' })} title="Align Left"><AlignLeft /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().setTextAlign('center').run()} active={editor.isActive({ textAlign: 'center' })} title="Align Center"><AlignCenter /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} title="Align Right"><AlignRight /></ToolbarBtn>
-        <div className="w-px h-5 bg-paper-300 mx-1" />
+        <div className="w-px h-5 bg-surface-300 mx-1" />
 
         {/* Lists */}
         <ToolbarBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} title="Bullet List"><List /></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="Numbered List"><ListOrdered /></ToolbarBtn>
-        <div className="w-px h-5 bg-paper-300 mx-1" />
+        <div className="w-px h-5 bg-surface-300 mx-1" />
 
         {/* Table */}
         <ToolbarBtn onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} title="Insert Table"><TableIcon /></ToolbarBtn>
-        <div className="w-px h-5 bg-paper-300 mx-1" />
+        <div className="w-px h-5 bg-surface-300 mx-1" />
 
         {/* Tools */}
         <ToolbarBtn onClick={() => setShowClausePanel(p => !p)} active={showClausePanel} title="Clause Library"><BookOpen /></ToolbarBtn>
         <ToolbarBtn onClick={() => setShowFindReplace(p => !p)} active={showFindReplace} title="Find & Replace"><Search /></ToolbarBtn>
-        <div className="w-px h-5 bg-paper-300 mx-1" />
+        <div className="w-px h-5 bg-surface-300 mx-1" />
 
         {/* AI Assist — acts on selected text */}
         <div className="relative flex items-center gap-0.5 border border-assist-200 rounded-md px-1 bg-assist-50">
@@ -621,12 +622,12 @@ export function ContractEditor({
             </Button>
           ))}
           {assistHint && (
-            <div className="absolute top-full left-0 mt-1 z-10 px-2 py-1 bg-ink-950 text-white text-[11.5px] rounded-md shadow-e2 whitespace-nowrap">
+            <div className="absolute top-full left-0 mt-1 z-10 px-2 py-1 bg-inverse text-inverse-fg text-[11.5px] rounded-md shadow-e2 whitespace-nowrap">
               Select text first
             </div>
           )}
         </div>
-        <div className="w-px h-5 bg-paper-300 mx-1" />
+        <div className="w-px h-5 bg-surface-300 mx-1" />
 
         {/* Document AI — whole-document operations */}
         <div className="relative">
@@ -648,25 +649,25 @@ export function ContractEditor({
             )}
           </Button>
           {showDocAiMenu && (
-            <div className="absolute top-full left-0 mt-1 z-20 w-48 bg-card border border-paper-200 rounded-md shadow-e2 overflow-hidden">
+            <div className="absolute top-full left-0 mt-1 z-20 w-48 bg-card border border-surface-200 rounded-md shadow-e2 overflow-hidden">
               <button
                 onClick={() => handleDocumentAi('fix_layout')}
-                className="w-full text-left px-3 py-2.5 text-dense hover:bg-assist-50 text-ink-700"
+                className="w-full text-left px-3 py-2.5 text-dense hover:bg-assist-50 text-fg-700"
               >
                 ✨ Fix Layout
-                <p className="text-[11px] text-ink-400 mt-0.5">Clean up PDF extraction artifacts</p>
+                <p className="text-[11px] text-fg-400 mt-0.5">Clean up PDF extraction artifacts</p>
               </button>
               <button
                 onClick={() => { setShowDocAiMenu(false); setDocAiConfirm(true) }}
-                className="w-full text-left px-3 py-2.5 text-dense hover:bg-assist-50 text-ink-700 border-t border-paper-200"
+                className="w-full text-left px-3 py-2.5 text-dense hover:bg-assist-50 text-fg-700 border-t border-surface-200"
               >
                 📝 Rewrite Document
-                <p className="text-[11px] text-ink-400 mt-0.5">AI rewrites full document</p>
+                <p className="text-[11px] text-fg-400 mt-0.5">AI rewrites full document</p>
               </button>
             </div>
           )}
         </div>
-        <div className="w-px h-5 bg-paper-300 mx-1" />
+        <div className="w-px h-5 bg-surface-300 mx-1" />
 
         {/* Export */}
         <ToolbarBtn onClick={() => handleExport('pdf')} title="Export PDF"><FileText /></ToolbarBtn>
@@ -703,7 +704,7 @@ export function ContractEditor({
         )}
 
         {/* Word count */}
-        <span className="ml-2 text-[11.5px] text-ink-400 whitespace-nowrap tabular-nums">{wordCount} words</span>
+        <span className="ml-2 text-[11.5px] text-fg-400 whitespace-nowrap tabular-nums">{wordCount} words</span>
       </div>
 
       {/* ── Find & Replace Bar ── */}
@@ -758,9 +759,9 @@ export function ContractEditor({
               exactly what it is — text the machine wrote. */}
           <div className="rounded-md border border-assist-200 bg-card overflow-hidden text-dense">
             {assistOriginalText && (
-              <div className="flex gap-2 px-3 py-2 bg-paper-50 border-b border-paper-200">
-                <span className="text-ink-400 font-bold shrink-0">−</span>
-                <p className="text-ink-500 line-through leading-snug line-clamp-4">{assistOriginalText}</p>
+              <div className="flex gap-2 px-3 py-2 bg-surface-50 border-b border-surface-200">
+                <span className="text-fg-400 font-bold shrink-0">−</span>
+                <p className="text-fg-500 line-through leading-snug line-clamp-4">{assistOriginalText}</p>
               </div>
             )}
             <div className="flex gap-2 px-3 py-2">
@@ -769,7 +770,7 @@ export function ContractEditor({
             </div>
           </div>
           {/* Explanation */}
-          <p className="text-[11.5px] text-ink-500 mt-1.5 italic">{assistResult.explanation}</p>
+          <p className="text-[11.5px] text-fg-500 mt-1.5 italic">{assistResult.explanation}</p>
         </div>
       )}
 
@@ -785,7 +786,7 @@ export function ContractEditor({
             // An unfilled variable is attention — the document cannot go out
             // until this user fills it. The clause-library rule is only a
             // provenance mark, so it loses its blue and becomes a paper rule.
-            className="prose prose-sm max-w-none p-6 min-h-full focus:outline-none [&_.template-variable-unfilled]:bg-attention-100 [&_.template-variable-unfilled]:border [&_.template-variable-unfilled]:border-attention-200 [&_.template-variable-unfilled]:rounded-chip [&_.template-variable-unfilled]:px-1 [&_.clause-library-ref]:border-l-4 [&_.clause-library-ref]:border-paper-300 [&_.clause-library-ref]:pl-3 [&_.clause-library-ref]:my-2 [&_.contract-section]:mb-6"
+            className="prose prose-sm max-w-none p-6 min-h-full focus:outline-none [&_.template-variable-unfilled]:bg-attention-100 [&_.template-variable-unfilled]:border [&_.template-variable-unfilled]:border-attention-200 [&_.template-variable-unfilled]:rounded-chip [&_.template-variable-unfilled]:px-1 [&_.clause-library-ref]:border-l-4 [&_.clause-library-ref]:border-surface-300 [&_.clause-library-ref]:pl-3 [&_.clause-library-ref]:my-2 [&_.contract-section]:mb-6"
           />
         </div>
 
@@ -800,10 +801,10 @@ export function ContractEditor({
 
       {/* ── Rewrite Document Confirm Dialog ── */}
       {docAiConfirm && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-ink-950/30">
-          <div className="bg-card rounded-card border border-paper-200 shadow-e3 p-6 max-w-sm mx-4">
-            <h3 className="text-section text-ink-950 mb-2">Rewrite entire document?</h3>
-            <p className="text-body text-ink-500 mb-5">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-scrim/30">
+          <div className="bg-card rounded-card border border-surface-200 shadow-e3 p-6 max-w-sm mx-4">
+            <h3 className="text-section text-fg-950 mb-2">Rewrite entire document?</h3>
+            <p className="text-body text-fg-500 mb-5">
               The AI will rewrite the full document content. Your current text will be replaced. This cannot be undone unless you have a saved version.
             </p>
             <div className="flex gap-3 justify-end">

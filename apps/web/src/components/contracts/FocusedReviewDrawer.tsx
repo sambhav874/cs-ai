@@ -42,8 +42,8 @@ interface PlaybookPosition {
  * either way and stays neutral — it used to be blue, which read as in-flight.
  */
 const POSITION_TONE: Record<string, string> = {
-  preferred:  'bg-brand-50 text-brand-700',
-  acceptable: 'bg-paper-100 text-ink-700',
+  preferred:  'bg-success-50 text-success-700',
+  acceptable: 'bg-surface-100 text-fg-700',
   fallback:   'bg-attention-50 text-attention-700',
   walkaway:   'bg-risk-50 text-risk-700',
 }
@@ -181,8 +181,8 @@ export function FocusedReviewDrawer({
 
   if (!clause) {
     return (
-      <aside className="hidden xl:flex w-rail border-l border-paper-200 bg-card overflow-y-auto flex-col p-5">
-        <div className="text-body text-ink-400 italic">No issue selected.</div>
+      <aside className="hidden xl:flex w-rail border-l border-surface-200 bg-card overflow-y-auto flex-col p-5">
+        <div className="text-body text-fg-400 italic">No issue selected.</div>
       </aside>
     )
   }
@@ -195,7 +195,7 @@ export function FocusedReviewDrawer({
   const severityColor =
     kind === 'risk'      ? 'bg-risk-50 text-risk-700 border-risk-200'
     : kind === 'deviation' ? 'bg-info-50 text-info-700 border-info-200'
-    : 'bg-paper-100 text-ink-700 border-paper-200'
+    : 'bg-surface-100 text-fg-700 border-surface-200'
 
   const severityLabel =
     kind === 'risk' ? 'HIGH RISK'
@@ -204,31 +204,31 @@ export function FocusedReviewDrawer({
 
   // Unreviewed is the only one of the three that is waiting on this user.
   const stateColor =
-    state === 'resolved' ? 'bg-brand-50 text-brand-700 border-brand-200'
-    : state === 'reviewed' ? 'bg-paper-100 text-ink-700 border-paper-200'
+    state === 'resolved' ? 'bg-success-50 text-success-700 border-success-200'
+    : state === 'reviewed' ? 'bg-surface-100 text-fg-700 border-surface-200'
     : 'bg-attention-50 text-attention-700 border-attention-200'
 
   return (
-    <aside className="hidden xl:flex w-rail border-l border-paper-200 bg-card overflow-y-auto flex-col">
+    <aside className="hidden xl:flex w-rail border-l border-surface-200 bg-card overflow-y-auto flex-col">
       {/* ── Header — prev / counter / next + close ─────────────────────── */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-paper-200 bg-paper-50">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-surface-200 bg-surface-50">
         <div className="flex items-center gap-1">
           <button
             onClick={onPrev}
             disabled={currentIndex === 0}
             aria-label="Previous issue (k)"
-            className="p-1 rounded-chip text-ink-500 hover:bg-card hover:text-ink-950 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="p-1 rounded-chip text-fg-500 hover:bg-card hover:text-fg-950 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <ChevronLeft className="size-4" />
           </button>
-          <span className="text-dense text-ink-700 tabular-nums min-w-[3.5rem] text-center">
+          <span className="text-dense text-fg-700 tabular-nums min-w-[3.5rem] text-center">
             {currentIndex + 1} / {clauses.length}
           </span>
           <button
             onClick={onNext}
             disabled={currentIndex === clauses.length - 1}
             aria-label="Next issue (j)"
-            className="p-1 rounded-chip text-ink-500 hover:bg-card hover:text-ink-950 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="p-1 rounded-chip text-fg-500 hover:bg-card hover:text-fg-950 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <ChevronRight className="size-4" />
           </button>
@@ -236,14 +236,14 @@ export function FocusedReviewDrawer({
         <button
           onClick={onClose}
           aria-label="Close focused review (Esc)"
-          className="p-1 rounded-chip text-ink-400 hover:bg-card hover:text-ink-700"
+          className="p-1 rounded-chip text-fg-400 hover:bg-card hover:text-fg-700"
         >
           <X className="size-4" />
         </button>
       </div>
 
       {/* ── Severity + Title + Section ──────────────────────────────────── */}
-      <div className="px-5 pt-4 pb-3 border-b border-paper-200">
+      <div className="px-5 pt-4 pb-3 border-b border-surface-200">
         <div className="flex items-center justify-between gap-2 mb-2">
           <span className={cn(
             'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold tracking-wide',
@@ -259,22 +259,22 @@ export function FocusedReviewDrawer({
             {state}
           </span>
         </div>
-        <h3 className="text-body font-semibold text-ink-950 leading-snug">
+        <h3 className="text-body font-semibold text-fg-950 leading-snug">
           {labelClauseType(clause.clauseType)}
         </h3>
         {clause.sectionRef && (
-          <p className="text-dense text-ink-500 mt-0.5">{clause.sectionRef}</p>
+          <p className="text-dense text-fg-500 mt-0.5">{clause.sectionRef}</p>
         )}
       </div>
 
       {/* ── WHY THIS IS A RISK ──────────────────────────────────────────── */}
       <Section title="Why this matters">
         {clause.interpretation ? (
-          <p className="text-body text-ink-700 leading-relaxed whitespace-pre-line">
+          <p className="text-body text-fg-700 leading-relaxed whitespace-pre-line">
             {clause.interpretation}
           </p>
         ) : (
-          <p className="text-body text-ink-400 italic">
+          <p className="text-body text-fg-400 italic">
             The AI hasn't written an explanation for this clause yet.
           </p>
         )}
@@ -284,29 +284,29 @@ export function FocusedReviewDrawer({
       {kind === 'deviation' && (
         <Section title="Playbook comparison">
           {matchedPositions.length === 0 ? (
-            <p className="text-dense text-ink-400 italic">
+            <p className="text-dense text-fg-400 italic">
               No playbook position defined for {labelClauseType(clause.clauseType)}.
               Add one in Admin → Playbook to compare this clause automatically.
             </p>
           ) : (
             <div className="space-y-2">
               {matchedPositions.map(p => (
-                <div key={p.id} className="rounded-md border border-paper-200 p-2">
+                <div key={p.id} className="rounded-md border border-surface-200 p-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className={cn(
                       'text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded-chip',
-                      POSITION_TONE[p.positionType] ?? 'bg-paper-100 text-ink-700',
+                      POSITION_TONE[p.positionType] ?? 'bg-surface-100 text-fg-700',
                     )}>
                       {p.positionType}
                     </span>
                     {p.clauseCategory?.name && (
-                      <span className="text-[10px] text-ink-400 truncate">{p.clauseCategory.name}</span>
+                      <span className="text-[10px] text-fg-400 truncate">{p.clauseCategory.name}</span>
                     )}
                   </div>
                   {p.content && (
-                    <p className="mt-1 text-dense text-ink-700 line-clamp-4">{stripHtml(p.content)}</p>
+                    <p className="mt-1 text-dense text-fg-700 line-clamp-4">{stripHtml(p.content)}</p>
                   )}
-                  {p.notes && <p className="mt-1 text-[11px] text-ink-400 italic">{p.notes}</p>}
+                  {p.notes && <p className="mt-1 text-[11px] text-fg-400 italic">{p.notes}</p>}
                 </div>
               ))}
             </div>
@@ -315,24 +315,24 @@ export function FocusedReviewDrawer({
       )}
 
       {/* ── AI SUGGESTION ──────────────────────────────────────────────── */}
-      <Section title="Alternative language" icon={<BookOpen className="size-3.5 text-ink-400" />}>
+      <Section title="Alternative language" icon={<BookOpen className="size-3.5 text-fg-400" />}>
         {suggest.data ? (
           <div className="space-y-2">
             {suggest.data.variants.length === 0 ? (
-              <p className="text-dense text-ink-400 italic">
+              <p className="text-dense text-fg-400 italic">
                 {suggest.data.error ?? 'No alternative language was returned for this clause.'}
               </p>
             ) : (
               suggest.data.variants.map((v, i) => (
-                <div key={i} className="rounded-md border border-paper-200 p-2">
+                <div key={i} className="rounded-md border border-surface-200 p-2">
                   {/* Everything in this card was drafted by the model, so the
                       accent and the apply CTA both stay on assist. */}
                   <span className="text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded-chip bg-assist-50 text-assist-700">
                     {v.aggression}
                   </span>
-                  <p className="mt-1.5 text-dense text-ink-700 whitespace-pre-line">{v.proposedText}</p>
+                  <p className="mt-1.5 text-dense text-fg-700 whitespace-pre-line">{v.proposedText}</p>
                   {v.rationale && (
-                    <p className="mt-1 text-[11px] text-ink-400 italic">{v.rationale}</p>
+                    <p className="mt-1 text-[11px] text-fg-400 italic">{v.rationale}</p>
                   )}
                   <Button
                     variant="assist"
@@ -415,11 +415,11 @@ export function FocusedReviewDrawer({
       </Section>
 
       {/* ── ACTIONS ─────────────────────────────────────────────────────── */}
-      <div className="px-5 py-4 border-b border-paper-200 space-y-2">
+      <div className="px-5 py-4 border-b border-surface-200 space-y-2">
         {/* A clause verdict is an approval act, so brand and danger are earned
             here; Edit and Mark reviewed are ordinary moves and stay outlined. */}
         <Button
-          variant="brand"
+          variant="success"
           size="md"
           onClick={() => onAccept(clause.id)}
           title="Accept the clause as written and mark it resolved"
@@ -465,8 +465,8 @@ export function FocusedReviewDrawer({
 
       {/* ── COMMENTS ───────────────────────────────────────────────────── */}
       <Section title={`Comments on this clause`}>
-        <div className="flex items-center gap-2 text-body text-ink-500">
-          <MessageCircle className="size-4 text-ink-400" />
+        <div className="flex items-center gap-2 text-body text-fg-500">
+          <MessageCircle className="size-4 text-fg-400" />
           Full inline comments land in B.3 (margin bubbles).
         </div>
       </Section>
@@ -484,10 +484,10 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section className="px-5 py-3.5 border-b border-paper-200 last:border-b-0">
+    <section className="px-5 py-3.5 border-b border-surface-200 last:border-b-0">
       <div className="flex items-center gap-1.5 mb-2">
         {icon}
-        <h4 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-700">
+        <h4 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-700">
           {title}
         </h4>
       </div>

@@ -58,7 +58,7 @@ const SEVERITY_STYLE: Record<string, string> = {
   critical: 'bg-risk-100 text-risk-900 border-risk-200',
   high:     'bg-risk-50 text-risk-700 border-risk-200',
   medium:   'bg-attention-100 text-attention-700 border-attention-200',
-  low:      'bg-paper-100 text-ink-700 border-paper-200',
+  low:      'bg-surface-100 text-fg-700 border-surface-200',
 }
 
 export function PlaybookRedlineRailSection({
@@ -122,7 +122,7 @@ export function PlaybookRedlineRailSection({
     <RailSection title="Playbook redline" defaultOpen>
       {status === 'IDLE' && (
         <div className="space-y-2">
-          <p className="text-dense text-ink-500">
+          <p className="text-dense text-fg-500">
             Check every clause against your playbook and draft a first-pass markup.
             Nothing changes in the document until you accept it.
           </p>
@@ -138,14 +138,14 @@ export function PlaybookRedlineRailSection({
             disabled={start.isPending}
             data-testid="start-playbook-redline"
           >
-            <AssistMark className="bg-white" />
+            <AssistMark className="fill-white" />
             {start.isPending ? 'Starting…' : 'Redline against playbook'}
           </Button>
         </div>
       )}
 
       {running && (
-        <div className="flex items-center gap-2 text-dense text-ink-700" data-testid="redline-running">
+        <div className="flex items-center gap-2 text-dense text-fg-700" data-testid="redline-running">
           <Loader2 className="size-3.5 animate-spin" />
           Reviewing every clause against your playbook — this takes a minute or two.
         </div>
@@ -173,7 +173,7 @@ export function PlaybookRedlineRailSection({
       {(status === 'DONE' || status === 'APPLIED') && staged && (
         <div className="space-y-2.5">
           <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="text-ink-700">
+            <span className="text-fg-700">
               {staged.deviationCount} clause{staged.deviationCount === 1 ? '' : 's'} deviate
               {staged.deviationCount === 1 ? 's' : ''} from your playbook
             </span>
@@ -205,7 +205,7 @@ export function PlaybookRedlineRailSection({
           )}
 
           {usable.length === 0 ? (
-            <p className="text-dense text-ink-500">
+            <p className="text-dense text-fg-500">
               {staged.note ?? 'No changes to propose.'}
             </p>
           ) : (
@@ -215,21 +215,21 @@ export function PlaybookRedlineRailSection({
                   const isOpen = expanded === p.clauseId
                   const isAccepted = accepted.has(p.clauseId)
                   return (
-                    <li key={p.clauseId} className="rounded-md border border-paper-200">
+                    <li key={p.clauseId} className="rounded-md border border-surface-200">
                       <div className="flex items-start gap-1.5 p-2">
                         <button
                           onClick={() => setExpanded(isOpen ? null : p.clauseId)}
-                          className="mt-0.5 text-ink-400 hover:text-ink-700"
+                          className="mt-0.5 text-fg-400 hover:text-fg-700"
                           aria-label={isOpen ? 'Collapse' : 'Expand'}
                         >
                           {isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
                         </button>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] font-medium text-ink-950 truncate">
+                            <span className="text-[11px] font-medium text-fg-950 truncate">
                               {(p.clauseType ?? 'clause').replace(/_/g, ' ')}
                             </span>
-                            {p.sectionRef && <span className="text-[10px] text-ink-400">§{p.sectionRef}</span>}
+                            {p.sectionRef && <span className="text-[10px] text-fg-400">§{p.sectionRef}</span>}
                             {p.severity && (
                               <span className={`text-[10px] px-1 py-0.5 rounded-chip border ${SEVERITY_STYLE[p.severity] ?? SEVERITY_STYLE.low}`}>
                                 {p.severity}
@@ -237,7 +237,7 @@ export function PlaybookRedlineRailSection({
                             )}
                           </div>
                           {p.rationale && !isOpen && (
-                            <p className="text-[11px] text-ink-500 mt-0.5 line-clamp-2">{p.rationale}</p>
+                            <p className="text-[11px] text-fg-500 mt-0.5 line-clamp-2">{p.rationale}</p>
                           )}
                         </div>
                         <button
@@ -246,8 +246,8 @@ export function PlaybookRedlineRailSection({
                           aria-pressed={isAccepted}
                           className={`shrink-0 size-6 rounded-md border flex items-center justify-center transition-colors ${
                             isAccepted
-                              ? 'bg-brand-700 border-brand-700 text-white'
-                              : 'border-paper-300 text-ink-400 hover:border-brand-700 hover:text-brand-700'
+                              ? 'bg-success-solid border-success-solid text-white'
+                              : 'border-surface-300 text-fg-400 hover:border-success-700 hover:text-primary-700'
                           }`}
                           title={isAccepted ? 'Accepted — click to undo' : 'Accept this change'}
                         >
@@ -256,8 +256,8 @@ export function PlaybookRedlineRailSection({
                       </div>
 
                       {isOpen && (
-                        <div className="border-t border-paper-100 px-2 py-2 space-y-1.5">
-                          {p.rationale && <p className="text-[11px] text-ink-700">{p.rationale}</p>}
+                        <div className="border-t border-surface-100 px-2 py-2 space-y-1.5">
+                          {p.rationale && <p className="text-[11px] text-fg-700">{p.rationale}</p>}
                           {/* Neither block is a status. The current wording is
                               what the signed document says today — a fact, so
                               neutral, not risk. The replacement has been drafted
@@ -265,14 +265,14 @@ export function PlaybookRedlineRailSection({
                               assist wash and the diamond rather than brand,
                               which would read as language already agreed. */}
                           <div>
-                            <p className="text-[10px] uppercase tracking-[0.07em] text-ink-400 mb-0.5">Current</p>
-                            <p className="text-[11px] text-ink-700 bg-paper-100 rounded-chip px-1.5 py-1 whitespace-pre-line">
+                            <p className="text-[10px] uppercase tracking-[0.07em] text-fg-400 mb-0.5">Current</p>
+                            <p className="text-[11px] text-fg-700 bg-surface-100 rounded-chip px-1.5 py-1 whitespace-pre-line">
                               {p.originalText}
                             </p>
                           </div>
                           <div>
                             <p className="flex items-center gap-1 text-[10px] uppercase tracking-[0.07em] text-assist-700 mb-0.5">
-                              <AssistMark className="size-[5px]" />
+                              <AssistMark className="size-[7px]" />
                               Proposed
                             </p>
                             <p className="text-[11px] text-assist-900 bg-assist-50 rounded-chip px-1.5 py-1 whitespace-pre-line">
@@ -313,7 +313,7 @@ export function PlaybookRedlineRailSection({
                 </p>
               )}
               {applyAccepted.isSuccess && (
-                <p className="text-[11px] text-brand-700">
+                <p className="text-[11px] text-success-700">
                   Applied as a new version. Everything you did not accept was left alone.
                 </p>
               )}

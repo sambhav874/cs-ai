@@ -57,7 +57,7 @@ export function StatusPill({
       className={cn(
         'inline-flex w-fit items-center gap-[7px] rounded-full border py-0.5 pl-2 pr-2.5',
         'text-[11.5px] font-medium',
-        wash ? [m.wash, m.washFg, m.washBorder] : ['bg-paper-100 border-paper-200 text-ink-700'],
+        wash ? [m.wash, m.washFg, m.washBorder] : ['bg-surface-100 border-surface-200 text-fg-700'],
         className
       )}
     >

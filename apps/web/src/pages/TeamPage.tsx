@@ -71,7 +71,7 @@ function workloadPercent(count: number, peak: number): number {
 }
 
 // A role is metadata, not a state and not an action — so it stays neutral.
-const ROLE_STYLES = 'bg-paper-100 text-ink-700 border border-paper-200'
+const ROLE_STYLES = 'bg-surface-100 text-fg-700 border border-surface-200'
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -105,11 +105,11 @@ export function TeamPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-title text-ink-950 flex items-center gap-2">
+          <h1 className="text-title text-fg-950 flex items-center gap-2">
             <UsersRound className="size-5" />
             Team Workload
           </h1>
-          <p className="text-dense text-ink-500 mt-1">
+          <p className="text-dense text-fg-500 mt-1">
             Monitor team capacity, workload, and out-of-office status.
           </p>
         </div>
@@ -129,7 +129,7 @@ export function TeamPage() {
       {/* Grid */}
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <div className="size-5 border-2 border-paper-300 border-t-ink-950 rounded-full animate-spin" />
+          <div className="size-5 border-2 border-surface-300 border-t-fg-950 rounded-full animate-spin" />
         </div>
       ) : team.length === 0 ? (
         <EmptyState icon={<UsersRound />} title="No team members found" />
@@ -138,7 +138,7 @@ export function TeamPage() {
           {team.map(member => (
             <Card
               key={member.id}
-              className="p-5 space-y-4 transition-colors hover:border-paper-300"
+              className="p-5 space-y-4 transition-colors hover:border-surface-300"
             >
               {/* Avatar + Info */}
               <div className="flex items-start gap-3">
@@ -149,13 +149,13 @@ export function TeamPage() {
                     className="size-10 rounded-full object-cover"
                   />
                 ) : (
-                  <div className="size-10 rounded-full bg-paper-100 text-ink-700 flex items-center justify-center text-dense font-semibold shrink-0">
+                  <div className="size-10 rounded-full bg-surface-100 text-fg-700 flex items-center justify-center text-dense font-semibold shrink-0">
                     {getInitials(member.name)}
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <p className="text-body font-semibold text-ink-950 truncate">
+                    <p className="text-body font-semibold text-fg-950 truncate">
                       {member.name}
                     </p>
                     {member.outOfOffice && (
@@ -166,14 +166,14 @@ export function TeamPage() {
                       </span>
                     )}
                   </div>
-                  <p className="text-dense text-ink-500 truncate">{member.email}</p>
+                  <p className="text-dense text-fg-500 truncate">{member.email}</p>
                   {member.outOfOffice && member.outOfOfficeUntil && (
                     // A return date that has already passed while the flag is
                     // still set means the queue is being held for someone who
                     // is back at their desk — worth naming, not worth colouring
                     // as a live absence.
                     new Date(member.outOfOfficeUntil) < new Date() ? (
-                      <p className="mt-0.5 text-[11px] text-ink-500">
+                      <p className="mt-0.5 text-[11px] text-fg-500">
                         Was due back {new Date(member.outOfOfficeUntil).toLocaleDateString()} — still flagged out
                       </p>
                     ) : (
@@ -185,7 +185,7 @@ export function TeamPage() {
                 </div>
                 <button
                   onClick={() => handleSetOoo(member.id)}
-                  className="p-1.5 rounded-md text-ink-400 hover:text-ink-700 hover:bg-paper-100 transition-colors shrink-0"
+                  className="p-1.5 rounded-md text-fg-400 hover:text-fg-700 hover:bg-surface-100 transition-colors shrink-0"
                   title="Set out-of-office"
                 >
                   <CalendarOff className="size-3.5" />
@@ -205,27 +205,27 @@ export function TeamPage() {
               </div>
 
               {/* Stats */}
-              <div className="flex items-center gap-4 text-dense text-ink-500">
+              <div className="flex items-center gap-4 text-dense text-fg-500">
                 <span>
-                  <span className="font-semibold tabular-nums text-ink-950">{member.activeContracts}</span>{' '}
+                  <span className="font-semibold tabular-nums text-fg-950">{member.activeContracts}</span>{' '}
                   contracts
                 </span>
                 <span>
-                  <span className="font-semibold tabular-nums text-ink-950">{member.pendingApprovals}</span>{' '}
+                  <span className="font-semibold tabular-nums text-fg-950">{member.pendingApprovals}</span>{' '}
                   approvals pending
                 </span>
               </div>
 
               {/* Workload bar */}
               <div>
-                <div className="flex items-center justify-between text-[11px] text-ink-500 mb-1">
+                <div className="flex items-center justify-between text-[11px] text-fg-500 mb-1">
                   {/* Say what the bar is measured against, or a full bar means
                       nothing. */}
-                  <span>Workload{peakLoad > 0 && <span className="text-ink-400"> · vs {peakLoad} peak</span>}</span>
+                  <span>Workload{peakLoad > 0 && <span className="text-fg-400"> · vs {peakLoad} peak</span>}</span>
                   <span className="tabular-nums">{member.activeContracts} active</span>
                 </div>
                 <div
-                  className="h-1 w-full overflow-hidden rounded-full bg-paper-100"
+                  className="h-1 w-full overflow-hidden rounded-full bg-surface-100"
                   role="meter"
                   aria-valuenow={member.activeContracts}
                   aria-valuemin={0}
@@ -324,20 +324,20 @@ function OooModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-ink-950/50" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-scrim/50" onClick={onClose} aria-hidden="true" />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="ooo-title"
-        className="relative w-full max-w-md rounded-card border border-paper-200 bg-card shadow-e3"
+        className="relative w-full max-w-md rounded-card border border-surface-200 bg-card shadow-e3"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-paper-200">
-          <h2 id="ooo-title" className="text-section text-ink-950">Set Out-of-Office</h2>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
+          <h2 id="ooo-title" className="text-section text-fg-950">Set Out-of-Office</h2>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="p-1 rounded-md text-ink-400 hover:text-ink-700 hover:bg-paper-100"
+            className="p-1 rounded-md text-fg-400 hover:text-fg-700 hover:bg-surface-100"
           >
             <X className="size-4" />
           </button>
@@ -347,7 +347,7 @@ function OooModal({
         <div className="px-5 py-4 space-y-4">
           {/* User selector */}
           <div>
-            <Label className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Team Member *</Label>
+            <Label className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Team Member *</Label>
             <select
               value={userId}
               onChange={e => {
@@ -371,7 +371,7 @@ function OooModal({
                   setDelegateId(m.delegateToId ?? '')
                 }
               }}
-              className="w-full h-8 rounded-md border border-input bg-card px-[11px] text-[13px] text-ink-950 focus:outline-none focus:border-brand-700 focus:ring-[3px] focus:ring-brand-700/15"
+              className="w-full h-8 rounded-md border border-input bg-card px-[11px] text-[13px] text-fg-950 focus:outline-none focus:border-primary-700 focus:ring-[3px] focus:ring-primary-700/15"
             >
               <option value="">Select a member...</option>
               {members.map(m => (
@@ -390,9 +390,9 @@ function OooModal({
                 checked={outOfOffice}
                 onChange={e => setOutOfOffice(e.target.checked)}
                 data-testid="ooo-toggle"
-                className="rounded-chip border-paper-300 accent-ink-950"
+                className="rounded-chip border-surface-300 accent-fg-950"
               />
-              <span className="text-body text-ink-700">
+              <span className="text-body text-fg-700">
                 {current?.outOfOffice && !outOfOffice
                   ? `Bring ${current.name.split(' ')[0]} back — clears the absence and the delegate`
                   : 'Mark as out-of-office'}
@@ -404,7 +404,7 @@ function OooModal({
           {outOfOffice && (
             <>
               <div>
-                <Label htmlFor="ooo-return" className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Return Date</Label>
+                <Label htmlFor="ooo-return" className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Return Date</Label>
                 <Input
                   id="ooo-return"
                   type="date"
@@ -414,18 +414,18 @@ function OooModal({
                   value={returnDate}
                   onChange={e => setReturnDate(e.target.value)}
                 />
-                <p className="mt-1 text-[11px] text-ink-400">
+                <p className="mt-1 text-[11px] text-fg-400">
                   Leave blank for an open-ended absence.
                 </p>
               </div>
 
               <div>
-                <Label htmlFor="ooo-delegate" className="text-[11.5px] font-semibold text-ink-950 mb-1.5 block">Delegate To</Label>
+                <Label htmlFor="ooo-delegate" className="text-[11.5px] font-semibold text-fg-950 mb-1.5 block">Delegate To</Label>
                 <select
                   id="ooo-delegate"
                   value={delegateId}
                   onChange={e => setDelegateId(e.target.value)}
-                  className="w-full h-8 rounded-md border border-input bg-card px-[11px] text-[13px] text-ink-950 focus:outline-none focus:border-brand-700 focus:ring-[3px] focus:ring-brand-700/15"
+                  className="w-full h-8 rounded-md border border-input bg-card px-[11px] text-[13px] text-fg-950 focus:outline-none focus:border-primary-700 focus:ring-[3px] focus:ring-primary-700/15"
                 >
                   <option value="">None</option>
                   {members
@@ -462,7 +462,7 @@ function OooModal({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-paper-200">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-surface-200">
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>

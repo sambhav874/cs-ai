@@ -87,9 +87,9 @@ export function WorkflowBuilder({ steps, onChange }: Props) {
 
   if (steps.length === 0) {
     return (
-      <div className="text-center py-8 border-2 border-dashed rounded-card border-paper-200">
-        <User className="size-6 text-ink-400 mx-auto mb-2" />
-        <p className="text-body text-ink-500 mb-3">No approval steps yet</p>
+      <div className="text-center py-8 border-2 border-dashed rounded-card border-surface-200">
+        <User className="size-6 text-fg-400 mx-auto mb-2" />
+        <p className="text-body text-fg-500 mb-3">No approval steps yet</p>
         <Button size="sm" variant="outline" onClick={addStep}>
           <Plus />Add First Step
         </Button>
@@ -100,18 +100,18 @@ export function WorkflowBuilder({ steps, onChange }: Props) {
   return (
     <div className="space-y-2">
       {steps.map((step, idx) => (
-        <div key={idx} className="border border-paper-200 rounded-card overflow-hidden">
+        <div key={idx} className="border border-surface-200 rounded-card overflow-hidden">
           {/* Step header */}
           <div
-            className="flex items-center gap-2 px-3 py-2 bg-paper-50 cursor-pointer hover:bg-paper-100 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 bg-surface-50 cursor-pointer hover:bg-surface-100 transition-colors"
             onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
           >
             {/* A step number is an ordinal, not a state — it stays neutral. */}
-            <span className="flex-shrink-0 size-6 rounded-full bg-paper-100 text-ink-700 text-[11px] font-semibold tabular-nums flex items-center justify-center">
+            <span className="flex-shrink-0 size-6 rounded-full bg-surface-100 text-fg-700 text-[11px] font-semibold tabular-nums flex items-center justify-center">
               {idx + 1}
             </span>
-            <span className="flex-1 text-[13px] font-medium text-ink-950 truncate">
-              {step.name || <span className="text-ink-400">Untitled step</span>}
+            <span className="flex-1 text-[13px] font-medium text-fg-950 truncate">
+              {step.name || <span className="text-fg-400">Untitled step</span>}
             </span>
             {step.executionMode === 'parallel' ? (
               (() => {
@@ -122,27 +122,27 @@ export function WorkflowBuilder({ steps, onChange }: Props) {
                   roles.length > 0 ? roles.join(', ') : null,
                 ].filter(Boolean).join(' + ')
                 return label
-                  ? <span className="text-[11.5px] text-ink-500 hidden sm:block">{`${label} · ${step.requiredApprovals} required`}</span>
+                  ? <span className="text-[11.5px] text-fg-500 hidden sm:block">{`${label} · ${step.requiredApprovals} required`}</span>
                   : null
               })()
             ) : (
               <>
                 {step.approverId && (
-                  <span className="text-[11.5px] text-ink-500 hidden sm:block">
+                  <span className="text-[11.5px] text-fg-500 hidden sm:block">
                     {users.find(u => u.id === step.approverId)?.name ?? step.approverId}
                   </span>
                 )}
                 {step.roleRequired && !step.approverId && (
-                  <span className="text-[11.5px] text-ink-500 hidden sm:block">{step.roleRequired}</span>
+                  <span className="text-[11.5px] text-fg-500 hidden sm:block">{step.roleRequired}</span>
                 )}
               </>
             )}
             <div className="flex items-center gap-0.5 ml-2" onClick={e => e.stopPropagation()}>
-              <button onClick={() => moveUp(idx)} disabled={idx === 0} className="p-0.5 rounded-chip hover:bg-paper-200 disabled:opacity-30">
-                <ChevronUp className="size-4 text-ink-500" />
+              <button onClick={() => moveUp(idx)} disabled={idx === 0} className="p-0.5 rounded-chip hover:bg-surface-200 disabled:opacity-30">
+                <ChevronUp className="size-4 text-fg-500" />
               </button>
-              <button onClick={() => moveDown(idx)} disabled={idx === steps.length - 1} className="p-0.5 rounded-chip hover:bg-paper-200 disabled:opacity-30">
-                <ChevronDown className="size-4 text-ink-500" />
+              <button onClick={() => moveDown(idx)} disabled={idx === steps.length - 1} className="p-0.5 rounded-chip hover:bg-surface-200 disabled:opacity-30">
+                <ChevronDown className="size-4 text-fg-500" />
               </button>
               {/* Removing a step throws work away — the one risk-coloured control here. */}
               <button onClick={() => removeStep(idx)} className="p-0.5 rounded-chip hover:bg-risk-50 ml-1">
@@ -153,10 +153,10 @@ export function WorkflowBuilder({ steps, onChange }: Props) {
 
           {/* Step body (expanded) */}
           {expandedIdx === idx && (
-            <div className="px-4 py-3 space-y-3 border-t border-paper-200 bg-card">
+            <div className="px-4 py-3 space-y-3 border-t border-surface-200 bg-card">
               {/* Step name */}
               <div>
-                <label className="block text-dense font-medium text-ink-700 mb-1">Step name</label>
+                <label className="block text-dense font-medium text-fg-700 mb-1">Step name</label>
                 <Input
                   value={step.name}
                   onChange={e => update(idx, { name: e.target.value })}
@@ -170,22 +170,22 @@ export function WorkflowBuilder({ steps, onChange }: Props) {
               {step.executionMode === 'sequential' ? (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-dense font-medium text-ink-700 mb-1">Specific approver</label>
+                    <label className="block text-dense font-medium text-fg-700 mb-1">Specific approver</label>
                     <select
                       value={step.approverId ?? ''}
                       onChange={e => update(idx, { approverId: e.target.value || undefined, roleRequired: e.target.value ? undefined : step.roleRequired })}
-                      className="w-full rounded-md border border-input text-[13px] text-ink-950 px-2.5 py-1.5 bg-card focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+                      className="w-full rounded-md border border-input text-[13px] text-fg-950 px-2.5 py-1.5 bg-card focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
                     >
                       <option value="">— None —</option>
                       {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-dense font-medium text-ink-700 mb-1">Or by role</label>
+                    <label className="block text-dense font-medium text-fg-700 mb-1">Or by role</label>
                     <select
                       value={step.roleRequired ?? ''}
                       onChange={e => update(idx, { roleRequired: e.target.value || undefined, approverId: e.target.value ? undefined : step.approverId })}
-                      className="w-full rounded-md border border-input text-[13px] text-ink-950 px-2.5 py-1.5 bg-card focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+                      className="w-full rounded-md border border-input text-[13px] text-fg-950 px-2.5 py-1.5 bg-card focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
                       disabled={!!step.approverId}
                     >
                       <option value="">— None —</option>
@@ -195,18 +195,18 @@ export function WorkflowBuilder({ steps, onChange }: Props) {
                 </div>
               ) : (
                 <div>
-                  <label className="block text-dense font-medium text-ink-700 mb-1">
+                  <label className="block text-dense font-medium text-fg-700 mb-1">
                     Approvers (all run concurrently — every user who holds a selected role is included)
                   </label>
-                  <div className="max-h-40 overflow-y-auto rounded-md border border-input divide-y divide-paper-200">
-                    {users.length === 0 && <div className="px-2.5 py-2 text-dense text-ink-400">No users found</div>}
+                  <div className="max-h-40 overflow-y-auto rounded-md border border-input divide-y divide-surface-200">
+                    {users.length === 0 && <div className="px-2.5 py-2 text-dense text-fg-400">No users found</div>}
                     {users.map(u => (
-                      <label key={u.id} className="flex items-center gap-2 px-2.5 py-1.5 text-[13px] text-ink-950 cursor-pointer hover:bg-paper-50">
+                      <label key={u.id} className="flex items-center gap-2 px-2.5 py-1.5 text-[13px] text-fg-950 cursor-pointer hover:bg-surface-50">
                         <input
                           type="checkbox"
                           checked={(step.approverIds ?? []).includes(u.id)}
                           onChange={() => toggleApprover(idx, u.id)}
-                          className="accent-ink-950"
+                          className="accent-fg-950"
                         />
                         {u.name}
                       </label>
@@ -220,7 +220,7 @@ export function WorkflowBuilder({ steps, onChange }: Props) {
                           key={r}
                           type="button"
                           onClick={() => toggleRole(idx, r)}
-                          className={`px-2 py-0.5 rounded-full text-[11.5px] border transition-colors ${on ? 'bg-ink-950 border-ink-950 text-white' : 'bg-card border-paper-300 text-ink-700 hover:bg-paper-50'}`}
+                          className={`px-2 py-0.5 rounded-full text-[11.5px] border transition-colors ${on ? 'border-primary-200 bg-primary-50 text-primary-700' : 'bg-card border-surface-300 text-fg-700 hover:bg-surface-50'}`}
                         >
                           {r}
                         </button>
@@ -233,7 +233,7 @@ export function WorkflowBuilder({ steps, onChange }: Props) {
               {/* Due hours + escalation */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-dense font-medium text-ink-700 mb-1">Due in (hours)</label>
+                  <label className="block text-dense font-medium text-fg-700 mb-1">Due in (hours)</label>
                   <Input
                     type="number"
                     min={1}
@@ -243,11 +243,11 @@ export function WorkflowBuilder({ steps, onChange }: Props) {
                   />
                 </div>
                 <div>
-                  <label className="block text-dense font-medium text-ink-700 mb-1">Escalate to (on timeout)</label>
+                  <label className="block text-dense font-medium text-fg-700 mb-1">Escalate to (on timeout)</label>
                   <select
                     value={step.escalateTo ?? ''}
                     onChange={e => update(idx, { escalateTo: e.target.value || undefined })}
-                    className="w-full rounded-md border border-input text-[13px] text-ink-950 px-2.5 py-1.5 bg-card focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+                    className="w-full rounded-md border border-input text-[13px] text-fg-950 px-2.5 py-1.5 bg-card focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
                   >
                     <option value="">— No escalation —</option>
                     {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -257,10 +257,10 @@ export function WorkflowBuilder({ steps, onChange }: Props) {
 
               {/* Execution mode */}
               <div>
-                <label className="block text-dense font-medium text-ink-700 mb-1.5">Execution mode</label>
+                <label className="block text-dense font-medium text-fg-700 mb-1.5">Execution mode</label>
                 <div className="flex gap-3">
                   {(['sequential', 'parallel'] as const).map(mode => (
-                    <label key={mode} className="flex items-center gap-1.5 cursor-pointer text-[13px] text-ink-700">
+                    <label key={mode} className="flex items-center gap-1.5 cursor-pointer text-[13px] text-fg-700">
                       <input
                         type="radio"
                         name={`mode-${idx}`}
@@ -274,14 +274,14 @@ export function WorkflowBuilder({ steps, onChange }: Props) {
                             ? { approverIds: [step.approverId] }
                             : {}),
                         })}
-                        className="accent-ink-950"
+                        className="accent-fg-950"
                       />
                       {mode.charAt(0).toUpperCase() + mode.slice(1)}
                     </label>
                   ))}
                   {step.executionMode === 'parallel' && (
                     <div className="flex items-center gap-1.5 ml-4">
-                      <span className="text-[11.5px] text-ink-500">Required approvals:</span>
+                      <span className="text-[11.5px] text-fg-500">Required approvals:</span>
                       <Input
                         type="number"
                         min={1}
@@ -299,7 +299,7 @@ export function WorkflowBuilder({ steps, onChange }: Props) {
                         }}
                         className="w-16 text-[13px]"
                       />
-                      <span className="text-[11.5px] tabular-nums text-ink-400">
+                      <span className="text-[11.5px] tabular-nums text-fg-400">
                         of {step.approverIds?.length ?? 0}{(step.roleRequireds?.length ?? 0) > 0 ? ' + role members' : ''}
                       </span>
                     </div>

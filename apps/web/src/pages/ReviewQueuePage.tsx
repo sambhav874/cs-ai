@@ -112,24 +112,24 @@ export function ReviewQueuePage() {
     <div className="px-6 py-5 max-w-6xl mx-auto" data-testid="review-queue-page">
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h1 className="text-title text-ink-950 flex items-center gap-2">
-            <ShieldCheck className="size-4 text-ink-400" />
+          <h1 className="text-title text-fg-950 flex items-center gap-2">
+            <ShieldCheck className="size-4 text-fg-400" />
             Extraction Queue
           </h1>
-          <p className="text-dense text-ink-500 mt-1">
+          <p className="text-dense text-fg-500 mt-1">
             AI-extracted fields below the confidence threshold. Verify (keep the value),
             correct (set a new value), or reject (clear the value) — each contract stops
             carrying a silent low-confidence extraction.
           </p>
         </div>
-        <div className="text-[11px] text-ink-400 tabular-nums">
+        <div className="text-[11px] text-fg-400 tabular-nums">
           {data ? `${data.total} items · threshold ${(data.threshold * 100).toFixed(0)}%` : ''}
         </div>
       </div>
 
       <div className="flex items-center gap-2 mb-4">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-2.5 top-2 size-3.5 text-ink-400" />
+          <Search className="absolute left-2.5 top-2 size-3.5 text-fg-400" />
           <Input
             type="text"
             placeholder="Filter by contract, field, value or quote…"
@@ -143,7 +143,7 @@ export function ReviewQueuePage() {
           value={threshold}
           onChange={e => setThreshold(Number(e.target.value))}
           data-testid="review-queue-threshold"
-          className="h-8 text-[13px] text-ink-950 rounded-md border border-input bg-card px-2 focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+          className="h-8 text-[13px] text-fg-950 rounded-md border border-input bg-card px-2 focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
         >
           {THRESHOLDS.map(t =>
             <option key={t.value} value={t.value}>{t.label}</option>
@@ -151,7 +151,7 @@ export function ReviewQueuePage() {
         </select>
       </div>
 
-      {isLoading && <div className="text-body text-ink-500 py-6">Loading…</div>}
+      {isLoading && <div className="text-body text-fg-500 py-6">Loading…</div>}
       {error && (
         <div className="flex items-center gap-2 text-body text-risk-700 bg-risk-50 border border-risk-200 rounded-md p-3">
           <AlertTriangle className="size-4" /> Failed to load the queue.
@@ -173,31 +173,31 @@ export function ReviewQueuePage() {
           <div
             key={contractId}
             data-testid={`review-queue-contract-${contractId}`}
-            className="border border-paper-200 rounded-card bg-card overflow-hidden"
+            className="border border-surface-200 rounded-card bg-card overflow-hidden"
           >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-paper-200 bg-paper-50">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-surface-200 bg-surface-50">
               <div className="min-w-0 flex items-baseline gap-2">
                 <Link
                   to={`/contracts/${contractId}`}
-                  className="font-medium text-[13px] text-ink-950 hover:underline underline-offset-2 decoration-paper-300 truncate"
+                  className="font-medium text-[13px] text-fg-950 hover:underline underline-offset-2 decoration-surface-300 truncate"
                 >
                   {group.title}
                 </Link>
-                <span className="text-[10.5px] uppercase tracking-[0.08em] text-ink-400 font-mono">
+                <span className="text-[10.5px] uppercase tracking-[0.08em] text-fg-400 font-mono">
                   {group.items[0].contractType}
                 </span>
-                <span className="text-[10.5px] tabular-nums text-ink-500">
+                <span className="text-[10.5px] tabular-nums text-fg-500">
                   {group.items.length} flagged field{group.items.length === 1 ? '' : 's'}
                 </span>
               </div>
               <Link
                 to={`/contracts/${contractId}`}
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-ink-950 hover:underline underline-offset-2"
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-fg-950 hover:underline underline-offset-2"
               >
                 <ExternalLink className="size-3" /> Open contract
               </Link>
             </div>
-            <div className="divide-y divide-paper-200">
+            <div className="divide-y divide-surface-200">
               {group.items.map(it => {
                 const key = `${it.contractId}::${it.field}`
                 const busy = busyKey === key
@@ -210,8 +210,8 @@ export function ReviewQueuePage() {
                   className="px-4 py-2 flex items-start gap-3"
                 >
                   <div className="min-w-[140px] flex-shrink-0">
-                    <div className="text-[11px] font-medium text-ink-950">{it.fieldLabel}</div>
-                    <div className="text-[10.5px] text-ink-400 font-mono">{it.field}</div>
+                    <div className="text-[11px] font-medium text-fg-950">{it.fieldLabel}</div>
+                    <div className="text-[10.5px] text-fg-400 font-mono">{it.field}</div>
                   </div>
                   <div className="flex-1 min-w-0 space-y-0.5">
                     {editing ? (
@@ -247,14 +247,14 @@ export function ReviewQueuePage() {
                         </Button>
                       </div>
                     ) : (
-                      <div className="text-dense text-ink-950 truncate">
+                      <div className="text-dense text-fg-950 truncate">
                         {!isEmpty
                           ? String(it.value)
-                          : <em className="text-ink-400">(nothing extracted)</em>}
+                          : <em className="text-fg-400">(nothing extracted)</em>}
                       </div>
                     )}
                     {it.quote && !editing && (
-                      <div className="text-[10.5px] text-ink-500 italic truncate"
+                      <div className="text-[10.5px] text-fg-500 italic truncate"
                            title={it.quote}>
                         “{it.quote}”
                       </div>
@@ -307,7 +307,7 @@ export function ReviewQueuePage() {
                     <Button
                       size="xs"
                       variant="outline"
-                      className="text-brand-700 border-brand-200 hover:bg-brand-50"
+                      className="text-success-700 border-success-200 hover:bg-success-50"
                       onClick={() => verify.mutate({ contractId: it.contractId, field: it.field })}
                       disabled={busy}
                       data-testid={`review-queue-verify-${it.field}`}

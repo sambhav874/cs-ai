@@ -139,7 +139,7 @@ export function ArtifactPane({
       data-testid="artifact-pane"
       data-artifact-kind={artifact.kind}
       data-artifact-id={artifact.id}
-      className="flex-1 flex flex-col min-w-0 bg-paper-50 border-l border-paper-200"
+      className="flex-1 flex flex-col min-w-0 bg-surface-50 border-l border-surface-200"
     >
       <ArtifactHeader artifact={artifact} onClose={onClose} />
       <div className="flex-1 overflow-y-auto p-6">
@@ -153,7 +153,7 @@ export function ArtifactPane({
           inline buttons; doc/table/diff use the shared bar. */}
       {(artifact.kind === 'doc' || artifact.kind === 'table' || artifact.kind === 'diff')
         && (artifact.actions ?? []).length > 0 && (
-        <div className="bg-card border-t border-paper-200 px-5 py-3 flex items-center gap-2 flex-wrap">
+        <div className="bg-card border-t border-surface-200 px-5 py-3 flex items-center gap-2 flex-wrap">
           {(artifact.actions ?? []).map(a => (
             <ActionButton key={a.id} action={a} onAction={a => onAction(a, artifact)} />
           ))}
@@ -171,18 +171,18 @@ function ArtifactHeader({ artifact, onClose }: { artifact: Artifact; onClose: ()
     artifact.kind === 'form'  ? FormInput :
                                 ListChecks
   return (
-    <div className="h-14 flex items-center px-5 bg-card border-b border-paper-200 gap-3 shrink-0">
+    <div className="h-14 flex items-center px-5 bg-card border-b border-surface-200 gap-3 shrink-0">
       {/* The one assist mark on this pane: it says the artifact was authored by
           the machine. The document inside it stays neutral. */}
       <div className="size-7 rounded-md bg-assist-50 border border-assist-200 flex items-center justify-center shrink-0">
         <Icon className="size-3.5 text-assist-600" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-semibold text-ink-950 truncate" data-testid="artifact-title">
+        <div className="text-[13px] font-semibold text-fg-950 truncate" data-testid="artifact-title">
           {artifact.title}
         </div>
         {artifact.subtitle && (
-          <div className="text-[11px] text-ink-500 truncate">{artifact.subtitle}</div>
+          <div className="text-[11px] text-fg-500 truncate">{artifact.subtitle}</div>
         )}
       </div>
       <button
@@ -190,7 +190,7 @@ function ArtifactHeader({ artifact, onClose }: { artifact: Artifact; onClose: ()
         onClick={onClose}
         title="Close artifact (Esc)"
         data-testid="artifact-close"
-        className="text-ink-400 hover:text-ink-700 p-1 rounded-md hover:bg-paper-100"
+        className="text-fg-400 hover:text-fg-700 p-1 rounded-md hover:bg-surface-100"
       >
         <X className="size-4" />
       </button>
@@ -202,22 +202,22 @@ function ArtifactHeader({ artifact, onClose }: { artifact: Artifact; onClose: ()
 
 function DocBody({ artifact }: { artifact: DocArtifact }) {
   return (
-    <div className="max-w-3xl mx-auto bg-card border border-paper-200 rounded-card shadow-e1">
+    <div className="max-w-3xl mx-auto bg-card border border-surface-200 rounded-card shadow-e1">
       <div
-        className="p-10 prose prose-sm max-w-none prose-headings:font-bold prose-headings:text-ink-950"
+        className="p-10 prose prose-sm max-w-none prose-headings:font-bold prose-headings:text-fg-950"
         // Doc HTML is already sanitized by the agent; we trust it like
         // the existing TipTap renderer does on contract pages.
         dangerouslySetInnerHTML={{ __html: sanitizeHtml(artifact.html) }}
       />
       {artifact.citations && artifact.citations.length > 0 && (
-        <div className="px-10 pb-6 pt-2 border-t border-paper-200 mt-4">
-          <p className="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-2">Sources</p>
+        <div className="px-10 pb-6 pt-2 border-t border-surface-200 mt-4">
+          <p className="text-[10px] uppercase tracking-wider text-fg-400 font-semibold mb-2">Sources</p>
           <ul className="space-y-1">
             {artifact.citations.map((c, i) => (
               // Citations point at the document, not at the model — neutral.
-              <li key={i} className="text-[12px] text-ink-500">
+              <li key={i} className="text-[12px] text-fg-500">
                 {c.href ? (
-                  <a href={c.href} className="hover:underline text-ink-950 hover:text-brand-700">{c.label}</a>
+                  <a href={c.href} className="hover:underline text-fg-950 hover:text-primary-700">{c.label}</a>
                 ) : c.label}
               </li>
             ))}
@@ -244,16 +244,16 @@ function formatCell(v: unknown, format?: string): string {
 
 function TableBody({ artifact }: { artifact: TableArtifact }) {
   return (
-    <div className="max-w-5xl mx-auto bg-card border border-paper-200 rounded-card shadow-e1 overflow-hidden">
+    <div className="max-w-5xl mx-auto bg-card border border-surface-200 rounded-card shadow-e1 overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-[13px]">
-          <thead className="bg-paper-50 border-b border-paper-200">
+          <thead className="bg-surface-50 border-b border-surface-200">
             <tr>
               {artifact.columns.map(c => (
                 <th
                   key={c.key}
                   className={cn(
-                    'px-4 py-2.5 font-semibold text-ink-700 text-[11px] uppercase tracking-wider',
+                    'px-4 py-2.5 font-semibold text-fg-700 text-[11px] uppercase tracking-wider',
                     c.align === 'right' ? 'text-right' : 'text-left',
                   )}
                 >
@@ -262,10 +262,10 @@ function TableBody({ artifact }: { artifact: TableArtifact }) {
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-paper-100">
+          <tbody className="divide-y divide-surface-100">
             {artifact.rows.length === 0 ? (
               <tr>
-                <td colSpan={artifact.columns.length} className="px-4 py-12 text-center text-ink-400 text-[12px]">
+                <td colSpan={artifact.columns.length} className="px-4 py-12 text-center text-fg-400 text-[12px]">
                   No rows.
                 </td>
               </tr>
@@ -276,12 +276,12 @@ function TableBody({ artifact }: { artifact: TableArtifact }) {
                   : undefined
                 const Cell = href ? 'a' : 'div'
                 return (
-                  <tr key={i} className={href ? 'hover:bg-paper-50 cursor-pointer' : ''}>
+                  <tr key={i} className={href ? 'hover:bg-surface-50 cursor-pointer' : ''}>
                     {artifact.columns.map(c => (
                       <td
                         key={c.key}
                         className={cn(
-                          'px-4 py-2.5 text-ink-700',
+                          'px-4 py-2.5 text-fg-700',
                           c.align === 'right' ? 'text-right tabular-nums' : '',
                         )}
                       >
@@ -297,7 +297,7 @@ function TableBody({ artifact }: { artifact: TableArtifact }) {
           </tbody>
         </table>
       </div>
-      <div className="px-4 py-2 border-t border-paper-200 text-[11px] text-ink-500 flex items-center justify-between">
+      <div className="px-4 py-2 border-t border-surface-200 text-[11px] text-fg-500 flex items-center justify-between">
         <span className="tabular-nums">{artifact.rows.length} {artifact.rows.length === 1 ? 'row' : 'rows'}</span>
       </div>
     </div>
@@ -311,21 +311,21 @@ function DiffBody({ artifact }: { artifact: DiffArtifact }) {
   const afterLines = artifact.after.split('\n')
   const max = Math.max(beforeLines.length, afterLines.length)
   return (
-    <div className="max-w-5xl mx-auto bg-card border border-paper-200 rounded-card shadow-e1 overflow-hidden">
+    <div className="max-w-5xl mx-auto bg-card border border-surface-200 rounded-card shadow-e1 overflow-hidden">
       <div className="grid grid-cols-2 text-[12px] font-mono">
-        <div className="border-r border-paper-200">
+        <div className="border-r border-surface-200">
           <div className="px-3 py-1.5 bg-risk-50 text-risk-700 text-[10px] font-semibold uppercase tracking-wider border-b border-risk-200">Before</div>
-          <pre className="p-3 whitespace-pre-wrap text-ink-700 leading-relaxed">
+          <pre className="p-3 whitespace-pre-wrap text-fg-700 leading-relaxed">
             {beforeLines.slice(0, max).map((l, i) => (
               <div key={i} className={l !== afterLines[i] ? 'bg-risk-50' : ''}>{l || ' '}</div>
             ))}
           </pre>
         </div>
         <div>
-          <div className="px-3 py-1.5 bg-brand-50 text-brand-700 text-[10px] font-semibold uppercase tracking-wider border-b border-brand-200">After</div>
-          <pre className="p-3 whitespace-pre-wrap text-ink-700 leading-relaxed">
+          <div className="px-3 py-1.5 bg-success-50 text-success-700 text-[10px] font-semibold uppercase tracking-wider border-b border-success-200">After</div>
+          <pre className="p-3 whitespace-pre-wrap text-fg-700 leading-relaxed">
             {afterLines.slice(0, max).map((l, i) => (
-              <div key={i} className={l !== beforeLines[i] ? 'bg-brand-50' : ''}>{l || ' '}</div>
+              <div key={i} className={l !== beforeLines[i] ? 'bg-success-50' : ''}>{l || ' '}</div>
             ))}
           </pre>
         </div>
@@ -336,9 +336,9 @@ function DiffBody({ artifact }: { artifact: DiffArtifact }) {
 
 /** Field treatment lifted from ui/input.tsx — same border, same emerald focus. */
 const FIELD_CLS =
-  'w-full text-[13px] text-ink-950 bg-card border border-input rounded-md px-3 transition-colors ' +
-  'placeholder:text-ink-400 focus-visible:outline-none focus-visible:border-brand-700 ' +
-  'focus-visible:ring-[3px] focus-visible:ring-brand-700/15'
+  'w-full text-[13px] text-fg-950 bg-card border border-input rounded-md px-3 transition-colors ' +
+  'placeholder:text-fg-400 focus-visible:outline-none focus-visible:border-primary-700 ' +
+  'focus-visible:ring-[3px] focus-visible:ring-primary-700/15'
 
 function FormBody({ artifact, onAction }: { artifact: FormArtifact; onAction: (a: ArtifactAction, art: Artifact) => Promise<void> | void }) {
   const [values, setValues] = useState<Record<string, string>>(() => {
@@ -356,11 +356,11 @@ function FormBody({ artifact, onAction }: { artifact: FormArtifact; onAction: (a
     }
   }
   return (
-    <div className="max-w-2xl mx-auto bg-card border border-paper-200 rounded-card shadow-e1">
+    <div className="max-w-2xl mx-auto bg-card border border-surface-200 rounded-card shadow-e1">
       <div className="p-6 space-y-4">
         {artifact.fields.map(f => (
           <div key={f.key}>
-            <label className="block text-[11.5px] font-medium text-ink-700 mb-1">
+            <label className="block text-[11.5px] font-medium text-fg-700 mb-1">
               {f.label}{f.required && <span className="text-risk-600 ml-0.5">*</span>}
             </label>
             {f.type === 'textarea' ? (
@@ -389,7 +389,7 @@ function FormBody({ artifact, onAction }: { artifact: FormArtifact; onAction: (a
           </div>
         ))}
       </div>
-      <div className="bg-paper-50 border-t border-paper-200 px-5 py-3 flex items-center justify-end gap-2">
+      <div className="bg-surface-50 border-t border-surface-200 px-5 py-3 flex items-center justify-end gap-2">
         {/* Save is the user committing the form — ink, not the machine's indigo. */}
         <Button
           onClick={submit}
@@ -406,16 +406,16 @@ function FormBody({ artifact, onAction }: { artifact: FormArtifact; onAction: (a
 
 function CardBody({ artifact, onAction }: { artifact: CardArtifact; onAction: (a: ArtifactAction, art: Artifact) => Promise<void> | void }) {
   return (
-    <div className="max-w-2xl mx-auto bg-card border border-paper-200 rounded-card shadow-e1">
+    <div className="max-w-2xl mx-auto bg-card border border-surface-200 rounded-card shadow-e1">
       <div className="p-6">
-        <h2 className="text-title text-ink-950 mb-2">{artifact.headline}</h2>
+        <h2 className="text-title text-fg-950 mb-2">{artifact.headline}</h2>
         {artifact.details && artifact.details.length > 0 && (
-          <ul className="mt-3 space-y-1.5 text-[13px] text-ink-700 list-disc pl-5">
+          <ul className="mt-3 space-y-1.5 text-[13px] text-fg-700 list-disc pl-5">
             {artifact.details.map((d, i) => <li key={i}>{d}</li>)}
           </ul>
         )}
       </div>
-      <div className="bg-paper-50 border-t border-paper-200 px-5 py-3 flex items-center gap-2 flex-wrap">
+      <div className="bg-surface-50 border-t border-surface-200 px-5 py-3 flex items-center gap-2 flex-wrap">
         {artifact.actions.map(a => (
           <ActionButton key={a.id} action={a} onAction={a => onAction(a, artifact)} large />
         ))}

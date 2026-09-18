@@ -28,7 +28,7 @@ interface Notification {
  */
 const TYPE_ICON: Record<string, React.ReactNode> = {
   APPROVAL_REQUEST: <Clock className="size-3.5 text-attention-600" />,
-  APPROVAL_DECIDED: <CheckCircle2 className="size-3.5 text-brand-700" />,
+  APPROVAL_DECIDED: <CheckCircle2 className="size-3.5 text-success-700" />,
   ESCALATION:       <AlertTriangle className="size-3.5 text-attention-600" />,
   DELEGATION:       <ArrowRight className="size-3.5 text-info-600" />,
   OBLIGATION_DUE:   <CalendarClock className="size-3.5 text-attention-600" />,
@@ -82,36 +82,36 @@ export function NotificationBell() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setOpen(v => !v)}
-        className="relative p-2 rounded-md hover:bg-paper-100 transition-colors"
+        className="relative p-2 rounded-md hover:bg-surface-100 transition-colors"
         aria-label="Notifications"
         data-testid="notification-bell"
       >
-        <Bell className="size-4 text-ink-700" />
+        <Bell className="size-4 text-fg-700" />
         {/* Unread notifications are things waiting on this user — the one count
             in the shell that earns a meaning colour. */}
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 flex size-4 items-center justify-center rounded-full bg-attention-600 text-white text-[9px] font-bold leading-none tabular-nums">
+          <span className="absolute top-1 right-1 flex size-4 items-center justify-center rounded-full bg-attention-solid text-white text-[9px] font-bold leading-none tabular-nums">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-1 w-80 bg-card rounded-card shadow-e2 border border-paper-200 z-50 overflow-hidden">
+        <div className="absolute right-0 mt-1 w-80 bg-card rounded-card shadow-e2 border border-surface-200 z-50 overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between px-3 py-2.5 border-b border-paper-200 bg-paper-50">
-            <span className="text-dense font-semibold text-ink-950">Notifications</span>
+          <div className="flex items-center justify-between px-3 py-2.5 border-b border-surface-200 bg-surface-50">
+            <span className="text-dense font-semibold text-fg-950">Notifications</span>
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
                 <button
                   onClick={() => markRead.mutate(undefined)}
-                  className="text-[11.5px] font-medium text-ink-950 hover:underline underline-offset-2"
+                  className="text-[11.5px] font-medium text-fg-950 hover:underline underline-offset-2"
                 >
                   Mark all read
                 </button>
               )}
-              <button onClick={() => setOpen(false)} className="p-0.5 rounded-chip hover:bg-paper-200">
-                <X className="size-3.5 text-ink-500" />
+              <button onClick={() => setOpen(false)} className="p-0.5 rounded-chip hover:bg-surface-200">
+                <X className="size-3.5 text-fg-500" />
               </button>
             </div>
           </div>
@@ -119,16 +119,16 @@ export function NotificationBell() {
           {/* List */}
           {notifications.length === 0 ? (
             <div className="px-4 py-8 text-center">
-              <Bell className="size-6 text-ink-400 mx-auto mb-2" />
-              <p className="text-dense text-ink-500">No notifications</p>
+              <Bell className="size-6 text-fg-400 mx-auto mb-2" />
+              <p className="text-dense text-fg-500">No notifications</p>
             </div>
           ) : (
-            <div className="divide-y divide-paper-200 max-h-96 overflow-y-auto">
+            <div className="divide-y divide-surface-200 max-h-96 overflow-y-auto">
               {notifications.map(n => (
                 <div
                   key={n.id}
                   data-testid={`notification-${n.type}`}
-                  className={`flex gap-2.5 px-3 py-2 hover:bg-paper-100 transition-colors cursor-pointer ${!n.read ? 'bg-paper-50' : ''}`}
+                  className={`flex gap-2.5 px-3 py-2 hover:bg-surface-100 transition-colors cursor-pointer ${!n.read ? 'bg-surface-50' : ''}`}
                   onClick={() => {
                     if (!n.read) markRead.mutate([n.id])
                     setOpen(false)
@@ -148,14 +148,14 @@ export function NotificationBell() {
                   }}
                 >
                   <div className="shrink-0 mt-0.5">
-                    {TYPE_ICON[n.type] ?? <Bell className="size-3.5 text-ink-400" />}
+                    {TYPE_ICON[n.type] ?? <Bell className="size-3.5 text-fg-400" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className={`text-[11.5px] font-medium leading-snug ${n.read ? 'text-ink-700' : 'text-ink-950'}`}>
+                    <p className={`text-[11.5px] font-medium leading-snug ${n.read ? 'text-fg-700' : 'text-fg-950'}`}>
                       {n.title}
                     </p>
-                    <p className="text-[11.5px] text-ink-500 truncate mt-0.5">{n.body}</p>
-                    <p className="text-[11px] text-ink-400 mt-0.5">{relativeTime(n.createdAt)}</p>
+                    <p className="text-[11.5px] text-fg-500 truncate mt-0.5">{n.body}</p>
+                    <p className="text-[11px] text-fg-400 mt-0.5">{relativeTime(n.createdAt)}</p>
                   </div>
                   {!n.read && (
                     <div className="shrink-0 mt-1.5 size-1.5 rounded-full bg-attention-600" />

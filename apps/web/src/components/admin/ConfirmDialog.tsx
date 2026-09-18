@@ -103,7 +103,7 @@ export function ConfirmDialog({
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-ink-950/50"
+        className="absolute inset-0 bg-scrim/50"
         onClick={onCancel}
         aria-hidden="true"
       />
@@ -114,7 +114,7 @@ export function ConfirmDialog({
         aria-labelledby="confirm-dialog-title"
         tabIndex={-1}
         data-testid={testId}
-        className="relative w-full max-w-md rounded-card border border-paper-200 bg-card shadow-e3 focus:outline-none"
+        className="relative w-full max-w-md rounded-card border border-surface-200 bg-card shadow-e3 focus:outline-none"
       >
         <div className="flex items-start gap-3 px-5 pt-5">
           {tone === 'destructive' && (
@@ -126,10 +126,10 @@ export function ConfirmDialog({
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <h2 id="confirm-dialog-title" className="text-section text-ink-950">
+            <h2 id="confirm-dialog-title" className="text-section text-fg-950">
               {title}
             </h2>
-            <div className="mt-1.5 text-dense leading-relaxed text-ink-700">{body}</div>
+            <div className="mt-1.5 text-dense leading-relaxed text-fg-700">{body}</div>
           </div>
         </div>
 
@@ -137,11 +137,11 @@ export function ConfirmDialog({
           <div className="mt-4 px-5">
             <label
               htmlFor="confirm-typed"
-              className="mb-1.5 block text-[11.5px] font-semibold text-ink-950"
+              className="mb-1.5 block text-[11.5px] font-semibold text-fg-950"
             >
               {requireTypedHint ?? (
                 <>
-                  Type <span className="font-mono text-ink-700">{requireTyped}</span> to confirm
+                  Type <span className="font-mono text-fg-700">{requireTyped}</span> to confirm
                 </>
               )}
             </label>
@@ -162,7 +162,7 @@ export function ConfirmDialog({
           </div>
         )}
 
-        <div className="mt-5 flex justify-end gap-2 border-t border-paper-200 px-5 py-4">
+        <div className="mt-5 flex justify-end gap-2 border-t border-surface-200 px-5 py-4">
           <Button variant="outline" onClick={onCancel} disabled={isPending}>
             {cancelLabel}
           </Button>

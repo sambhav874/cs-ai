@@ -123,7 +123,7 @@ export function MatterDetailPage() {
   if (error || !data) {
     return (
       <div className="px-6 py-5 max-w-6xl mx-auto" data-testid="matter-detail-error">
-        <Link to="/matters" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-ink-950 mb-4">
+        <Link to="/matters" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-fg-950 mb-4">
           <ArrowLeft className="size-3" /> Matters
         </Link>
         <EmptyState
@@ -142,13 +142,13 @@ export function MatterDetailPage() {
 
   return (
     <div className="px-6 py-5 max-w-6xl mx-auto" data-testid="matter-detail-page">
-      <Link to="/matters" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-ink-950 mb-3">
+      <Link to="/matters" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-fg-950 mb-3">
         <ArrowLeft className="size-3" /> Matters
       </Link>
       <div className="flex items-start justify-between gap-4 mb-4">
         <div className="min-w-0">
-          <h1 className="text-title text-ink-950 flex items-center gap-2 flex-wrap">
-            <Briefcase className="size-4 text-ink-400 shrink-0" />
+          <h1 className="text-title text-fg-950 flex items-center gap-2 flex-wrap">
+            <Briefcase className="size-4 text-fg-400 shrink-0" />
             {data.name}
             <StatusPill status={data.status} />
           </h1>
@@ -161,21 +161,21 @@ export function MatterDetailPage() {
                 {data.counterpartyId ? (
                   <Link
                     to={`/counterparties/${data.counterpartyId}`}
-                    className="text-ink-950 font-medium hover:underline underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                    className="text-fg-950 font-medium hover:underline underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                     data-testid="matter-counterparty-link"
                   >
                     {data.counterpartyName}
                   </Link>
                 ) : (
-                  <span className="text-ink-950">{data.counterpartyName}</span>
+                  <span className="text-fg-950">{data.counterpartyName}</span>
                 )}
               </span>
             )}
-            {data.owner && <span>· Owner: <span className="text-ink-950">{data.owner.name}</span></span>}
+            {data.owner && <span>· Owner: <span className="text-fg-950">{data.owner.name}</span></span>}
             {/* User-authored tags, so neutral — indigo is the machine's. */}
-            {data.tags.map(t => <span key={t} className="font-mono text-ink-700 bg-paper-100 border border-paper-200 rounded-chip px-1.5">#{t}</span>)}
+            {data.tags.map(t => <span key={t} className="font-mono text-fg-700 bg-surface-100 border border-surface-200 rounded-chip px-1.5">#{t}</span>)}
           </div>
-          {data.description && <p className="text-[12px] text-ink-700 mt-2 max-w-3xl">{data.description}</p>}
+          {data.description && <p className="text-[12px] text-fg-700 mt-2 max-w-3xl">{data.description}</p>}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {data.status === 'OPEN' ? (
@@ -238,8 +238,8 @@ export function MatterDetailPage() {
                 'relative flex items-center gap-1.5 py-2 border-b-2 transition-colors',
                 // Selected tab is an action state — ink, not a hue.
                 active
-                  ? 'text-ink-950 border-ink-950 font-semibold'
-                  : 'text-muted-foreground border-transparent hover:text-ink-950',
+                  ? 'text-fg-950 border-fg-950 font-semibold'
+                  : 'text-muted-foreground border-transparent hover:text-fg-950',
               )}
             >
               <Icon className="size-3.5" />
@@ -261,9 +261,9 @@ export function MatterDetailPage() {
             const amount = money(c.value, c.currency)
             return (
               <li key={c.id}>
-                <Link to={`/contracts/${c.id}`} className="block px-4 py-2 hover:bg-muted/40 focus:outline-none focus-visible:bg-paper-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+                <Link to={`/contracts/${c.id}`} className="block px-4 py-2 hover:bg-muted/40 focus:outline-none focus-visible:bg-surface-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
                   <div className="flex items-baseline gap-2 flex-wrap">
-                    <span className="font-medium text-[12.5px] text-ink-950 truncate">{c.title}</span>
+                    <span className="font-medium text-[12.5px] text-fg-950 truncate">{c.title}</span>
                     <span className="text-[10.5px] uppercase tracking-[0.09em] text-muted-foreground font-mono">{c.type}</span>
                     <StatusPill status={c.status} />
                     <span className="ml-auto text-[10.5px] text-muted-foreground whitespace-nowrap">{relativeTime(c.updatedAt)}</span>
@@ -272,7 +272,7 @@ export function MatterDetailPage() {
                       NDAs apart. This row used to carry only value + risk. */}
                   <div className="mt-0.5 flex items-center gap-2.5 flex-wrap text-[11px] text-muted-foreground">
                     {c.counterpartyName && <span>{c.counterpartyName}</span>}
-                    {amount && <span className="tabular-nums text-ink-700 font-medium">{amount}</span>}
+                    {amount && <span className="tabular-nums text-fg-700 font-medium">{amount}</span>}
                     {/*
                       Risk keeps the system's default treatment — a meaning dot
                       beside neutral text — instead of colouring the whole
@@ -315,11 +315,11 @@ export function MatterDetailPage() {
               <Link
                 to={`/requests?request=${r.id}`}
                 data-testid={`matter-request-${r.id}`}
-                className="block px-4 py-2 hover:bg-muted/40 focus:outline-none focus-visible:bg-paper-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                className="block px-4 py-2 hover:bg-muted/40 focus:outline-none focus-visible:bg-surface-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               >
                 <div className="flex items-baseline gap-2 flex-wrap">
                   <span className="font-mono text-[10.5px] text-muted-foreground">{r.requestNumber ?? r.id.slice(-6)}</span>
-                  <span className="font-medium text-[12.5px] text-ink-950 truncate">{r.title}</span>
+                  <span className="font-medium text-[12.5px] text-fg-950 truncate">{r.title}</span>
                   {/* Was `· {r.status} · {r.priority}` — raw database values. */}
                   <StatusPill status={r.status} />
                   <span className="text-[11px] text-muted-foreground">
@@ -342,7 +342,7 @@ export function MatterDetailPage() {
             <li key={t.id} className="px-4 py-2">
               <div className="flex items-baseline gap-2 flex-wrap">
                 <MessageSquare className="size-3 text-muted-foreground self-center" />
-                <span className="text-[12.5px] text-ink-950 truncate">{t.title}</span>
+                <span className="text-[12.5px] text-fg-950 truncate">{t.title}</span>
                 <span className="ml-auto text-[10.5px] text-muted-foreground whitespace-nowrap">
                   last activity {relativeTime(t.updatedAt)}
                 </span>

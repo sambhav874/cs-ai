@@ -95,15 +95,15 @@ export function ProfilePage() {
 
   return (
     <div className="max-w-2xl mx-auto py-10 px-4 space-y-8">
-      <h1 className="text-title text-ink-950">Profile</h1>
+      <h1 className="text-title text-fg-950">Profile</h1>
 
       {/* Profile Info */}
       <Card className="p-5 space-y-4">
-        <h2 className="text-section text-ink-950">Profile Info</h2>
+        <h2 className="text-section text-fg-950">Profile Info</h2>
 
         <form onSubmit={handleProfileSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="profile-name" className="text-[11.5px] font-semibold text-ink-950">Name</Label>
+            <Label htmlFor="profile-name" className="text-[11.5px] font-semibold text-fg-950">Name</Label>
             <Input
               id="profile-name"
               type="text"
@@ -121,8 +121,8 @@ export function ProfilePage() {
               flow we'll wire later; for now the path is "ask admin". */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label htmlFor="profile-email" className="text-[11.5px] font-semibold text-ink-950">Email</Label>
-              <span className="text-[10px] uppercase tracking-wider text-ink-500">read-only</span>
+              <Label htmlFor="profile-email" className="text-[11.5px] font-semibold text-fg-950">Email</Label>
+              <span className="text-[10px] uppercase tracking-wider text-fg-500">read-only</span>
             </div>
             <Input
               id="profile-email"
@@ -130,7 +130,7 @@ export function ProfilePage() {
               value={profile?.email ?? ''}
               readOnly
               data-testid="profile-email"
-              className="bg-paper-50 text-ink-700 cursor-not-allowed select-all"
+              className="bg-surface-50 text-fg-700 cursor-not-allowed select-all"
             />
             <p className="text-[11px] text-muted-foreground">
               Email is your login identifier. Contact an admin to change it.
@@ -138,7 +138,7 @@ export function ProfilePage() {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="profile-avatar" className="text-[11.5px] font-semibold text-ink-950">Avatar</Label>
+            <Label htmlFor="profile-avatar" className="text-[11.5px] font-semibold text-fg-950">Avatar</Label>
             <div className="flex items-start gap-3">
               {/* Live preview — initials fallback, or image if URL is valid */}
               <div className="shrink-0">
@@ -181,7 +181,7 @@ export function ProfilePage() {
             <div
               className={`text-dense px-3 py-2 rounded-md border ${
                 profileMsg.type === 'success'
-                  ? 'bg-paper-100 text-ink-700 border-paper-200'
+                  ? 'bg-surface-100 text-fg-700 border-surface-200'
                   : 'bg-risk-50 text-risk-700 border-risk-200'
               }`}
             >
@@ -197,7 +197,7 @@ export function ProfilePage() {
 
       {/* My Roles */}
       <Card className="p-5 space-y-3">
-        <h2 className="text-section text-ink-950">My Roles</h2>
+        <h2 className="text-section text-fg-950">My Roles</h2>
 
         <div className="flex flex-wrap gap-2">
           {profile?.roles && profile.roles.length > 0 ? (
@@ -213,11 +213,11 @@ export function ProfilePage() {
          layout tidy above.
       */}
       <Card className="p-5 space-y-4">
-        <h2 className="text-section text-ink-950">Change Password</h2>
+        <h2 className="text-section text-fg-950">Change Password</h2>
 
         <form onSubmit={handlePasswordSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="old-password" className="text-[11.5px] font-semibold text-ink-950">Current Password</Label>
+            <Label htmlFor="old-password" className="text-[11.5px] font-semibold text-fg-950">Current Password</Label>
             <Input
               id="old-password"
               type="password"
@@ -230,7 +230,7 @@ export function ProfilePage() {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="new-password" className="text-[11.5px] font-semibold text-ink-950">New Password</Label>
+            <Label htmlFor="new-password" className="text-[11.5px] font-semibold text-fg-950">New Password</Label>
             <Input
               id="new-password"
               type="password"
@@ -243,7 +243,7 @@ export function ProfilePage() {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="confirm-password" className="text-[11.5px] font-semibold text-ink-950">Confirm New Password</Label>
+            <Label htmlFor="confirm-password" className="text-[11.5px] font-semibold text-fg-950">Confirm New Password</Label>
             <Input
               id="confirm-password"
               type="password"
@@ -259,7 +259,7 @@ export function ProfilePage() {
             <div
               className={`text-dense px-3 py-2 rounded-md border ${
                 passwordMsg.type === 'success'
-                  ? 'bg-paper-100 text-ink-700 border-paper-200'
+                  ? 'bg-surface-100 text-fg-700 border-surface-200'
                   : 'bg-risk-50 text-risk-700 border-risk-200'
               }`}
             >
@@ -303,12 +303,12 @@ function colorFromString(s: string): string {
   let h = 0
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
   const palette = [
-    'bg-paper-100 text-ink-700',
-    'bg-paper-200 text-ink-950',
-    'bg-ink-950 text-white',
-    'bg-paper-100 text-ink-950',
-    'bg-paper-300 text-ink-950',
-    'bg-ink-700 text-white',
+    'bg-surface-100 text-fg-700',
+    'bg-surface-200 text-fg-950',
+    'bg-primary-50 text-primary-700',
+    'bg-surface-100 text-fg-950',
+    'bg-surface-300 text-fg-950',
+    'bg-inverse text-inverse-fg',
   ]
   return palette[h % palette.length]
 }

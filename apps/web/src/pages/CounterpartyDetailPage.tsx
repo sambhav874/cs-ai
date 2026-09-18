@@ -182,7 +182,7 @@ export function CounterpartyDetailPage() {
       {/* Breadcrumb */}
       <Link
         to="/counterparties"
-        className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-ink-950 mb-3"
+        className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-fg-950 mb-3"
         data-testid="cp-back-link"
       >
         <ArrowLeft className="size-3" /> Counterparties
@@ -191,9 +191,9 @@ export function CounterpartyDetailPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-5">
         <div className="min-w-0 flex-1">
-          <h1 className="text-title text-ink-950 flex items-center gap-2.5" data-testid="cp-name">
-            <span className="inline-flex items-center justify-center size-9 rounded-card bg-paper-100 border border-paper-200">
-              <Building2 className="size-4 text-ink-500" />
+          <h1 className="text-title text-fg-950 flex items-center gap-2.5" data-testid="cp-name">
+            <span className="inline-flex items-center justify-center size-9 rounded-card bg-surface-100 border border-surface-200">
+              <Building2 className="size-4 text-fg-500" />
             </span>
             {cp.name}
           </h1>
@@ -210,10 +210,10 @@ export function CounterpartyDetailPage() {
                 href={cp.website.startsWith('http') ? cp.website : `https://${cp.website}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-ink-700 hover:text-brand-700"
+                className="inline-flex items-center gap-1.5 text-fg-700 hover:text-primary-700"
                 data-testid="cp-website"
               >
-                <Globe className="size-3.5 text-ink-400" />
+                <Globe className="size-3.5 text-fg-400" />
                 {cp.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}
                 <ExternalLink className="size-2.5" />
               </a>
@@ -221,16 +221,16 @@ export function CounterpartyDetailPage() {
             {cp.email && (
               <a
                 href={`mailto:${cp.email}`}
-                className="inline-flex items-center gap-1.5 text-ink-700 hover:text-brand-700"
+                className="inline-flex items-center gap-1.5 text-fg-700 hover:text-primary-700"
                 data-testid="cp-email"
               >
-                <Mail className="size-3.5 text-ink-400" />
+                <Mail className="size-3.5 text-fg-400" />
                 {cp.email}
               </a>
             )}
             {cp.phone && (
-              <span className="inline-flex items-center gap-1.5 text-ink-700">
-                <Phone className="size-3.5 text-ink-400" />
+              <span className="inline-flex items-center gap-1.5 text-fg-700">
+                <Phone className="size-3.5 text-fg-400" />
                 {cp.phone}
               </span>
             )}
@@ -242,8 +242,8 @@ export function CounterpartyDetailPage() {
               The relationship is what counsel is asking about, so the first
               contract wins when there is one, and the label says which.
             */}
-            <span className="inline-flex items-center gap-1.5 text-ink-500" data-testid="cp-tenure">
-              <Clock className="size-3.5 text-ink-400" />
+            <span className="inline-flex items-center gap-1.5 text-fg-500" data-testid="cp-tenure">
+              <Clock className="size-3.5 text-fg-400" />
               {cp.stats.firstContractAt ? 'First contract ' : 'Added '}
               {new Date(cp.stats.firstContractAt ?? cp.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
               {yearsActive >= 1 && ` · ${yearsActive} ${yearsActive === 1 ? 'yr' : 'yrs'} of history`}
@@ -314,14 +314,14 @@ export function CounterpartyDetailPage() {
       {/* Contracts + Activity — two column on wide, stacked on narrow */}
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-5">
         <section className="border border-border rounded-card bg-card overflow-hidden" data-testid="cp-contracts">
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-paper-50">
-            <h2 className="text-eyebrow uppercase text-ink-700">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-surface-50">
+            <h2 className="text-eyebrow uppercase text-fg-700">
               Contracts ({cp.contracts.length})
             </h2>
             {cp.contracts.length > 0 && (
               <Link
                 to={`/contracts?counterpartyId=${cp.id}&filterLabel=${encodeURIComponent(cp.name)}`}
-                className="text-[11px] font-medium text-ink-950 hover:text-brand-700 hover:underline"
+                className="text-[11px] font-medium text-fg-950 hover:text-primary-700 hover:underline"
               >
                 View in list →
               </Link>
@@ -355,24 +355,24 @@ export function CounterpartyDetailPage() {
                   <li key={c.id} data-testid={`cp-contract-${c.id}`}>
                     <Link
                       to={`/contracts/${c.id}`}
-                      className="block px-4 py-2 hover:bg-paper-50 transition-colors group"
+                      className="block px-4 py-2 hover:bg-surface-50 transition-colors group"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <FileText className="size-3.5 text-ink-400 flex-shrink-0" />
-                            <span className="font-medium text-[13px] text-ink-950 group-hover:text-brand-700">
+                            <FileText className="size-3.5 text-fg-400 flex-shrink-0" />
+                            <span className="font-medium text-[13px] text-fg-950 group-hover:text-primary-700">
                               {c.title}
                             </span>
                             {c.contractNumber && (
-                              <span className="font-mono text-[10px] text-ink-400">{c.contractNumber}</span>
+                              <span className="font-mono text-[10px] text-fg-400">{c.contractNumber}</span>
                             )}
                           </div>
                           <div className="mt-1 flex items-center gap-2 flex-wrap text-[11px]">
                             <StatusPill status={c.status} />
-                            <span className="font-mono uppercase text-[9.5px] tracking-[0.09em] text-ink-400">{c.type}</span>
+                            <span className="font-mono uppercase text-[9.5px] tracking-[0.09em] text-fg-400">{c.type}</span>
                             {v > 0 && (
-                              <span className="text-ink-700 font-medium tabular-nums">
+                              <span className="text-fg-700 font-medium tabular-nums">
                                 {formatMoney(v, c.currency ?? 'USD')}
                               </span>
                             )}
@@ -386,7 +386,7 @@ export function CounterpartyDetailPage() {
                             */}
                             {risk != null && (
                               <span
-                                className={`inline-flex items-center gap-1 tabular-nums ${riskBand(risk) === 'low' ? 'text-ink-500' : 'text-ink-700'}`}
+                                className={`inline-flex items-center gap-1 tabular-nums ${riskBand(risk) === 'low' ? 'text-fg-500' : 'text-fg-700'}`}
                                 title={`Risk score ${risk} of 100 — ${riskBand(risk)} band`}
                               >
                                 {/* The score shows on every row so the "High
@@ -405,7 +405,7 @@ export function CounterpartyDetailPage() {
                             {exp && (
                               <span className={
                                 exp.tone === 'risk' ? 'text-risk-700 font-medium'
-                                  : exp.tone === 'turn' ? 'text-ink-700'
+                                  : exp.tone === 'turn' ? 'text-fg-700'
                                   : 'text-muted-foreground'
                               }>
                                 {exp.label.replace(/^Expire/, 'expire').replace(/^Expired/, 'expired')}
@@ -429,8 +429,8 @@ export function CounterpartyDetailPage() {
         </section>
 
         <aside className="border border-border rounded-card bg-card overflow-hidden h-fit" data-testid="cp-activity">
-          <div className="px-4 py-2.5 border-b border-border bg-paper-50">
-            <h2 className="text-eyebrow uppercase text-ink-700">
+          <div className="px-4 py-2.5 border-b border-border bg-surface-50">
+            <h2 className="text-eyebrow uppercase text-fg-700">
               Recent activity
             </h2>
           </div>
@@ -446,7 +446,7 @@ export function CounterpartyDetailPage() {
                     to={`/contracts/${e.contractId}`}
                     className="block group"
                   >
-                    <p className="text-[12px] text-ink-950 group-hover:text-brand-700 line-clamp-2">
+                    <p className="text-[12px] text-fg-950 group-hover:text-primary-700 line-clamp-2">
                       {e.label}
                     </p>
                     <p className="text-[10.5px] text-muted-foreground mt-0.5">
@@ -491,13 +491,13 @@ function StatCard({
   const iconCls =
     tone === 'inflight' ? 'text-info-600' :
     tone === 'risk' ? 'text-risk-600' :
-    'text-ink-400'
+    'text-fg-400'
   return (
     <div className={`border rounded-card px-3.5 py-3 ${toneCls}`}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-ink-400">{label}</p>
-          <p className="text-[20px] font-semibold tracking-[-0.015em] text-ink-950 mt-1 tabular-nums">{value}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-fg-400">{label}</p>
+          <p className="text-[20px] font-semibold tracking-[-0.015em] text-fg-950 mt-1 tabular-nums">{value}</p>
         </div>
         <Icon className={`size-4 ${iconCls}`} />
       </div>
@@ -540,12 +540,12 @@ function EditModal({
     setForm(v => ({ ...v, [f]: e.target.value }))
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 backdrop-blur-sm">
       <div className="bg-card rounded-card shadow-e3 w-full max-w-md mx-4">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-paper-200">
-          <h2 className="text-section text-ink-950">Edit Counterparty</h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-paper-100 rounded-md">
-            <X className="size-4 text-ink-500" />
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200">
+          <h2 className="text-section text-fg-950">Edit Counterparty</h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-surface-100 rounded-md">
+            <X className="size-4 text-fg-500" />
           </button>
         </div>
         <div className="px-6 py-5 space-y-3.5">
@@ -573,7 +573,7 @@ function EditModal({
             <p className="text-[11.5px] text-risk-700">Failed to save changes.</p>
           )}
         </div>
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-paper-200">
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-surface-200">
           <Button variant="ghost" size="sm" onClick={onClose} disabled={save.isPending}>Cancel</Button>
           <Button
             size="sm"
@@ -593,7 +593,7 @@ function EditModal({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-[11px] font-medium text-ink-700 mb-1.5">{label}</label>
+      <label className="block text-[11px] font-medium text-fg-700 mb-1.5">{label}</label>
       {children}
     </div>
   )

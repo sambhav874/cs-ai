@@ -122,11 +122,11 @@ export function ThinkingIndicator({
       aria-live="polite"
       data-testid="agent-thinking"
     >
-      <div className="flex items-center gap-2.5 text-dense text-ink-500">
+      <div className="flex items-center gap-2.5 text-dense text-fg-500">
         <WaveDots />
         <span>{slow ? copy.slow : copy.label}</span>
         {elapsed > 0 && (
-          <span className="tabular-nums text-ink-400">{elapsed}s</span>
+          <span className="tabular-nums text-fg-400">{elapsed}s</span>
         )}
       </div>
 
@@ -142,7 +142,7 @@ export function ThinkingIndicator({
         {['92%', '78%', '55%'].map((w, i) => (
           <span
             key={w}
-            className="block h-2 rounded-full bg-paper-100 animate-pulse motion-reduce:animate-none"
+            className="block h-2 rounded-full bg-surface-100 animate-pulse motion-reduce:animate-none"
             style={{ width: w, animationDelay: `${i * 140}ms` }}
           />
         ))}
@@ -150,7 +150,7 @@ export function ThinkingIndicator({
       )}
 
       {slow && (
-        <p className="text-[11.5px] text-ink-400">
+        <p className="text-[11.5px] text-fg-400">
           Longer questions across the whole portfolio can take a while. Press
           Esc to stop.
         </p>

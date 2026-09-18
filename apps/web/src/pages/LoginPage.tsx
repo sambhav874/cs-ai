@@ -44,22 +44,22 @@ const STUB_COPY: Record<StubKind, { title: string; body: string; eta: string }> 
 function StubDialog({ kind, onClose }: { kind: StubKind; onClose: () => void }) {
   const { title, body, eta } = STUB_COPY[kind]
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/40 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-card border border-paper-200 rounded-card shadow-e3 w-full max-w-md mx-4 p-6 space-y-4"
+        className="bg-card border border-surface-200 rounded-card shadow-e3 w-full max-w-md mx-4 p-6 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between">
-          <h2 className="text-section text-ink-950">{title}</h2>
+          <h2 className="text-section text-fg-950">{title}</h2>
           {/* "Available in v1.1" is a roadmap note, not a thing blocking the
               user — so it loses amber and stays a neutral chip. */}
-          <span className="rounded-full border border-paper-200 bg-paper-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-700">
+          <span className="rounded-full border border-surface-200 bg-surface-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-700">
             {eta}
           </span>
         </div>
-        <p className="text-body text-ink-500">{body}</p>
-        <div className="flex items-center gap-2 rounded-md bg-paper-100 px-3 py-2 text-dense text-ink-500">
-          <CheckCircle2 className="size-3.5 shrink-0 text-ink-400" />
+        <p className="text-body text-fg-500">{body}</p>
+        <div className="flex items-center gap-2 rounded-md bg-surface-100 px-3 py-2 text-dense text-fg-500">
+          <CheckCircle2 className="size-3.5 shrink-0 text-fg-400" />
           Sign in with email + password below to continue for now.
         </div>
         <div className="flex justify-end">
@@ -108,9 +108,9 @@ function ForgotPasswordDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/40 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-card border border-paper-200 rounded-card shadow-e3 w-full max-w-md mx-4 p-6 space-y-4"
+        className="bg-card border border-surface-200 rounded-card shadow-e3 w-full max-w-md mx-4 p-6 space-y-4"
         onClick={(e) => e.stopPropagation()}
         data-testid="forgot-password-dialog"
       >
@@ -119,14 +119,14 @@ function ForgotPasswordDialog({ onClose }: { onClose: () => void }) {
             <div className="flex items-center gap-2">
               {/* A password-reset request isn't binding, so this glyph stays
                   ink — emerald is reserved for approved/executed/signed. */}
-              <MailCheck className="size-4 text-ink-700" />
-              <h2 className="text-section text-ink-950">Request sent</h2>
+              <MailCheck className="size-4 text-fg-700" />
+              <h2 className="text-section text-fg-950">Request sent</h2>
             </div>
-            <p className="text-body text-ink-500">
-              If an account exists for <span className="font-medium text-ink-950">{email}</span>,
+            <p className="text-body text-fg-500">
+              If an account exists for <span className="font-medium text-fg-950">{email}</span>,
               your administrator has been notified. They&apos;ll send you a new temporary password — usually within a few hours.
             </p>
-            <div className="rounded-md bg-paper-100 px-3 py-2 text-dense text-ink-500">
+            <div className="rounded-md bg-surface-100 px-3 py-2 text-dense text-fg-500">
               Tip: still no email after a day? Reach out to your admin directly. We don&apos;t reveal whether an email is registered, so this prompt looks the same either way.
             </div>
             <div className="flex justify-end">
@@ -138,8 +138,8 @@ function ForgotPasswordDialog({ onClose }: { onClose: () => void }) {
         ) : (
           <>
             <div>
-              <h2 className="text-section text-ink-950">Reset your password</h2>
-              <p className="text-dense text-ink-500 mt-1">
+              <h2 className="text-section text-fg-950">Reset your password</h2>
+              <p className="text-dense text-fg-500 mt-1">
                 Enter your work email and we&apos;ll notify your admin to send a new temporary password.
               </p>
             </div>
@@ -239,8 +239,8 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-paper-50">
-      <div className="w-full max-w-sm space-y-6 p-8 border border-paper-200 rounded-card bg-card shadow-e1">
+    <div className="min-h-screen flex items-center justify-center bg-surface-50">
+      <div className="w-full max-w-sm space-y-6 p-8 border border-surface-200 rounded-card bg-card shadow-e1">
         {/* P7.4.9 / F-06 — wordmark above the form. Trust signal +
             consistent brand identity across login / register / portal. */}
         <div className="flex flex-col items-center text-center" data-testid="login-brand">
@@ -252,8 +252,8 @@ export function LoginPage() {
                 display step would fill it edge to edge. */}
             <Wordmark size="xl" className="text-[28px]" />
           </div>
-          <h1 className="text-title text-ink-950">Sign in</h1>
-          <p className="text-body text-ink-500 mt-0.5">Welcome back — please enter your details.</p>
+          <h1 className="text-title text-fg-950">Sign in</h1>
+          <p className="text-body text-fg-500 mt-0.5">Welcome back — please enter your details.</p>
         </div>
 
         {/* B.6.10 — SSO buttons first (enterprise convention). Outline, not
@@ -287,7 +287,7 @@ export function LoginPage() {
             size="sm"
             onClick={() => setStub('sso-saml')}
             data-testid="sso-saml"
-            className="w-full font-medium text-ink-500"
+            className="w-full font-medium text-fg-500"
           >
             Use enterprise SSO (SAML / OIDC)
           </Button>
@@ -296,10 +296,10 @@ export function LoginPage() {
         {/* Divider */}
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-paper-200" />
+            <span className="w-full border-t border-surface-200" />
           </div>
           <div className="relative flex justify-center text-eyebrow uppercase">
-            <span className="bg-card px-2 text-ink-400">or</span>
+            <span className="bg-card px-2 text-fg-400">or</span>
           </div>
         </div>
 
@@ -325,7 +325,7 @@ export function LoginPage() {
                 type="button"
                 onClick={() => setForgotOpen(true)}
                 data-testid="forgot-password-link"
-                className="text-dense text-ink-950 underline-offset-2 hover:underline"
+                className="text-dense text-fg-950 underline-offset-2 hover:underline"
               >
                 Forgot password?
               </button>
@@ -351,9 +351,9 @@ export function LoginPage() {
           </Button>
         </form>
 
-        <p className="text-body text-center text-ink-500">
+        <p className="text-body text-center text-fg-500">
           No account?{' '}
-          <Link to="/register" className="text-ink-950 underline underline-offset-2 decoration-paper-300 hover:decoration-brand-700 hover:text-brand-700">
+          <Link to="/register" className="text-fg-950 underline underline-offset-2 decoration-surface-300 hover:decoration-primary-700 hover:text-primary-700">
             Create one
           </Link>
         </p>

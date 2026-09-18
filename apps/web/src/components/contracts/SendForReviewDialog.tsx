@@ -102,16 +102,16 @@ export function SendForReviewDialog({
         className="bg-card rounded-card shadow-e3 w-full max-w-md mx-4 flex flex-col max-h-[90vh]"
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-paper-200 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-surface-200 flex items-center justify-between">
           <div>
-            <h2 className="text-section text-ink-950">Send for review</h2>
-            <p className="text-dense text-ink-500 mt-1">
+            <h2 className="text-section text-fg-950">Send for review</h2>
+            <p className="text-dense text-fg-500 mt-1">
               Pick a workflow and (optionally) leave a note for the reviewer.
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-md hover:bg-paper-100 text-ink-500"
+            className="p-1.5 rounded-md hover:bg-surface-100 text-fg-500"
             aria-label="Close"
           >
             <X className="size-4" />
@@ -121,7 +121,7 @@ export function SendForReviewDialog({
         {/* Body */}
         <div className="px-6 py-5 space-y-4 overflow-y-auto">
           {loadingWorkflows ? (
-            <div className="flex items-center justify-center py-6 text-ink-400 gap-2 text-body">
+            <div className="flex items-center justify-center py-6 text-fg-400 gap-2 text-body">
               <Loader2 className="size-4 animate-spin" /> Loading workflows…
             </div>
           ) : workflows.length === 0 ? (
@@ -135,12 +135,12 @@ export function SendForReviewDialog({
           ) : (
             <>
               <div>
-                <label className="block text-dense font-semibold text-ink-700 mb-1.5">Workflow</label>
+                <label className="block text-dense font-semibold text-fg-700 mb-1.5">Workflow</label>
                 <select
                   value={effectiveWorkflowId ?? ''}
                   onChange={e => setSelectedWorkflowId(e.target.value || null)}
                   data-testid="send-for-review-workflow"
-                  className="w-full h-8 text-[13px] border border-input rounded-md px-2.5 bg-card focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+                  className="w-full h-8 text-[13px] border border-input rounded-md px-2.5 bg-card focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
                 >
                   {workflows.map(w => (
                     <option key={w.id} value={w.id}>
@@ -150,31 +150,31 @@ export function SendForReviewDialog({
                   ))}
                 </select>
                 {effectiveWorkflow?.description && (
-                  <p className="text-[11px] text-ink-500 mt-1.5">{effectiveWorkflow.description}</p>
+                  <p className="text-[11px] text-fg-500 mt-1.5">{effectiveWorkflow.description}</p>
                 )}
               </div>
 
               {/* Reviewer chain preview */}
-              <div className="bg-paper-50 border border-paper-200 rounded-md p-3">
-                <div className="text-[10.5px] uppercase tracking-[0.07em] font-semibold text-ink-700 mb-1.5">
+              <div className="bg-surface-50 border border-surface-200 rounded-md p-3">
+                <div className="text-[10.5px] uppercase tracking-[0.07em] font-semibold text-fg-700 mb-1.5">
                   First reviewer
                 </div>
                 {/* Neutral tick: naming the next reviewer is a fact, not an
                     approval that has already happened. */}
-                <div className="text-[13px] text-ink-950 inline-flex items-center gap-1.5">
-                  <CheckCircle2 className="size-3.5 text-ink-400" />
+                <div className="text-[13px] text-fg-950 inline-flex items-center gap-1.5">
+                  <CheckCircle2 className="size-3.5 text-fg-400" />
                   {firstStepLabel}
                 </div>
                 {(effectiveWorkflow?.steps?.length ?? 0) > 1 && (
-                  <p className="text-[11px] text-ink-500 mt-1.5">
+                  <p className="text-[11px] text-fg-500 mt-1.5">
                     Then {effectiveWorkflow!.steps.length - 1} more {effectiveWorkflow!.steps.length - 1 === 1 ? 'step' : 'steps'} in sequence.
                   </p>
                 )}
               </div>
 
               <div>
-                <label className="block text-dense font-semibold text-ink-700 mb-1.5">
-                  Message <span className="text-ink-400 font-normal">(optional)</span>
+                <label className="block text-dense font-semibold text-fg-700 mb-1.5">
+                  Message <span className="text-fg-400 font-normal">(optional)</span>
                 </label>
                 <textarea
                   value={message}
@@ -182,7 +182,7 @@ export function SendForReviewDialog({
                   rows={3}
                   placeholder="Anything the reviewer should know? (e.g. urgency, key terms to focus on)"
                   data-testid="send-for-review-message"
-                  className="w-full resize-none rounded-md border border-input bg-card px-[11px] py-2 text-[13px] text-ink-950 placeholder:text-ink-400 focus-visible:outline-none focus-visible:border-brand-700 focus-visible:ring-[3px] focus-visible:ring-brand-700/15"
+                  className="w-full resize-none rounded-md border border-input bg-card px-[11px] py-2 text-[13px] text-fg-950 placeholder:text-fg-400 focus-visible:outline-none focus-visible:border-primary-700 focus-visible:ring-[3px] focus-visible:ring-primary-700/15"
                 />
               </div>
 
@@ -197,7 +197,7 @@ export function SendForReviewDialog({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3.5 border-t border-paper-200 bg-paper-50 rounded-b-card flex items-center justify-end gap-2">
+        <div className="px-6 py-3.5 border-t border-surface-200 bg-surface-50 rounded-b-card flex items-center justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={onClose} disabled={submit.isPending}>
             Cancel
           </Button>

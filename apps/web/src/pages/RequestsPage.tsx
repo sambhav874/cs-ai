@@ -65,9 +65,9 @@ const STATUS_LABEL: Record<string, string> = {
  * level a queue owner genuinely needs to spot from across the list.
  */
 const PRIORITY: Record<string, { label: string; cls: string; dot?: string }> = {
-  LOW:    { label: 'Low',    cls: 'text-ink-400' },
-  MEDIUM: { label: 'Medium', cls: 'text-ink-500' },
-  HIGH:   { label: 'High',   cls: 'text-ink-700 font-medium' },
+  LOW:    { label: 'Low',    cls: 'text-fg-400' },
+  MEDIUM: { label: 'Medium', cls: 'text-fg-500' },
+  HIGH:   { label: 'High',   cls: 'text-fg-700 font-medium' },
   URGENT: { label: 'Urgent', cls: 'text-attention-700 font-medium', dot: 'bg-attention-600' },
 }
 
@@ -165,12 +165,12 @@ export function RequestsPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-start justify-between px-6 py-4 border-b border-paper-200 bg-card gap-4">
+      <div className="flex items-start justify-between px-6 py-4 border-b border-surface-200 bg-card gap-4">
         <div className="min-w-0">
-          <h1 className="text-title text-ink-950">Contract Requests</h1>
+          <h1 className="text-title text-fg-950">Contract Requests</h1>
           {/* B.6.16 — one-sentence explainer so first-time visitors
               understand what a "request" is before they hunt. */}
-          <p className="text-dense text-ink-500 mt-1 max-w-xl">
+          <p className="text-dense text-fg-500 mt-1 max-w-xl">
             Ask Legal to draft a contract. Fill out what you need —
             type, counterparty, timeline — and they'll produce the
             first version for you.
@@ -187,7 +187,7 @@ export function RequestsPage() {
       </div>
 
       {/* Tabs — B.6.16 adds inline counts so users see where work is */}
-      <div className="flex items-center gap-1 px-6 pt-3 border-b border-paper-200 bg-card overflow-x-auto">
+      <div className="flex items-center gap-1 px-6 pt-3 border-b border-surface-200 bg-card overflow-x-auto">
         {tabs.map(tab => {
           // For the "All" tab the count is the sum; otherwise look up
           // the specific status.
@@ -201,12 +201,12 @@ export function RequestsPage() {
               aria-current={isActive ? 'page' : undefined}
               className={`px-3 py-2 text-[13px] font-medium transition-colors border-b-2 -mb-px inline-flex items-center gap-1.5 whitespace-nowrap ${
                 isActive
-                  ? 'border-ink-950 text-ink-950'
+                  ? 'border-fg-950 text-fg-950'
                   : count === 0
                     // An empty bucket is still worth showing — it says "nothing
                     // is stuck here" — but it should not read as somewhere to go.
-                    ? 'border-transparent text-ink-400 hover:text-ink-700'
-                    : 'border-transparent text-ink-500 hover:text-ink-950'
+                    ? 'border-transparent text-fg-400 hover:text-fg-700'
+                    : 'border-transparent text-fg-500 hover:text-fg-950'
               }`}
             >
               <span>{tab.label}</span>
@@ -219,9 +219,9 @@ export function RequestsPage() {
       </div>
 
       {/* Search */}
-      <div className="px-6 py-3 bg-card border-b border-paper-200">
+      <div className="px-6 py-3 bg-card border-b border-surface-200">
         <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-ink-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-fg-400" />
           <Input
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -233,9 +233,9 @@ export function RequestsPage() {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto bg-paper-50">
+      <div className="flex-1 overflow-auto bg-surface-50">
         {isLoading ? (
-          <div className="flex items-center justify-center h-48 gap-2 text-ink-400 text-dense">
+          <div className="flex items-center justify-center h-48 gap-2 text-fg-400 text-dense">
             <Loader2 className="size-4 animate-spin" /> Loading…
           </div>
         ) : requests.length === 0 ? (
@@ -277,7 +277,7 @@ export function RequestsPage() {
           </div>
         ) : (
           <>
-          <div className="divide-y divide-paper-200 bg-card mx-6 my-4 rounded-card border border-paper-200 overflow-hidden">
+          <div className="divide-y divide-surface-200 bg-card mx-6 my-4 rounded-card border border-surface-200 overflow-hidden">
             {requests.map(req => {
               const pri = PRIORITY[req.priority] ?? PRIORITY.MEDIUM
               const isClassifying = req.status === 'SUBMITTED' && !req.metadata?._aiClassification
@@ -288,16 +288,16 @@ export function RequestsPage() {
                   data-testid={`request-row-${req.id}`}
                   data-request-title={req.title}
                   onClick={() => openRequest(req)}
-                  className="w-full flex items-center gap-4 px-5 py-2.5 text-left hover:bg-paper-50 transition-colors group focus:outline-none focus-visible:bg-paper-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  className="w-full flex items-center gap-4 px-5 py-2.5 text-left hover:bg-surface-50 transition-colors group focus:outline-none focus-visible:bg-surface-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
-                  {/* The leading dot is gone. It was `bg-paper-300` on every
+                  {/* The leading dot is gone. It was `bg-surface-300` on every
                       row — a mark that carried no meaning, in a system whose
                       first rule is that colour means something. */}
 
                   {/* Main content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-[13px] font-medium text-ink-950 truncate">{req.title}</p>
+                      <p className="text-[13px] font-medium text-fg-950 truncate">{req.title}</p>
                       {isClassifying && (
                         // The machine is mid-work on this row.
                         <AssistChip
@@ -310,12 +310,12 @@ export function RequestsPage() {
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                       {req.requestNumber && (
-                        <span className="text-[10px] font-mono text-ink-400">{req.requestNumber}</span>
+                        <span className="text-[10px] font-mono text-fg-400">{req.requestNumber}</span>
                       )}
                       {req.counterpartyName && (
-                        <span className="text-[11px] text-ink-500">{req.counterpartyName}</span>
+                        <span className="text-[11px] text-fg-500">{req.counterpartyName}</span>
                       )}
-                      <span className="text-[11px] tabular-nums text-ink-400">
+                      <span className="text-[11px] tabular-nums text-fg-400">
                         {new Date(req.createdAt).toLocaleDateString()}
                       </span>
                       <span className={`text-[11px] inline-flex items-center gap-1 ${pri.cls}`}>
@@ -329,14 +329,14 @@ export function RequestsPage() {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <Chip>{req.type.replace(/_/g, ' ')}</Chip>
                     <StatusPill status={req.status}>{STATUS_LABEL[req.status]}</StatusPill>
-                    <ChevronRight className="size-4 text-ink-400 group-hover:text-ink-700 transition-colors" />
+                    <ChevronRight className="size-4 text-fg-400 group-hover:text-fg-700 transition-colors" />
                   </div>
                 </button>
               )
             })}
           </div>
           {truncated && (
-            <p className="mx-6 mb-4 -mt-2 text-[11.5px] text-ink-500" data-testid="requests-truncated-note">
+            <p className="mx-6 mb-4 -mt-2 text-[11.5px] text-fg-500" data-testid="requests-truncated-note">
               Showing the {PAGE_SIZE} most recent
               {serverTotal ? ` of ${serverTotal}` : ''}. Narrow it with a status tab or search.
             </p>

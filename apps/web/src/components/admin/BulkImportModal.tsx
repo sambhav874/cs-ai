@@ -166,17 +166,17 @@ export function BulkImportModal({ open, onClose }: BulkImportModalProps) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 bg-ink-950/50 flex items-center justify-center z-50">
-      <div className="bg-card rounded-card border border-paper-200 shadow-e3 w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-scrim/50 flex items-center justify-center z-50">
+      <div className="bg-card rounded-card border border-surface-200 shadow-e3 w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-paper-200 shrink-0">
-          <h2 className="text-section text-ink-950 flex items-center gap-2">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200 shrink-0">
+          <h2 className="text-section text-fg-950 flex items-center gap-2">
             <FileSpreadsheet className="size-5" />
             Bulk Import Users
           </h2>
           <button
             onClick={onClose}
-            className="p-1 rounded-md text-ink-400 hover:text-ink-700 hover:bg-paper-100"
+            className="p-1 rounded-md text-fg-400 hover:text-fg-700 hover:bg-surface-100"
           >
             <X className="size-4" />
           </button>
@@ -191,11 +191,11 @@ export function BulkImportModal({ open, onClose }: BulkImportModalProps) {
                 Brand here, unlike a settings-save toast: this is a completed job
                 reporting an outcome, and "completed" is one of the binding states.
               */}
-              <div className="flex items-center gap-2 p-4 bg-brand-50 border border-brand-200 rounded-md">
-                <CheckCircle2 className="size-5 text-brand-700 flex-shrink-0" />
+              <div className="flex items-center gap-2 p-4 bg-success-50 border border-success-200 rounded-md">
+                <CheckCircle2 className="size-5 text-success-700 flex-shrink-0" />
                 <div>
-                  <p className="text-body font-semibold text-brand-700">Import Complete</p>
-                  <p className="text-dense text-ink-700 mt-0.5 tabular-nums">
+                  <p className="text-body font-semibold text-success-700">Import Complete</p>
+                  <p className="text-dense text-fg-700 mt-0.5 tabular-nums">
                     {result.created.length} created, {result.skipped.length} skipped
                   </p>
                 </div>
@@ -215,19 +215,19 @@ export function BulkImportModal({ open, onClose }: BulkImportModalProps) {
             <>
               {/* Upload area */}
               <div>
-                <p className="text-body text-ink-700 mb-3">
-                  Upload a CSV file with columns: <code className="font-mono text-[11px] bg-paper-100 text-ink-950 px-1 py-0.5 rounded-chip">name, email, roles</code>.
-                  Separate multiple roles with semicolons (e.g. <code className="font-mono text-[11px] bg-paper-100 text-ink-950 px-1 py-0.5 rounded-chip">ADMIN;LEGAL_COUNSEL</code>).
+                <p className="text-body text-fg-700 mb-3">
+                  Upload a CSV file with columns: <code className="font-mono text-[11px] bg-surface-100 text-fg-950 px-1 py-0.5 rounded-chip">name, email, roles</code>.
+                  Separate multiple roles with semicolons (e.g. <code className="font-mono text-[11px] bg-surface-100 text-fg-950 px-1 py-0.5 rounded-chip">ADMIN;LEGAL_COUNSEL</code>).
                 </p>
                 <div
-                  className="border-2 border-dashed border-paper-300 rounded-md p-6 text-center hover:border-ink-400 transition-colors cursor-pointer"
+                  className="border-2 border-dashed border-surface-300 rounded-md p-6 text-center hover:border-fg-400 transition-colors cursor-pointer"
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <Upload className="size-6 text-ink-400 mx-auto mb-2" />
-                  <p className="text-body text-ink-700">
+                  <Upload className="size-6 text-fg-400 mx-auto mb-2" />
+                  <p className="text-body text-fg-700">
                     {fileName ? fileName : 'Click to upload CSV file'}
                   </p>
-                  <p className="text-dense text-ink-400 mt-1">Supports .csv files only</p>
+                  <p className="text-dense text-fg-400 mt-1">Supports .csv files only</p>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -250,43 +250,43 @@ export function BulkImportModal({ open, onClose }: BulkImportModalProps) {
               {rows.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-body font-medium text-ink-700 tabular-nums">
+                    <p className="text-body font-medium text-fg-700 tabular-nums">
                       Preview ({validRows.length} valid, {errorRows.length} errors)
                     </p>
                     <button
                       onClick={handleReset}
-                      className="text-dense text-ink-500 hover:text-ink-950 underline"
+                      className="text-dense text-fg-500 hover:text-fg-950 underline"
                     >
                       Clear
                     </button>
                   </div>
-                  <div className="bg-card rounded-md border border-paper-200 overflow-hidden">
+                  <div className="bg-card rounded-md border border-surface-200 overflow-hidden">
                     <div className="overflow-x-auto max-h-64 overflow-y-auto">
                       <table className="w-full text-[13px]">
                         <thead>
-                          <tr className="border-b border-paper-200 bg-paper-50">
-                            <th className="text-left text-[11px] font-semibold text-ink-500 uppercase tracking-[0.08em] px-4 py-2">
+                          <tr className="border-b border-surface-200 bg-surface-50">
+                            <th className="text-left text-[11px] font-semibold text-fg-500 uppercase tracking-[0.08em] px-4 py-2">
                               Name
                             </th>
-                            <th className="text-left text-[11px] font-semibold text-ink-500 uppercase tracking-[0.08em] px-4 py-2">
+                            <th className="text-left text-[11px] font-semibold text-fg-500 uppercase tracking-[0.08em] px-4 py-2">
                               Email
                             </th>
-                            <th className="text-left text-[11px] font-semibold text-ink-500 uppercase tracking-[0.08em] px-4 py-2">
+                            <th className="text-left text-[11px] font-semibold text-fg-500 uppercase tracking-[0.08em] px-4 py-2">
                               Roles
                             </th>
-                            <th className="text-left text-[11px] font-semibold text-ink-500 uppercase tracking-[0.08em] px-4 py-2">
+                            <th className="text-left text-[11px] font-semibold text-fg-500 uppercase tracking-[0.08em] px-4 py-2">
                               Status
                             </th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-paper-200">
+                        <tbody className="divide-y divide-surface-200">
                           {rows.map((row, i) => (
                             <tr
                               key={i}
                               className={row.status === 'error' ? 'bg-risk-50/50' : ''}
                             >
-                              <td className="px-4 py-2 text-ink-950">{row.name || '-'}</td>
-                              <td className="px-4 py-2 text-ink-700">{row.email || '-'}</td>
+                              <td className="px-4 py-2 text-fg-950">{row.name || '-'}</td>
+                              <td className="px-4 py-2 text-fg-700">{row.email || '-'}</td>
                               <td className="px-4 py-2">
                                 <div className="flex flex-wrap gap-1">
                                   {row.roles.map(role => (
@@ -296,7 +296,7 @@ export function BulkImportModal({ open, onClose }: BulkImportModalProps) {
                                       key={role}
                                       className={`inline-flex items-center px-1.5 py-0.5 rounded-chip text-[10px] font-medium ${
                                         VALID_ROLES.has(role as SystemRole)
-                                          ? 'bg-paper-100 text-ink-700 border border-paper-200'
+                                          ? 'bg-surface-100 text-fg-700 border border-surface-200'
                                           : 'bg-risk-50 text-risk-700 border border-risk-200'
                                       }`}
                                     >
@@ -312,7 +312,7 @@ export function BulkImportModal({ open, onClose }: BulkImportModalProps) {
                                   checks would drown the rows that actually need reading.
                                 */}
                                 {row.status === 'valid' ? (
-                                  <span className="inline-flex items-center gap-1 text-dense text-ink-500">
+                                  <span className="inline-flex items-center gap-1 text-dense text-fg-500">
                                     <CheckCircle2 className="size-3" />
                                     Valid
                                   </span>
@@ -339,7 +339,7 @@ export function BulkImportModal({ open, onClose }: BulkImportModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-paper-200 shrink-0">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-surface-200 shrink-0">
           <Button variant="outline" onClick={result ? handleReset : onClose}>
             {result ? 'Import More' : 'Cancel'}
           </Button>
