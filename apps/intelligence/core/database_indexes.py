@@ -132,6 +132,22 @@ def initialize_all_indexes(db=None):
             [("ownerType", ASCENDING), ("ownerId", ASCENDING), ("name", ASCENDING)],
             "project_owner_name"
         )
+        # At most one Default Project per owner (see ensure_default_project).
+        # Built on existing data, it fails if an owner already has two; that
+        # is logged rather than raised so the service still boots, and the
+        # duplicate is merged by hand (move its contracts, delete it).
+        try:
+            projects.create_index(
+                [("ownerType", ASCENDING), ("ownerId", ASCENDING)],
+                name="project_default_per_owner",
+                unique=True,
+                partialFilterExpression={"name": "Default Project"},
+            )
+        except (OperationFailure, DuplicateKeyError) as e:
+            logger.warning(
+                "Could not create unique index project_default_per_owner — an owner "
+                f"has more than one Default Project. Merge them, then restart: {e}"
+            )
 
         # Tabular reviews
         tabular_reviews = db["tabular_reviews"]

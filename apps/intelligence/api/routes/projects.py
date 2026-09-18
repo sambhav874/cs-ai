@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from bson import ObjectId
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 
 from core.database import collection, projects_collection, teams_collection, users_collection
@@ -146,24 +148,29 @@ def _project_stats(project: Dict[str, Any], current_user: UserInDB) -> Dict[str,
 
 
 def ensure_default_project(owner_type: str, owner_id: ObjectId) -> Dict[str, Any]:
-    project = projects_collection.find_one({
-        "ownerType": owner_type,
-        "ownerId": owner_id,
-        "name": "Default Project",
-    })
-    if project:
-        return project
+    """The owner's Default Project, created on first use.
 
+    One atomic upsert, not find-then-insert: the dashboard fires several
+    requests at once on first load, and the old check-then-insert let two of
+    them each create a Default Project (seen 3 ms apart). The unique partial
+    index project_default_per_owner (core/database_indexes.py) makes a
+    concurrent second insert fail instead, and that loser re-reads the winner.
+    """
     now = datetime.utcnow()
-    result = projects_collection.insert_one({
-        "name": "Default Project",
-        "description": "Contracts that have not been moved into a specific project.",
-        "ownerType": owner_type,
-        "ownerId": owner_id,
-        "createdAt": now,
-        "updatedAt": now,
-    })
-    return projects_collection.find_one({"_id": result.inserted_id})
+    query = {"ownerType": owner_type, "ownerId": owner_id, "name": "Default Project"}
+    try:
+        return projects_collection.find_one_and_update(
+            query,
+            {"$setOnInsert": {
+                "description": "Contracts that have not been moved into a specific project.",
+                "createdAt": now,
+                "updatedAt": now,
+            }},
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+    except DuplicateKeyError:
+        return projects_collection.find_one(query)
 
 
 def assign_unprojected_contracts(owner_type: str, owner_id: ObjectId, project_id: ObjectId) -> int:

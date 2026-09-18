@@ -193,7 +193,10 @@ async def logout(request: Request, response: Response):
 
 @auth_router.get("/users/me/")
 async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
-    return current_user
+    # Never the password hash. This returned the whole UserInDB, so every
+    # signed-in client received its own bcrypt hash — enough to mount an
+    # offline guessing attack from a stolen session.
+    return current_user.model_dump(by_alias=True, exclude={"hashed_password"})
 
 @auth_router.get("/users/me/accounts", response_model=List[AccessibleAccountInfo])
 def list_accessible_accounts(
@@ -338,13 +341,10 @@ async def get_account_balance(
             {"page_credits": 1, "updated_at": 1}
         )
 
-        if not account:
-            logger.warning(f"No account found for ID: {account_to_check}")
-            raise HTTPException(
-                status_code=404,
-                detail="Account not found"
-            )
-        
+        # No credits record means no credits, not a missing account: users who
+        # sign in through the platform (core/platform_identity) never went
+        # through ContractSense's sign-up, which is what created this record.
+        account = account or {}
         balance = account.get("page_credits", 0)
         updated_at = account.get("updated_at", datetime.utcnow())
         
