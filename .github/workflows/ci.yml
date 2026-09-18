@@ -97,10 +97,21 @@ jobs:
 
   test-intelligence:
     runs-on: ubuntu-latest
+    env:
+      # TESTING routes every database to contractsense-test-db and swaps
+      # embeddings for a deterministic offline fake — no paid or networked
+      # calls in a per-push run. The broker and Mongo URIs are only parsed at
+      # import (both clients are lazy); nothing connects. SECRET_KEY is
+      # required by design: a signing key must never have a default.
+      TESTING: "1"
+      SECRET_KEY: ci-only-not-a-real-signing-key
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      MONGODB_URI: mongodb://localhost:27017/csai_test
     steps:
       - uses: actions/checkout@v4
-      # 3.12, not 3.13: apps/intelligence/pyproject.toml pins
-      # python = ">=3.10,<=3.12".
+      # 3.12: pyproject pins python = ">=3.10,<3.13". It used to say <=3.12,
+      # which Poetry reads as <=3.12.0 — rejecting every real 3.12 release and
+      # admitting only pre-releases. This job would have failed on it.
       - uses: actions/setup-python@v5
         with: { python-version: '3.12', cache: 'pip' }
       - name: Install
@@ -109,14 +120,23 @@ jobs:
           pip install poetry
           poetry config virtualenvs.create false
           poetry install --no-interaction --no-root
-      # Baseline recorded 2026-09-18: 524 passed, 8 skipped, 0 failures across
-      # the tests that collect without the optional heavy deps. Any drop is a
-      # regression, not noise.
+      # Baseline 2026-09-18 with full deps: 810 passed, 12 xfailed (strict,
+      # known-stale upstream), 4 skipped, 0 failed. Any drop is a regression.
       - name: Unit and extraction tests
         run: python -m pytest testing/backend/tests -q
 
   fixtures-and-evals:
     runs-on: ubuntu-latest
+    env:
+      # TESTING routes every database to contractsense-test-db and swaps
+      # embeddings for a deterministic offline fake — no paid or networked
+      # calls in a per-push run. The broker and Mongo URIs are only parsed at
+      # import (both clients are lazy); nothing connects. SECRET_KEY is
+      # required by design: a signing key must never have a default.
+      TESTING: "1"
+      SECRET_KEY: ci-only-not-a-real-signing-key
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      MONGODB_URI: mongodb://localhost:27017/csai_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -130,5 +150,6 @@ jobs:
       # Scorers and fixture assertions only. The model-backed runs (NHS, the 8
       # family fixtures, the parser bake-off) are nightly: the NHS run alone is
       # 678 s and 413K output tokens, which is not a per-push cost.
+      # Baseline 2026-09-18: 83 passed, 3 xfailed (strict), 4 skipped (live).
       - name: Fixture scorers
         run: python -m pytest final_evaluation/tests -q

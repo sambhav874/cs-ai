@@ -145,6 +145,23 @@ def build_embeddings(
     Keys default to server config but can be overridden per instance, which is
     why they're parameters rather than reads.
     """
+    # Test mode: deterministic, offline, free. Checked FIRST so a unit test
+    # never calls the paid Voyage API even if a key leaks into the environment,
+    # and never downloads a HuggingFace model. TESTING already routes every
+    # database to contractsense-test-db (core/database.py), so this keeps the
+    # flag meaning one thing: no real external state. Dimension matches the
+    # production Voyage backend so vector shapes stay what code expects.
+    if getattr(settings, "testing", False):
+        from langchain_core.embeddings import DeterministicFakeEmbedding
+
+        dimension = getattr(settings, "voyageai_embedding_dimension", 1024)
+        return EmbeddingsBundle(
+            embeddings=DeterministicFakeEmbedding(size=dimension),
+            backend="fake",
+            model="deterministic-fake",
+            dimension=dimension,
+        )
+
     voyage_key = voyageai_api_key if voyageai_api_key is not None else settings.voyageai_api_key
 
     if voyage_key:

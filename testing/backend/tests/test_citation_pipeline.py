@@ -346,7 +346,11 @@ def test_no_citation_marker_regex_exists_outside_the_module():
     for path in BACKEND_ROOT.rglob("*.py"):
         if path.name == "citations.py" and path.parent.name == "contract_agent":
             continue
-        if "__pycache__" in path.parts:
+        # Skip anything that is not our source: bytecode caches and installed
+        # packages. An in-project virtualenv (apps/intelligence/.venv) puts
+        # idna, pip and transformers under this root, and their tokenizers
+        # carry full-width marker regexes that are nothing to do with us.
+        if {"__pycache__", ".venv", "venv", "site-packages", "node_modules"} & set(path.parts):
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")
         if "【" in text:

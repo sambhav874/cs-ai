@@ -1,0 +1,38 @@
+name: Nightly evals
+
+# Live-model evaluations: real providers, real cost. Never per push — the NHS
+# Standard Contract run alone is 678 s and 413K output tokens. The per-push
+# suites skip every test_live_* unless RUN_LIVE_EVALS=1.
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  live-evals:
+    runs-on: ubuntu-latest
+    env:
+      RUN_LIVE_EVALS: "1"
+      SECRET_KEY: ${{ secrets.EVAL_SECRET_KEY }}
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      MONGODB_URI: mongodb://localhost:27017/csai_eval
+      # Provider keys come from repository secrets. A missing key makes the
+      # live test fail loudly with a 401 rather than silently skipping.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      VOYAGEAI_API_KEY: ${{ secrets.VOYAGEAI_API_KEY }}
+      LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12', cache: 'pip' }
+      - name: Install
+        working-directory: apps/intelligence
+        run: |
+          pip install poetry
+          poetry config virtualenvs.create false
+          poetry install --no-interaction --no-root
+      - name: Live evals
+        run: python -m pytest final_evaluation/tests -q -k live
