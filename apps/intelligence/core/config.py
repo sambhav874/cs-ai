@@ -132,6 +132,21 @@ class Settings(BaseSettings):
     # the Fastify tier signs with. See docs/spikes/prisma-mongodb.md.
     secret_key: str = Field(..., env="SECRET_KEY") 
     algorithm: str = Field(default="HS256", env="ALGORITHM")
+
+    # ── One identity across both tiers (merge step 3) ─────────────────────────
+    # The lifecycle API (Fastify) issues access tokens; this tier only VERIFIES
+    # them. Same secret the Fastify tier signs with — set JWT_SECRET once for
+    # both, or PLATFORM_JWT_SECRET to override here. Empty disables the platform
+    # path entirely (fails closed: no platform token will verify).
+    platform_jwt_secret: str = Field(default="", env="PLATFORM_JWT_SECRET")
+    # The lifecycle API's MongoDB — source of truth for users and orgs. Falls
+    # back to DATABASE_URL, the variable the Fastify tier already reads.
+    platform_database_url: str = Field(default="", env="PLATFORM_DATABASE_URL")
+    # TODO(merge): ContractSense's own login. Kept ON only so its Next.js
+    # frontend and existing auth tests keep working until the frontend-shell
+    # decision lands; the chosen shell logs in through Fastify either way.
+    # Delete the legacy path — and python-jose / passlib with it — after that.
+    legacy_auth_enabled: bool = Field(default=True, env="LEGACY_AUTH_ENABLED")
     access_token_expire_minutes: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     
     

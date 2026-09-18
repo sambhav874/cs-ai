@@ -275,6 +275,24 @@ def get_current_user(request: Request, token: Optional[str] = Depends(oauth2_sch
     if cookie_auth:
         _validate_cookie_csrf(request)
 
+    # One identity (merge step 3): a token issued by the lifecycle API is
+    # verified first and mapped onto a shadow user — see core/platform_identity.
+    # Every route behind get_current_active_user joins the single login here.
+    from core.platform_identity import (
+        PlatformIdentityError,
+        decode_platform_access_token,
+        resolve_platform_user,
+    )
+    platform_claims = decode_platform_access_token(resolved_token)
+    if platform_claims is not None:
+        try:
+            return UserInDB.model_validate(resolve_platform_user(platform_claims))
+        except PlatformIdentityError as e:
+            logger.warning(f"Platform token rejected: {e}")
+            raise credentials_exception
+    if not settings.legacy_auth_enabled:
+        raise credentials_exception
+
     try:
         payload = jwt.decode(resolved_token, settings.secret_key, algorithms=[settings.algorithm])
         jti = payload.get("jti")

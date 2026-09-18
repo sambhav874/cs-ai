@@ -7214,4 +7214,4 @@ ml = ["accelerate", "langchain-huggingface", "sentence-transformers", "sentencep
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "d4dee089918be1dee26859551a573faf147f511688fa4ba2825aa452cacaff51"
+content-hash = "310de0e8aea3133cc39dd064e58bc32fdba96255c6ba8101c0abee6e1ced3b59"
