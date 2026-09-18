@@ -99,8 +99,16 @@ async function countMyActivePendingSteps(orgId: string, userId: string): Promise
     where:  { id: { in: [...new Set(steps.map(s => s.approvalInstanceId))] } },
     select: { id: true, currentStepOrder: true },
   })
-  // GREATEST(i."currentStepOrder", 1)
-  const activeOrder = new Map(instances.map(i => [i.id, Math.max(i.currentStepOrder, 1)]))
+  // Match routes/approvals.ts /my-queue exactly: step.stepOrder ===
+  // instance.currentStepOrder, whichever indexing the seed uses.
+  //
+  // The SQL this replaced used GREATEST(currentStepOrder, 1), which is the
+  // "tolerate legacy 0 by treating it as 1" branch their P17 audit
+  // (2026-04-29) deliberately REMOVED from /my-queue — it drops a legitimate
+  // 0-indexed step, and contracts.ts:2210 really does write currentStepOrder: 0.
+  // Only one side was fixed, so the badge could read 0 while the queue showed
+  // the item. Both sides now agree.
+  const activeOrder = new Map(instances.map(i => [i.id, i.currentStepOrder]))
 
   return steps.filter(s => s.stepOrder === activeOrder.get(s.approvalInstanceId)).length
 }

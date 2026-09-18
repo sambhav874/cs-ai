@@ -8,9 +8,11 @@
  *
  * Usage:  pnpm tsx prisma/scripts/backfill-obligations.ts
  */
-import { PrismaClient } from '@prisma/client'
+// Shared client — carries the soft-delete extension that writes deletedAt: null.
+// A raw PrismaClient writes rows the app cannot see on MongoDB.
+import { prisma as sharedPrisma } from '../../src/lib/prisma.js'
 
-const prisma = new PrismaClient()
+const prisma = sharedPrisma
 
 interface LegacyObligation {
   id?:          string

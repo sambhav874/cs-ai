@@ -1,9 +1,14 @@
-import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import crypto from 'node:crypto'
 import { seedOrgDefaults } from '../src/lib/org-seed.js'
 import { DEFAULT_ROLE_PERMISSIONS, DEFAULT_ROLE_DESCRIPTIONS } from '../src/lib/permissions.js'
-
-const prisma = new PrismaClient()
+// Must be the SHARED client, not `new PrismaClient()`. The shared one carries
+// the soft-delete extension that writes `deletedAt: null` on create. A raw
+// client omits the field entirely, and on MongoDB `where: { deletedAt: null }`
+// does not match an absent field — so seeded rows would be invisible to every
+// list query in the app. Verified: seeding through a raw client produced 10
+// contracts the app could not see.
+import { prisma } from '../src/lib/prisma.js'
 
 const DEMO_CONTRACTS = [
   {
@@ -141,7 +146,26 @@ async function main() {
   }
 
   // ── Users ────────────────────────────────────────────────────────────────
-  const hash = await bcrypt.hash('password123', 12)
+  //
+  // No default credentials, ever. This shipped as admin@demo.com /
+  // password123 — a literal in source is a backdoor in every install that
+  // ever ran this script, and operators do not reliably change it.
+  //
+  // The operator supplies SEED_ADMIN_PASSWORD, or we mint a random one and
+  // print it exactly once. Either way nothing guessable reaches the database.
+  if (process.env.NODE_ENV === 'production' && process.env.SEED_ALLOW_PRODUCTION !== '1') {
+    throw new Error(
+      'Refusing to seed demo data with NODE_ENV=production. ' +
+      'This creates demo users and contracts. Set SEED_ALLOW_PRODUCTION=1 to override.',
+    )
+  }
+
+  const suppliedPassword = process.env.SEED_ADMIN_PASSWORD
+  if (suppliedPassword && suppliedPassword.length < 12) {
+    throw new Error('SEED_ADMIN_PASSWORD must be at least 12 characters.')
+  }
+  const seedPassword = suppliedPassword ?? crypto.randomBytes(24).toString('base64url')
+  const hash = await bcrypt.hash(seedPassword, 12)
 
   const admin = await prisma.user.upsert({
     where: { orgId_email: { orgId: org.id, email: 'admin@demo.com' } },
@@ -278,7 +302,20 @@ async function main() {
   }
 
   console.log(`✓ Org: ${org.name}`)
-  console.log(`✓ Users: admin@demo.com / legal@demo.com  (password: password123)`)
+  console.log(`✓ Users: admin@demo.com / legal@demo.com`)
+  if (suppliedPassword) {
+    console.log('  password: from SEED_ADMIN_PASSWORD (not printed)')
+  } else {
+    console.log('')
+    console.log('  ┌─────────────────────────────────────────────────────────────┐')
+    console.log('  │ GENERATED PASSWORD — shown once, not stored anywhere else.  │')
+    console.log('  └─────────────────────────────────────────────────────────────┘')
+    console.log(`  ${seedPassword}`)
+    console.log('')
+    console.log('  Set SEED_ADMIN_PASSWORD to choose your own. Change it after')
+    console.log('  first login — these are demo accounts with ADMIN rights.')
+    console.log('')
+  }
   console.log(`✓ Counterparties: ${counterpartyNames.length}`)
   console.log(`✓ Demo contracts: ${DEMO_CONTRACTS.length}`)
   console.log(`✓ Signature requests: ${await prisma.signatureRequest.count({ where: { orgId: org.id } })} (one per status)`)
