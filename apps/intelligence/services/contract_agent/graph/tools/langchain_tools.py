@@ -642,6 +642,15 @@ def _coerce_observation(result: Any) -> Dict[str, Any]:
 
 
 def _default_read_observation(tool_record: ToolCallRecord, state: AgentRunState) -> Dict[str, Any]:
+    # Same scope check as the real executor, BEFORE any observation is built.
+    # Without it this fallback ignored the requested id entirely: asking for an
+    # out-of-scope document returned the in-scope one with a success summary,
+    # so the model asked for X, received Y, and was told it worked. Raising
+    # here is classified OUT_OF_SCOPE (errors.classify), which is not
+    # retryable — identical to a denial from the executor path.
+    from .executor import authorize_requested_documents
+
+    requested = authorize_requested_documents(tool_record, state)
     selected_ids = state.context.selected_document_ids or state.context.reference_contract_ids
     if tool_record.name in {"list_documents", "fetch_documents"}:
         return {
@@ -650,10 +659,15 @@ def _default_read_observation(tool_record: ToolCallRecord, state: AgentRunState)
         }
     if tool_record.name in {"read_document", "outline_document"}:
         displayed = state.context.displayed_document or {}
+        default_id = displayed.get("document_id") or state.context.contract_id or (selected_ids[0] if selected_ids else None)
+        # Report the document that was ASKED for. Falling back to the displayed
+        # document is only correct when no id was named — otherwise an in-scope
+        # request for B would still be answered with A.
+        document_id = sorted(requested)[0] if requested else default_id
         return {
             "summary": "Current document context is available.",
-            "document_id": displayed.get("document_id") or state.context.contract_id or (selected_ids[0] if selected_ids else None),
-            "filename": displayed.get("filename"),
+            "document_id": document_id,
+            "filename": displayed.get("filename") if document_id == displayed.get("document_id") else None,
         }
     if tool_record.name in {"search_evidence", "find_in_document"}:
         return {"summary": "Evidence retrieval is delegated to the scoped ContractSense RAG executor."}

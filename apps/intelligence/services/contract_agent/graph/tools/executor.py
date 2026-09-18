@@ -176,14 +176,25 @@ def _load_scoped_documents(collection: Any, state: AgentRunState) -> List[Dict[s
     ))
 
 
-def _restrict_documents(documents: List[Dict[str, Any]], tool: ToolCallRecord, state: AgentRunState) -> List[Dict[str, Any]]:
+def authorize_requested_documents(tool: ToolCallRecord, state: AgentRunState) -> set:
+    """Resolve every document id a tool call names and authorize it against scope.
+
+    Returns the resolved ids, or an empty set when the call names none. Raises
+    UnauthorizedAccessError for any id outside the route-built scope.
+
+    This is the single scope check. It used to live inline in
+    _restrict_documents, which only runs once documents have been loaded — so
+    the no-executor fallback in langchain_tools never consulted it, and a read
+    of an out-of-scope id silently returned the in-scope document instead of
+    being denied. Both paths now call this.
+    """
     requested = set(_coerce_list(tool.args.get("document_ids")))
     for key in ("document_id", "contract_id"):
         requested_id = str(tool.args.get(key) or "").strip()
         if requested_id:
             requested.add(requested_id)
     if not requested:
-        return documents
+        return set()
 
     # Resolve the model's friendly labels, but authorize against the route-built
     # scope. Filtering an unauthorized ID to an empty result would turn a denied
@@ -219,6 +230,13 @@ def _restrict_documents(documents: List[Dict[str, Any]], tool: ToolCallRecord, s
             raise UnauthorizedAccessError(f"Access to document {req_str} is out of scoped context!")
         resolved_requested.add(resolved_id)
 
+    return resolved_requested
+
+
+def _restrict_documents(documents: List[Dict[str, Any]], tool: ToolCallRecord, state: AgentRunState) -> List[Dict[str, Any]]:
+    resolved_requested = authorize_requested_documents(tool, state)
+    if not resolved_requested:
+        return documents
     return [document for document in documents if str(document["_id"]) in resolved_requested]
 
 

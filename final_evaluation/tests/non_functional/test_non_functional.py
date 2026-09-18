@@ -269,8 +269,14 @@ def test_scope_guard_blocks_out_of_scope_document_access():
     tools = build_langchain_tools(state=state)
     read_doc_tool = next(t for t in tools if t.name == "read_document")
     
-    with pytest.raises(UnauthorizedAccessError):
-        read_doc_tool.invoke({"document_id": "unauthorized-doc-789"})
+    # The scope check raises UnauthorizedAccessError inside the tool, and
+    # run_read_tool delivers it to the model as a structured OUT_OF_SCOPE
+    # observation rather than crashing the run. Assert the denial, and that the
+    # in-scope document was NOT substituted — which is what this returned before
+    # the no-executor fallback enforced scope.
+    out = read_doc_tool.invoke({"document_id": "unauthorized-doc-789"})
+    assert out["error"]["kind"] == "out_of_scope"
+    assert out.get("document_id") != "507f1f77bcf86cd799439012"
 
 # ==============================================================================
 # Pillar C: Sovereign (Reliability & Security)
