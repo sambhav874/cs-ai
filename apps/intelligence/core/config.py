@@ -12,8 +12,14 @@ def get_env_file():
 
 class Settings(BaseSettings):
     # Hugging Face and Groq Credentials
-    huggingface_token: str = Field(..., env="HUGGINGFACE_TOKEN")
-    groq_api_key: str = Field(..., env="GROQ_API_KEY")
+    # Vendor credentials default to empty so the service BOOTS without them.
+    # Product value 6 is "your model, your keys, your infrastructure", and a
+    # self-hosted install with no vendor keys must be able to start and parse
+    # locally via LiteParse. These were Field(...) — hard-required — which made
+    # a Groq key a precondition for the process starting at all. Features that
+    # need a key fail at the point of use, with a message naming the key.
+    huggingface_token: str = Field(default="", env="HUGGINGFACE_TOKEN")
+    groq_api_key: str = Field(default="", env="GROQ_API_KEY")
     groq_strict_mode: bool = Field(default=False, env="GROQ_STRICT_MODE")
 
     # API Configuration
@@ -100,7 +106,7 @@ class Settings(BaseSettings):
     allowed_origins: str = Field(default="http://localhost:4200", env="ALLOWED_ORIGINS")
     
 
-    support_email_address: str = Field(..., env="SUPPORT_EMAIL_ADDRESS")
+    support_email_address: str = Field(default="", env="SUPPORT_EMAIL_ADDRESS")
     ga_measurement_id: Optional[str] = Field(default="", env="GA_MEASUREMENT_ID")
     ga_api_secret: Optional[str] = Field(default="", env="GA_API_SECRET")
     
@@ -109,8 +115,10 @@ class Settings(BaseSettings):
     testing: bool = Field(default=False, env="TESTING")
      
     # Azure Communication Services Configuration
-    azure_communication_connection_string: str = Field(..., env="AZURE_COMMUNICATION_CONNECTION_STRING")
-    azure_sender_address: str = Field(..., env="AZURE_SENDER_ADDRESS")
+    # Azure-specific, and optional: self-host sends mail over SMTP instead.
+    # Requiring these meant no Azure account, no service.
+    azure_communication_connection_string: str = Field(default="", env="AZURE_COMMUNICATION_CONNECTION_STRING")
+    azure_sender_address: str = Field(default="", env="AZURE_SENDER_ADDRESS")
 
     marker_api_key: Optional[str] = Field(default=None, env="MARKER_API_KEY")
     # /api/v1/marker is deprecated upstream in favour of /convert, which takes a
@@ -118,6 +126,10 @@ class Settings(BaseSettings):
     marker_api_url: str = Field(default="https://www.datalab.to/api/v1/convert", env="MARKER_API_URL")
     domain: str = Field(default="http://localhost:4200", env="DOMAIN")
     cookie_domain: Optional[str] = Field(default=None, env="COOKIE_DOMAIN")
+    # Deliberately NOT defaulted. A signing key with a default value is the
+    # same class of defect as a seeded password: every install that never set
+    # it shares one. Must be supplied, and after the merge it is the same key
+    # the Fastify tier signs with. See docs/spikes/prisma-mongodb.md.
     secret_key: str = Field(..., env="SECRET_KEY") 
     algorithm: str = Field(default="HS256", env="ALGORITHM")
     access_token_expire_minutes: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")

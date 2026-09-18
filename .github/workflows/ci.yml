@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The URL that the Prisma MongoDB connector needs. directConnection is
+  # required against a single-node replica set, and the replica set itself is
+  # required because transactions and change streams both depend on one.
+  MONGO_URL: mongodb://localhost:27017/csai?replicaSet=rs0&directConnection=true
+
+jobs:
+  typecheck-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Generate the Prisma client (MongoDB schema)
+        working-directory: apps/api
+        run: ./node_modules/.bin/prisma generate --schema prisma/schema.mongo.prisma
+        env:
+          DATABASE_URL: ${{ env.MONGO_URL }}
+      - run: pnpm --filter api typecheck
+      - run: pnpm --filter api lint
+
+  test-api-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - working-directory: apps/api
+        run: ./node_modules/.bin/prisma generate --schema prisma/schema.mongo.prisma
+        env:
+          DATABASE_URL: ${{ env.MONGO_URL }}
+      # Includes prisma-client-guard.test.ts, which fails the build if src/ or
+      # prisma/ constructs a raw PrismaClient. A raw client bypasses the
+      # soft-delete extension and writes rows the app cannot see on MongoDB.
+      - run: pnpm --filter api test
+
+  test-api-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+
+      # Not a `services:` block: that cannot pass --replSet, and without a
+      # replica set Prisma refuses transactions outright.
+      - name: Start MongoDB as a single-node replica set
+        run: |
+          docker run -d --name mongo -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
+          for i in $(seq 1 30); do
+            docker exec mongo mongosh --quiet --eval "db.adminCommand('ping').ok" >/dev/null 2>&1 && break
+            sleep 1
+          done
+          docker exec mongo mongosh --quiet --eval \
+            'rs.initiate({_id:"rs0",members:[{_id:0,host:"localhost:27017"}]})'
+          for i in $(seq 1 30); do
+            [ "$(docker exec mongo mongosh --quiet --eval 'db.hello().isWritablePrimary')" = "true" ] && break
+            sleep 1
+          done
+
+      - name: Start Redis
+        run: docker run -d --name redis -p 6379:6379 redis:7-alpine
+
+      - run: pnpm install --frozen-lockfile
+      - working-directory: apps/api
+        run: ./node_modules/.bin/prisma generate --schema prisma/schema.mongo.prisma
+        env:
+          DATABASE_URL: ${{ env.MONGO_URL }}
+      - working-directory: apps/api
+        run: ./node_modules/.bin/prisma db push --schema prisma/schema.mongo.prisma --skip-generate
+        env:
+          DATABASE_URL: ${{ env.MONGO_URL }}
+
+      # approvals + rbac + cross-org are the gate the merge plan set for the
+      # Prisma-to-MongoDB conversion. audit-chain asserts the hash chain does
+      # not fork under 20 concurrent appends — MongoDB has no Serializable
+      # isolation, so ordering rests on colliding over one chain-head row.
+      - run: pnpm --filter api test:integration
+        env:
+          DATABASE_URL: ${{ env.MONGO_URL }}
+          REDIS_URL: redis://localhost:6379
+
+  test-intelligence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 3.12, not 3.13: apps/intelligence/pyproject.toml pins
+      # python = ">=3.10,<=3.12".
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12', cache: 'pip' }
+      - name: Install
+        working-directory: apps/intelligence
+        run: |
+          pip install poetry
+          poetry config virtualenvs.create false
+          poetry install --no-interaction --no-root
+      # Baseline recorded 2026-09-18: 524 passed, 8 skipped, 0 failures across
+      # the tests that collect without the optional heavy deps. Any drop is a
+      # regression, not noise.
+      - name: Unit and extraction tests
+        run: python -m pytest testing/backend/tests -q
+
+  fixtures-and-evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12', cache: 'pip' }
+      - name: Install
+        working-directory: apps/intelligence
+        run: |
+          pip install poetry
+          poetry config virtualenvs.create false
+          poetry install --no-interaction --no-root
+      # Scorers and fixture assertions only. The model-backed runs (NHS, the 8
+      # family fixtures, the parser bake-off) are nightly: the NHS run alone is
+      # 678 s and 413K output tokens, which is not a per-push cost.
+      - name: Fixture scorers
+        run: python -m pytest final_evaluation/tests -q

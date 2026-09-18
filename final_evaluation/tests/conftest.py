@@ -1,9 +1,24 @@
 import os
+import sys
 import pytest
 from dotenv import load_dotenv
 from langsmith import traceable, Client
 
 conftest_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Put apps/intelligence on sys.path for EVERY test under this conftest.
+#
+# These tests import `services...` and `core...` — package names that only
+# resolve when apps/intelligence is importable. That used to come from the
+# working directory, because the Makefile runs `cd apps/backend && pytest
+# ../../final_evaluation/tests`. Tests under functional/ each re-derive the
+# path themselves; the ones under non_functional/ never did, so they only ever
+# passed when invoked from that one directory and failed from the repo root.
+# CI runs from the repo root, so it belongs here, once.
+APP_INTELLIGENCE = os.path.abspath(os.path.join(conftest_dir, "../../apps/intelligence"))
+if APP_INTELLIGENCE not in sys.path:
+    sys.path.insert(0, APP_INTELLIGENCE)
+
 backend_env_path = os.path.join(conftest_dir, "../../apps/intelligence/.env")
 load_dotenv(dotenv_path=backend_env_path)
 
