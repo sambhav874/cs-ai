@@ -28,3 +28,6 @@ cookies.txt
 coverage/
 .coverage
 *.log
+
+# Secrets the API mints on first dev boot (apps/api/src/lib/secrets.ts)
+.dev-secrets.json

@@ -167,9 +167,17 @@ async function main() {
   const seedPassword = suppliedPassword ?? crypto.randomBytes(24).toString('base64url')
   const hash = await bcrypt.hash(seedPassword, 12)
 
+  // Re-runs must not lie. The users are upserted with `update: {}`, so on a
+  // re-run the stored hash is untouched — printing a freshly generated
+  // password would advertise one that does not work. Only a SUPPLIED password
+  // is written to existing users (an explicit reset); a generated one is only
+  // ever used, and only ever shown, when the user is being created.
+  const adminExisted = !!(await prisma.user.findFirst({ where: { email: 'admin@demo.com' }, select: { id: true } }))
+  const passwordUpdate = suppliedPassword ? { passwordHash: hash } : {}
+
   const admin = await prisma.user.upsert({
     where: { orgId_email: { orgId: org.id, email: 'admin@demo.com' } },
-    update: {},
+    update: passwordUpdate,
     create: {
       orgId: org.id, email: 'admin@demo.com', passwordHash: hash,
       name: 'Admin User',
@@ -179,7 +187,7 @@ async function main() {
 
   await prisma.user.upsert({
     where: { orgId_email: { orgId: org.id, email: 'legal@demo.com' } },
-    update: {},
+    update: passwordUpdate,
     create: {
       orgId: org.id, email: 'legal@demo.com', passwordHash: hash,
       name: 'Legal Counsel',
@@ -305,6 +313,9 @@ async function main() {
   console.log(`✓ Users: admin@demo.com / legal@demo.com`)
   if (suppliedPassword) {
     console.log('  password: from SEED_ADMIN_PASSWORD (not printed)')
+  } else if (adminExisted) {
+    console.log('  users already existed — password UNCHANGED, nothing printed.')
+    console.log('  To reset it: SEED_ADMIN_PASSWORD=<12+ chars> pnpm --filter api db:seed')
   } else {
     console.log('')
     console.log('  ┌─────────────────────────────────────────────────────────────┐')

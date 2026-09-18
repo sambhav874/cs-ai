@@ -12,7 +12,7 @@
  * healthy contracts-list page). Cheap to maintain and saves us from
  * "everything is slow but we don't know why" tickets.
  */
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 import pino from 'pino'
 
 const SLOW_QUERY_MS = Number(process.env.SLOW_QUERY_MS ?? 250)
@@ -79,6 +79,112 @@ function withSoftDeleteNull<T extends PrismaClient>(client: T) {
   })
 }
 
+/**
+ * TODO(merge): Postgres NULL semantics for every optional field, on MongoDB.
+ *
+ * Prisma on MongoDB compiles `where: { field: null }` to match only documents
+ * where null was WRITTEN. A field that was never set is absent, and does not
+ * match. On Postgres an unset optional column IS null, and matches. So every
+ * `field: null` filter silently excludes rows that were created without that
+ * field — the soft-delete extension above fixed this for `deletedAt` alone,
+ * but the codebase compares 94 other optional fields to null:
+ * `diligenceRoomId: null` hid every seeded contract from the contracts list,
+ * and `revokedAt`, `archivedAt`, `matterId` and `orgId: null` (platform-wide
+ * rows) are all the same shape.
+ *
+ * This rewrites the query instead of the data, so it holds however a document
+ * was written — upserts, nested creates, raw inserts, the Python tier. Every
+ * `optionalField: null` (or `{ equals: null }`) becomes
+ * `{ OR: [{ f: null }, { f: { isSet: false } }] }`, recursively through
+ * AND / OR / NOT, relation filters (some / every / none / is / isNot), and the
+ * `where` inside nested include / select. Installed only for MongoDB URLs:
+ * `isSet` does not exist on Postgres, where the problem does not exist either.
+ */
+type FieldInfo = { optional: Set<string>; relations: Map<string, string> }
+const MODEL_FIELDS = new Map<string, FieldInfo>(
+  Prisma.dmmf.datamodel.models.map((m) => [
+    m.name,
+    {
+      optional: new Set(
+        m.fields
+          .filter((f) => (f.kind === 'scalar' || f.kind === 'enum') && !f.isRequired && !f.isList)
+          .map((f) => f.name),
+      ),
+      relations: new Map(m.fields.filter((f) => f.kind === 'object').map((f) => [f.name, f.type])),
+    },
+  ]),
+)
+
+const RELATION_FILTER_KEYS = ['some', 'every', 'none', 'is', 'isNot'] as const
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)
+}
+
+function rewriteWhere(model: string, where: unknown): void {
+  if (!isPlainObject(where)) return
+  const info = MODEL_FIELDS.get(model)
+  if (!info) return
+
+  const nullOrUnset: Record<string, unknown>[] = []
+  for (const [key, val] of Object.entries(where)) {
+    if (key === 'AND' || key === 'OR' || key === 'NOT') {
+      for (const clause of Array.isArray(val) ? val : [val]) rewriteWhere(model, clause)
+      continue
+    }
+    if (info.optional.has(key)) {
+      const isNullFilter = val === null || (isPlainObject(val) && Object.keys(val).length === 1 && val.equals === null)
+      if (isNullFilter) {
+        delete where[key]
+        nullOrUnset.push({ OR: [{ [key]: null }, { [key]: { isSet: false } }] })
+      }
+      continue
+    }
+    const related = info.relations.get(key)
+    if (related && isPlainObject(val)) {
+      const nested = RELATION_FILTER_KEYS.filter((k) => k in val)
+      if (nested.length > 0) for (const k of nested) rewriteWhere(related, val[k])
+      else rewriteWhere(related, val) // to-one shorthand: relation: { field: ... }
+    }
+  }
+  if (nullOrUnset.length > 0) {
+    const existing = where.AND === undefined ? [] : Array.isArray(where.AND) ? where.AND : [where.AND]
+    where.AND = [...existing, ...nullOrUnset]
+  }
+}
+
+function rewriteProjection(model: string, projection: unknown): void {
+  if (!isPlainObject(projection)) return
+  const info = MODEL_FIELDS.get(model)
+  if (!info) return
+  for (const [key, val] of Object.entries(projection)) {
+    const related = key === '_count' ? undefined : info.relations.get(key)
+    if (!related || !isPlainObject(val)) continue
+    rewriteWhere(related, val.where)
+    rewriteProjection(related, val.include)
+    rewriteProjection(related, val.select)
+  }
+}
+
+function withMongoNullSemantics<T extends PrismaClient>(client: T) {
+  return client.$extends({
+    query: {
+      $allModels: {
+        async $allOperations({ model, args, query }: any) {
+          if (isPlainObject(args)) {
+            rewriteWhere(model, args.where)
+            rewriteProjection(model, args.include)
+            rewriteProjection(model, args.select)
+          }
+          return query(args)
+        },
+      },
+    },
+  })
+}
+
+const IS_MONGO = /^mongodb(\+srv)?:\/\//i.test(process.env.DATABASE_URL ?? '')
+
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient }
 
 function makeClient() {
@@ -119,7 +225,12 @@ function makeClient() {
   return client
 }
 
-export const prisma = globalForPrisma.prisma ?? (withSoftDeleteNull(makeClient()) as unknown as PrismaClient)
+function buildClient(): PrismaClient {
+  const base = withSoftDeleteNull(makeClient()) as unknown as PrismaClient
+  return IS_MONGO ? (withMongoNullSemantics(base) as unknown as PrismaClient) : base
+}
+
+export const prisma = globalForPrisma.prisma ?? buildClient()
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma
