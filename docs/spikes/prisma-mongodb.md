@@ -1,7 +1,8 @@
 # Spike: Prisma Postgres → MongoDB
 
-**Status: PASSED.** `approvals`, `rbac` and `cross-org` all green against a
-real MongoDB single-node replica set — 15/15 tests, the gate the plan set.
+**Status: PASSED, and the three findings are fixed.** `approvals`, `rbac`,
+`cross-org` and a new audit-chain concurrency suite are green against a real
+MongoDB single-node replica set — **18/18**.
 
 Artifact: `apps/api/prisma/schema.mongo.prisma`, beside the Postgres schema.
 
@@ -16,8 +17,8 @@ Artifact: `apps/api/prisma/schema.mongo.prisma`, beside the Postgres schema.
 ## Verdict
 
 The connector covers what this API relies on. The two-language architecture
-stands; MongoDB stays the system of record. **Three items below need decisions
-before launch** — one of them is security-relevant.
+stands; MongoDB stays the system of record. All three findings are resolved —
+two fixed in code, one decided with a written trigger.
 
 ## What converted cleanly
 
@@ -62,32 +63,57 @@ db.users.createIndex({ inviteToken: 1 }, { unique: true,
   partialFilterExpression: { inviteToken: { $type: "string" } } })
 ```
 
-## Open decisions
+## Decisions — all three resolved
 
-**1. Money as Float.** `Contract.value`, `ContractRequest.estimatedValue`,
-`Invoice.amount` are `Float` with `TODO(merge)`. Binary floating point cannot
-represent decimal money exactly and `Invoice.amount` feeds reconciliation.
-Integer minor units is correct; it changes arithmetic at every call site, so
-decide before a billing path exists.
+**1. The audit chain fork — FIXED.** `AuditChainHead`, one row per org, updated
+inside the same transaction as the append. Concurrent appends now collide on
+that single row, so the database raises a real write conflict and the loser
+retries. Works on both providers, so the provider conditional is gone.
 
-**2. The audit chain can fork. Security-relevant.** `lib/audit.ts` used
-`isolationLevel: 'Serializable'` so concurrent appends to one org's hash chain
-were strictly ordered. MongoDB rejects the option and offers only snapshot
-isolation — which is **not equivalent**: two concurrent appends read the same
-`prev` row then insert two *different* documents, so Mongo sees no write
-conflict and both commit, forking the chain silently.
+Two things only concurrency testing found:
 
-Now provider-conditional so the gate passes. The real fix is a per-org
-chain-head document updated inside the same transaction, making concurrent
-appends collide on one document so Mongo aborts the loser — which the existing
-`P2034` retry loop already handles. Until then the chain is ordered only under
-low concurrency.
+- **P2002 is reachable.** On an org's *first* append, two transactions INSERT
+  the head rather than updating it, so the race arrives as a unique violation,
+  not a write conflict. Added to the retryable set.
+- **The retry policy was too weak** once contention became real. 20 concurrent
+  appends landed **4 of 20**: five attempts with unjittered backoff means every
+  loser wakes at the same instants and collides again. Now eight attempts with
+  full jitter capped at 500 ms — all 20 land.
 
-**3. One real JOIN.** `routes/dashboard.ts:118` joins `approval_steps` to
-`approval_instances` for the per-user pending-approval badge. Its own comment
-records that both filters are load-bearing — without them the badge counts
-steps the user should not see yet. Becomes two queries plus app-side
-correlation, or an aggregation pipeline.
+`audit-chain.integration.test.ts` fires 20 concurrent appends and asserts one
+unbroken chain, exactly one genesis event, no shared `prevHash`, and a head
+matching the tail. It fails against the pre-fix code.
+
+**2. The JOIN — FIXED.** `routes/dashboard.ts` held the only real join. Rewritten
+as two queries plus an in-memory correlation, preserving the
+`GREATEST(currentStepOrder, 1)` gate exactly. `routes/health.ts` swapped
+`SELECT 1` for an indexed read. Prisma MongoDB has no `$queryRaw` at all, so
+both were compile errors rather than silent runtime failures.
+
+**3. Money as Float — KEEP FLOAT, with a trigger.**
+
+The decisive fact: **the app already does float64 arithmetic on money.** Every
+read site coerces and accumulates:
+
+```ts
+counterparties.ts:231   totalValue += Number(c.value.toString())
+analytics.ts:85         // "Sum executed value" — up to 5,000 rows, in JS float
+invoices.ts:150         Math.abs(invoice.amount - contractValue) / contractValue
+```
+
+Decimal storage was never protecting the computation — it was discarded at
+every read. So Float storage introduces no new class of error; it removes a
+layer of storage precision the app was already throwing away.
+
+Converting to integer minor units now would touch ~70 sites (60 for
+`Contract.value` alone) across code paths with no test coverage — more risk
+than it removes today.
+
+**Trigger: convert end-to-end to integer minor units before invoice
+reconciliation ships** (Phase 3 in the roadmap). That is the first path where
+money correctness is load-bearing rather than advisory. The real hazard is
+`analytics.ts` summing up to 5,000 float values — which is pre-existing, not
+introduced by this migration.
 
 ## Raw SQL: 7 sites, 5 already leaving
 
