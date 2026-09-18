@@ -150,7 +150,22 @@ export async function createAuditEvent(params: AuditParams): Promise<void> {
       }, {
         // Serializable so concurrent appends to the same org's chain are
         // strictly ordered. Audit volume is low; the perf cost is fine.
-        isolationLevel: 'Serializable',
+        //
+        // TODO(merge): MongoDB rejects isolationLevel outright ("Mongo does not
+        // support setting transaction isolation levels") and offers only snapshot
+        // isolation. Snapshot is NOT equivalent here: two concurrent appends read
+        // the same prev row and then insert two DIFFERENT documents, so Mongo sees
+        // no write conflict and BOTH commit — forking the hash chain silently.
+        // Serializable prevented exactly that.
+        //
+        // The fix is a per-org chain-head document updated inside the same
+        // transaction, so concurrent appends collide on one document and Mongo
+        // aborts the loser, which the retry loop below already handles (P2034).
+        // Until that lands, the chain is ordered only under low concurrency.
+        // This is security-relevant: decide before launch, not after.
+        ...(process.env.DATABASE_URL?.startsWith('mongodb')
+          ? {}
+          : { isolationLevel: 'Serializable' as const }),
       })
       return // success
     } catch (err) {

@@ -74,7 +74,13 @@ model User {
   preferences      Json      @default("{}")
   refreshToken     String?
   status           String    @default("ACTIVE") // ACTIVE | INVITED | DEACTIVATED
-  inviteToken      String?   @unique
+  // TODO(merge): @unique removed — on MongoDB a unique index treats missing/null
+  // as a value, so only ONE user could have a null inviteToken. Postgres allows
+  // many (NULL != NULL). Uniqueness is owed to the migration runner as a PARTIAL
+  // index, which Prisma's MongoDB connector cannot express declaratively:
+  //   db.users.createIndex({ inviteToken: 1 }, { unique: true,
+  //     partialFilterExpression: { inviteToken: { $type: "string" } } })
+  inviteToken      String?
   inviteExpiresAt  DateTime?
   lastActiveAt     DateTime?
   outOfOffice      Boolean   @default(false)
