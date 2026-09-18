@@ -77,6 +77,34 @@ const ACTIONS_TO_HIDE = [
   'CONTRACT_INDEXED',
 ]
 
+/**
+ * Per-user pending approvals: steps assigned to this user that are ALSO on the
+ * instance's currently-active step. Both filters are load-bearing — without the
+ * step-order check the badge counts steps the user should not see yet, which is
+ * sequential-gating correctness, not cosmetics.
+ *
+ * Was a SQL JOIN against approval_instances. Rewritten as two queries plus an
+ * in-memory correlation because Prisma has no join on MongoDB, where $queryRaw
+ * does not exist at all. The step set is one user's approval inbox, so it is
+ * small and bounded.
+ */
+async function countMyActivePendingSteps(orgId: string, userId: string): Promise<number> {
+  const steps = await prisma.approvalStep.findMany({
+    where:  { orgId, approverId: userId, status: 'PENDING' },
+    select: { approvalInstanceId: true, stepOrder: true },
+  })
+  if (steps.length === 0) return 0
+
+  const instances = await prisma.approvalInstance.findMany({
+    where:  { id: { in: [...new Set(steps.map(s => s.approvalInstanceId))] } },
+    select: { id: true, currentStepOrder: true },
+  })
+  // GREATEST(i."currentStepOrder", 1)
+  const activeOrder = new Map(instances.map(i => [i.id, Math.max(i.currentStepOrder, 1)]))
+
+  return steps.filter(s => s.stepOrder === activeOrder.get(s.approvalInstanceId)).length
+}
+
 export async function dashboardRoutes(app: FastifyInstance) {
   app.get('/', { preHandler: requireAuth }, async (req, reply) => {
     const { orgId, sub: userId } = req.user
@@ -115,15 +143,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
       // P7.2.3 — Per-user pending approvals: only steps assigned to me
       // AND only the currently-active step (sequential gating). Without
       // both filters the badge counts steps the user shouldn't see yet.
-      prisma.$queryRaw<Array<{ count: bigint }>>`
-        SELECT COUNT(*)::bigint AS count
-        FROM approval_steps s
-        JOIN approval_instances i ON i.id = s."approvalInstanceId"
-        WHERE s."orgId" = ${orgId}
-          AND s."approverId" = ${userId}
-          AND s.status = 'PENDING'
-          AND s."stepOrder" = GREATEST(i."currentStepOrder", 1)
-      `.then(rows => Number(rows[0]?.count ?? 0)),
+      countMyActivePendingSteps(orgId, userId),
       prisma.contract.count({
         where: {
           orgId,

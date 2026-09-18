@@ -40,7 +40,9 @@ async function readinessSnapshot() {
   // DB
   let t = Date.now()
   try {
-    await prisma.$queryRaw`SELECT 1`
+    // Provider-neutral liveness probe. MongoDB has no $queryRaw at all, and a
+    // trivial indexed read proves the connection and the pool, same as SELECT 1.
+    await prisma.organization.findFirst({ select: { id: true } })
     checks.database = 'ok'
   } catch {
     checks.database = 'error'
