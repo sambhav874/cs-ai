@@ -175,7 +175,9 @@ class Settings(BaseSettings):
     claude_model_name: Optional[str] = Field(default="claude-3-5-haiku-20241022", env="CLAUDE_MODEL_NAME")
 
     # Celery & Redis Configuration
-    celery_broker_url: str = Field(default="amqp://guest:guest@localhost:5672//", env="CELERY_BROKER_URL")
+    # celery_broker_url removed: nothing read it (celery_app.py reads the env var
+    # directly), and its default was amqp://guest:guest@ — the exact default
+    # broker credential celery_app.py refuses at startup.
 
     # Azure Service Bus Configuration
     service_bus_sas_policy_name: Optional[str] = Field(default=None, env="SERVICE_BUS_SAS_POLICY_NAME")

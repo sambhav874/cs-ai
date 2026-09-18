@@ -49,8 +49,9 @@ settings = Settings()
 # Dynamic Broker & Backend Configuration
 # =============================================================================
 # 1. Message Broker Configuration
-# Primary Default: RabbitMQ 
-# Fallback: Azure Service Bus (Activated via USE_AZURE_SERVICE_BUS=true)
+# Redis (one instance shared with the lifecycle tier's BullMQ, separate key
+# prefixes). Azure Service Bus remains available via USE_AZURE_SERVICE_BUS=true.
+# No default: an unset broker is a startup error, never a guessed credential.
 celery_broker = os.getenv("CELERY_BROKER_URL")
 
 if celery_broker:
@@ -68,8 +69,15 @@ else:
     )
 
 # 2. Result Backend Configuration
-# Primary Default: RPC (Stores results back in RabbitMQ - no extra infra needed)
-# Fallback: Azure Blob Storage (Activated via USE_AZURE_BLOB_STORAGE=true)
+# Default: MongoDB — the system of record, already required.
+#
+# This defaulted to rpc://, which is wrong here twice over:
+#   - RPC results live in per-client reply queues bound to one connection, so
+#     AsyncResult(job_id) from any OTHER process — the WebSocket status route in
+#     api/routes/websocket.py, or a second API replica — cannot see them.
+#   - RPC rides AMQP reply-to. With a Redis broker it is not a supported pairing.
+# Mongo results are shared across processes and replicas and survive restarts.
+# Azure Blob stays available via USE_AZURE_BLOB_STORAGE=true.
 celery_backend = os.getenv("CELERY_RESULT_BACKEND")
 container_name = 'celery-results'
 
@@ -77,8 +85,13 @@ if celery_backend:
     backend_url = celery_backend
 elif os.getenv("USE_AZURE_BLOB_STORAGE", "false").lower() == "true" and os.getenv("AZURE_STORAGE_CONNECTION_STRING"):
     backend_url = f"azureblockblob://{os.getenv('AZURE_STORAGE_CONNECTION_STRING')}"
+elif os.getenv("MONGODB_URI"):
+    backend_url = os.environ["MONGODB_URI"]
 else:
-    backend_url = "rpc://"
+    raise RuntimeError(
+        "No Celery result backend: set CELERY_RESULT_BACKEND, or MONGODB_URI "
+        "(the default), or USE_AZURE_BLOB_STORAGE=true."
+    )
 
 # =============================================================================
 # Celery Application Initialization
@@ -99,10 +112,21 @@ except Exception as e:
 # =============================================================================
 # Celery Core Configuration
 # =============================================================================
+TASK_TIME_LIMIT_SECONDS = 7200
+
 celery_app.conf.update(
     # General Task Settings
     task_acks_late=True,
-    broker_transport_options={'visibility_timeout': 3600},
+    mongodb_backend_settings={
+        'database': 'celery_results',
+        'taskmeta_collection': 'celery_taskmeta',
+    },
+    # visibility_timeout MUST exceed task_time_limit. On a Redis broker an
+    # unacked task is redelivered once this elapses — so at 3600 against a
+    # 7200 hard limit, any task running past an hour was handed to a SECOND
+    # worker while the first was still running. On AMQP the option was inert,
+    # which is why it never surfaced before the broker moved to Redis.
+    broker_transport_options={'visibility_timeout': TASK_TIME_LIMIT_SECONDS + 3600},
     worker_prefetch_multiplier=1,
     
     # Task Routing (Mapping tasks to specific queues)
@@ -147,7 +171,7 @@ celery_app.conf.update(
     
     # Task Execution Limits
     task_track_started=True,
-    task_time_limit=7200,       # Hard limit (2 hours)
+    task_time_limit=TASK_TIME_LIMIT_SECONDS,  # Hard limit (2 hours)
     task_soft_time_limit=5400,  # Soft limit (1.5 hours)
     
     # Connection Retrieval
