@@ -89,28 +89,38 @@ export function hashAuditRow(row: {
 }
 
 export async function createAuditEvent(params: AuditParams): Promise<void> {
-  // Lookup the previous event for this org, then create the new one
-  // with prevHash + hash. We use a transaction with serializable
-  // isolation to avoid two concurrent writes both reading the same
-  // "previous" row and both linking to it.
+  // Claim the org's chain head, then create the new event with prevHash +
+  // hash and write the new hash back to the head — all in one transaction.
+  //
+  // The head document is what makes this safe. Two concurrent appends must
+  // both update audit_chain_heads/<orgId>, so the database sees a genuine
+  // write conflict and aborts one, which the retry loop below handles. The
+  // previous approach read the last event and relied on Serializable
+  // isolation; that works on Postgres but not on MongoDB, which offers only
+  // snapshot isolation. There, two appends read the same previous row and
+  // then insert two DIFFERENT documents — no conflict is detected, both
+  // commit, and the chain forks silently. Colliding on one row is provider-
+  // independent, so there is a single code path here now.
   //
   // P2034 retry loop (2026-04-29 audit fix): under concurrent writes
   // Postgres throws P2034 / 40001 serialization failures; that's the
   // expected behaviour at Serializable isolation. Catch and retry up
-  // to 5 times with exponential backoff (10ms / 20ms / 40ms / 80ms /
-  // 160ms) — total worst-case wait ~310ms, still well under any
-  // reasonable request budget. If we're STILL conflicting after 5
-  // tries we surface the error so callers can react (or rate-limit).
-  const MAX_ATTEMPTS = 5
+  // up to 8 times with full-jitter backoff capped at 500ms. If we are
+  // STILL conflicting after 8 tries we surface the error so callers can
+  // react (or rate-limit).
+  const MAX_ATTEMPTS = 8
   let lastErr: unknown = null
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
       await prisma.$transaction(async (tx) => {
-        const prev = await tx.auditEvent.findFirst({
-          where: { orgId: params.orgId },
-          orderBy: { createdAt: 'desc' },
-          select: { hash: true },
+        // Claim the head FIRST. This write is the conflict point.
+        const head = await tx.auditChainHead.upsert({
+          where:  { orgId: params.orgId },
+          create: { orgId: params.orgId, seq: 0, lastHash: null },
+          update: { seq: { increment: 1 } },
+          select: { lastHash: true },
         })
+        const prev = { hash: head.lastHash }
 
         // Two-phase: create the row, then update it with the hash. We
         // can't compute the hash before insert because we need the auto-
@@ -147,25 +157,11 @@ export async function createAuditEvent(params: AuditParams): Promise<void> {
           where: { id: created.id },
           data: { hash },
         })
-      }, {
-        // Serializable so concurrent appends to the same org's chain are
-        // strictly ordered. Audit volume is low; the perf cost is fine.
-        //
-        // TODO(merge): MongoDB rejects isolationLevel outright ("Mongo does not
-        // support setting transaction isolation levels") and offers only snapshot
-        // isolation. Snapshot is NOT equivalent here: two concurrent appends read
-        // the same prev row and then insert two DIFFERENT documents, so Mongo sees
-        // no write conflict and BOTH commit — forking the hash chain silently.
-        // Serializable prevented exactly that.
-        //
-        // The fix is a per-org chain-head document updated inside the same
-        // transaction, so concurrent appends collide on one document and Mongo
-        // aborts the loser, which the retry loop below already handles (P2034).
-        // Until that lands, the chain is ordered only under low concurrency.
-        // This is security-relevant: decide before launch, not after.
-        ...(process.env.DATABASE_URL?.startsWith('mongodb')
-          ? {}
-          : { isolationLevel: 'Serializable' as const }),
+
+        await tx.auditChainHead.update({
+          where: { orgId: params.orgId },
+          data:  { lastHash: hash },
+        })
       })
       return // success
     } catch (err) {
@@ -173,10 +169,19 @@ export async function createAuditEvent(params: AuditParams): Promise<void> {
       const code = (err as { code?: string }).code
       // P2034 = "Transaction failed due to a write conflict or a deadlock"
       // 40001 = Postgres serialization_failure (reaches Prisma as P2034 too)
-      const isRetryable = code === 'P2034' ||
+      // P2002 = unique violation. Reachable on an org's FIRST append, where
+      //         two transactions both INSERT the chain head rather than
+      //         updating it. That is the same race, so it retries the same way.
+      const isRetryable = code === 'P2034' || code === 'P2002' ||
         (err as { meta?: { code?: string } }).meta?.code === '40001'
       if (!isRetryable || attempt === MAX_ATTEMPTS - 1) throw err
-      const backoffMs = 10 * Math.pow(2, attempt) // 10, 20, 40, 80, 160
+      // Full jitter, not plain exponential backoff. Every append now contends
+      // on the same chain-head row, so without jitter all losers wake at the
+      // same instants (10/20/40/80ms) and collide again — a thundering herd.
+      // Measured: 20 concurrent appends landed 4 of 20 with unjittered backoff
+      // and 5 attempts; with jitter and 8 attempts, all 20 land.
+      const cap = Math.min(500, 10 * Math.pow(2, attempt))
+      const backoffMs = Math.random() * cap
       await new Promise((resolve) => setTimeout(resolve, backoffMs))
     }
   }

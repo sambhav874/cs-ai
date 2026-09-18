@@ -495,6 +495,21 @@ model PlaybookPosition {
 
 // ─── Audit Events (append-only, immutable) ────────────────────────────────
 
+/// Per-org head of the audit hash chain. Exists so concurrent appends collide
+/// on ONE document: MongoDB offers only snapshot isolation, and two appends
+/// that read the same previous row then insert two DIFFERENT documents produce
+/// no write conflict, so both commit and the chain forks silently. Serializable
+/// isolation prevented that on Postgres and is unavailable here. Updating this
+/// row inside the same transaction restores the ordering on both providers.
+model AuditChainHead {
+  orgId     String   @id @map("_id")
+  lastHash  String?
+  seq       Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("audit_chain_heads")
+}
+
 model AuditEvent {
   id           String   @id @default(cuid()) @map("_id")
   orgId        String
