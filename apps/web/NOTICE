@@ -1,0 +1,11 @@
+This directory contains code from draftLegal
+(https://github.com/AniketTati/draft-legal), commit 89382a1,
+Copyright (C) 2026 Aniket Tatipamula, licensed under AGPL-3.0.
+
+The full licence text is in ./LICENSE. It is kept here, beside the code,
+because upstream carries no per-file headers — the root LICENSE was the
+only marker, and moving this tree out of vendor/ would otherwise leave
+it unmarked.
+
+Our licence position, the obligation trigger and the three exits are
+recorded in /docs/LICENSING.md. Do not remove this file.
