@@ -44,6 +44,7 @@ import { ProfilePage } from '@/pages/ProfilePage'
 import { AcceptInvitePage } from '@/pages/AcceptInvitePage'
 import { TeamPage } from '@/pages/TeamPage'
 import { Toaster } from '@/components/common/Toaster'
+import { intelligenceRoutes } from '@/features/intelligence/routes'
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user)
@@ -148,6 +149,9 @@ export default function App() {
         {/* P4.2 — Matter list + workspace */}
         <Route path="matters" element={<MattersPage />} />
         <Route path="matters/:id" element={<MatterDetailPage />} />
+        {/* Screens ported from ContractSense (merge step 5): projects and
+            their memory first; the rest follow screen by screen. */}
+        {intelligenceRoutes}
         <Route path="team" element={<TeamPage />} />
         <Route path="profile" element={<ProfilePage />} />
         {/* Catch-all, LAST. Without it an unmatched URL rendered AppShell's

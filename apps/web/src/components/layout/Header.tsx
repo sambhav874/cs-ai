@@ -1,10 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { LogOut, User, ChevronDown, Search, Settings } from 'lucide-react'
+import { LogOut, User, ChevronDown, Search, Settings, Sun, Moon, Monitor } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
 import { NotificationBell } from '@/components/approvals/NotificationBell'
 import { GlobalSearch } from '@/components/common/GlobalSearch'
 import { Kbd } from '@/components/ui/primitives'
+import { useTheme, type ThemeChoice } from '@/lib/theme'
+import { cn } from '@/lib/utils'
+
+const THEMES: Array<{ value: ThemeChoice; label: string; Icon: typeof Sun }> = [
+  { value: 'light', label: 'Light', Icon: Sun },
+  { value: 'dark', label: 'Dark', Icon: Moon },
+  { value: 'system', label: 'System', Icon: Monitor },
+]
 
 // U.8 — derive a 1- or 2-letter avatar initial from the user's display
 // name. "Maya Goldberg" → "MG"; "alex" → "A"; "" → "?".
@@ -27,6 +35,7 @@ export function Header(_props: HeaderProps) {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const [theme, setTheme] = useTheme()
 
   // Close menu on outside click
   useEffect(() => {
@@ -71,8 +80,8 @@ export function Header(_props: HeaderProps) {
       >
         <Search className="size-3.5" />
         <span className="flex-1 text-left">Search contracts, counterparties…</span>
-        {/* Kbd's own ground is paper-50 — on a paper-50 field it needs the card
-            surface behind it to stay legible. */}
+        {/* Kbd's own ground is surface-50 — on a surface-50 field it needs the
+            card behind it to stay legible. */}
         <Kbd className="bg-card text-[10px]">{isMac ? '⌘/' : 'Ctrl+/'}</Kbd>
       </button>
       <div className="flex items-center gap-2">
@@ -89,8 +98,8 @@ export function Header(_props: HeaderProps) {
             className="flex items-center gap-2 text-[12.5px] text-fg-700 hover:text-fg-950 transition-colors rounded-full pl-1 pr-2 py-1 hover:bg-surface-100"
             aria-label="Account menu"
           >
-            {/* The avatar is a person, not a machine — indigo belongs to agent
-                surfaces only, so the initials read as neutral paper + ink. */}
+            {/* The avatar is a person, not a machine — violet belongs to agent
+                surfaces only, so the initials stay neutral. */}
             <span
               aria-hidden
               className="size-7 rounded-full bg-surface-100 text-fg-700 flex items-center justify-center text-[10.5px] font-semibold tracking-wide ring-1 ring-surface-200"
@@ -104,7 +113,7 @@ export function Header(_props: HeaderProps) {
           {showUserMenu && (
             <div
               data-testid="user-menu"
-              className="absolute right-0 top-full mt-1.5 w-60 bg-card rounded-card border border-surface-200 shadow-e2 z-20 py-1 overflow-hidden"
+              className="absolute right-0 top-full mt-1.5 w-64 bg-popover rounded-card border border-surface-200 shadow-e3 z-20 py-1 overflow-hidden origin-top-right animate-in fade-in-0 zoom-in-95 duration-150"
               role="menu"
             >
               {/* Identity block — answers "am I logged in as the right person?" */}
@@ -146,6 +155,29 @@ export function Header(_props: HeaderProps) {
                   <Settings size={14} className="text-fg-400" />
                   Settings
                 </Link>
+              </div>
+
+              <div className="border-t border-border px-3 py-2.5">
+                <p id="theme-label" className="text-[11px] font-medium text-fg-500 mb-1.5">Appearance</p>
+                <div role="radiogroup" aria-labelledby="theme-label" className="grid grid-cols-3 gap-1 rounded-md bg-surface-100 p-0.5">
+                  {THEMES.map(({ value, label, Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={theme === value}
+                      data-testid={`theme-${value}`}
+                      onClick={() => setTheme(value)}
+                      className={cn(
+                        'inline-flex h-7 items-center justify-center gap-1.5 rounded-[6px] text-[12px] font-medium transition-colors duration-micro',
+                        theme === value ? 'bg-card text-fg-950 shadow-e1' : 'text-fg-500 hover:text-fg-950'
+                      )}
+                    >
+                      <Icon size={12} aria-hidden />
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="border-t border-border py-1">

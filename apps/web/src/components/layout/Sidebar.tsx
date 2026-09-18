@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Sparkles,
   Briefcase,
+  FolderKanban,
   PenSquare,
   ListTodo,
   CalendarDays,
@@ -89,6 +90,7 @@ const NAV_SECTIONS: NavSection[] = [
     // The work objects — the nouns the user manipulates daily.
     label: 'Workspace',
     items: [
+      { to: '/projects',       icon: FolderKanban,  label: 'Projects' },
       { to: '/matters',        icon: Briefcase,     label: 'Matters' },
       { to: '/contracts',      icon: FileText,      label: 'Contracts' },
       { to: '/requests',       icon: ClipboardList,  label: 'Requests', badge: 'openRequests' },

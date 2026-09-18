@@ -19,11 +19,9 @@ import { Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { ChevronRight } from 'lucide-react'
+import { useCrumbStore } from '@/store/crumbs'
 
-interface Crumb {
-  label: string
-  to?: string
-}
+import type { Crumb } from '@/store/crumbs'
 
 const PRIMARY_LABELS: Record<string, string> = {
   dashboard:        'Dashboard',
@@ -60,6 +58,8 @@ export function Breadcrumbs() {
   // useQuery calls above the early returns keeps the hook count stable.
   const { pathname } = useLocation()
   const segments = pathname.split('/').filter(Boolean)
+  const override = useCrumbStore((s) => s.crumbs)
+  const actions = useCrumbStore((s) => s.actions)
 
   // Pre-fetch contract title when we're on /contracts/:id so the
   // breadcrumb reads "Contracts › WPT Enterprises — Zynga Agreement"
@@ -92,14 +92,16 @@ export function Breadcrumbs() {
   // Hide on paths where breadcrumb adds nothing or isn't wanted.
   // These early-returns are SAFE here because they come AFTER all hooks.
   if (segments.length === 0) return null
-  if (segments.length === 1 && PRIMARY_LABELS[segments[0]]) return null
+  if (!override && !actions && segments.length === 1 && PRIMARY_LABELS[segments[0]]) return null
   if (segments[0] === 'sign' || segments[0] === 'portal' || segments[0] === 'login' || segments[0] === 'register' || segments[0] === 'accept-invite') return null
 
   // Build crumbs
   const crumbs: Crumb[] = []
   // Root
   const root = segments[0]
-  if (PRIMARY_LABELS[root]) {
+  if (override) {
+    // The page supplied its own trail.
+  } else if (PRIMARY_LABELS[root]) {
     crumbs.push({ label: PRIMARY_LABELS[root], to: `/${root}` })
   } else {
     crumbs.push({ label: prettyLabel(root), to: `/${root}` })
@@ -107,7 +109,7 @@ export function Breadcrumbs() {
 
   // Second segment — if it's a resource id (contracts/:id) use the
   // fetched title; otherwise prettify.
-  if (segments.length > 1) {
+  if (!override && segments.length > 1) {
     const sub = segments[1]
     if (root === 'contracts' && contract?.title) {
       crumbs.push({ label: contract.title })
@@ -150,6 +152,7 @@ export function Breadcrumbs() {
           </div>
         )
       })}
+      {actions && <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>}
     </nav>
   )
 }

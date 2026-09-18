@@ -9,3 +9,7 @@ it unmarked.
 
 Our licence position, the obligation trigger and the three exits are
 recorded in /docs/LICENSING.md. Do not remove this file.
+
+Exception: src/features/intelligence/ is ContractSense code (the same owner as
+this repository), ported from vendor/contractsense. It is not draftLegal code
+and not covered by draftLegal's copyright; see docs/LICENSING.md.

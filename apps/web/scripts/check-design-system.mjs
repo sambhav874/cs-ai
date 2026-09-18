@@ -88,6 +88,10 @@ const ASSIST_ALLOWED = [
   'pages/ContractDetailPage.tsx',                 // AI analysis panel + extracted terms
   'pages/InvoicesPage.tsx',                       // what the invoice matcher concluded
   'components/layout/Sidebar.tsx',                // the /agent entry point at rest
+  // ContractSense's agent, ported (port-cs.mjs keeps violet only here).
+  'features/intelligence/components/agent/',
+  'features/intelligence/components/ContractAgentPanel.tsx',
+  'features/intelligence/components/ThinkingDisplay.tsx',
 ]
 const ASSIST_USE = /\b(?:bg|text|border|ring|from|to|via|fill|stroke|decoration|divide|placeholder)-assist(?:-[0-9]{2,3})?\b/g
 

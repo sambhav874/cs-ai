@@ -1,5 +1,17 @@
 import { type ClassValue, clsx } from 'clsx'
-import { twMerge } from 'tailwind-merge'
+import { extendTailwindMerge } from 'tailwind-merge'
+
+// tailwind-merge only knows stock Tailwind. Without this it reads `text-dense`
+// as a colour and silently drops it when a `text-fg-500` follows (or the other
+// way round), and treats `shadow-e1` the same way against real shadows.
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': [{ text: ['display', 'title', 'section', 'body', 'dense', 'eyebrow', 'paper', 'micro'] }],
+      shadow: [{ shadow: ['e0', 'e1', 'e2', 'e3', 'page'] }],
+    },
+  },
+})
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))

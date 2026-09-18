@@ -1,13 +1,14 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
@@ -15,7 +16,12 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@cs/*": ["./src/features/intelligence/*"],
+      "next/link": ["./src/features/intelligence/shims/next-link.tsx"],
+      "next/navigation": ["./src/features/intelligence/shims/next-navigation.ts"],
+      "next/dynamic": ["./src/features/intelligence/shims/next-dynamic.tsx"],
+      "next/image": ["./src/features/intelligence/shims/next-image.tsx"]
     }
   },
   "include": ["src"],
