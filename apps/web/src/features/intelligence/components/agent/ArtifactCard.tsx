@@ -40,7 +40,7 @@ export function ArtifactCard({
   const subtitle = isKpiExtraction
     ? `${artifact.kpi_count ?? 0} KPI rows · ${artifact.new_or_updated_count ?? 0} new/updated${artifact.extraction_method ? ` · ${artifact.extraction_method}` : ""}`
     : isProjectFact
-      ? "Recorded in project memory"
+      ? "Recorded in space memory"
       : isRedline
         ? `Redline copy${changeCount ? ` · ${changeCount} applied` : ""}${unmatchedCount ? ` · ${unmatchedCount} unmatched` : ""}${artifact.version_number ? ` · Version ${artifact.version_number}` : ""}`
         : editAnnotations.length

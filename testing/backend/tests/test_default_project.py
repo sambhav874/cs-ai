@@ -1,7 +1,7 @@
-"""ensure_default_project: one Default Project per owner, even under a race.
+"""ensure_default_project: one Unfiled space per owner, even under a race.
 
 The dashboard fires several requests at once on first load. The old
-check-then-insert let two of them each create a Default Project (seen in the
+check-then-insert let two of them each create one (seen in the
 merge trial, 3 ms apart). Now it is one atomic upsert, backed by a unique
 partial index; a request that loses the race re-reads the winner.
 """
@@ -21,7 +21,7 @@ def _collection():
         [("ownerType", ASCENDING), ("ownerId", ASCENDING)],
         name="project_default_per_owner",
         unique=True,
-        partialFilterExpression={"name": "Default Project"},
+        partialFilterExpression={"isDefault": True},
     )
     return col
 
@@ -33,8 +33,21 @@ def test_repeated_calls_return_one_project():
         first = projects_module.ensure_default_project("team", owner)
         second = projects_module.ensure_default_project("team", owner)
     assert first["_id"] == second["_id"]
-    assert col.count_documents({"ownerId": owner, "name": "Default Project"}) == 1
+    assert col.count_documents({"ownerId": owner, "isDefault": True}) == 1
+    assert first["name"] == "Unfiled"
     assert first["description"].startswith("Contracts that have not been moved")
+
+
+def test_a_space_created_before_the_flag_is_adopted_not_duplicated():
+    """Documents made when this was called "Default Project" keep their id."""
+    col = _collection()
+    owner = ObjectId()
+    legacy = col.insert_one({"ownerType": "team", "ownerId": owner, "name": "Default Project"}).inserted_id
+    with patch.object(projects_module, "projects_collection", col):
+        got = projects_module.ensure_default_project("team", owner)
+    assert got["_id"] == legacy
+    assert got["name"] == "Unfiled" and got["isDefault"] is True
+    assert col.count_documents({"ownerId": owner}) == 1
 
 
 def test_owners_are_separate():
@@ -49,7 +62,7 @@ def test_losing_the_race_returns_the_winner():
     """A concurrent upsert that hits the unique index re-reads, not raises."""
     col = _collection()
     owner = ObjectId()
-    winner_id = col.insert_one({"ownerType": "team", "ownerId": owner, "name": "Default Project"}).inserted_id
+    winner_id = col.insert_one({"ownerType": "team", "ownerId": owner, "isDefault": True, "name": "Unfiled"}).inserted_id
 
     class RacingCollection:
         def find_one_and_update(self, *a, **k):

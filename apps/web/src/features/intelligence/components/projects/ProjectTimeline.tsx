@@ -445,7 +445,7 @@ export function ProjectTimeline({ projectId, onMemoryChanged }: ProjectTimelineP
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 p-10 text-center">
         <CalendarClock className="h-8 w-8 text-muted-foreground/60" />
-        <h3 className="text-sm font-semibold text-foreground">No project history yet</h3>
+        <h3 className="text-sm font-semibold text-foreground">No history in this space yet</h3>
         <p className="max-w-md text-xs text-muted-foreground">
           Once contracts finish indexing, a chronological overview of what was uploaded, when, and
           how documents relate to each other will appear here.

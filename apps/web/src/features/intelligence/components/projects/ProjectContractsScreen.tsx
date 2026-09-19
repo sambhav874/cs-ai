@@ -132,7 +132,7 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
         
         if (error) {
           if (error.includes("403") || error.includes("404")) {
-            toast({ title: "Project Unavailable", description: "This project is not available in the current context.", variant: "destructive" });
+            toast({ title: "Space unavailable", description: "This space is not available in the current context.", variant: "destructive" });
             router.push("/dashboard");
             return;
           }
@@ -150,7 +150,7 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
       } catch (err) {
         console.error("Error fetching project:", err);
         if (isMounted) {
-          toast({ title: "Error", description: "Failed to load project details", variant: "destructive" });
+          toast({ title: "Error", description: "Failed to load space details", variant: "destructive" });
           router.push("/dashboard");
         }
       } finally {
@@ -547,7 +547,7 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
           <h1 className="text-2xl font-bold text-foreground tracking-tight">{project?.name || "Project"}</h1>
           {project && (
             <span className="ml-2 inline-flex items-center rounded-full border border-border bg-muted/30 px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
-              {project.ownerType === "team" ? "Team Project" : "Personal Project"}
+              {project.ownerType === "team" ? "Team space" : "Personal space"}
             </span>
           )}
           {project?.ownerType === "team" && (
@@ -745,7 +745,7 @@ export function ProjectContractsScreen({ projectId }: ProjectContractsScreenProp
           onClose={() => setIsProjectRolesOpen(false)}
           onSaved={() => fetchDocuments(pagination.currentPage)}
           projectId={projectId}
-          projectName={project?.name || "this project"}
+          projectName={project?.name || "this space"}
           accountId={selectedAccountId}
         />
       )}

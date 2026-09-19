@@ -184,10 +184,10 @@ export default function ContractAgentPanel({
 
   const selectedReferenceLabel = useMemo(() => {
     if (isProjectScope) {
-      if (selectedReferenceIds.includes("all") || !selectedReferenceIds.length) return "All project docs";
+      if (selectedReferenceIds.includes("all") || !selectedReferenceIds.length) return "All docs in this space";
       return `Refer to ${selectedReferenceIds.length}`;
     }
-    if (selectedReferenceIds.includes("all")) return "All project docs";
+    if (selectedReferenceIds.includes("all")) return "All docs in this space";
     if (!selectedReferenceIds.length) return "Current contract";
     return `Refer to ${selectedReferenceIds.length + 1}`;
   }, [isProjectScope, selectedReferenceIds]);
@@ -694,7 +694,7 @@ export default function ContractAgentPanel({
           <div className="flex min-w-0 items-center gap-2">
             <Sparkles className="h-4 w-4 shrink-0 text-fg-700" />
             <div className="truncate text-sm font-semibold text-fg-950">
-              {isProjectScope ? "Project Assistant" : "Contract Assistant"}
+              {isProjectScope ? "Space assistant" : "Contract Assistant"}
             </div>
             <Tooltip>
               <TooltipTrigger asChild>

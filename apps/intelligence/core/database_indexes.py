@@ -132,21 +132,33 @@ def initialize_all_indexes(db=None):
             [("ownerType", ASCENDING), ("ownerId", ASCENDING), ("name", ASCENDING)],
             "project_owner_name"
         )
-        # At most one Default Project per owner (see ensure_default_project).
+        # At most one Unfiled space per owner (see ensure_default_project).
         # Built on existing data, it fails if an owner already has two; that
         # is logged rather than raised so the service still boots, and the
         # duplicate is merged by hand (move its contracts, delete it).
-        try:
+        def _default_space_index():
             projects.create_index(
                 [("ownerType", ASCENDING), ("ownerId", ASCENDING)],
                 name="project_default_per_owner",
                 unique=True,
-                partialFilterExpression={"name": "Default Project"},
+                partialFilterExpression={"isDefault": True},
             )
+
+        try:
+            try:
+                _default_space_index()
+            except OperationFailure as e:
+                # 85/86: an index of this name exists with different options —
+                # the earlier version of this index filtered on the name
+                # "Default Project" rather than the isDefault flag.
+                if e.code not in (85, 86):
+                    raise
+                projects.drop_index("project_default_per_owner")
+                _default_space_index()
         except (OperationFailure, DuplicateKeyError) as e:
             logger.warning(
                 "Could not create unique index project_default_per_owner — an owner "
-                f"has more than one Default Project. Merge them, then restart: {e}"
+                f"has more than one Unfiled space. Merge them, then restart: {e}"
             )
 
         # Tabular reviews

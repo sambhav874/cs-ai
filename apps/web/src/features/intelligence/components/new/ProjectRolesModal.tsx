@@ -101,16 +101,16 @@ export function ProjectRolesModal({
         }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "Could not save project roles.");
+      if (!response.ok) throw new Error(data.detail || "Could not save space roles.");
 
       toast({
-        title: "Project roles updated",
-        description: "Contracts in this project inherit these unless they set their own.",
+        title: "Space roles updated",
+        description: "Contracts in this space inherit these unless they set their own.",
       });
       onSaved?.();
       onClose();
     } catch (saveError: any) {
-      setError(saveError?.message || "Could not save project roles.");
+      setError(saveError?.message || "Could not save space roles.");
     } finally {
       setIsSaving(false);
     }
@@ -136,7 +136,7 @@ export function ProjectRolesModal({
             Workflow roles for {projectName}
           </DialogTitle>
           <DialogDescription>
-            Every contract in this project inherits these. A contract that sets its own
+            Every contract in this space inherits these. A contract that sets its own
             editor or approver keeps them.
           </DialogDescription>
         </DialogHeader>

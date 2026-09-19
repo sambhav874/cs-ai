@@ -3525,7 +3525,7 @@ function IntelligencePanel({
                 Metric Catalog
               </h2>
               <p className="mt-1 text-xs text-fg-500">
-                {certified.length} certified metrics across this project.
+                {certified.length} certified metrics across this space.
               </p>
             </div>
             <Pill tone="blue">{catalogEntries.length}</Pill>

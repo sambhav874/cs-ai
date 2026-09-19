@@ -25,6 +25,7 @@ import type { Crumb } from '@/store/crumbs'
 
 const PRIMARY_LABELS: Record<string, string> = {
   dashboard:        'Dashboard',
+  spaces:           'Spaces',
   contracts:        'Contracts',
   requests:         'Requests',
   counterparties:   'Counterparties',

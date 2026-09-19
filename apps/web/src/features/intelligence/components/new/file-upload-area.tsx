@@ -365,7 +365,7 @@ export function FileUploadModal({ isOpen, onClose, onUploadSuccess, userCredits,
                       <Users className="h-3.5 w-3.5 text-fg-500" />
                       <span className="text-xs font-medium text-fg-700">Default roles for this batch</span>
                     </div>
-                    <span className="text-[10px] text-fg-400">Optional — otherwise the project&apos;s roles apply</span>
+                    <span className="text-[10px] text-fg-400">Optional — otherwise the space&apos;s roles apply</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>

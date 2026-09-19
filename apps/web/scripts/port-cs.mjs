@@ -165,8 +165,43 @@ function transformClasses(src) {
   return out
 }
 
+/*
+ * Wording. A ContractSense project and a draftLegal matter are one thing in
+ * the merged product, and it is called a Space. Only what a user reads is
+ * rewritten — never an id, a path, a field name or a console log — so this is
+ * an explicit list rather than a blanket rename.
+ */
+const WORDING = [
+  ['All Projects', 'Spaces'],
+  ['Manage your projects and access all associated documents and tools.', 'Manage your spaces and the documents and tools in them.'],
+  ['New Project', 'New space'],
+  ['New project', 'New space'],
+  ['Search projects...', 'Search spaces…'],
+  ['Project Memory', 'Space memory'],
+  ['Project Assistant', 'Space assistant'],
+  ['Project created', 'Space created'],
+  ['Could not create project', 'Could not create space'],
+  ['Project roles updated', 'Space roles updated'],
+  ['Could not save project roles.', 'Could not save space roles.'],
+  ['Failed to load project details', 'Failed to load space details'],
+  ['This project is not available in the current context.', 'This space is not available in the current context.'],
+  ['Projects unavailable', 'Spaces unavailable'],
+  ['Project Unavailable', 'Space unavailable'],
+  ['No project history yet', 'No history in this space yet'],
+  ['Nothing has happened in this project yet.', 'Nothing has happened in this space yet.'],
+  ['Recorded in project memory', 'Recorded in space memory'],
+  ['All project docs', 'All docs in this space'],
+  ['Team Project', 'Team space'],
+  ['Personal Project', 'Personal space'],
+  ["Optional — otherwise the project&apos;s roles apply", "Optional — otherwise the space&apos;s roles apply"],
+  ['Project rule sets for clause review', 'Rule sets for clause review'],
+  ['this project', 'this space'],
+  ['via project', 'via space'],
+]
+
 function transform(src) {
   let out = src.replace(/^\s*["']use client["'];?\s*\n/m, '')
+  for (const [from, to] of WORDING) out = out.split(from).join(to)
   out = out.replace(/(from\s+|import\s*\(\s*|import\s+)(["'])@\//g, '$1$2@cs/')
   // ContractSense renders PDFs with pdf.js 4; the lifecycle screens are pinned
   // to 3 by @react-pdf-viewer. Both are installed, 4 under the alias pdfjs-v4.

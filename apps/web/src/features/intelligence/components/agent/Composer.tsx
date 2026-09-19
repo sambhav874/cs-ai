@@ -68,7 +68,7 @@ export function Composer({
               }
             }}
             disabled={isThinking}
-            placeholder={isProjectScope ? "Ask a question about this project..." : "Ask a question about this contract..."}
+            placeholder={isProjectScope ? "Ask a question about this space..." : "Ask a question about this contract..."}
             className="w-full bg-transparent border-0 p-0 text-sm text-fg-950 placeholder-black/30 outline-none focus:ring-0 focus:outline-none resize-none min-h-[50px] leading-relaxed"
           />
 
@@ -101,7 +101,7 @@ export function Composer({
                     className="flex items-center justify-between rounded-lg hover:bg-black/[0.04] cursor-pointer text-xs py-2 px-2.5"
                   >
                     <span className="text-fg-950/80">
-                      {isProjectScope ? "All project docs" : "Current contract only"}
+                      {isProjectScope ? "All docs in this space" : "Current contract only"}
                     </span>
                     {selectedReferenceIds.length === 0 && <Check className="h-3.5 w-3.5 text-fg-950/40" />}
                   </DropdownMenuItem>
@@ -113,7 +113,7 @@ export function Composer({
                       }}
                       className="flex items-center justify-between rounded-lg hover:bg-black/[0.04] cursor-pointer text-xs py-2 px-2.5"
                     >
-                      <span className="text-fg-950/80">All project docs</span>
+                      <span className="text-fg-950/80">All docs in this space</span>
                       {selectedReferenceIds.includes("all") && <Check className="h-3.5 w-3.5 text-fg-950/40" />}
                     </DropdownMenuItem>
                   )}

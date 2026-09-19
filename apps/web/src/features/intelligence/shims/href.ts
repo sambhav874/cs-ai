@@ -5,8 +5,10 @@
  */
 const RULES: Array<[RegExp, string]> = [
   [/^\/home\/?(?=$|[?#])/, '/dashboard'],
-  [/^\/dashboard\/projects\//, '/projects/'],
-  [/^\/dashboard\/?(?=$|[?#])/, '/projects'],
+  [/^\/dashboard\/projects\//, '/spaces/'],
+  [/^\/dashboard\/?(?=$|[?#])/, '/spaces'],
+  [/^\/projects\//, '/spaces/'],
+  [/^\/projects\/?(?=$|[?#])/, '/spaces'],
   [/^\/signin\/?(?=$|[?#])/, '/login'],
   [/^\/signup\/?(?=$|[?#])/, '/register'],
   [/^\/account\/?(?=$|[?#])/, '/profile'],

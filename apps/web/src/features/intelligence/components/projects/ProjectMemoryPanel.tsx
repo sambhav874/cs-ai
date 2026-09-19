@@ -86,7 +86,7 @@ export function ProjectMemoryPanel({ projectId, refreshSignal }: ProjectMemoryPa
         <div className="flex items-center justify-between gap-2 border-b border-border p-3">
           <div className="flex items-center gap-2">
             <Brain className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">Project Memory</span>
+            <span className="text-sm font-medium text-foreground">Space memory</span>
           </div>
           <TabsList className="h-8">
             <TabsTrigger value="facts" className="gap-1.5 text-xs">
@@ -186,7 +186,7 @@ export function ProjectMemoryPanel({ projectId, refreshSignal }: ProjectMemoryPa
         {/* Events — append-only, so there is deliberately nothing to edit here. */}
         <TabsContent value="events" className="m-0 p-4">
           {events.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Nothing has happened in this project yet.</p>
+            <p className="text-xs text-muted-foreground">Nothing has happened in this space yet.</p>
           ) : (
             <div className="flex max-h-[420px] flex-col gap-1.5 overflow-y-auto">
               {events.map((event) => (

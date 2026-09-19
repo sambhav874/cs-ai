@@ -27,6 +27,11 @@ from utils.audit_logger import create_audit_log
 
 logger = logging.getLogger(__name__)
 
+# The space that holds contracts filed into no other space. Flagged, not
+# found by name, so a user-made space cannot collide with it.
+DEFAULT_PROJECT_NAME = "Unfiled"
+DEFAULT_PROJECT_LEGACY_NAME = "Default Project"
+
 router = APIRouter(prefix="/projects")
 
 
@@ -148,24 +153,35 @@ def _project_stats(project: Dict[str, Any], current_user: UserInDB) -> Dict[str,
 
 
 def ensure_default_project(owner_type: str, owner_id: ObjectId) -> Dict[str, Any]:
-    """The owner's Default Project, created on first use.
+    """The owner's Unfiled space, created on first use.
+
+    Contracts that belong to no space live here. It is flagged `isDefault`
+    rather than found by name, so renaming it in the UI is impossible and a
+    user-made space called "Unfiled" cannot be mistaken for it. Documents
+    created before the flag existed carry the old name, so the query accepts
+    either and the upsert stamps the flag.
 
     One atomic upsert, not find-then-insert: the dashboard fires several
     requests at once on first load, and the old check-then-insert let two of
-    them each create a Default Project (seen 3 ms apart). The unique partial
-    index project_default_per_owner (core/database_indexes.py) makes a
-    concurrent second insert fail instead, and that loser re-reads the winner.
+    them each create one (seen 3 ms apart). The unique partial index
+    project_default_per_owner (core/database_indexes.py) makes a concurrent
+    second insert fail instead, and that loser re-reads the winner.
     """
     now = datetime.utcnow()
-    query = {"ownerType": owner_type, "ownerId": owner_id, "name": "Default Project"}
+    owner = {"ownerType": owner_type, "ownerId": owner_id}
+    query = {**owner, "$or": [{"isDefault": True}, {"name": DEFAULT_PROJECT_LEGACY_NAME}]}
     try:
         return projects_collection.find_one_and_update(
             query,
-            {"$setOnInsert": {
-                "description": "Contracts that have not been moved into a specific project.",
-                "createdAt": now,
-                "updatedAt": now,
-            }},
+            {
+                "$set": {"isDefault": True, "name": DEFAULT_PROJECT_NAME},
+                "$setOnInsert": {
+                    **owner,
+                    "description": "Contracts that have not been moved into a space.",
+                    "createdAt": now,
+                    "updatedAt": now,
+                },
+            },
             upsert=True,
             return_document=ReturnDocument.AFTER,
         )

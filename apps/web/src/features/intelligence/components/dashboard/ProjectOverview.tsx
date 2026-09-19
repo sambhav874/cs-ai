@@ -64,9 +64,9 @@ export function ProjectOverview({
     <div className="p-6 md:p-8">
       <div className="mb-6 flex flex-col gap-1">
         <div className="flex items-center justify-between">
-          <h1 className="text-title text-foreground">All Projects</h1>
+          <h1 className="text-title text-foreground">Spaces</h1>
         </div>
-        <p className="text-sm text-muted-foreground">Manage your projects and access all associated documents and tools.</p>
+        <p className="text-sm text-muted-foreground">Manage your spaces and the documents and tools in them.</p>
       </div>
       <div className="rounded-lg border border-border bg-card shadow-e1 overflow-hidden animate-slide-up">
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between bg-muted/50">
@@ -117,7 +117,7 @@ export function ProjectOverview({
               <input
                 value={projectSearch}
                 onChange={(event) => onProjectSearchChange(event.target.value)}
-                placeholder="Search projects..."
+                placeholder="Search spaces…"
                 className="h-8 w-44 lg:w-56 rounded-md border border-border bg-card pl-8 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-border"
               />
             </div>
@@ -126,12 +126,12 @@ export function ProjectOverview({
               <DialogTrigger asChild>
                 <Button size="sm" className="h-8 gap-2 bg-primary-solid text-white hover:bg-primary-solid-hover/90">
                   <FolderPlus className="h-4 w-4" />
-                  New project
+                  New space
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                  <DialogTitle>New Project</DialogTitle>
+                  <DialogTitle>New space</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-2">
                   <div className="space-y-2">

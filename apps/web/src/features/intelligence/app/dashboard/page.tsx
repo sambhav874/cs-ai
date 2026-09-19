@@ -306,7 +306,7 @@ function DashboardContent() {
     } catch (error) {
       console.error("Failed to fetch projects:", error);
       toast({
-        title: "Projects unavailable",
+        title: "Spaces unavailable",
         description: error instanceof Error ? error.message : "Could not load projects.",
         variant: "destructive",
       });
@@ -685,7 +685,7 @@ function DashboardContent() {
     await fetchProjectPortfolio();
     toast({
       title: "All KPI candidates accepted",
-      description: `${candidates.length} KPI${candidates.length === 1 ? "" : "s"} approved for this project.`,
+      description: `${candidates.length} KPI${candidates.length === 1 ? "" : "s"} approved for this space.`,
     });
   }, [projectKpis, updateProjectKpi, fetchProjectKpis, fetchProjectPortfolio]);
 
@@ -940,10 +940,10 @@ function DashboardContent() {
       setNewProjectName("");
       setNewProjectDescription("");
       setIsProjectDialogOpen(false);
-      toast({ title: "Project created", description: created.name });
+      toast({ title: "Space created", description: created.name });
     } catch (error) {
       toast({
-        title: "Could not create project",
+        title: "Could not create space",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
@@ -1186,7 +1186,7 @@ function DashboardContent() {
                   <h1 className="text-title text-foreground">{selectedProject?.name || "Project"}</h1>
                   {selectedProject && (
                     <span className="ml-2 inline-flex items-center rounded-full border border-border bg-muted/30 px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
-                      {selectedProject.ownerType === "team" ? "Team Project" : "Personal Project"}
+                      {selectedProject.ownerType === "team" ? "Team space" : "Personal space"}
                     </span>
                   )}
                 </div>
@@ -1306,7 +1306,7 @@ function DashboardContent() {
                 <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-title text-foreground">Playbooks</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Project rule sets for clause review, fallback positions, and redline-style guidance.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Rule sets for clause review, fallback positions, and redline-style guidance.</p>
                   </div>
                   <Button asChild className="rounded-lg bg-primary-solid text-white hover:bg-primary-solid-hover/90">
                     <Link href={`/playbooks?project_id=${encodeURIComponent(selectedProject?._id || selectedProjectId || "")}`}>
@@ -1371,7 +1371,7 @@ function DashboardContent() {
                   </div>
                   <h2 className="text-title text-foreground">Tabular Reviews</h2>
                   <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-                    Extract comparable terms from this project&apos;s indexed contracts into Mike-style review tables.
+                    Extract comparable terms from this space&apos;s indexed contracts into Mike-style review tables.
                   </p>
                   <div className="mt-5 flex flex-wrap gap-2">
                     <Button asChild className="rounded-lg bg-primary-solid text-white hover:bg-primary-solid-hover/90">
