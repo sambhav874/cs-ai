@@ -59,7 +59,8 @@ services:
         condition: service_healthy
 
   # Creates the bucket the API writes documents to. MinIO does not create one
-  # on first PUT, so without this every upload fails with NoSuchBucket.
+  # on first PUT, so without this every upload fails with NoSuchBucket. It
+  # starts alongside MinIO, so it retries until MinIO accepts connections.
   minio-init:
     # MinIO left Docker Hub; quay.io is the official home now. Pinned by
     # digest so a deploy cannot pick up a different build unannounced.
@@ -68,7 +69,8 @@ services:
     entrypoint: ['sh', '-c']
     command:
       - >-
-        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+        i=0; until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null 2>&1;
+        do i=$$((i+1)); [ $$i -ge 60 ] && echo "MinIO did not come up" && exit 1; sleep 1; done &&
         mc mb --ignore-existing local/${S3_BUCKET:-clm-documents} &&
         mc anonymous set none local/${S3_BUCKET:-clm-documents}
     environment:
