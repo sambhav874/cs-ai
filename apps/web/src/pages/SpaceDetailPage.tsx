@@ -20,7 +20,7 @@
  *     you could not tell two identically-named NDAs apart.
  */
 import { useState } from 'react'
-import { normalizeRisk, riskBand, RISK_BAND_CLASS } from '@/lib/status'
+import { normalizeRisk, riskBand, RISK_BAND_CLASS, MEANING_CLASS, statusMeaning, statusMeta } from '@/lib/status'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -30,12 +30,13 @@ import { CountBadge, EmptyState } from '@/components/ui/primitives'
 import { expiryLabel, relativeTime } from '@/components/contracts/dates'
 import {
   Briefcase, FileText, ClipboardList, MessageSquare, ArrowLeft,
-  Archive, CheckCircle2, AlertCircle, Brain, History,
+  Archive, CheckCircle2, AlertCircle, Brain, History, Gauge,
 } from 'lucide-react'
 import { IntelligenceProviders } from '@/features/intelligence/IntelligenceProviders'
 import { useSpaceProject } from '@/features/intelligence/useSpaceProject'
 import { ProjectMemoryPanel } from '@/features/intelligence/components/projects/ProjectMemoryPanel'
 import { ProjectTimeline } from '@/features/intelligence/components/projects/ProjectTimeline'
+import { SpaceKpiSummary } from '@/features/intelligence/SpaceKpiSummary'
 
 interface Detail {
   id: string
@@ -52,6 +53,7 @@ interface Detail {
     value: number | null; currency: string | null; riskScore: number | null
     counterpartyName: string | null; effectiveDate: string | null; expiryDate: string | null
     updatedAt: string
+    analysisStatus: string | null
   }>
   requests: Array<{
     id: string; requestNumber: string | null; title: string; type: string
@@ -84,7 +86,7 @@ function money(value: number | null, currency: string | null): string | null {
 export function SpaceDetailPage() {
   const qc = useQueryClient()
   const { id } = useParams<{ id: string }>()
-  const [tab, setTab] = useState<'contracts' | 'requests' | 'threads' | 'memory' | 'timeline'>('contracts')
+  const [tab, setTab] = useState<'contracts' | 'requests' | 'threads' | 'memory' | 'timeline' | 'kpis'>('contracts')
   const [actionError, setActionError] = useState<string | null>(null)
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -233,6 +235,7 @@ export function SpaceDetailPage() {
           // created the first time one of these two tabs is opened.
           { k: 'memory',    label: 'Memory',    icon: Brain,         count: null },
           { k: 'timeline',  label: 'Timeline',  icon: History,       count: null },
+          { k: 'kpis',      label: 'Obligations', icon: Gauge,       count: null },
         ].map(t => {
           const Icon = t.icon
           const active = tab === t.k
@@ -280,6 +283,19 @@ export function SpaceDetailPage() {
                       NDAs apart. This row used to carry only value + risk. */}
                   <div className="mt-0.5 flex items-center gap-2.5 flex-wrap text-[11px] text-muted-foreground">
                     {c.counterpartyName && <span>{c.counterpartyName}</span>}
+                    {/* Whether the intelligence tier has read this contract.
+                        Shown only while it has not: "analysed" on every row of
+                        a healthy Space is noise, but one contract stuck at
+                        PENDING explains why the Space's memory is thin. */}
+                    {c.analysisStatus && c.analysisStatus !== 'DONE' && (
+                      <span
+                        className={cn('inline-flex items-center gap-1', MEANING_CLASS[statusMeaning(c.analysisStatus)].fg)}
+                        title="How far the intelligence tier has got with this contract"
+                      >
+                        <span className={cn('size-1.5 rounded-full', MEANING_CLASS[statusMeaning(c.analysisStatus)].dot)} aria-hidden />
+                        {statusMeta(c.analysisStatus).label}
+                      </span>
+                    )}
                     {amount && <span className="tabular-nums text-fg-700 font-medium">{amount}</span>}
                     {/*
                       Risk keeps the system's default treatment — a meaning dot
@@ -343,7 +359,7 @@ export function SpaceDetailPage() {
         </ul>
       )}
 
-      {(tab === 'memory' || tab === 'timeline') && (
+      {(tab === 'memory' || tab === 'timeline' || tab === 'kpis') && (
         <IntelligenceProviders>
           <SpaceIntelligenceTab spaceId={id!} view={tab} />
         </IntelligenceProviders>
@@ -386,7 +402,7 @@ function cn(...c: Array<string | null | undefined | false>): string {
  * this Space by id. The lookup creates that half on first use, so a Space made
  * a minute ago works the same as one migrated from ContractSense.
  */
-function SpaceIntelligenceTab({ spaceId, view }: { spaceId: string; view: 'memory' | 'timeline' }) {
+function SpaceIntelligenceTab({ spaceId, view }: { spaceId: string; view: 'memory' | 'timeline' | 'kpis' }) {
   const { data: project, isLoading, error } = useSpaceProject(spaceId)
 
   if (isLoading) {
@@ -399,7 +415,7 @@ function SpaceIntelligenceTab({ spaceId, view }: { spaceId: string; view: 'memor
       </div>
     )
   }
-  return view === 'memory'
-    ? <ProjectMemoryPanel projectId={project._id} />
-    : <ProjectTimeline projectId={project._id} />
+  if (view === 'memory') return <ProjectMemoryPanel projectId={project._id} />
+  if (view === 'kpis') return <SpaceKpiSummary projectId={project._id} />
+  return <ProjectTimeline projectId={project._id} />
 }

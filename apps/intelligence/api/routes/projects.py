@@ -189,6 +189,18 @@ def ensure_default_project(owner_type: str, owner_id: ObjectId) -> Dict[str, Any
         return projects_collection.find_one(query)
 
 
+def require_writable_project(project_id: str, current_user: UserInDB) -> Dict[str, Any]:
+    """Access check plus the closed-Space rule, for anything that writes."""
+    from services.space_projects import SpaceClosedError, assert_space_writable
+
+    project = verify_project_access(project_id, current_user)
+    try:
+        assert_space_writable(project)
+    except SpaceClosedError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return project
+
+
 def assign_unprojected_contracts(owner_type: str, owner_id: ObjectId, project_id: ObjectId) -> int:
     result = collection.update_many(
         {
@@ -391,7 +403,11 @@ def update_project(
     request: ProjectUpdate,
     current_user: UserInDB = Depends(get_current_active_user),
 ):
-    project = verify_project_access(project_id, current_user)
+    project = require_writable_project(project_id, current_user)
+    if project.get("spaceId"):
+        # Name and description belong to the Space, on the lifecycle side.
+        # Editing them here would be overwritten by the next mirror.
+        raise HTTPException(status_code=409, detail="Rename this Space from its own page.")
     if project.get("ownerType") == "team" and current_user.ownedAccountId != str(project.get("ownerId")):
         raise HTTPException(status_code=403, detail="Only the account owner can update this project.")
 
@@ -409,6 +425,10 @@ def update_project(
 @router.delete("/{project_id}")
 def delete_project(project_id: str, current_user: UserInDB = Depends(get_current_active_user)):
     project = verify_project_access(project_id, current_user)
+    if project.get("spaceId"):
+        # Deleting a Space is a lifecycle action: it has contracts, requests,
+        # approvals and an audit trail on that side too.
+        raise HTTPException(status_code=409, detail="Delete this Space from its own page.")
     if project.get("ownerType") == "team" and current_user.ownedAccountId != str(project.get("ownerId")):
         raise HTTPException(status_code=403, detail="Only the account owner can delete this project.")
 
@@ -477,7 +497,7 @@ def update_project_timeline_entry(
     documents can come back empty/misclassified). Re-synthesizes the markdown
     memory section and re-syncs it into the project scratchpad so agent
     retrieval stays in sync with what the UI shows."""
-    verify_project_access(project_id, current_user)
+    require_writable_project(project_id, current_user)
 
     from core.database import db
     from services.project_memory import ProjectMemoryManager
@@ -537,7 +557,7 @@ def create_project_fact(
     """Record a fact. A fact drawn from a contract must carry its source;
     something the user stated is recorded with origin="user" instead, so it is
     never presented with the authority of an extracted one."""
-    verify_project_access(project_id, current_user)
+    require_writable_project(project_id, current_user)
 
     from core.database import db
     from services.project_memory import ProjectMemoryManager
@@ -564,7 +584,7 @@ def supersede_project_fact(
     """Retire a fact. Facts are never edited in place — a correction is a new
     fact pointing back at the one it replaces, so the record of what was
     believed when stays intact."""
-    verify_project_access(project_id, current_user)
+    require_writable_project(project_id, current_user)
 
     from core.database import db
     from services.project_memory import ProjectMemoryManager

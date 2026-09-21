@@ -113,6 +113,10 @@ export async function spaceRoutes(app: FastifyInstance) {
             value: true, currency: true, riskScore: true,
             counterpartyName: true, effectiveDate: true, expiryDate: true,
             updatedAt: true,
+            // Whether the intelligence tier has read this contract yet. The
+            // Space page shows it per row: a Space whose memory is thin is
+            // usually a Space whose contracts have not been analysed.
+            analysisStatus: true,
           },
         },
         requests: {

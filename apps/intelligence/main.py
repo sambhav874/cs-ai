@@ -5,6 +5,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from dotenv import load_dotenv
 from core.config import Settings
 import logging
+import os
 from api.routes.beta import beta_router
 
 # Import other routers and dependencies
@@ -259,6 +260,17 @@ async def startup_event():
         # to prevent the application from starting in a broken state.
         # raise
     
+    # Mirror Space renames, closures and deletions from the lifecycle API onto
+    # their intelligence half (services/space_watcher). Off under TESTING, and
+    # off without a platform database to follow.
+    try:
+        if not settings.testing and (settings.platform_database_url or os.getenv("DATABASE_URL")):
+            from services.space_watcher import start_space_watcher
+
+            app.state.space_watcher_stop = start_space_watcher()
+    except Exception as e:
+        log_exception(logger, "Could not start the Space watcher", e)
+
     logger.info("FastAPI application startup complete.")
 
 @app.on_event("startup")

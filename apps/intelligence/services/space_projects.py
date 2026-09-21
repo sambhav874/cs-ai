@@ -27,6 +27,35 @@ class SpaceAccessError(Exception):
     """The Space does not exist, is deleted, or belongs to another org."""
 
 
+class SpaceClosedError(Exception):
+    """The Space is closed or archived, so its record is read-only."""
+
+
+# A closed Space is a finished piece of work. Its history stays readable, but
+# nothing new is recorded against it: no memory, no re-extraction, no uploads.
+# Obligations and renewal alerts on its contracts keep running — closing the
+# file should not silence a live obligation.
+CLOSED_STATUSES = frozenset({"CLOSED", "ARCHIVED"})
+
+
+def space_write_block(project) -> str | None:
+    """Why this project cannot be written to, or None when it can."""
+    if not project or not project.get("spaceId"):
+        return None
+    if project.get("spaceDeleted"):
+        return "This Space has been deleted."
+    status = (project.get("spaceStatus") or "OPEN").upper()
+    if status in CLOSED_STATUSES:
+        return f"This Space is {status.lower()}. Reopen it to make changes."
+    return None
+
+
+def assert_space_writable(project) -> None:
+    reason = space_write_block(project)
+    if reason:
+        raise SpaceClosedError(reason)
+
+
 def _team_org_id(teams, team_id: str) -> Optional[str]:
     team = teams.find_one({"_id": ObjectId(team_id)}, {"platformOrgId": 1})
     return (team or {}).get("platformOrgId")
@@ -70,6 +99,10 @@ def resolve_space_project(
     mirrored = {
         "name": space.get("name") or "Space",
         "description": space.get("description"),
+        # Mirrored so the closed-Space rule can be applied here without a
+        # second call across tiers; the watcher keeps these current.
+        "spaceStatus": space.get("status") or "OPEN",
+        "spaceDeleted": False,
         "updatedAt": now,
     }
     query = {"spaceId": space_id}

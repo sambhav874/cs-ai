@@ -26,7 +26,7 @@ from models.response_types import (
     WorkflowRoles, JobStatusResponse
 )
 from core.validators import validate_pdf_upload, extract_pdf_page_count
-from api.routes.projects import verify_project_access, ensure_default_project
+from api.routes.projects import verify_project_access, require_writable_project, ensure_default_project
 from services.workflow_roles import effective_roles_for_contract, resolve_workflow_roles
 from api.dependencies import (
     deduct_credits,
@@ -160,7 +160,9 @@ async def upload_contract(
             owner_id = user_oid
 
         if project_id:
-            project_doc = verify_project_access(project_id, current_user)
+            # Uploading files a closed Space cannot take is refused here
+            # rather than after the file is stored.
+            project_doc = require_writable_project(project_id, current_user)
             if project_doc.get("ownerType") != owner_type or project_doc.get("ownerId") != owner_id:
                 raise HTTPException(status_code=400, detail="Project does not belong to this upload context.")
         else:

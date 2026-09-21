@@ -43,10 +43,15 @@ export default tseslint.config(
   // to the rule in review.
   {
     files: ['apps/api/**'],
+    // The plugin is registered again here: an override that only sets rules
+    // fails to resolve them when this block matches a file the base block's
+    // glob did not (scripts/, for instance).
+    plugins: { '@typescript-eslint': tseslint.plugin },
     rules: { '@typescript-eslint/no-unused-vars': ['warn', UNUSED[1]] },
   },
   {
     files: ['apps/web/src/features/intelligence/**'],
+    plugins: { '@typescript-eslint': tseslint.plugin },
     rules: { '@typescript-eslint/no-unused-vars': ['warn', UNUSED[1]], 'no-useless-assignment': 'warn' },
   },
 )
