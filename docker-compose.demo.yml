@@ -1,22 +1,24 @@
-# The demo stack, built and run on the demo VM.
+# The demo stack. Coolify deploys it from the dev branch: it clones the repo on
+# the demo VM, builds the three images there, and starts everything. Images
+# never leave the server, and deploys, logs and environment variables all live
+# in the Coolify UI.
 #
-# GitHub Actions copies the repo to the VM over SSH and runs
-#   docker compose -p contractsense --env-file /opt/contractsense/.env up -d --build
-# so images are built there and never leave the server — no registry.
+# It sits at the repo root so every build context is simply `.`, however
+# Coolify resolves relative paths.
 #
 # Everything is one origin: `web` (nginx) serves the SPA and proxies /api to
 # the lifecycle API and /intel to the intelligence tier. Only `web` is
-# published, on a loopback port; the VM's host Caddy terminates TLS for the
-# public hostname and proxies to it.
+# published, on a loopback port: the VM's host Caddy owns 80/443 (it also
+# serves the old draftLegal demo) and proxies the public hostname to it.
 #
-# Set-up and the environment variables this expects: README.md beside it.
+# Set-up: deploy/vm/README.md.
 
 x-build-api: &build-api
-  context: ../..
+  context: .
   dockerfile: apps/api/Dockerfile
 
 x-build-intelligence: &build-intelligence
-  context: ../..
+  context: .
   dockerfile: apps/intelligence/Dockerfile
 
 x-restart: &restart
@@ -27,7 +29,7 @@ services:
     <<: *restart
     image: contractsense/web:latest
     build:
-      context: ../..
+      context: .
       dockerfile: apps/web/Dockerfile
     # The VM's host Caddy owns 80/443 (it also serves the old draftLegal demo)
     # and reaches this stack on a loopback port; 8080 is draftLegal's.
@@ -97,10 +99,10 @@ services:
       API_URL: https://${DEMO_HOST}
       WEB_BASE_URL: https://${DEMO_HOST}
       GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
-      # Secrets. Generated once and kept in /opt/contractsense/.env on the VM.
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in /opt/contractsense/.env}
-      PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?set PORTAL_JWT_SECRET in /opt/contractsense/.env}
-      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in /opt/contractsense/.env}
+      # Secrets. Generated once and kept in Coolify on the VM.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
+      PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?set PORTAL_JWT_SECRET in Coolify}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in Coolify}
       AI_KEY_ENCRYPTION_KEY: ${AI_KEY_ENCRYPTION_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -138,9 +140,9 @@ services:
       REDIS_URL: redis://redis:6379
       FRONTEND_URL: https://${DEMO_HOST}
       GOTENBERG_URL: http://gotenberg:3000
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in /opt/contractsense/.env}
-      PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?set PORTAL_JWT_SECRET in /opt/contractsense/.env}
-      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in /opt/contractsense/.env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
+      PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?set PORTAL_JWT_SECRET in Coolify}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in Coolify}
       AI_KEY_ENCRYPTION_KEY: ${AI_KEY_ENCRYPTION_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -183,7 +185,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/3
       # Same secret as the API: that is what makes a platform token resolve to
       # a shadow user here.
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in /opt/contractsense/.env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
@@ -210,7 +212,7 @@ services:
       REDIS_URL: redis://redis:6379/1
       CELERY_BROKER_URL: redis://redis:6379/2
       CELERY_RESULT_BACKEND: redis://redis:6379/3
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in /opt/contractsense/.env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}

@@ -1,18 +1,18 @@
 # The demo deployment
 
-Push to `dev` → GitHub Actions copies the commit to the demo VM over SSH and
-rebuilds the stack there. No registry, no Coolify: the images are built on the
-VM and never leave it.
+Everything happens in **Coolify**. It clones the `dev` branch onto the demo VM,
+builds the three images there from [`docker-compose.demo.yml`](../../docker-compose.demo.yml),
+and starts the stack. Deploys, logs, environment variables and rollbacks are
+all in the Coolify UI; no registry, no CI deploy job.
 
 ```
-git push dev ──▶ Actions ──ssh──▶ VM: /opt/contractsense/src
-                                      docker compose up -d --build
-                                      Caddy :443 ──▶ 127.0.0.1:8090 (web)
+git push dev ──webhook──▶ Coolify ──▶ VM: clone, docker compose build + up
+                                         Caddy :443 ──▶ 127.0.0.1:8090 (web)
 ```
 
-A code-only change redeploys in a couple of minutes, because Docker's layer
-cache on the VM keeps the dependency installs. Changing a lockfile rebuilds
-that image's install layer, which takes longer (the Python one is the slowest).
+A code-only change redeploys in a few minutes, because Docker's layer cache on
+the VM keeps the dependency installs. A lockfile change rebuilds that image's
+install layer, which takes longer; the Python one is the slowest.
 
 Everything is served from **one hostname**. `web` (nginx) serves the SPA and
 proxies `/api` to the lifecycle API and `/intel` to the intelligence tier, so
@@ -32,15 +32,11 @@ there is no CORS and no second certificate.
 | `mongo` | `mongo:7` | Single-node **replica set** — Prisma needs one for transactions, the Space watcher for change streams. Self-initiating on first boot. |
 | `redis`, `minio`, `gotenberg` | — | Queue, object store, HTML→PDF. |
 
-Three builds cover five app services. The compose project is `contractsense`,
-so nothing collides with the old draftLegal stack on the same VM.
-
-## One-time set-up
-
-### 1. The VM
+## Why Caddy and not Coolify's proxy
 
 The VM's host Caddy already owns ports 80/443 and serves the old draftLegal
-demo. Add a site for this one beside it in `/etc/caddy/Caddyfile`:
+demo, so Coolify's Traefik cannot bind them. Coolify therefore only builds and
+runs the stack; Caddy routes the public hostname to `127.0.0.1:8090`:
 
 ```
 cs.187-7-17-249.sslip.io {
@@ -49,51 +45,47 @@ cs.187-7-17-249.sslip.io {
 }
 ```
 
-Then `caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy`.
+Coolify also expects a Docker network called `coolify`, which Traefik normally
+creates. With Traefik not running it has to exist by hand:
+`docker network create --attachable coolify`.
 
-Create `/opt/contractsense/.env`, readable by root only, with:
+## One-time set-up in Coolify
 
-- `DEMO_HOST` — the public hostname, no scheme.
-- `JWT_SECRET`, `PORTAL_JWT_SECRET`, `INTERNAL_SERVICE_SECRET` —
-  `openssl rand -hex 32` each. **`JWT_SECRET` also reaches the intelligence
-  tier**, which is what lets a platform token resolve to a shadow user there.
-- `AI_KEY_ENCRYPTION_KEY` — set once and never change it, or every stored BYO
-  LLM key becomes undecryptable.
-- `S3_ACCESS_KEY`, `S3_SECRET_KEY` — MinIO's credentials.
-- Optional: `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` (AI features return 503
-  without one), `SMTP_*` (nothing is emailed without it).
-
-Authorise the deploy key: append its public half to `/root/.ssh/authorized_keys`.
-
-### 2. GitHub repository secrets
-
-| Secret | Value |
-| --- | --- |
-| `DEPLOY_HOST` | the VM's IP |
-| `DEPLOY_USER` | `root` |
-| `DEPLOY_SSH_KEY` | the deploy key's **private** half |
-| `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan <ip>` output — pins the VM's host key |
-| `DEMO_URL` | `https://cs.187-7-17-249.sslip.io` — polled after each deploy |
+1. **Resource:** Private Git Repository (with Deploy Key) →
+   `git@github.com:sambhav874/cs-ai.git`, branch `dev`, build pack
+   **Docker Compose**, base directory `/`, compose file
+   `/docker-compose.demo.yml`. Add the deploy key Coolify shows to GitHub →
+   repo → Settings → Deploy keys (read-only).
+2. **Environment variables** (Production):
+   - `DEMO_HOST` — the public hostname, no scheme.
+   - `JWT_SECRET`, `PORTAL_JWT_SECRET`, `INTERNAL_SERVICE_SECRET` —
+     `openssl rand -hex 32` each. **`JWT_SECRET` also reaches the
+     intelligence tier**, which is what lets a platform token resolve to a
+     shadow user there.
+   - `AI_KEY_ENCRYPTION_KEY` — set once and never change it, or every stored
+     BYO LLM key becomes undecryptable.
+   - `S3_ACCESS_KEY`, `S3_SECRET_KEY` — MinIO's credentials.
+   - Optional: `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` (AI features return 503
+     without one), `SMTP_*` (nothing is emailed without it).
+3. **Deploy on push:** the resource's **Webhooks** page shows a GitHub webhook
+   URL and secret. Add them in GitHub → repo → Settings → Webhooks (content
+   type `application/json`, push events only).
 
 ## Everyday use
 
-- **Deploying:** push to `dev`. The job only goes green once
-  `/api/health/ready` answers 200 through Caddy, so a green tick means the
-  public URL works. On failure it prints the last API, intelligence and migrate
-  logs.
-- **Redeploying without a push:** run **Deploy demo** from the Actions tab.
-- **Rolling back:** the previous source tree is kept at
-  `/opt/contractsense/src.old`; rebuild from it, or revert on `dev` and push.
-- **Logs:** `cd /opt/contractsense/src && docker compose -p contractsense -f deploy/vm/docker-compose.yml --env-file ../.env logs -f api`
-- **Seeding demo data:** in the `api` container,
+- **Deploying:** push to `dev`, or press **Deploy** in Coolify.
+- **Logs:** Coolify → the resource → **Logs** (per service) and
+  **Deployment Logs** (the build).
+- **Rolling back:** Coolify → **Rollback**, or revert on `dev` and push.
+- **Seeding demo data:** Coolify → **Terminal** → `api` container:
   `SEED_ALLOW_PRODUCTION=1 SEED_ADMIN_PASSWORD=... pnpm db:seed`.
 
 ## Known limits
 
-This is a demo stack. MongoDB, Redis and MinIO live in named volumes on one
-box with no backups, and a deploy restarts the services, so there are a few
-seconds of downtime. The build also briefly loads the VM's two cores. A real
-deployment is `deploy/helm` / `deploy/terraform`.
+This is a demo stack. MongoDB, Redis and MinIO live in named volumes on one box
+with no backups, a deploy restarts the services (a few seconds of downtime),
+and a build briefly loads the VM's two cores. A real deployment is
+`deploy/helm` / `deploy/terraform`.
 
 `vendor/draft-legal/docker-compose.selfhost.yml` is draftLegal's own
 self-hosted stack, kept for reference. It cannot run this platform: it is
