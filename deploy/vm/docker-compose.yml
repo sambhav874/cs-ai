@@ -1,15 +1,23 @@
-# The demo stack, as Coolify runs it.
+# The demo stack, built and run on the demo VM.
 #
-# Coolify does NOT build these images: CI does, pushes them to GHCR, then calls
-# Coolify's deploy webhook, which pulls and restarts. That keeps a deploy at
-# roughly "pull + restart" (tens of seconds) instead of a full multi-service
-# build on the demo box.
+# GitHub Actions copies the repo to the VM over SSH and runs
+#   docker compose -p contractsense --env-file /opt/contractsense/.env up -d --build
+# so images are built there and never leave the server — no registry.
 #
 # Everything is one origin: `web` (nginx) serves the SPA and proxies /api to
-# the lifecycle API and /intel to the intelligence tier. Only `web` is exposed;
-# Coolify's proxy terminates TLS for the subdomain in SERVICE_FQDN_WEB.
+# the lifecycle API and /intel to the intelligence tier. Only `web` is
+# published, on a loopback port; the VM's host Caddy terminates TLS for the
+# public hostname and proxies to it.
 #
-# Set-up and the environment variables this expects: see README.md beside it.
+# Set-up and the environment variables this expects: README.md beside it.
+
+x-build-api: &build-api
+  context: ../..
+  dockerfile: apps/api/Dockerfile
+
+x-build-intelligence: &build-intelligence
+  context: ../..
+  dockerfile: apps/intelligence/Dockerfile
 
 x-restart: &restart
   restart: unless-stopped
@@ -17,14 +25,12 @@ x-restart: &restart
 services:
   web:
     <<: *restart
-    image: ${REGISTRY:-ghcr.io/sambhav874/cs-ai}/web:${TAG:-demo}
-    environment:
-      # Coolify fills this in and points its proxy here. The port suffix tells
-      # it which container port to route to.
-      - SERVICE_FQDN_WEB_8080
-    # The demo VM's host Caddy owns 80/443 (it also serves the old draftLegal
-    # demo), so Coolify's Traefik is not running there. Caddy reaches this
-    # stack on a loopback port instead; 8080 is taken by draftLegal's web.
+    image: contractsense/web:latest
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+    # The VM's host Caddy owns 80/443 (it also serves the old draftLegal demo)
+    # and reaches this stack on a loopback port; 8080 is draftLegal's.
     ports:
       - '127.0.0.1:${WEB_HOST_PORT:-8090}:8080'
     depends_on:
@@ -37,7 +43,9 @@ services:
   # uniques included) is pushed on every deploy. Idempotent, and it must
   # finish before the API serves traffic.
   migrate:
-    image: ${REGISTRY:-ghcr.io/sambhav874/cs-ai}/api:${TAG:-demo}
+    image: contractsense/api:latest
+    # Built once by its sibling service; never pulled from a registry.
+    pull_policy: never
     restart: 'no'
     entrypoint: ['sh', '-c']
     command:
@@ -70,7 +78,8 @@ services:
 
   api:
     <<: *restart
-    image: ${REGISTRY:-ghcr.io/sambhav874/cs-ai}/api:${TAG:-demo}
+    image: contractsense/api:latest
+    build: *build-api
     environment:
       NODE_ENV: production
       PORT: 8080
@@ -87,11 +96,11 @@ services:
       FRONTEND_URL: https://${DEMO_HOST}
       API_URL: https://${DEMO_HOST}
       WEB_BASE_URL: https://${DEMO_HOST}
-      GIT_COMMIT_SHA: ${TAG:-demo}
-      # Secrets. Generated once and stored in Coolify's env editor, never here.
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
-      PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?set PORTAL_JWT_SECRET in Coolify}
-      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in Coolify}
+      GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
+      # Secrets. Generated once and kept in /opt/contractsense/.env on the VM.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in /opt/contractsense/.env}
+      PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?set PORTAL_JWT_SECRET in /opt/contractsense/.env}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in /opt/contractsense/.env}
       AI_KEY_ENCRYPTION_KEY: ${AI_KEY_ENCRYPTION_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -118,7 +127,9 @@ services:
   # through its worker entrypoint.
   jobs:
     <<: *restart
-    image: ${REGISTRY:-ghcr.io/sambhav874/cs-ai}/api:${TAG:-demo}
+    image: contractsense/api:latest
+    # Built once by its sibling service; never pulled from a registry.
+    pull_policy: never
     command: ['node', '--import', 'tsx', 'src/worker-entrypoint.ts']
     environment:
       NODE_ENV: production
@@ -127,9 +138,9 @@ services:
       REDIS_URL: redis://redis:6379
       FRONTEND_URL: https://${DEMO_HOST}
       GOTENBERG_URL: http://gotenberg:3000
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
-      PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?set PORTAL_JWT_SECRET in Coolify}
-      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in Coolify}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in /opt/contractsense/.env}
+      PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?set PORTAL_JWT_SECRET in /opt/contractsense/.env}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in /opt/contractsense/.env}
       AI_KEY_ENCRYPTION_KEY: ${AI_KEY_ENCRYPTION_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -157,7 +168,8 @@ services:
 
   intelligence:
     <<: *restart
-    image: ${REGISTRY:-ghcr.io/sambhav874/cs-ai}/intelligence:${TAG:-demo}
+    image: contractsense/intelligence:latest
+    build: *build-intelligence
     environment:
       ENVIRONMENT: prod
       API_WORKERS: ${INTEL_WORKERS:-2}
@@ -171,7 +183,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/3
       # Same secret as the API: that is what makes a platform token resolve to
       # a shadow user here.
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in /opt/contractsense/.env}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
@@ -184,7 +196,9 @@ services:
   worker:
     <<: *restart
     # Same image as `intelligence`; only the entrypoint differs.
-    image: ${REGISTRY:-ghcr.io/sambhav874/cs-ai}/intelligence:${TAG:-demo}
+    image: contractsense/intelligence:latest
+    # Built once by its sibling service; never pulled from a registry.
+    pull_policy: never
     entrypoint: ['/app/celery_entrypoint.sh']
     environment:
       ENVIRONMENT: prod
@@ -196,7 +210,7 @@ services:
       REDIS_URL: redis://redis:6379/1
       CELERY_BROKER_URL: redis://redis:6379/2
       CELERY_RESULT_BACKEND: redis://redis:6379/3
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in /opt/contractsense/.env}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
