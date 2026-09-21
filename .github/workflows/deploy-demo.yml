@@ -1,4 +1,4 @@
-# Push to main → demo is updated, typically in a couple of minutes.
+# Push to dev → demo is updated, typically in a couple of minutes.
 #
 # Why images are built here and not on the VM: a build of all three services on
 # the demo box takes many minutes and pins its CPU, so the demo is unusable
@@ -12,8 +12,9 @@ name: Deploy demo
 
 on:
   push:
-    branches: [main]
-  # Redeploy the current main, or a chosen tag, by hand.
+    # The demo tracks dev, so main stays releasable while the demo moves fast.
+    branches: [dev]
+  # Redeploy the current dev, or a chosen tag, by hand.
   workflow_dispatch:
     inputs:
       tag:

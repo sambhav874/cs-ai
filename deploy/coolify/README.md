@@ -1,6 +1,6 @@
 # The demo deployment
 
-Push to `main` → the demo updates itself, usually in two to three minutes.
+Push to `dev` → the demo updates itself, usually in two to three minutes.
 
 ```
 git push  ──▶  GitHub Actions  ──▶  GHCR (api / web / intelligence)
@@ -38,7 +38,7 @@ do the two intelligence processes. Fewer builds, faster deploys.
 
 ### 1. Coolify
 
-1. **Projects → New → Docker Compose**, source = this repo, branch `main`,
+1. **Projects → New → Docker Compose**, source = this repo, branch `dev`,
    compose path `deploy/coolify/docker-compose.yml`.
 2. **Turn Coolify's own auto-deploy off.** CI triggers the deploy after the
    images exist; if Coolify also redeploys on push it will restart with the
@@ -85,7 +85,7 @@ GHCR needs no secret; the workflow's `GITHUB_TOKEN` can push to it.
 
 ## Everyday use
 
-- **Deploying:** push to `main`. Watch it in the repo's Actions tab. The job
+- **Deploying:** push to `dev`. Watch it in the repo's Actions tab. The job
   only goes green once `/api/health/ready` answers 200, so a green tick means
   the demo really came back up.
 - **Redeploying unchanged code, or rolling back:** run **Deploy demo** from the
