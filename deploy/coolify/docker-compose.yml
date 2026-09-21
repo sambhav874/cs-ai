@@ -22,6 +22,11 @@ services:
       # Coolify fills this in and points its proxy here. The port suffix tells
       # it which container port to route to.
       - SERVICE_FQDN_WEB_8080
+    # The demo VM's host Caddy owns 80/443 (it also serves the old draftLegal
+    # demo), so Coolify's Traefik is not running there. Caddy reaches this
+    # stack on a loopback port instead; 8080 is taken by draftLegal's web.
+    ports:
+      - '127.0.0.1:${WEB_HOST_PORT:-8090}:8080'
     depends_on:
       api:
         condition: service_started
