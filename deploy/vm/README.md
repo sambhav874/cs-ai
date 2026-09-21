@@ -58,7 +58,7 @@ creates. With Traefik not running it has to exist by hand:
    repo → Settings → Deploy keys (read-only).
 2. **Environment variables:**
    - `APP_HOST` — the public hostname, no scheme (`DEMO_HOST` is still read as a fallback).
-   - `JWT_SECRET`, `PORTAL_JWT_SECRET`, `INTERNAL_SERVICE_SECRET` —
+   - `JWT_SECRET`, `PORTAL_JWT_SECRET`, `INTERNAL_SERVICE_SECRET`, `INTEL_SECRET_KEY` —
      `openssl rand -hex 32` each. **`JWT_SECRET` also reaches the
      intelligence tier**, which is what lets a platform token resolve to a
      shadow user there.

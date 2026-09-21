@@ -135,6 +135,10 @@ services:
     # Built once by its sibling service; never pulled from a registry.
     pull_policy: never
     command: ['node', '--import', 'tsx', 'src/worker-entrypoint.ts']
+    # The image's health check probes the API's HTTP port; the jobs runner
+    # serves no HTTP, so it would always read unhealthy.
+    healthcheck:
+      disable: true
     environment:
       NODE_ENV: production
       WORKERS_ENABLED: 'true'
@@ -188,6 +192,9 @@ services:
       # Same secret as the API: that is what makes a platform token resolve to
       # a shadow user here.
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
+      # The intelligence tier's own signing key (its native tokens). Separate
+      # from JWT_SECRET on purpose; the app refuses to start without it.
+      SECRET_KEY: ${INTEL_SECRET_KEY:?set INTEL_SECRET_KEY in Coolify}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
@@ -215,6 +222,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/2
       CELERY_RESULT_BACKEND: redis://redis:6379/3
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
+      SECRET_KEY: ${INTEL_SECRET_KEY:?set INTEL_SECRET_KEY in Coolify}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
