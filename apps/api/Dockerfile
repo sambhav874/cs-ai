@@ -36,7 +36,9 @@ WORKDIR /repo
 COPY packages/types/ packages/types/
 COPY apps/api/ apps/api/
 
-RUN pnpm --filter api exec prisma generate
+# The MongoDB schema, not the default (Postgres) one: generating either
+# overwrites the other's client, and the deployment runs on MongoDB.
+RUN pnpm --filter api exec prisma generate --schema prisma/schema.mongo.prisma
 
 # ---------- runtime stage ----------
 FROM node:20-slim AS runtime
@@ -67,5 +69,7 @@ RUN chown -R nodejs:nodejs /app
 USER nodejs
 WORKDIR /app/apps/api
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8080)+'/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "--import", "tsx", "src/index.ts"]

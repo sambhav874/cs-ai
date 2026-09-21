@@ -1,0 +1,247 @@
+# The demo stack, as Coolify runs it.
+#
+# Coolify does NOT build these images: CI does, pushes them to GHCR, then calls
+# Coolify's deploy webhook, which pulls and restarts. That keeps a deploy at
+# roughly "pull + restart" (tens of seconds) instead of a full multi-service
+# build on the demo box.
+#
+# Everything is one origin: `web` (nginx) serves the SPA and proxies /api to
+# the lifecycle API and /intel to the intelligence tier. Only `web` is exposed;
+# Coolify's proxy terminates TLS for the subdomain in SERVICE_FQDN_WEB.
+#
+# Set-up and the environment variables this expects: see README.md beside it.
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  web:
+    <<: *restart
+    image: ${REGISTRY:-ghcr.io/sambhav874/cs-ai}/web:${TAG:-demo}
+    environment:
+      # Coolify fills this in and points its proxy here. The port suffix tells
+      # it which container port to route to.
+      - SERVICE_FQDN_WEB_8080
+    depends_on:
+      api:
+        condition: service_started
+      intelligence:
+        condition: service_started
+
+  # One-shot: MongoDB has no migration files, so the schema (indexes and
+  # uniques included) is pushed on every deploy. Idempotent, and it must
+  # finish before the API serves traffic.
+  migrate:
+    image: ${REGISTRY:-ghcr.io/sambhav874/cs-ai}/api:${TAG:-demo}
+    restart: 'no'
+    entrypoint: ['sh', '-c']
+    command:
+      - ./node_modules/.bin/prisma db push --schema prisma/schema.mongo.prisma --skip-generate
+    environment:
+      DATABASE_URL: mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  # Creates the bucket the API writes documents to. MinIO does not create one
+  # on first PUT, so without this every upload fails with NoSuchBucket.
+  minio-init:
+    # MinIO left Docker Hub; quay.io is the official home now. Pinned by
+    # digest so a deploy cannot pick up a different build unannounced.
+    image: quay.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    restart: 'no'
+    entrypoint: ['sh', '-c']
+    command:
+      - >-
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+        mc mb --ignore-existing local/${S3_BUCKET:-clm-documents} &&
+        mc anonymous set none local/${S3_BUCKET:-clm-documents}
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    depends_on:
+      minio:
+        condition: service_started
+
+  api:
+    <<: *restart
+    image: ${REGISTRY:-ghcr.io/sambhav874/cs-ai}/api:${TAG:-demo}
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      HOST: 0.0.0.0
+      # The jobs service below runs the BullMQ workers and the cron scans; the
+      # API must not consume the same queues (draftLegal's self-host compose
+      # splits them the same way).
+      WORKERS_ENABLED: 'false'
+      GOTENBERG_URL: http://gotenberg:3000
+      DATABASE_URL: mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true
+      REDIS_URL: redis://redis:6379
+      # Public origin, used in signer-portal links and emails. Without it those
+      # links point nowhere.
+      FRONTEND_URL: https://${DEMO_HOST}
+      API_URL: https://${DEMO_HOST}
+      WEB_BASE_URL: https://${DEMO_HOST}
+      GIT_COMMIT_SHA: ${TAG:-demo}
+      # Secrets. Generated once and stored in Coolify's env editor, never here.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
+      PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?set PORTAL_JWT_SECRET in Coolify}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in Coolify}
+      AI_KEY_ENCRYPTION_KEY: ${AI_KEY_ENCRYPTION_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_BUCKET: ${S3_BUCKET:-clm-documents}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@example.com}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  # BullMQ workers, renewal and obligation scans. Same image as the API, run
+  # through its worker entrypoint.
+  jobs:
+    <<: *restart
+    image: ${REGISTRY:-ghcr.io/sambhav874/cs-ai}/api:${TAG:-demo}
+    command: ['node', '--import', 'tsx', 'src/worker-entrypoint.ts']
+    environment:
+      NODE_ENV: production
+      WORKERS_ENABLED: 'true'
+      DATABASE_URL: mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true
+      REDIS_URL: redis://redis:6379
+      FRONTEND_URL: https://${DEMO_HOST}
+      GOTENBERG_URL: http://gotenberg:3000
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
+      PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?set PORTAL_JWT_SECRET in Coolify}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in Coolify}
+      AI_KEY_ENCRYPTION_KEY: ${AI_KEY_ENCRYPTION_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_BUCKET: ${S3_BUCKET:-clm-documents}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@example.com}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  # HTML → PDF, before a document is sealed. Private to the compose network.
+  gotenberg:
+    <<: *restart
+    image: gotenberg/gotenberg:8
+    command: ['gotenberg', '--api-port=3000']
+
+  intelligence:
+    <<: *restart
+    image: ${REGISTRY:-ghcr.io/sambhav874/cs-ai}/intelligence:${TAG:-demo}
+    environment:
+      ENVIRONMENT: prod
+      API_WORKERS: ${INTEL_WORKERS:-2}
+      MONGODB_URI: mongodb://mongo:27017/?replicaSet=rs0&directConnection=true
+      MONGODB_DB_NAME: contract_core_db
+      # The platform database the identity adapter and the Space watcher read.
+      # Its name comes from the URL path, so csai must stay in it.
+      PLATFORM_DATABASE_URL: mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/2
+      CELERY_RESULT_BACKEND: redis://redis:6379/3
+      # Same secret as the API: that is what makes a platform token resolve to
+      # a shadow user here.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    <<: *restart
+    # Same image as `intelligence`; only the entrypoint differs.
+    image: ${REGISTRY:-ghcr.io/sambhav874/cs-ai}/intelligence:${TAG:-demo}
+    entrypoint: ['/app/celery_entrypoint.sh']
+    environment:
+      ENVIRONMENT: prod
+      CELERY_MODE: worker
+      CELERY_CONCURRENCY: ${CELERY_CONCURRENCY:-8}
+      MONGODB_URI: mongodb://mongo:27017/?replicaSet=rs0&directConnection=true
+      MONGODB_DB_NAME: contract_core_db
+      PLATFORM_DATABASE_URL: mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/2
+      CELERY_RESULT_BACKEND: redis://redis:6379/3
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+    depends_on:
+      redis:
+        condition: service_started
+      mongo:
+        condition: service_healthy
+
+  mongo:
+    <<: *restart
+    image: mongo:7
+    # A replica set even with one node: Prisma refuses transactions without
+    # one, and the Space watcher's change stream needs the oplog.
+    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # Initiates the set on first boot, then answers healthy once it is
+      # primary. Idempotent, so a restart is a no-op.
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --eval
+          'try { rs.status().ok } catch (e) { rs.initiate({_id:"rs0",members:[{_id:0,host:"mongo:27017"}]}).ok }'
+          | grep -q 1
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
+  redis:
+    <<: *restart
+    image: redis:7-alpine
+    # AOF: a restart must not lose queued jobs or the Celery backlog.
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+
+  minio:
+    <<: *restart
+    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    command: ['server', '/data']
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio-data:/data
+
+volumes:
+  mongo-data:
+  redis-data:
+  minio-data:

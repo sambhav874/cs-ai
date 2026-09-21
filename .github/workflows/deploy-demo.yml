@@ -1,0 +1,115 @@
+# Push to main → demo is updated, typically in a couple of minutes.
+#
+# Why images are built here and not on the VM: a build of all three services on
+# the demo box takes many minutes and pins its CPU, so the demo is unusable
+# exactly when someone just pushed. Here the builds run in parallel with a
+# shared layer cache, and the VM only pulls and restarts.
+#
+# The stack itself is deploy/coolify/docker-compose.yml; setting it up is
+# described in deploy/coolify/README.md.
+
+name: Deploy demo
+
+on:
+  push:
+    branches: [main]
+  # Redeploy the current main, or a chosen tag, by hand.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to deploy (default: this run)'
+        required: false
+
+concurrency:
+  # One deploy at a time, and a newer push wins: the older image would only be
+  # overwritten seconds later anyway.
+  group: deploy-demo
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}/cs-ai
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      # Each image is independent; a failure in one should still show the
+      # others' results rather than masking them.
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            dockerfile: apps/api/Dockerfile
+          - name: web
+            dockerfile: apps/web/Dockerfile
+          # Also runs the Celery worker — same image, different entrypoint.
+          - name: intelligence
+            dockerfile: apps/intelligence/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          # The repo root: every Dockerfile here needs the workspace lockfile
+          # or a sibling package.
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ matrix.name }}:demo
+            ${{ env.REGISTRY }}/${{ matrix.name }}:${{ github.sha }}
+          # Cache in the registry, so a rebuild reuses the dependency layers
+          # even though each run starts on a fresh machine.
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ matrix.name }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ matrix.name }}:buildcache,mode=max
+          provenance: false
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tell Coolify to pull and restart
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_UUID: ${{ secrets.COOLIFY_DEMO_UUID }}
+        run: |
+          set -euo pipefail
+          # force=true so the pull happens even when the :demo tag name is
+          # unchanged — the tag is mutable and that is the whole point.
+          code=$(curl -sS -o /tmp/deploy.json -w '%{http_code}' \
+            -X GET "${COOLIFY_URL%/}/api/v1/deploy?uuid=${COOLIFY_UUID}&force=true" \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}")
+          cat /tmp/deploy.json
+          echo
+          # A non-2xx here means the deploy never started; failing loudly beats
+          # a green tick over an unchanged demo.
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ]
+
+      - name: Wait for the demo to answer
+        env:
+          DEMO_URL: ${{ secrets.DEMO_URL }}
+        run: |
+          set -uo pipefail
+          # Coolify's deploy is asynchronous. Poll the API's own readiness
+          # probe, which only passes once Mongo and Redis are reachable.
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+              "${DEMO_URL%/}/api/health/ready" || echo 000)
+            if [ "$code" = "200" ]; then echo "Demo healthy after ${i} checks."; exit 0; fi
+            echo "  waiting (${i}/60, last ${code})"
+            sleep 10
+          done
+          echo "Demo did not become healthy within 10 minutes."
+          exit 1

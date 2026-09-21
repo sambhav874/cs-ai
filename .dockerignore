@@ -1,0 +1,21 @@
+# Keep the build context small: every image build ships this directory to the
+# builder, and node_modules alone is ~1GB.
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/*.pyc
+.git
+.github
+.pytest_cache
+.claude
+.env
+.env.*
+!.env.example
+vendor
+testing
+final_evaluation
+docs
+**/.DS_Store
+**/coverage
+**/.turbo
