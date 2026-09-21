@@ -32,14 +32,14 @@ from services.kpi_manager import ContractKPIManager, KPI_RULE_VERSION
 
 logger = logging.getLogger(__name__)
 
-# demo_data/ lives at the repo root, not under apps/backend, so it isn't
-# necessarily reachable by walking up from this file -- e.g. in Docker,
-# where only apps/backend gets bind-mounted (into /app/backend), a
-# repo-root-relative path resolves outside the container entirely.
-# DEMO_DATA_DIR lets deployment mount/point at it explicitly; the parents[3]
-# walk is only the local (non-container) dev fallback.
+# The demo scenario's data is optional: set DEMO_DATA_DIR to enable it. When
+# the files are absent everything below degrades to inert (see the try/except).
+#
+# This used to walk parents[3] up to the old repo root. In the container that
+# path does not exist, and the IndexError fired at import time -- which took
+# down the API and the Celery worker, since both import this module.
 _env_demo_data_dir = os.environ.get("DEMO_DATA_DIR")
-DEMO_DATA_DIR = Path(_env_demo_data_dir) if _env_demo_data_dir else Path(__file__).resolve().parents[3] / "demo_data"
+DEMO_DATA_DIR = Path(_env_demo_data_dir) if _env_demo_data_dir else Path(__file__).resolve().parent.parent / "demo_data"
 DEMO_SCENARIO_ID = "baltia_jfk_gha"
 DEMO_OPS_EMAIL = "recoveries@baltia-air.com"
 DEMO_EXTRACTION_MODE = "baltia_jfk_ground_truth"

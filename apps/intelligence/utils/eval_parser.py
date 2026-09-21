@@ -10,7 +10,15 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 # Locate directories dynamically
-REPO_ROOT = Path(__file__).resolve().parents[3]
+# Repo root in a checkout (apps/intelligence/utils → three up). In the container
+# the code sits at /app and there is no repo root: indexing parents[3] there
+# raised IndexError at import and crashed the API. EVAL_REPO_ROOT overrides;
+# otherwise fall back to the filesystem root, where the reports simply are not
+# found and the evaluations screens show empty.
+_parents = Path(__file__).resolve().parents
+REPO_ROOT = Path(os.environ["EVAL_REPO_ROOT"]) if os.environ.get("EVAL_REPO_ROOT") else (
+    _parents[3] if len(_parents) > 3 else _parents[-1]
+)
 REPORTS_DIR = REPO_ROOT / "final_evaluation" / "reports"
 CONFIG_FILE = REPO_ROOT / "final_evaluation" / "config" / "eval_config.yaml"
 
