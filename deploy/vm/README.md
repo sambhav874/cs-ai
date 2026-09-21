@@ -1,7 +1,7 @@
-# The demo deployment
+# The dev environment
 
-Everything happens in **Coolify**. It clones the `dev` branch onto the demo VM,
-builds the three images there from [`docker-compose.demo.yml`](../../docker-compose.demo.yml),
+Everything happens in **Coolify**. It clones the `dev` branch onto the VM,
+builds the three images there from [`docker-compose.dev.yml`](../../docker-compose.dev.yml),
 and starts the stack. Deploys, logs, environment variables and rollbacks are
 all in the Coolify UI; no registry, no CI deploy job.
 
@@ -54,10 +54,10 @@ creates. With Traefik not running it has to exist by hand:
 1. **Resource:** Private Git Repository (with Deploy Key) →
    `git@github.com:sambhav874/cs-ai.git`, branch `dev`, build pack
    **Docker Compose**, base directory `/`, compose file
-   `/docker-compose.demo.yml`. Add the deploy key Coolify shows to GitHub →
+   `/docker-compose.dev.yml`. Add the deploy key Coolify shows to GitHub →
    repo → Settings → Deploy keys (read-only).
-2. **Environment variables** (Production):
-   - `DEMO_HOST` — the public hostname, no scheme.
+2. **Environment variables:**
+   - `APP_HOST` — the public hostname, no scheme (`DEMO_HOST` is still read as a fallback).
    - `JWT_SECRET`, `PORTAL_JWT_SECRET`, `INTERNAL_SERVICE_SECRET` —
      `openssl rand -hex 32` each. **`JWT_SECRET` also reaches the
      intelligence tier**, which is what lets a platform token resolve to a
@@ -77,12 +77,12 @@ creates. With Traefik not running it has to exist by hand:
 - **Logs:** Coolify → the resource → **Logs** (per service) and
   **Deployment Logs** (the build).
 - **Rolling back:** Coolify → **Rollback**, or revert on `dev` and push.
-- **Seeding demo data:** Coolify → **Terminal** → `api` container:
+- **Seeding sample data:** Coolify → **Terminal** → `api` container:
   `SEED_ALLOW_PRODUCTION=1 SEED_ADMIN_PASSWORD=... pnpm db:seed`.
 
 ## Known limits
 
-This is a demo stack. MongoDB, Redis and MinIO live in named volumes on one box
+This is a dev environment, not production. MongoDB, Redis and MinIO live in named volumes on one box
 with no backups, a deploy restarts the services (a few seconds of downtime),
 and a build briefly loads the VM's two cores. A real deployment is
 `deploy/helm` / `deploy/terraform`.
