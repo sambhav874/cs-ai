@@ -132,6 +132,19 @@ def initialize_all_indexes(db=None):
             [("ownerType", ASCENDING), ("ownerId", ASCENDING), ("name", ASCENDING)],
             "project_owner_name"
         )
+        # One projects document per Space (see services/space_projects).
+        # Partial, not plain unique: most projects have no spaceId, and a
+        # plain unique index would read every one of them as the same null.
+        try:
+            projects.create_index(
+                [("spaceId", ASCENDING)],
+                name="project_space_unique",
+                unique=True,
+                partialFilterExpression={"spaceId": {"$type": "string"}},
+            )
+        except (OperationFailure, DuplicateKeyError) as e:
+            logger.warning(f"Could not create unique index project_space_unique: {e}")
+
         # At most one Unfiled space per owner (see ensure_default_project).
         # Built on existing data, it fails if an owner already has two; that
         # is logged rather than raised so the service still boots, and the

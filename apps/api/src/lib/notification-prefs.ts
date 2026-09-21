@@ -16,7 +16,7 @@
  */
 import { prisma } from './prisma.js'
 
-// Mirrors SettingsPage's DEFAULT_NOTIFS. These matter: a user who has never
+// Mirrors SettingsPage's DEFAULT_NOTIFS. These space: a user who has never
 // opened the settings page has no stored preferences at all, and the ABSENCE
 // of a preference must mean "send", not "suppress".
 export const NOTIFICATION_PREF_DEFAULTS: Record<string, boolean> = {

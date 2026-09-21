@@ -1,10 +1,10 @@
 /**
- * ContractMatterPicker (P4.2 / docs/30 D.7.2)
+ * ContractSpacePicker (P4.2 / docs/30 D.7.2)
  *
- * Inline matter assignment on the contract detail header. Shows:
- *   • "Add to matter" when no assignment
- *   • The matter name when assigned (click → detail), with an × to unlink
- *   • A dropdown search-picker when the user clicks "Add to matter"
+ * Inline space assignment on the contract detail header. Shows:
+ *   • "Add to space" when no assignment
+ *   • The space name when assigned (click → detail), with an × to unlink
+ *   • A dropdown search-picker when the user clicks "Add to space"
  */
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -12,7 +12,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Briefcase, X, Search } from 'lucide-react'
 import { api } from '@/lib/api'
 
-interface MatterLite {
+interface SpaceLite {
   id: string
   name: string
   status: 'OPEN' | 'CLOSED' | 'ARCHIVED'
@@ -20,42 +20,42 @@ interface MatterLite {
   contractCount: number
 }
 
-export function ContractMatterPicker({
+export function ContractSpacePicker({
   contractId,
-  currentMatterId,
+  currentSpaceId,
 }: {
   contractId: string
-  currentMatterId: string | null
+  currentSpaceId: string | null
 }) {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
 
   const { data } = useQuery({
-    queryKey: ['matters-picker'],
-    queryFn: async () => (await api.get<{ items: MatterLite[]; total: number }>('/matters', {
+    queryKey: ['spaces-picker'],
+    queryFn: async () => (await api.get<{ items: SpaceLite[]; total: number }>('/spaces', {
       params: { status: 'OPEN', limit: 100 },
     })).data,
     enabled: open,
   })
 
-  const currentMatter = useMemo(
-    () => (data?.items ?? []).find(m => m.id === currentMatterId),
-    [data, currentMatterId],
+  const currentSpace = useMemo(
+    () => (data?.items ?? []).find(m => m.id === currentSpaceId),
+    [data, currentSpaceId],
   )
 
   const assign = useMutation({
-    mutationFn: async (matterId: string | null) => {
-      if (matterId) {
-        return api.post(`/matters/${matterId}/attach`, { kind: 'contract', entityId: contractId }).then(r => r.data)
+    mutationFn: async (spaceId: string | null) => {
+      if (spaceId) {
+        return api.post(`/spaces/${spaceId}/attach`, { kind: 'contract', entityId: contractId }).then(r => r.data)
       }
       // Unlink — attach to '' isn't supported; use PATCH on contract directly
-      return api.patch(`/contracts/${contractId}`, { matterId: null }).then(r => r.data)
+      return api.patch(`/contracts/${contractId}`, { spaceId: null }).then(r => r.data)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['contract', contractId] })
-      qc.invalidateQueries({ queryKey: ['matter'] })
-      qc.invalidateQueries({ queryKey: ['matters-picker'] })
+      qc.invalidateQueries({ queryKey: ['space'] })
+      qc.invalidateQueries({ queryKey: ['spaces-picker'] })
       setOpen(false)
     },
   })
@@ -69,31 +69,31 @@ export function ContractMatterPicker({
     )
   }, [data, search])
 
-  // If the current matter wasn't in the OPEN list (CLOSED or archived),
+  // If the current space wasn't in the OPEN list (CLOSED or archived),
   // fetch it on-demand.
   const { data: onePick } = useQuery({
-    queryKey: ['matter-one', currentMatterId],
-    enabled: !!currentMatterId && !currentMatter,
-    queryFn: async () => (await api.get<MatterLite & { id: string }>(`/matters/${currentMatterId}`)).data,
+    queryKey: ['space-one', currentSpaceId],
+    enabled: !!currentSpaceId && !currentSpace,
+    queryFn: async () => (await api.get<SpaceLite & { id: string }>(`/spaces/${currentSpaceId}`)).data,
   })
-  const effectiveCurrent = currentMatter ?? onePick
+  const effectiveCurrent = currentSpace ?? onePick
 
   if (effectiveCurrent) {
     return (
-      // A matter is a human filing cabinet, not machine output — the indigo it
+      // A space is a human filing cabinet, not machine output — the indigo it
       // used to wear belongs to the assistant, so this is a plain neutral chip.
       <span className="inline-flex items-center gap-1 rounded-full border border-surface-200 bg-surface-100 px-2 py-0.5 text-[10.5px] font-medium text-fg-950"
-            data-testid="contract-matter-badge"
-            data-matter-id={effectiveCurrent.id}>
+            data-testid="contract-space-badge"
+            data-space-id={effectiveCurrent.id}>
         <Briefcase className="size-3" />
-        <Link to={`/matters/${effectiveCurrent.id}`} className="hover:underline truncate max-w-[180px]">
+        <Link to={`/spaces/${effectiveCurrent.id}`} className="hover:underline truncate max-w-[180px]">
           {effectiveCurrent.name}
         </Link>
         <button
           type="button"
           onClick={() => assign.mutate(null)}
-          title="Unlink from matter"
-          data-testid="contract-matter-unlink"
+          title="Unlink from space"
+          data-testid="contract-space-unlink"
           className="hover:bg-surface-200 rounded-full p-0.5"
         >
           <X className="size-2.5" />
@@ -107,10 +107,10 @@ export function ContractMatterPicker({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        data-testid="contract-matter-add-btn"
+        data-testid="contract-space-add-btn"
         className="inline-flex items-center gap-1 rounded-full border border-dashed border-surface-300 px-2 py-0.5 text-[10.5px] text-muted-foreground hover:text-fg-950 hover:border-fg-400"
       >
-        <Briefcase className="size-3" /> Add to matter
+        <Briefcase className="size-3" /> Add to space
       </button>
     )
   }
@@ -118,7 +118,7 @@ export function ContractMatterPicker({
   return (
     <div className="relative">
       <div
-        data-testid="contract-matter-picker"
+        data-testid="contract-space-picker"
         className="absolute top-6 left-0 z-20 w-80 rounded-card border border-border bg-card shadow-e2"
       >
         <div className="p-2 border-b border-border">
@@ -126,19 +126,19 @@ export function ContractMatterPicker({
             <Search className="absolute left-2 top-2 size-3 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search open matters…"
+              placeholder="Search open spaces…"
               value={search}
               onChange={e => setSearch(e.target.value)}
               autoFocus
               className="w-full pl-7 pr-2 py-1 text-[12px] rounded-md border border-input bg-card placeholder:text-fg-400 focus:outline-none focus:border-primary-700 focus:ring-[3px] focus:ring-primary-700/15"
-              data-testid="contract-matter-picker-search"
+              data-testid="contract-space-picker-search"
             />
           </div>
         </div>
         <ul className="max-h-72 overflow-y-auto divide-y divide-border">
           {filtered.length === 0 && (
             <li className="px-3 py-3 text-[11.5px] text-muted-foreground italic">
-              No matching open matters. <Link to="/matters" className="underline">Create one.</Link>
+              No matching open spaces. <Link to="/spaces" className="underline">Create one.</Link>
             </li>
           )}
           {filtered.map(m => (
@@ -146,7 +146,7 @@ export function ContractMatterPicker({
               <button
                 type="button"
                 onClick={() => assign.mutate(m.id)}
-                data-testid={`contract-matter-pick-${m.id}`}
+                data-testid={`contract-space-pick-${m.id}`}
                 className="w-full text-left px-3 py-1.5 hover:bg-surface-100 flex items-baseline gap-2"
               >
                 <Briefcase className="size-3 text-fg-400 flex-shrink-0" />
@@ -158,8 +158,8 @@ export function ContractMatterPicker({
           ))}
         </ul>
         <div className="px-2 py-1.5 border-t border-border flex items-center justify-between text-[10.5px]">
-          <Link to="/matters" className="text-fg-950 hover:underline" onClick={() => setOpen(false)}>
-            + New matter
+          <Link to="/spaces" className="text-fg-950 hover:underline" onClick={() => setOpen(false)}>
+            + New space
           </Link>
           <button type="button" onClick={() => setOpen(false)} className="text-muted-foreground hover:text-fg-950">
             Cancel

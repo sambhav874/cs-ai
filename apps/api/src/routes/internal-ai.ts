@@ -405,17 +405,17 @@ const CustomFieldListSchema = z.object({
   contractType: z.string().optional(),
 })
 
-// Persona-test fix #1 — matter_list. The agent had no way to answer
-// "what matters do I own?" / "what's open right now?" so it'd fall back
+// Persona-test fix #1 — space_list. The agent had no way to answer
+// "what spaces do I own?" / "what's open right now?" so it'd fall back
 // to obligations_list or request_list and return wrong-domain results.
-// Matters are how legal teams group related contracts (M&A, hub renewals,
+// Spaces are how legal teams group related contracts (M&A, hub renewals,
 // pilot programs); making them queryable is table-stakes for our personas.
-const MatterListSchema = z.object({
+const SpaceListSchema = z.object({
   orgId:            z.string().min(1),
-  ownerId:          z.string().optional(),  // filter to matters owned by this user
+  ownerId:          z.string().optional(),  // filter to spaces owned by this user
   status:           z.enum(['OPEN', 'CLOSED', 'ARCHIVED']).optional(),
   counterpartyName: z.string().optional(),  // fuzzy substring on counterpartyName
-  query:            z.string().optional(),  // free-text on matter name + description
+  query:            z.string().optional(),  // free-text on space name + description
   limit:            z.number().int().min(1).max(100).default(25),
 })
 
@@ -2295,7 +2295,7 @@ export async function internalAiRoutes(app: FastifyInstance) {
   // ── POST /internal/ai/tools/redline_propose_batch (Phase 1) ────────────────
   // Read-only. Rewrites many clauses in one round-trip, each grounded in its
   // OWN playbook positions — see lib/clause-propose-batch.ts for why that
-  // separation matters. Concurrency is bounded on the Python side.
+  // separation spaces. Concurrency is bounded on the Python side.
   app.post('/tools/redline_propose_batch', async (req, reply) => {
     let body
     try { body = RedlineProposeBatchSchema.parse(req.body) }
@@ -2431,7 +2431,7 @@ export async function internalAiRoutes(app: FastifyInstance) {
   //   adapter restores it)
   //   retype, re_analyze → NOT reversible (kicks off async pipelines that
   //   write to keyTerms / clauses / riskScore — rolling those back isn't
-  //   a matter of a single UPDATE)
+  //   a space of a single UPDATE)
   app.post('/tools/contract_update', async (req, reply) => {
     let body
     try { body = ContractUpdateSchema.parse(req.body) }
@@ -3768,13 +3768,13 @@ export async function internalAiRoutes(app: FastifyInstance) {
     })
   })
 
-  // ── POST /internal/ai/tools/matter_list (persona-test fix #1) ──────────────
-  // Returns the org's matters with optional filters. Designed for the
-  // agent to answer "what matters do I own?" / "what's open right now?"
+  // ── POST /internal/ai/tools/space_list (persona-test fix #1) ──────────────
+  // Returns the org's spaces with optional filters. Designed for the
+  // agent to answer "what spaces do I own?" / "what's open right now?"
   // without falling back to obligations_list or request_list.
-  app.post('/tools/matter_list', async (req, reply) => {
+  app.post('/tools/space_list', async (req, reply) => {
     let body
-    try { body = MatterListSchema.parse(req.body) }
+    try { body = SpaceListSchema.parse(req.body) }
     catch (err) {
       return reply.status(400).send({ detail: 'Invalid request', issues: (err as { issues?: unknown }).issues })
     }
@@ -3790,7 +3790,7 @@ export async function internalAiRoutes(app: FastifyInstance) {
       ]
     }
 
-    const matters = await prisma.matter.findMany({
+    const spaces = await prisma.space.findMany({
       where: where as never,
       select: {
         id: true, name: true, description: true, status: true,
@@ -3803,7 +3803,7 @@ export async function internalAiRoutes(app: FastifyInstance) {
     })
 
     return reply.send({
-      items: matters.map(m => ({
+      items: spaces.map(m => ({
         id: m.id, name: m.name, description: m.description, status: m.status,
         counterpartyName: m.counterpartyName, ownerId: m.ownerId, tags: m.tags,
         createdAt: m.createdAt, updatedAt: m.updatedAt,
@@ -3811,7 +3811,7 @@ export async function internalAiRoutes(app: FastifyInstance) {
         requestCount:  m._count.requests,
         threadCount:   m._count.threads,
       })),
-      total:   matters.length,
+      total:   spaces.length,
       filters: {
         ownerId: body.ownerId, status: body.status,
         counterpartyName: body.counterpartyName, query: body.query,

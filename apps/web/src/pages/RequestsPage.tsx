@@ -135,7 +135,7 @@ export function RequestsPage() {
    * Rows opened a panel and changed nothing about the URL, so a reviewer could
    * not send a colleague "look at this one", could not reload without losing
    * their place, and Back closed the whole page rather than the panel. The
-   * matter workspace now links here with this param too.
+   * space workspace now links here with this param too.
    */
   const focusId = searchParams.get('request')
   const { data: focusedFromUrl } = useQuery({

@@ -38,8 +38,8 @@ import { AdminOrgPage } from '@/pages/AdminOrgPage'
 import { AdminIntegrationsPage } from '@/pages/AdminIntegrationsPage'
 import { AdminSkillsPage } from '@/pages/AdminSkillsPage'
 import { ReviewQueuePage } from '@/pages/ReviewQueuePage'
-import { MattersPage } from '@/pages/MattersPage'
-import { MatterDetailPage } from '@/pages/MatterDetailPage'
+import { SpacesPage } from '@/pages/SpacesPage'
+import { SpaceDetailPage } from '@/pages/SpaceDetailPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { AcceptInvitePage } from '@/pages/AcceptInvitePage'
 import { TeamPage } from '@/pages/TeamPage'
@@ -146,9 +146,9 @@ export default function App() {
         <Route path="settings/skills" element={<AdminSkillsPage />} />
         {/* P2.5 — HITL review queue for low-confidence extractions */}
         <Route path="review-queue" element={<ReviewQueuePage />} />
-        {/* P4.2 — Matter list + workspace */}
-        <Route path="matters" element={<MattersPage />} />
-        <Route path="matters/:id" element={<MatterDetailPage />} />
+        {/* P4.2 — Space list + workspace */}
+        <Route path="spaces" element={<SpacesPage />} />
+        <Route path="spaces/:id" element={<SpaceDetailPage />} />
         {/* Screens ported from ContractSense (merge step 5): projects and
             their memory first; the rest follow screen by screen. */}
         {intelligenceRoutes}

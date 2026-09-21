@@ -1555,7 +1555,7 @@ export async function contractRoutes(app: FastifyInstance) {
       select: {
         id: true, title: true, type: true, status: true,
         counterpartyId: true, counterpartyName: true,
-        currency: true, matterId: true,
+        currency: true, spaceId: true,
       },
     })
     if (!parent) return reply.status(404).send({ detail: 'Parent contract not found' })
@@ -1602,7 +1602,7 @@ export async function contractRoutes(app: FastifyInstance) {
         value:            value != null && !isNaN(value) ? value : null,
         effectiveDate:    body.effectiveDate ? new Date(body.effectiveDate) : undefined,
         expiryDate:       body.expiryDate ? new Date(body.expiryDate) : undefined,
-        matterId:         parent.matterId ?? undefined,
+        spaceId:         parent.spaceId ?? undefined,
         metadata:         body.description ? { amendmentDescription: body.description } : {},
         versions: {
           create: {

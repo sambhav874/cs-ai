@@ -9,7 +9,7 @@ P2.1 (Wave F.1) adds an OCR fallback: when the digital extractor returns
 too little text relative to page count, we rasterise each page and run
 ocrmac (Apple Vision OCR, native on macOS — no binary dependency). In
 production this should ship with a tesseract or Textract backend behind
-the same interface; the detector + handoff are what matter.
+the same interface; the detector + handoff are what space.
 """
 import logging
 import os

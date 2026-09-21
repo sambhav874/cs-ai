@@ -143,7 +143,7 @@ describe('redactPii', () => {
       expect(r.text).toContain('[REDACTED:PASSPORT]')
     })
     it('does NOT redact a 9-digit number not anchored to passport', () => {
-      const r = redactPii('Reference 123456789 for the matter', 'redact')
+      const r = redactPii('Reference 123456789 for the space', 'redact')
       expect(r.counts.PASSPORT ?? 0).toBe(0)
     })
   })

@@ -1,7 +1,7 @@
 """Facts emitted automatically at ingestion must be idempotent and must not
 accumulate one live fact per revision.
 
-Both properties matter because the memory composer sends the live fact set to
+Both properties space because the memory composer sends the live fact set to
 the agent under a fixed character budget: every redundant fact costs context
 that a real one would otherwise have used.
 """

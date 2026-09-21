@@ -4,12 +4,12 @@
  * Reads the current route and returns the agent's "page context" — the
  * thing the user is looking at that the agent should already know about.
  *
- * U.3.1 — extended from contracts-only to also cover matters + counter-
+ * U.3.1 — extended from contracts-only to also cover spaces + counter-
  * parties. The rail's Context chip uses this to show "Focused on …" and
  * the per-resource thread filter uses { type, id } as the scope.
  *
  * Shape:
- *   { type: 'contract' | 'matter' | 'counterparty',
+ *   { type: 'contract' | 'space' | 'counterparty',
  *     id: string,
  *     label: string,
  *     icon: string,         // emoji
@@ -25,7 +25,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
 export interface AgentContext {
-  type: 'contract' | 'matter' | 'counterparty'
+  type: 'contract' | 'space' | 'counterparty'
   id: string
   label: string
   icon: string
@@ -36,14 +36,14 @@ export interface AgentContext {
 
 export function useAgentContext(): AgentContext | null {
   const contractMatch     = useMatch('/contracts/:id')
-  const matterMatch       = useMatch('/matters/:id')
+  const spaceMatch       = useMatch('/spaces/:id')
   const counterpartyMatch = useMatch('/counterparties/:id')
 
   const contractId = contractMatch?.params.id
   const isContract = contractId && contractId !== 'new' && contractId !== 'create'
 
-  const matterId = matterMatch?.params.id
-  const isMatter = matterId && matterId !== 'new' && matterId !== 'create'
+  const spaceId = spaceMatch?.params.id
+  const isSpace = spaceId && spaceId !== 'new' && spaceId !== 'create'
 
   const counterpartyId = counterpartyMatch?.params.id
   const isCounterparty = counterpartyId && counterpartyId !== 'new' && counterpartyId !== 'create'
@@ -55,10 +55,10 @@ export function useAgentContext(): AgentContext | null {
     enabled: !!isContract,
     staleTime: 60_000,
   })
-  const { data: matter } = useQuery<{ name: string | null }>({
-    queryKey: ['agent-context', 'matter', matterId],
-    queryFn: () => api.get(`/matters/${matterId}`).then(r => r.data),
-    enabled: !!isMatter,
+  const { data: space } = useQuery<{ name: string | null }>({
+    queryKey: ['agent-context', 'space', spaceId],
+    queryFn: () => api.get(`/spaces/${spaceId}`).then(r => r.data),
+    enabled: !!isSpace,
     staleTime: 60_000,
   })
   const { data: cp } = useQuery<{ name: string | null }>({
@@ -83,15 +83,15 @@ export function useAgentContext(): AgentContext | null {
     }
   }
 
-  if (isMatter) {
+  if (isSpace) {
     return {
-      type: 'matter',
-      id: matterId,
-      label: matter?.name?.trim() || 'Matter',
+      type: 'space',
+      id: spaceId,
+      label: space?.name?.trim() || 'Space',
       icon: '📁',
-      url: `/matters/${matterId}`,
-      scopeType: 'matter',
-      scopeId: matterId,
+      url: `/spaces/${spaceId}`,
+      scopeType: 'space',
+      scopeId: spaceId,
     }
   }
 

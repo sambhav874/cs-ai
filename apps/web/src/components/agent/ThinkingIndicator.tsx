@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
  *
  * They stay assist indigo. In this system indigo means "a machine is doing
  * this", and the loader is the most machine-authored moment there is — the
- * diamond is still the mark on finished content, where provenance matters.
+ * diamond is still the mark on finished content, where provenance spaces.
  * Motion carries the "working" signal; colour carries "who".
  */
 function WaveDots({ className }: { className?: string }) {

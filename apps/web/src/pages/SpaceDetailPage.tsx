@@ -1,16 +1,16 @@
 /**
- * MatterDetailPage (P4.2 / docs/30 D.7.2 + D.7.3)
+ * SpaceDetailPage (P4.2 / docs/30 D.7.2 + D.7.3)
  *
- * Workspace for a single matter — the matter's contracts, intake requests and
+ * Workspace for a single space — the space's contracts, intake requests and
  * agent threads, with a header carrying its metadata and status controls.
  *
- * This page was built and reviewed while `matters` had zero rows, so it had
- * only ever been seen as an empty state. With 14 real matters and 80 linked
+ * This page was built and reviewed while `spaces` had zero rows, so it had
+ * only ever been seen as an empty state. With 14 real spaces and 80 linked
  * contracts the gaps showed up immediately:
  *
  *   • The Requests tab printed raw enum values — "· MORE_INFO_NEEDED · HIGH".
  *   • A failed fetch rendered "Loading…" forever, because the guard was
- *     `isLoading || !data` and never asked about `error`. A deleted matter was
+ *     `isLoading || !data` and never asked about `error`. A deleted space was
  *     an infinite spinner.
  *   • Close / Archive / Reopen swallowed their errors: the button spun, the
  *     status didn't change, and nothing said why.
@@ -30,8 +30,12 @@ import { CountBadge, EmptyState } from '@/components/ui/primitives'
 import { expiryLabel, relativeTime } from '@/components/contracts/dates'
 import {
   Briefcase, FileText, ClipboardList, MessageSquare, ArrowLeft,
-  Archive, CheckCircle2, AlertCircle,
+  Archive, CheckCircle2, AlertCircle, Brain, History,
 } from 'lucide-react'
+import { IntelligenceProviders } from '@/features/intelligence/IntelligenceProviders'
+import { useSpaceProject } from '@/features/intelligence/useSpaceProject'
+import { ProjectMemoryPanel } from '@/features/intelligence/components/projects/ProjectMemoryPanel'
+import { ProjectTimeline } from '@/features/intelligence/components/projects/ProjectTimeline'
 
 interface Detail {
   id: string
@@ -77,38 +81,38 @@ function money(value: number | null, currency: string | null): string | null {
   return ccy === 'USD' ? `$${n.toLocaleString()}` : `${ccy} ${n.toLocaleString()}`
 }
 
-export function MatterDetailPage() {
+export function SpaceDetailPage() {
   const qc = useQueryClient()
   const { id } = useParams<{ id: string }>()
-  const [tab, setTab] = useState<'contracts' | 'requests' | 'threads'>('contracts')
+  const [tab, setTab] = useState<'contracts' | 'requests' | 'threads' | 'memory' | 'timeline'>('contracts')
   const [actionError, setActionError] = useState<string | null>(null)
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['matter', id],
+    queryKey: ['space', id],
     enabled: !!id,
-    queryFn: async () => (await api.get<Detail>(`/matters/${id}`)).data,
+    queryFn: async () => (await api.get<Detail>(`/spaces/${id}`)).data,
   })
 
   const onMutationError = (e: unknown) =>
     setActionError((e as Error)?.message ?? 'That change did not save. Try again.')
   const onMutationSuccess = () => {
     setActionError(null)
-    qc.invalidateQueries({ queryKey: ['matter', id] })
-    qc.invalidateQueries({ queryKey: ['matters'] })
+    qc.invalidateQueries({ queryKey: ['space', id] })
+    qc.invalidateQueries({ queryKey: ['spaces'] })
   }
 
   const close = useMutation({
-    mutationFn: () => api.patch(`/matters/${id}`, { status: 'CLOSED' }).then(r => r.data),
+    mutationFn: () => api.patch(`/spaces/${id}`, { status: 'CLOSED' }).then(r => r.data),
     onSuccess: onMutationSuccess,
     onError: onMutationError,
   })
   const archive = useMutation({
-    mutationFn: () => api.patch(`/matters/${id}`, { status: 'ARCHIVED' }).then(r => r.data),
+    mutationFn: () => api.patch(`/spaces/${id}`, { status: 'ARCHIVED' }).then(r => r.data),
     onSuccess: onMutationSuccess,
     onError: onMutationError,
   })
   const reopen = useMutation({
-    mutationFn: () => api.patch(`/matters/${id}`, { status: 'OPEN' }).then(r => r.data),
+    mutationFn: () => api.patch(`/spaces/${id}`, { status: 'OPEN' }).then(r => r.data),
     onSuccess: onMutationSuccess,
     onError: onMutationError,
   })
@@ -118,17 +122,17 @@ export function MatterDetailPage() {
     return <div className="p-6 text-dense text-muted-foreground">Loading…</div>
   }
 
-  // A matter that 404s, or an API that is down, used to fall into the same
+  // A space that 404s, or an API that is down, used to fall into the same
   // branch as "still loading" and spin forever.
   if (error || !data) {
     return (
-      <div className="px-6 py-5 max-w-6xl mx-auto" data-testid="matter-detail-error">
-        <Link to="/matters" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-fg-950 mb-4">
-          <ArrowLeft className="size-3" /> Matters
+      <div className="px-6 py-5 max-w-6xl mx-auto" data-testid="space-detail-error">
+        <Link to="/spaces" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-fg-950 mb-4">
+          <ArrowLeft className="size-3" /> Spaces
         </Link>
         <EmptyState
           icon={<AlertCircle />}
-          title="This matter could not be loaded"
+          title="This space could not be loaded"
           description={
             (error as { response?: { status?: number } })?.response?.status === 404
               ? 'It may have been deleted, or it belongs to another organisation.'
@@ -141,9 +145,9 @@ export function MatterDetailPage() {
   }
 
   return (
-    <div className="px-6 py-5 max-w-6xl mx-auto" data-testid="matter-detail-page">
-      <Link to="/matters" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-fg-950 mb-3">
-        <ArrowLeft className="size-3" /> Matters
+    <div className="px-6 py-5 max-w-6xl mx-auto" data-testid="space-detail-page">
+      <Link to="/spaces" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-fg-950 mb-3">
+        <ArrowLeft className="size-3" /> Spaces
       </Link>
       <div className="flex items-start justify-between gap-4 mb-4">
         <div className="min-w-0">
@@ -162,7 +166,7 @@ export function MatterDetailPage() {
                   <Link
                     to={`/counterparties/${data.counterpartyId}`}
                     className="text-fg-950 font-medium hover:underline underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-                    data-testid="matter-counterparty-link"
+                    data-testid="space-counterparty-link"
                   >
                     {data.counterpartyName}
                   </Link>
@@ -184,7 +188,7 @@ export function MatterDetailPage() {
                 variant="outline" size="sm"
                 onClick={() => close.mutate()}
                 disabled={busy}
-                data-testid="matter-close-btn"
+                data-testid="space-close-btn"
                 className="gap-1 text-[12px]"
               >
                 <CheckCircle2 className="size-3" /> {close.isPending ? 'Closing…' : 'Close'}
@@ -193,14 +197,14 @@ export function MatterDetailPage() {
                 variant="outline" size="sm"
                 onClick={() => archive.mutate()}
                 disabled={busy}
-                data-testid="matter-archive-btn"
+                data-testid="space-archive-btn"
                 className="gap-1 text-[12px]"
               >
                 <Archive className="size-3" /> {archive.isPending ? 'Archiving…' : 'Archive'}
               </Button>
             </>
           ) : (
-            <Button size="sm" onClick={() => reopen.mutate()} disabled={busy} data-testid="matter-reopen-btn" className="gap-1 text-[12px]">
+            <Button size="sm" onClick={() => reopen.mutate()} disabled={busy} data-testid="space-reopen-btn" className="gap-1 text-[12px]">
               {reopen.isPending ? 'Reopening…' : 'Reopen'}
             </Button>
           )}
@@ -210,7 +214,7 @@ export function MatterDetailPage() {
       {actionError && (
         <div
           role="alert"
-          data-testid="matter-action-error"
+          data-testid="space-action-error"
           className="mb-3 flex items-start justify-between gap-3 rounded-md border border-risk-200 bg-risk-50 px-3 py-2 text-dense text-risk-900"
         >
           <span className="min-w-0 break-words">{actionError}</span>
@@ -225,6 +229,10 @@ export function MatterDetailPage() {
           { k: 'contracts', label: 'Contracts', icon: FileText,    count: data.contracts.length },
           { k: 'requests',  label: 'Requests',  icon: ClipboardList, count: data.requests.length },
           { k: 'threads',   label: 'Threads',   icon: MessageSquare, count: data.threads.length },
+          // The intelligence half of this Space. Its record over there is
+          // created the first time one of these two tabs is opened.
+          { k: 'memory',    label: 'Memory',    icon: Brain,         count: null },
+          { k: 'timeline',  label: 'Timeline',  icon: History,       count: null },
         ].map(t => {
           const Icon = t.icon
           const active = tab === t.k
@@ -232,7 +240,7 @@ export function MatterDetailPage() {
             <button
               key={t.k}
               onClick={() => setTab(t.k as typeof tab)}
-              data-testid={`matter-tab-${t.k}`}
+              data-testid={`space-tab-${t.k}`}
               aria-current={active ? 'page' : undefined}
               className={cn(
                 'relative flex items-center gap-1.5 py-2 border-b-2 transition-colors',
@@ -246,15 +254,15 @@ export function MatterDetailPage() {
               {t.label}
               {/* Was a bare opacity-70 number; the product has a primitive for
                   this and it reads the same here as on the Requests tabs. */}
-              <CountBadge tone={active ? 'ink' : 'neutral'}>{t.count}</CountBadge>
+              {t.count !== null && <CountBadge tone={active ? 'ink' : 'neutral'}>{t.count}</CountBadge>}
             </button>
           )
         })}
       </div>
 
       {tab === 'contracts' && (
-        <ul className="divide-y divide-border border border-border rounded-card bg-card overflow-hidden" data-testid="matter-tab-contracts-body">
-          {data.contracts.length === 0 && <EmptyRow text="No contracts in this matter yet. Open a contract and assign it via the Matter picker in its header." />}
+        <ul className="divide-y divide-border border border-border rounded-card bg-card overflow-hidden" data-testid="space-tab-contracts-body">
+          {data.contracts.length === 0 && <EmptyRow text="No contracts in this space yet. Open a contract and assign it via the Space picker in its header." />}
           {data.contracts.map(c => {
             const risk = normalizeRisk(c.riskScore)
             const exp = expiryLabel(c.expiryDate)
@@ -303,18 +311,18 @@ export function MatterDetailPage() {
       )}
 
       {tab === 'requests' && (
-        <ul className="divide-y divide-border border border-border rounded-card bg-card overflow-hidden" data-testid="matter-tab-requests-body">
-          {data.requests.length === 0 && <EmptyRow text="No intake requests linked to this matter." />}
+        <ul className="divide-y divide-border border border-border rounded-card bg-card overflow-hidden" data-testid="space-tab-requests-body">
+          {data.requests.length === 0 && <EmptyRow text="No intake requests linked to this space." />}
           {data.requests.map(r => (
             <li key={r.id}>
               {/*
                 These rows were inert. RequestsPage now accepts ?request=<id>
-                and opens that request's panel, so a matter can hand off to the
+                and opens that request's panel, so a space can hand off to the
                 intake queue instead of dead-ending.
               */}
               <Link
                 to={`/requests?request=${r.id}`}
-                data-testid={`matter-request-${r.id}`}
+                data-testid={`space-request-${r.id}`}
                 className="block px-4 py-2 hover:bg-muted/40 focus:outline-none focus-visible:bg-surface-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               >
                 <div className="flex items-baseline gap-2 flex-wrap">
@@ -335,9 +343,15 @@ export function MatterDetailPage() {
         </ul>
       )}
 
+      {(tab === 'memory' || tab === 'timeline') && (
+        <IntelligenceProviders>
+          <SpaceIntelligenceTab spaceId={id!} view={tab} />
+        </IntelligenceProviders>
+      )}
+
       {tab === 'threads' && (
-        <ul className="divide-y divide-border border border-border rounded-card bg-card overflow-hidden" data-testid="matter-tab-threads-body">
-          {data.threads.length === 0 && <EmptyRow text="No agent threads linked to this matter yet." />}
+        <ul className="divide-y divide-border border border-border rounded-card bg-card overflow-hidden" data-testid="space-tab-threads-body">
+          {data.threads.length === 0 && <EmptyRow text="No agent threads linked to this space yet." />}
           {data.threads.map(t => (
             <li key={t.id} className="px-4 py-2">
               <div className="flex items-baseline gap-2 flex-wrap">
@@ -365,4 +379,27 @@ function EmptyRow({ text }: { text: string }) {
 
 function cn(...c: Array<string | null | undefined | false>): string {
   return c.filter(Boolean).join(' ')
+}
+
+/**
+ * Memory and Timeline come from the intelligence tier, which keys its data to
+ * this Space by id. The lookup creates that half on first use, so a Space made
+ * a minute ago works the same as one migrated from ContractSense.
+ */
+function SpaceIntelligenceTab({ spaceId, view }: { spaceId: string; view: 'memory' | 'timeline' }) {
+  const { data: project, isLoading, error } = useSpaceProject(spaceId)
+
+  if (isLoading) {
+    return <div className="h-64 rounded-card border border-border bg-card animate-pulse" aria-busy="true" aria-label="Loading" />
+  }
+  if (error || !project) {
+    return (
+      <div className="rounded-card border border-risk-200 bg-risk-50 p-4 text-dense text-risk-700" role="alert">
+        Could not open this Space's {view}. {error instanceof Error ? error.message : ''}
+      </div>
+    )
+  }
+  return view === 'memory'
+    ? <ProjectMemoryPanel projectId={project._id} />
+    : <ProjectTimeline projectId={project._id} />
 }

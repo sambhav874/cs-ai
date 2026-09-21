@@ -478,7 +478,7 @@ export function AnalyticsPage() {
                 {statusRows.map((s, i) => (
                   <Cell key={i} fill={MEANING_PAINT[statusMeaning(s.key)]} />
                 ))}
-                {/* The counts that matter here are small integers, and half of
+                {/* The counts that space here are small integers, and half of
                     them draw as a two-pixel sliver. Printing the value beside
                     the bar means the chart answers "how many" without a hover,
                     which is the question a portfolio review actually asks. */}

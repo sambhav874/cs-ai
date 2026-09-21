@@ -304,9 +304,9 @@ Rules:
 - When the user's question mentions "this contract" / "this one" / a contract page they're on, use the page context (contractId) provided in the user message to call contract_get.
 - SEARCH FIRST, ASK SECOND. Persona-test fix #3: when the user's question
   is open-ended ("show me sub-processors", "find the BAA addendum", "what
-  matters do I own?"), do NOT immediately ask which contract / which id.
+  spaces do I own?"), do NOT immediately ask which contract / which id.
   ALWAYS try a tool call first — portfolio_search / contract_search /
-  matter_list / counterparty_memory / counterparty_list — and use the
+  space_list / counterparty_memory / counterparty_list — and use the
   results to either answer directly OR present candidates and ask
   "which one?". Asking the user to provide an id before searching is
   treated as a failure mode.
@@ -380,17 +380,17 @@ Rules:
   that differ in meaning). When you do ask, list the top 3 candidates
   the search found.
 - For "what matters do I own?" / "what's open right now?" use
-  matter_list (NOT obligations_list, NOT request_list — those are
+  space_list (NOT obligations_list, NOT request_list — those are
   different domains).
 - NEVER pass placeholder ids to tools. contract_get / counterparty_get /
-  matter_list etc. all expect REAL cuids (~25 chars, starts with "cm").
+  space_list etc. all expect REAL cuids (~25 chars, starts with "cm").
   If a previous tool returned `[{id: "cmodtj9hi0017vops3v2dj0g9", ...}]`,
   use THAT exact string. If you don't have an id, search first to get
   one. Calling contract_get(contract_id="c1") or contract_get("first")
   is a failure mode and the tool will reject it.
 - MULTI-TURN ID REUSE. When the user asks a follow-up question
   ("of those…", "narrow to…", "tell me more about the top one", "what's
-  its liability cap?"), the contracts/matters the previous turn returned
+  its liability cap?"), the contracts/spaces the previous turn returned
   are STILL IN YOUR CONTEXT. Use those IDs directly:
     • For "of those, just the X" → filter the previous list mentally OR
       call contract_search with a tighter filter that includes prior
@@ -809,8 +809,8 @@ async def run_agent_chat_stream(
                 continue
             if kind == "contract":
                 lines.append(f"  • @contract:{mid} → \"{label}\" (use contract_get / contract_cite with this id)")
-            elif kind == "matter":
-                lines.append(f"  • @matter:{mid} → \"{label}\" (all contracts / requests in this matter)")
+            elif kind == "space":
+                lines.append(f"  • @space:{mid} → \"{label}\" (all contracts / requests in this space)")
             elif kind == "counterparty":
                 lines.append(f"  • @counterparty:{mid} → \"{label}\" (call counterparty_get / counterparty_memory)")
         if lines:
@@ -1135,7 +1135,7 @@ async def run_agent_chat_stream(
                     "org_memory", "obligations_list", "renewal_advice",
                     "contract_create_from_template",
                     "contract_get", "contract_summarize",
-                    "matter_list",
+                    "space_list",
                     "approval_list",
                     # 2026-06-10 audit — portfolio_compare emits the topic ×
                     # contract matrix Table artifact (~2-10 KB); compliance_get
@@ -1214,7 +1214,7 @@ async def run_agent_chat_stream(
             # A5 — synthesis safety net. Hit the iteration cap (or some
             # other path that left `final_text` empty) without prose. Force
             # one more LLM turn with an explicit "synthesize now" instruction
-            # before giving up. The user expects "I found 4 matters" not a
+            # before giving up. The user expects "I found 4 spaces" not a
             # silent tool drawer + spinner.
             messages.append(HumanMessage(content=(
                 "Synthesize the tool results above into a 2-4 sentence answer "

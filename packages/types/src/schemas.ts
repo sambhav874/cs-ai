@@ -88,8 +88,8 @@ export const UpdateContractSchema = CreateContractSchema.partial().extend({
   jurisdiction:     z.string().optional(),
   analysisStatus:   z.string().optional(),
   analysisError:    z.string().nullable().optional(),
-  // P4.2 — optional matter link; null unlinks.
-  matterId:         z.string().nullable().optional(),
+  // P4.2 — optional space link; null unlinks.
+  spaceId:         z.string().nullable().optional(),
 })
 
 export const ContractFilterSchema = z.object({
@@ -241,11 +241,11 @@ export const ChatMessageSchema = z.object({
   skillSlug: z.string().optional(),
   // P4.3 — structured entity mentions inserted via the composer's
   // @-picker. Node forwards to Python; the orchestrator prepends a
-  // one-line hint ("The user mentioned: @contract:<id>, @matter:<id>")
+  // one-line hint ("The user mentioned: @contract:<id>, @space:<id>")
   // so the agent knows to call contract_get / counterparty_get with
   // these ids instead of fishing for them.
   mentions: z.array(z.object({
-    kind:  z.enum(['contract', 'matter', 'counterparty']),
+    kind:  z.enum(['contract', 'space', 'counterparty']),
     id:    z.string().min(1),
     label: z.string().min(1),
   })).max(10).optional(),

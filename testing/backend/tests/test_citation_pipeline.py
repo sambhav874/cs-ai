@@ -114,7 +114,7 @@ def test_dropping_the_middle_citation_keeps_markers_contiguous_and_bound():
     markers = [int(value) for value in re.findall(r"\[(\d+)\]", state.answer)]
     assert markers == [1, 2], f"expected contiguous markers, got {markers} in {state.answer!r}"
 
-    # The binding is what actually matters. The marker on the termination
+    # The binding is what actually spaces. The marker on the termination
     # sentence must resolve to the termination quote, not the payment one.
     by_ref = {item["ref"]: item for item in state.citation_annotations}
     termination_marker = re.search(r"Termination needs 30 days written notice \[(\d+)\]", state.answer)

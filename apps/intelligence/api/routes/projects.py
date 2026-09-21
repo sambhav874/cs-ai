@@ -356,6 +356,29 @@ def create_project(
     return _serialize_project(project, _project_stats(project, current_user))
 
 
+@router.get("/by-space/{space_id}", response_model=ProjectInDB)
+def get_project_for_space(space_id: str, current_user: UserInDB = Depends(get_current_active_user)):
+    """The intelligence half of a Space, created on first use.
+
+    Declared before /{project_id} so the literal path wins the match.
+    """
+    from core.platform_identity import _platform_db
+    from services.space_projects import SpaceAccessError, resolve_space_project
+
+    try:
+        project = resolve_space_project(
+            space_id,
+            current_user,
+            projects=projects_collection,
+            teams=teams_collection,
+            platform_db=_platform_db(),
+        )
+    except SpaceAccessError as e:
+        logger.warning(f"Space {space_id} refused for user {current_user.id}: {e}")
+        raise HTTPException(status_code=404, detail="Space not found.")
+    return _serialize_project(project, _project_stats(project, current_user))
+
+
 @router.get("/{project_id}", response_model=ProjectInDB)
 def get_project(project_id: str, current_user: UserInDB = Depends(get_current_active_user)):
     project = verify_project_access(project_id, current_user)

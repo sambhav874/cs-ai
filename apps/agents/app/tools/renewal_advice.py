@@ -55,10 +55,10 @@ def build_renewal_advice(org_id: str) -> StructuredTool:
             "should we do about the Acme renewal?', 'which contracts "
             "renew this quarter?', or 'summarise our upcoming renewals'. "
             "DO NOT use for general 'find/list/show me' queries that "
-            "happen to mention a cohort or matter — those need "
-            "contract_search or matter_list. Persona-test fix #4: this "
+            "happen to mention a cohort or space — those need "
+            "contract_search or space_list. Persona-test fix #4: this "
             "tool was hijacking 'show me contracts in the Memphis hub "
-            "cohort' (which is a matter query, not a renewal query). "
+            "cohort' (which is a space query, not a renewal query). "
             "READ-ONLY — to generate a fresh LLM advice the user must "
             "click the 'Get renewal advice' button in the rail."
         ),

@@ -8,7 +8,7 @@ export interface ActivityLogProps {
   onToggleTraceExpanded: () => void;
 }
 
-// Arguments that tell one call apart from another, in the order they matter.
+// Arguments that tell one call apart from another, in the order they space.
 // `read_schedules(view=values)` and `read_schedules(view=history)` are the same
 // line without these, and so are the four views of project_memory.
 const DISTINGUISHING_ARGS = [

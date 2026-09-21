@@ -16,6 +16,8 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "db:generate": "prisma generate",
+    "db:generate:mongo": "prisma generate --schema prisma/schema.mongo.prisma",
+    "db:push:mongo": "prisma db push --schema prisma/schema.mongo.prisma",
     "backfill-es-index": "tsx --env-file=../../.env scripts/backfill-es-index.ts",
     "cleanup-broken-drafts": "tsx scripts/cleanup-broken-drafts.ts",
     "clean-demo": "tsx scripts/clean-demo.ts",

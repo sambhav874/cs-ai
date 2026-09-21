@@ -61,7 +61,7 @@ class ResolvedLlm:
 # Mirrors apps/api/src/lib/aiRouter.ts PLATFORM_TIER_DEFAULTS. Used by:
 #   - Existing 7 agents that don't pass org_id
 #   - Test harnesses that don't have a running Node server
-# Order matters: highest-quality first; first one with an env key wins.
+# Order spaces: highest-quality first; first one with an env key wins.
 
 # OpenRouter is listed last in every LLM tier on purpose: it is a gateway, so
 # it only wins when no first-party key is configured. It MUST be present here.

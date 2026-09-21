@@ -43,8 +43,8 @@ model Organization {
   skillInvocations    SkillInvocation[]
   aiKeys              OrgAiKey[]
   aiSettings          OrgAiSettings?
-  // P4.1 — Matter back-relation
-  matters             Matter[]
+  // P4.1 — Space back-relation
+  spaces             Space[]
   // P8 — Obligation back-relation
   obligations         Obligation[]
   // P8 Step 9 — Invoice back-relation
@@ -94,8 +94,8 @@ model User {
   ownedSkills      Skill[]           @relation("SkillOwner")
   skillInvocations SkillInvocation[]
   createdAiKeys    OrgAiKey[]
-  // P4.1 — Matter back-relation
-  ownedMatters     Matter[]          @relation("MatterOwner")
+  // P4.1 — Space back-relation
+  ownedSpaces     Space[]          @relation("SpaceOwner")
   // P8 — Obligation completion back-relation
   completedObligations Obligation[]  @relation("ObligationCompleter")
 
@@ -157,8 +157,8 @@ model Counterparty {
 
   org       Organization @relation(fields: [orgId], references: [id])
   contracts Contract[]
-  // P4.1 — Matter back-relation
-  matters   Matter[]
+  // P4.1 — Space back-relation
+  spaces   Space[]
 
   @@unique([orgId, name])
   @@index([orgId])
@@ -201,13 +201,13 @@ model Contract {
   updatedAt         DateTime  @updatedAt
   deletedAt         DateTime?
 
-  // P4.1 — optional matter link. null = ungrouped (current behaviour).
-  matterId          String?
+  // P4.1 — optional space link. null = ungrouped (current behaviour).
+  spaceId          String?
 
   org               Organization        @relation(fields: [orgId], references: [id])
   owner             User                @relation("ContractOwner", fields: [ownerId], references: [id])
   counterparty      Counterparty?       @relation(fields: [counterpartyId], references: [id])
-  matter            Matter?             @relation(fields: [matterId], references: [id])
+  space            Space?             @relation(fields: [spaceId], references: [id])
   versions          ContractVersion[]
   parentContract    Contract?           @relation("ContractAmendments", fields: [parentContractId], references: [id])
   amendments        Contract[]          @relation("ContractAmendments")
@@ -228,7 +228,7 @@ model Contract {
   @@index([orgId, ownerId])
   @@index([orgId, counterpartyId])
   @@index([orgId, jurisdiction])
-  @@index([orgId, matterId])
+  @@index([orgId, spaceId])
   @@index([orgId, expiryDate])
   @@index([diligenceRoomId])
   @@map("contracts")
@@ -323,18 +323,18 @@ model ContractRequest {
   priority         String    @default("MEDIUM")
   attachments      Json      @default("[]") // [{ filename, s3Key, mimeType, size }]
   metadata         Json      @default("{}")
-  // P4.1 — optional link to the Matter this request belongs to.
-  matterId         String?
+  // P4.1 — optional link to the Space this request belongs to.
+  spaceId         String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
 
   org    Organization @relation(fields: [orgId], references: [id])
-  matter Matter?      @relation(fields: [matterId], references: [id])
+  space Space?      @relation(fields: [spaceId], references: [id])
 
   @@index([orgId, status])
   @@index([orgId, source])
-  @@index([orgId, matterId])
+  @@index([orgId, spaceId])
   @@map("contract_requests")
 }
 
@@ -1001,24 +1001,24 @@ model Notification {
 // Additive only — no existing tables touched. See docs/30 §7.
 
 /// One conversation thread between a user and the agent. Optionally
-/// scope-anchored to a Matter / Contract / Request so the side panel can
+/// scope-anchored to a Space / Contract / Request so the side panel can
 /// resume the right thread when the user returns.
-// ─── P4.1 — Matter (docs/30 D.7.1) ──────────────────────────────────────────
+// ─── P4.1 — Space (docs/30 D.7.1) ──────────────────────────────────────────
 //
-// A Matter groups contracts + requests + approvals + agent threads under
-// one negotiation. Procurement RFPs ask "do you support matters?" as a
+// A Space groups contracts + requests + approvals + agent threads under
+// one negotiation. Procurement RFPs ask "do you support spaces?" as a
 // gating question; this model answers yes + gives Legal the nav unit
 // they expect from Legal Files / NetDocs / Ironclad.
 //
 // Minimal v1 shape — id + name + status + owner. Nested objects link via
-// nullable matterId on Contract / ContractRequest / AgentThread.
-model Matter {
+// nullable spaceId on Contract / ContractRequest / AgentThread.
+model Space {
   id          String    @id @default(cuid())
   orgId       String
   name        String
   description String?
   status      String    @default("OPEN") // OPEN | CLOSED | ARCHIVED
-  // Counterparty at the matter level — sets default for everything in it
+  // Counterparty at the space level — sets default for everything in it
   counterpartyId   String?
   counterpartyName String?
   ownerId     String
@@ -1032,7 +1032,7 @@ model Matter {
   closedAt    DateTime?
 
   org          Organization       @relation(fields: [orgId], references: [id])
-  owner        User               @relation("MatterOwner", fields: [ownerId], references: [id])
+  owner        User               @relation("SpaceOwner", fields: [ownerId], references: [id])
   counterparty Counterparty?      @relation(fields: [counterpartyId], references: [id])
   contracts    Contract[]
   requests     ContractRequest[]
@@ -1041,7 +1041,7 @@ model Matter {
   @@index([orgId, status])
   @@index([orgId, ownerId])
   @@index([orgId, counterpartyId])
-  @@map("matters")
+  @@map("spaces")
 }
 
 model AgentThread {
@@ -1050,12 +1050,12 @@ model AgentThread {
   userId        String // owner of the thread
   title         String // auto-generated from first user message; editable
   // Scope anchor — null = free chat
-  scopeType     String? // 'matter' | 'contract' | 'request' | null
+  scopeType     String? // 'space' | 'contract' | 'request' | null
   scopeId       String?
-  // P4.1 — first-class matter link (separate from scopeType='matter'
+  // P4.1 — first-class space link (separate from scopeType='space'
   // so a thread about a specific contract can still belong to a
-  // matter). Nullable; free chat stays free.
-  matterId      String?
+  // space). Nullable; free chat stays free.
+  spaceId      String?
   // Which skill (if any) originated this thread; null = free chat
   originSkillId String?
   // Provider hint for resuming with the same model context where reasonable
@@ -1066,14 +1066,14 @@ model AgentThread {
 
   org       Organization   @relation(fields: [orgId], references: [id])
   user      User           @relation(fields: [userId], references: [id])
-  matter    Matter?        @relation(fields: [matterId], references: [id])
+  space    Space?        @relation(fields: [spaceId], references: [id])
   skill     Skill?         @relation(fields: [originSkillId], references: [id])
   messages  AgentMessage[]
   toolCalls ToolCall[]
 
   @@index([orgId, userId, updatedAt])
   @@index([orgId, scopeType, scopeId])
-  @@index([orgId, matterId])
+  @@index([orgId, spaceId])
   @@map("agent_threads")
 }
 

@@ -44,7 +44,7 @@ const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
 
 /*
  * Calendar days, not elapsed milliseconds. The old `Math.floor((due - now)/1d)`
- * was wrong in both directions on the two labels that matter most: an
+ * was wrong in both directions on the two labels that space most: an
  * obligation due tomorrow morning, read this afternoon, floored to 0 and said
  * "due today"; one that fell due six hours ago floored to -1 and said "1d
  * overdue" before anybody had missed a day. Shared with the contract header
@@ -53,7 +53,7 @@ const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
 import { calendarDaysUntil as daysUntil } from './dates'
 
 // P7.4.1 (F-32, F-47) — Status-aware empty state. Obligations only
-// matter once a contract is signed; surfacing the "Extract" CTA on
+// space once a contract is signed; surfacing the "Extract" CTA on
 // drafts pushes users toward premature action. SETTLEMENT + NDA
 // types rarely have ongoing obligations; show that explicitly.
 type EmptyVariant = 'pre_execution' | 'low_value_type' | 'ready'

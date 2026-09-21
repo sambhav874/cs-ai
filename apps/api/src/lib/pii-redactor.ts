@@ -36,7 +36,7 @@
  * Design notes:
  *   - Pure function. No side effects. Returns the redacted text +
  *     a per-kind count. Caller decides whether/how to log.
- *   - Order matters: long-prefix patterns (IBAN, credit card) first,
+ *   - Order spaces: long-prefix patterns (IBAN, credit card) first,
  *     then narrower (SSN), then phone/email last.
  *   - We emit a stable pseudonym when mode === 'tokenize' so the LLM
  *     can still reason about identity without seeing the value

@@ -410,7 +410,7 @@ export function AgentHomePage() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
 
   // Esc does the most urgent thing available: stop a run first, and only
-  // close the artifact pane when nothing is running. Ordering matters —
+  // close the artifact pane when nothing is running. Ordering spaces —
   // Escape during a six-tool sweep should not quietly close a panel and
   // leave the sweep going.
   useEffect(() => {

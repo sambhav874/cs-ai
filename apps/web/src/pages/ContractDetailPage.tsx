@@ -30,11 +30,11 @@ import { UploadModal } from '@/components/contracts/UploadModal'
 import { DiffViewer } from '@/components/contracts/DiffViewer'
 import { CommentsPanel } from '@/components/contracts/CommentsPanel'
 import { ShareLinkDialog } from '@/components/contracts/ShareLinkDialog'
-import { ContractMatterPicker } from '@/components/contracts/ContractMatterPicker'
+import { ContractSpacePicker } from '@/components/contracts/ContractSpacePicker'
 import { ObligationsRailSection } from '@/components/contracts/ObligationsRailSection'
 import { ComplianceRailSection } from '@/components/contracts/ComplianceRailSection'
 import { PlaybookRedlineRailSection } from '@/components/contracts/PlaybookRedlineRailSection'
-import { MatterRailSection } from '@/components/contracts/MatterRailSection'
+import { SpaceRailSection } from '@/components/contracts/SpaceRailSection'
 import { RenewalAdviceRailSection, type RenewalAdvice } from '@/components/contracts/RenewalAdviceRailSection'
 import { BubbleAiPopover } from '@/components/contracts/BubbleAiPopover'
 import { DefinedTermsRailSection } from '@/components/contracts/DefinedTermsRailSection'
@@ -1055,7 +1055,7 @@ export function ContractDetailPage() {
         U.8 (header v2) — restructured into two explicit rows so metadata
         no longer wraps under the title block at MBA-class viewports.
         Row 1: back arrow + title (line-clamp-2) + action buttons.
-        Row 2: a single full-width metadata strip (status / matter / type
+        Row 2: a single full-width metadata strip (status / space / type
         / jurisdiction / risk / owner / edited / value / expiry) that
         wraps gracefully only at very narrow widths. Title now has the
         whole row's width up to the buttons; metadata has the whole row
@@ -1532,7 +1532,7 @@ export function ContractDetailPage() {
 
               STATE     what is true right now, and what is running out.
                         The only place in this row allowed a colour.
-              RECORD    what this document is — type, law, money, matter.
+              RECORD    what this document is — type, law, money, space.
               PROVENANCE who owns it, when it moved, how the text was got.
                         Dimmest; it is context, never the answer.
         */}
@@ -1656,7 +1656,7 @@ export function ContractDetailPage() {
             </span>
           )}
           {id && (
-            <ContractMatterPicker contractId={id} currentMatterId={(contract as unknown as { matterId?: string | null }).matterId ?? null} />
+            <ContractSpacePicker contractId={id} currentSpaceId={(contract as unknown as { spaceId?: string | null }).spaceId ?? null} />
           )}
 
           <span className="h-3.5 w-px bg-surface-200" aria-hidden />
@@ -3380,12 +3380,12 @@ export function ContractDetailPage() {
         {/* P5.1 — Obligations rail section. When metadata.obligations
             exists, show the list with a due-date indicator + an
             "Extract obligations" button for un-extracted contracts. */}
-        {/* P7.4.2 — Matter rail section. Surfaces the parent matter
+        {/* P7.4.2 — Space rail section. Surfaces the parent space
             (sibling contracts, owner, tags) above OBLIGATIONS so the
             user immediately sees the wider context. Empty when the
-            contract isn't in a matter; the header pill handles "add". */}
-        <MatterRailSection
-          matterId={(contract as unknown as { matterId?: string | null }).matterId ?? null}
+            contract isn't in a space; the header pill handles "add". */}
+        <SpaceRailSection
+          spaceId={(contract as unknown as { spaceId?: string | null }).spaceId ?? null}
         />
 
         {/* Phase 07 — Signature status. Shown when at least one

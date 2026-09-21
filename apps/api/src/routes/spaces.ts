@@ -1,55 +1,55 @@
 /**
- * Matters routes (P4.1 / docs/30 D.7.1)
+ * Spaces routes (P4.1 / docs/30 D.7.1)
  *
- * A Matter groups contracts + requests + agent threads under one
+ * A Space groups contracts + requests + agent threads under one
  * negotiation. Surfaces as first-class nav unit; answers the
- * procurement-RFP "do you support matters?" question with yes.
+ * procurement-RFP "do you support spaces?" question with yes.
  *
  * Endpoints:
- *   GET    /api/v1/matters             — list org's matters (filterable)
- *   GET    /api/v1/matters/:id         — detail + children counts
- *   POST   /api/v1/matters             — create
- *   PATCH  /api/v1/matters/:id         — update (rename, status, owner)
- *   DELETE /api/v1/matters/:id         — soft-delete (children unlinked,
- *                                         matterId → null on contracts /
+ *   GET    /api/v1/spaces             — list org's spaces (filterable)
+ *   GET    /api/v1/spaces/:id         — detail + children counts
+ *   POST   /api/v1/spaces             — create
+ *   PATCH  /api/v1/spaces/:id         — update (rename, status, owner)
+ *   DELETE /api/v1/spaces/:id         — soft-delete (children unlinked,
+ *                                         spaceId → null on contracts /
  *                                         requests / threads)
  *
- * Design reference: Ironclad Matters, Harvey Vault Projects,
- * Legal Files matter-centric model.
+ * Design reference: Ironclad Spaces, Harvey Vault Projects,
+ * Legal Files space-centric model.
  */
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { requirePermission } from '../middleware/permissions.js'
 import { prisma } from '../lib/prisma.js'
 
-// Wave 1.7 — matters group contracts; there is no dedicated MATTER permission
-// resource, so matter operations are gated on the corresponding CONTRACT
+// Wave 1.7 — spaces group contracts; there is no dedicated SPACE permission
+// resource, so space operations are gated on the corresponding CONTRACT
 // permission (view to read, create to add, edit to change/attach, delete to
 // remove). Previously the whole router was requireAuth-only, so a VIEWER could
-// create, delete, and re-parent matters.
+// create, delete, and re-parent spaces.
 
-const MATTER_STATUSES = ['OPEN', 'CLOSED', 'ARCHIVED'] as const
+const SPACE_STATUSES = ['OPEN', 'CLOSED', 'ARCHIVED'] as const
 
-const CreateMatterSchema = z.object({
+const CreateSpaceSchema = z.object({
   name:             z.string().min(1).max(200),
   description:      z.string().max(5_000).optional(),
-  status:           z.enum(MATTER_STATUSES).default('OPEN'),
+  status:           z.enum(SPACE_STATUSES).default('OPEN'),
   counterpartyId:   z.string().optional(),
   counterpartyName: z.string().max(200).optional(),
   tags:             z.array(z.string().max(40)).max(20).default([]),
 })
 
-const UpdateMatterSchema = CreateMatterSchema.partial().extend({
+const UpdateSpaceSchema = CreateSpaceSchema.partial().extend({
   ownerId: z.string().optional(),
 })
 
-export async function matterRoutes(app: FastifyInstance) {
+export async function spaceRoutes(app: FastifyInstance) {
 
-  // ── GET /api/v1/matters ────────────────────────────────────────────────
+  // ── GET /api/v1/spaces ────────────────────────────────────────────────
   app.get('/', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
     const { orgId } = req.user
     const q = z.object({
-      status:  z.enum([...MATTER_STATUSES, 'all']).default('all'),
+      status:  z.enum([...SPACE_STATUSES, 'all']).default('all'),
       ownerId: z.string().optional(),
       counterpartyName: z.string().optional(),
       limit:   z.coerce.number().int().min(1).max(200).default(50),
@@ -62,7 +62,7 @@ export async function matterRoutes(app: FastifyInstance) {
       contains: q.counterpartyName, mode: 'insensitive',
     }
 
-    const matters = await prisma.matter.findMany({
+    const spaces = await prisma.space.findMany({
       where: where as never,
       orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
       take: q.limit,
@@ -75,7 +75,7 @@ export async function matterRoutes(app: FastifyInstance) {
       },
     })
     return reply.send({
-      items: matters.map(m => ({
+      items: spaces.map(m => ({
         id:               m.id,
         name:             m.name,
         description:      m.description,
@@ -92,15 +92,15 @@ export async function matterRoutes(app: FastifyInstance) {
         updatedAt:        m.updatedAt,
         closedAt:         m.closedAt,
       })),
-      total: matters.length,
+      total: spaces.length,
     })
   })
 
-  // ── GET /api/v1/matters/:id ────────────────────────────────────────────
+  // ── GET /api/v1/spaces/:id ────────────────────────────────────────────
   app.get('/:id', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
     const { orgId } = req.user
     const { id } = req.params as { id: string }
-    const matter = await prisma.matter.findFirst({
+    const space = await prisma.space.findFirst({
       where: { id, orgId, deletedAt: null },
       include: {
         owner: { select: { id: true, name: true, email: true, avatarUrl: true } },
@@ -134,19 +134,19 @@ export async function matterRoutes(app: FastifyInstance) {
         },
       },
     })
-    if (!matter) return reply.status(404).send({ detail: 'Matter not found' })
-    return reply.send(matter)
+    if (!space) return reply.status(404).send({ detail: 'Space not found' })
+    return reply.send(space)
   })
 
-  // ── POST /api/v1/matters ───────────────────────────────────────────────
+  // ── POST /api/v1/spaces ───────────────────────────────────────────────
   app.post('/', { preHandler: requirePermission('create', 'contract') }, async (req, reply) => {
     const { orgId, sub: userId } = req.user
     let body
-    try { body = CreateMatterSchema.parse(req.body) }
+    try { body = CreateSpaceSchema.parse(req.body) }
     catch (err) {
       return reply.status(400).send({ detail: 'Invalid body', issues: (err as { issues?: unknown }).issues })
     }
-    const matter = await prisma.matter.create({
+    const space = await prisma.space.create({
       data: {
         orgId,
         name:             body.name,
@@ -159,30 +159,30 @@ export async function matterRoutes(app: FastifyInstance) {
         createdById:      userId,
       },
     })
-    return reply.status(201).send(matter)
+    return reply.status(201).send(space)
   })
 
-  // ── PATCH /api/v1/matters/:id ──────────────────────────────────────────
+  // ── PATCH /api/v1/spaces/:id ──────────────────────────────────────────
   app.patch('/:id', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
     const { orgId } = req.user
     const { id } = req.params as { id: string }
     let patch
-    try { patch = UpdateMatterSchema.parse(req.body) }
+    try { patch = UpdateSpaceSchema.parse(req.body) }
     catch (err) {
       return reply.status(400).send({ detail: 'Invalid body', issues: (err as { issues?: unknown }).issues })
     }
-    const existing = await prisma.matter.findFirst({
+    const existing = await prisma.space.findFirst({
       where: { id, orgId, deletedAt: null },
       select: { id: true, status: true },
     })
-    if (!existing) return reply.status(404).send({ detail: 'Matter not found' })
+    if (!existing) return reply.status(404).send({ detail: 'Space not found' })
 
     // If transitioning to CLOSED / ARCHIVED, stamp closedAt.
     const closedAt = (patch.status === 'CLOSED' || patch.status === 'ARCHIVED') && existing.status === 'OPEN'
       ? new Date()
       : undefined
 
-    const updated = await prisma.matter.update({
+    const updated = await prisma.space.update({
       where: { id },
       data: {
         ...patch,
@@ -192,28 +192,28 @@ export async function matterRoutes(app: FastifyInstance) {
     return reply.send(updated)
   })
 
-  // ── DELETE /api/v1/matters/:id ─────────────────────────────────────────
+  // ── DELETE /api/v1/spaces/:id ─────────────────────────────────────────
   app.delete('/:id', { preHandler: requirePermission('delete', 'contract') }, async (req, reply) => {
     const { orgId } = req.user
     const { id } = req.params as { id: string }
-    const existing = await prisma.matter.findFirst({
+    const existing = await prisma.space.findFirst({
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     })
-    if (!existing) return reply.status(404).send({ detail: 'Matter not found' })
+    if (!existing) return reply.status(404).send({ detail: 'Space not found' })
 
-    // Soft-delete + unlink children (set matterId back to null so the
+    // Soft-delete + unlink children (set spaceId back to null so the
     // contracts/requests/threads don't dangle).
     await prisma.$transaction([
-      prisma.contract.updateMany({ where: { matterId: id }, data: { matterId: null } }),
-      prisma.contractRequest.updateMany({ where: { matterId: id }, data: { matterId: null } }),
-      prisma.agentThread.updateMany({ where: { matterId: id }, data: { matterId: null } }),
-      prisma.matter.update({ where: { id }, data: { deletedAt: new Date() } }),
+      prisma.contract.updateMany({ where: { spaceId: id }, data: { spaceId: null } }),
+      prisma.contractRequest.updateMany({ where: { spaceId: id }, data: { spaceId: null } }),
+      prisma.agentThread.updateMany({ where: { spaceId: id }, data: { spaceId: null } }),
+      prisma.space.update({ where: { id }, data: { deletedAt: new Date() } }),
     ])
     return reply.status(204).send()
   })
 
-  // ── POST /api/v1/matters/:id/attach — link a contract/request/thread ──
+  // ── POST /api/v1/spaces/:id/attach — link a contract/request/thread ──
   app.post('/:id/attach', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
     const { orgId } = req.user
     const { id } = req.params as { id: string }
@@ -224,37 +224,37 @@ export async function matterRoutes(app: FastifyInstance) {
     if (!body.success) {
       return reply.status(400).send({ detail: 'Invalid body', issues: body.error.issues })
     }
-    const matter = await prisma.matter.findFirst({
+    const space = await prisma.space.findFirst({
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     })
-    if (!matter) return reply.status(404).send({ detail: 'Matter not found' })
+    if (!space) return reply.status(404).send({ detail: 'Space not found' })
 
     // Wave 1.3 — CRITICAL: scope the target entity by orgId. Previously this
     // updated ANY contract/request/thread by raw id with no org check, so a
     // user in org A could pull an org B record (whose id leaked via logs /
-    // webhooks / a screenshot) into their matter and read its metadata via
-    // GET /matters/:id. updateMany + count guards cross-org isolation.
+    // webhooks / a screenshot) into their space and read its metadata via
+    // GET /spaces/:id. updateMany + count guards cross-org isolation.
     let result: { count: number }
     if (body.data.kind === 'contract') {
       result = await prisma.contract.updateMany({
         where: { id: body.data.entityId, orgId, deletedAt: null },
-        data:  { matterId: id },
+        data:  { spaceId: id },
       })
     } else if (body.data.kind === 'request') {
       result = await prisma.contractRequest.updateMany({
         where: { id: body.data.entityId, orgId, deletedAt: null },
-        data:  { matterId: id },
+        data:  { spaceId: id },
       })
     } else {
       result = await prisma.agentThread.updateMany({
         where: { id: body.data.entityId, orgId },
-        data:  { matterId: id },
+        data:  { spaceId: id },
       })
     }
     if (result.count === 0) {
       return reply.status(404).send({ detail: `${body.data.kind} not found in your organization` })
     }
-    return reply.send({ ok: true, matterId: id, kind: body.data.kind, entityId: body.data.entityId })
+    return reply.send({ ok: true, spaceId: id, kind: body.data.kind, entityId: body.data.entityId })
   })
 }

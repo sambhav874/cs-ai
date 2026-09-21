@@ -44,7 +44,7 @@ describe('hashAuditRow', () => {
     expect(a).not.toBe(b)
   })
 
-  it('canonicalizes nested metadata so key order does not matter', () => {
+  it('canonicalizes nested metadata so key order does not space', () => {
     const m1 = { source: 'test', count: 3 }
     const m2 = { count: 3, source: 'test' }
     expect(hashAuditRow({ ...baseRow, metadata: m1 }))
@@ -57,7 +57,7 @@ describe('hashAuditRow', () => {
     expect(a).not.toBe(b)
   })
 
-  it('canonicalizes Date to ISO so timezone formatting does not matter', () => {
+  it('canonicalizes Date to ISO so timezone formatting does not space', () => {
     const d1 = new Date('2026-04-25T12:00:00Z')
     const d2 = new Date('2026-04-25T12:00:00.000Z')
     expect(hashAuditRow({ ...baseRow, createdAt: d1 }))

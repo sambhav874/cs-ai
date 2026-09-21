@@ -37,7 +37,7 @@ VALID_FRAMEWORKS = ["GDPR", "HIPAA", "SOX", "CCPA"]
 _FRAMEWORK_CATALOG = """\
 GDPR (EU General Data Protection Regulation) — applies when the contract \
 involves processing EU personal data:
-  gdpr_processing_scope    — defined subject-matter, duration, nature & purpose of processing (Art. 28(3))
+  gdpr_processing_scope    — defined subject-space, duration, nature & purpose of processing (Art. 28(3))
   gdpr_documented_instructions — processor acts only on documented controller instructions
   gdpr_confidentiality     — persons processing data are bound to confidentiality
   gdpr_security_measures   — appropriate technical & organisational measures (Art. 32)

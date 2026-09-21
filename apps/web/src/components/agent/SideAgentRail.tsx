@@ -8,7 +8,7 @@
  *
  * Design reference (what "best-in-class" looks like today):
  *   - Cursor's right side panel: always visible, collapsible, thread
- *     header + composer. Stickiness matters: it's not a modal you open.
+ *     header + composer. Stickiness spaces: it's not a modal you open.
  *   - Claude.ai Artifacts rail: slides in/out with a clear pin vs peek
  *     distinction
  *   - Linear AI panel: context-aware (knows what issue you're on)
@@ -90,7 +90,7 @@ export interface RailToolCall {
   // returns a single primary entity (contract_get → contract title,
   // counterparty_get → counterparty name).
   // The chip shows this instead of the truncated cuid.
-  entityHint?: { kind: 'contract' | 'counterparty' | 'matter'; title: string }
+  entityHint?: { kind: 'contract' | 'counterparty' | 'space'; title: string }
   // A4 — slow-tool heartbeat. Server emits tool_progress every ~4s while
   // a tool is running; chip displays this so users see forward motion.
   elapsedSec?: number
@@ -174,13 +174,13 @@ export function SideAgentRail() {
   const [mentionIdx, setMentionIdx] = useState(0)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   // P4.3 — entity results fetched on demand when mentionQuery has ≥2 chars.
-  // Shape: {kind, id, label, sub} — normalized across contracts / matters /
+  // Shape: {kind, id, label, sub} — normalized across contracts / spaces /
   // counterparties so the picker renders uniformly.
-  interface EntityResult { kind: 'contract' | 'matter' | 'counterparty'; id: string; label: string; sub: string | null }
+  interface EntityResult { kind: 'contract' | 'space' | 'counterparty'; id: string; label: string; sub: string | null }
   const [entityResults, setEntityResults] = useState<EntityResult[]>([])
   // Mentions the user has inserted into the current draft, kept as a
   // separate structured list so the chat payload can include
-  // {contractIds, matterIds, counterpartyIds} resolved at send-time.
+  // {contractIds, spaceIds, counterpartyIds} resolved at send-time.
   const [pendingEntityMentions, setPendingEntityMentions] = useState<EntityResult[]>([])
   const accessToken = useAuthStore((s) => s.accessToken)
   const sessionIdRef = useRef<string>('')
@@ -1088,7 +1088,7 @@ export function SideAgentRail() {
       // the selected `t` row so we have the data here.
       if (t.scopeType && t.scopeId) {
         lockedContextRef.current = {
-          type:      t.scopeType as 'contract' | 'matter' | 'counterparty',
+          type:      t.scopeType as 'contract' | 'space' | 'counterparty',
           id:        t.scopeId,
           label:     t.title ?? '',
           icon:      '📄',
@@ -1109,7 +1109,7 @@ export function SideAgentRail() {
   // don't clutter the dropdown with portfolio-scoped skills.
   const currentScope = (() => {
     if (context?.type === 'contract')     return 'current_contract'
-    if (context?.type === 'matter')       return 'current_matter'
+    if (context?.type === 'space')       return 'current_space'
     if (context?.type === 'counterparty') return 'current_counterparty'
     return 'dashboard'
   })()
@@ -1147,11 +1147,11 @@ export function SideAgentRail() {
     let cancelled = false
     const tid = setTimeout(async () => {
       try {
-        const [contractsRes, mattersRes, cpsRes] = await Promise.all([
+        const [contractsRes, spacesRes, cpsRes] = await Promise.all([
           fetch(`/api/v1/contracts?pageSize=5&search=${encodeURIComponent(q)}`, {
             headers: { Authorization: `Bearer ${accessToken}` },
           }).then(r => r.ok ? r.json() : { data: [] }).catch(() => ({ data: [] })),
-          fetch(`/api/v1/matters?limit=5&status=all`, {
+          fetch(`/api/v1/spaces?limit=5&status=all`, {
             headers: { Authorization: `Bearer ${accessToken}` },
           }).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
           fetch(`/api/v1/counterparties?pageSize=5&search=${encodeURIComponent(q)}`, {
@@ -1166,11 +1166,11 @@ export function SideAgentRail() {
             kind: 'contract' as const, id: c.id, label: c.title,
             sub: c.counterpartyName ?? c.type ?? null,
           }))
-        const matters: EntityResult[] = (mattersRes.items ?? [])
+        const spaces: EntityResult[] = (spacesRes.items ?? [])
           .filter((m: { name: string }) => m.name.toLowerCase().includes(q.toLowerCase()))
           .slice(0, 3)
           .map((m: { id: string; name: string; counterpartyName?: string | null }) => ({
-            kind: 'matter' as const, id: m.id, label: m.name,
+            kind: 'space' as const, id: m.id, label: m.name,
             sub: m.counterpartyName ?? null,
           }))
         const counterparties: EntityResult[] = (cpsRes.data ?? cpsRes.counterparties ?? [])
@@ -1180,7 +1180,7 @@ export function SideAgentRail() {
             kind: 'counterparty' as const, id: cp.id, label: cp.name,
             sub: cp.website ?? null,
           }))
-        setEntityResults([...contracts, ...matters, ...counterparties])
+        setEntityResults([...contracts, ...spaces, ...counterparties])
       } catch { /* network blip — keep whatever was there */ }
     }, 150)
     return () => { cancelled = true; clearTimeout(tid) }
@@ -1462,7 +1462,7 @@ export function SideAgentRail() {
 
       {/* ─── U.3.1 — Context header band ──────────────────────────────────
           Shows directly under the rail header when on a resource page
-          (contract / matter / counterparty). Surfaces:
+          (contract / space / counterparty). Surfaces:
             • the current resource (icon + name + type)
             • count of prior threads on this resource — clicking opens the
               picker pre-filtered to this scope (replaces the deleted
@@ -1723,12 +1723,12 @@ export function SideAgentRail() {
                       </li>
                     )
                   }
-                  // P4.3 — entity row (contract / matter / counterparty).
+                  // P4.3 — entity row (contract / space / counterparty).
                   // Entity kind is not a meaning, so the three kinds no longer
                   // get three hues — the initial and the right-hand label
                   // already say which is which.
                   const kindLabel = item.kind === 'contract' ? 'Contract'
-                    : item.kind === 'matter' ? 'Matter'
+                    : item.kind === 'space' ? 'Space'
                     : 'Counterparty'
                   return (
                     <li
@@ -1881,7 +1881,7 @@ export function SideAgentRail() {
  *
  * Now the prompt list adapts to the current page:
  *   • on /contracts/:id     → 4 contract-scoped prompts (use this contract)
- *   • on /matters/:id       → 4 matter-scoped prompts
+ *   • on /spaces/:id       → 4 space-scoped prompts
  *   • on /counterparties/:id → 4 counterparty-scoped prompts
  *   • on /approvals         → "What's in my approval queue?" + decision-focused
  *   • on /requests          → request-scoped
@@ -1901,9 +1901,9 @@ function buildSuggestions(context: { type: string; id: string; label: string } |
       `Find similar past deals in our portfolio`,
     ]
   }
-  if (context?.type === 'matter') {
+  if (context?.type === 'space') {
     return [
-      `Summarise the ${label} matter — all contracts at a glance`,
+      `Summarise the ${label} space — all contracts at a glance`,
       `What risks are open across ${label}?`,
       `What's the next step on each contract in ${label}?`,
     ]
@@ -1947,7 +1947,7 @@ function SideAgentEmptyState({
       <p className="text-[11px] text-fg-500 mt-1 max-w-[260px] mx-auto leading-relaxed">
         {context
           ? `I'm focused on this ${context.type} — start with one below or ask anything.`
-          : 'I\'m context-aware — the page you\'re on, the contract you\'re viewing, the matter you\'re working. Start with one below or type a question.'}
+          : 'I\'m context-aware — the page you\'re on, the contract you\'re viewing, the space you\'re working. Start with one below or type a question.'}
       </p>
       <div className="mt-4 space-y-1.5 text-left max-w-[280px] mx-auto">
         {suggestions.map((s, i) => (
@@ -2605,7 +2605,7 @@ function summarizeArgs(
  * they returned — so "12 of 189 matched" is available for free and was simply
  * never read.
  *
- * The `empty` flag matters just as much. A tool that returned zero rows
+ * The `empty` flag spaces just as much. A tool that returned zero rows
  * currently renders the identical green tick as one that returned sixty,
  * so "I found nothing" and "I found the clause" look the same in the trace.
  * That is the exact confusion that lets a fabricated answer pass review.

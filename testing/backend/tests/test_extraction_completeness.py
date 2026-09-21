@@ -17,7 +17,7 @@ def _manager():
 
 
 def _batch(*source_ids):
-    return [{"source_id": sid, "text": f"clause text for {sid}, long enough to matter"} for sid in source_ids]
+    return [{"source_id": sid, "text": f"clause text for {sid}, long enough to space"} for sid in source_ids]
 
 
 # ── P1: completeness contract ────────────────────────────────────────────────

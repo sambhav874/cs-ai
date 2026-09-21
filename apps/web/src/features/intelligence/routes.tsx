@@ -3,14 +3,13 @@
  * lifecycle screens don't pay for them. Paths are the SPA's; ContractSense's
  * own links are rewritten to these by shims/href.ts.
  *
- * A project and a matter are one thing in this product, called a Space, so
+ * A project and a space are one thing in this product, called a Space, so
  * these live at /spaces.
  */
 import { lazy, Suspense } from 'react'
 import { Navigate, Outlet, Route, useParams } from 'react-router-dom'
 import { IntelligenceProviders } from './IntelligenceProviders'
 
-const SpacesPage = lazy(() => import('@cs/app/dashboard/page'))
 const ProjectContractsScreen = lazy(() =>
   import('@cs/components/projects/ProjectContractsScreen').then((m) => ({ default: m.ProjectContractsScreen })),
 )
@@ -40,18 +39,12 @@ function SpaceRoute() {
   return <ProjectContractsScreen projectId={projectId} />
 }
 
-function RedirectToSpace() {
-  const { projectId = '' } = useParams()
-  return <Navigate to={`/spaces/${projectId}`} replace />
-}
-
 /** Mount inside the authenticated AppShell route. */
 export const intelligenceRoutes = (
   <Route element={<Layout />}>
-    <Route path="spaces" element={<SpacesPage />} />
-    <Route path="spaces/:projectId" element={<SpaceRoute />} />
-    {/* ContractSense's own paths, kept working. */}
+    {/* The Space page owns this now; these keep ContractSense's own links,
+        and direct links to a project, working. */}
     <Route path="projects" element={<Navigate to="/spaces" replace />} />
-    <Route path="projects/:projectId" element={<RedirectToSpace />} />
+    <Route path="projects/:projectId" element={<SpaceRoute />} />
   </Route>
 )

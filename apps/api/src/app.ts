@@ -51,7 +51,7 @@ import { invoiceRoutes } from './routes/invoices.js'
 import { analyticsRoutes } from './routes/analytics.js'
 import { diligenceRoutes } from './routes/diligence.js'
 import { integrationsRoutes } from './routes/integrations.js'
-import { matterRoutes } from './routes/matters.js'
+import { spaceRoutes } from './routes/spaces.js'
 import { cronRoutes } from './routes/cron.js'
 import { signatureRoutes } from './routes/signatures.js'
 import { inboundEmailRoutes } from './routes/inbound-email.js'
@@ -259,7 +259,7 @@ export async function buildApp() {
   await app.register(analyticsRoutes,      { prefix: '/api/v1/analytics' })
   await app.register(diligenceRoutes,      { prefix: '/api/v1/diligence' })
   await app.register(integrationsRoutes,   { prefix: '/api/v1/admin/integrations' })
-  await app.register(matterRoutes,         { prefix: '/api/v1/matters' })
+  await app.register(spaceRoutes,         { prefix: '/api/v1/spaces' })
   await app.register(cronRoutes,           { prefix: '/api/v1/cron' })
   // P7.6.1 — eSignature: paths split between auth'd /contracts/:id/...
   // and public /sign/:token/... so we register at /api/v1.

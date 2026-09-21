@@ -1,7 +1,7 @@
 """Tests for contract-family obligation packs.
 
 A pack is family knowledge held as data instead of as a branch in
-``kpi_manager``. The tests that matter are the ones that keep it *data*: a pack
+``kpi_manager``. The tests that space are the ones that keep it *data*: a pack
 that instructs, sets a currency, or crowds the prompt is the IATA hardcode with
 a version number on it, so each of those is a load-time failure rather than a
 convention.

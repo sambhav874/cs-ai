@@ -98,7 +98,7 @@ const REVERSIBLE_CONTRACT_UPDATE_ACTIONS = new Set([
 ])
 
 const ScopeSchema = z.object({
-  scopeType: z.enum(['matter', 'contract', 'request']).optional(),
+  scopeType: z.enum(['space', 'contract', 'request']).optional(),
   scopeId:   z.string().optional(),
 }).refine(
   (s) => (s.scopeType && s.scopeId) || (!s.scopeType && !s.scopeId),
@@ -113,7 +113,7 @@ const CreateThreadSchema = z.object({
   // wiping the user's just-streamed conversation.
   id:           z.string().min(8).max(64).optional(),
   title:        z.string().min(1).max(200).optional(),
-  scopeType:    z.enum(['matter', 'contract', 'request']).optional(),
+  scopeType:    z.enum(['space', 'contract', 'request']).optional(),
   scopeId:      z.string().optional(),
   providerHint: z.string().optional(),
 })

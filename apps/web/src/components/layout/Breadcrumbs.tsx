@@ -82,11 +82,11 @@ export function Breadcrumbs() {
     staleTime: 60_000,
   })
 
-  const matterId = segments[0] === 'matters' && segments[1] ? segments[1] : null
-  const { data: matter } = useQuery<{ name?: string }>({
-    queryKey: ['matter-name', matterId],
-    queryFn: () => api.get(`/matters/${matterId}`).then((r) => r.data),
-    enabled: Boolean(matterId),
+  const spaceId = segments[0] === 'spaces' && segments[1] ? segments[1] : null
+  const { data: space } = useQuery<{ name?: string }>({
+    queryKey: ['space-name', spaceId],
+    queryFn: () => api.get(`/spaces/${spaceId}`).then((r) => r.data),
+    enabled: Boolean(spaceId),
     staleTime: 60_000,
   })
 
@@ -116,8 +116,8 @@ export function Breadcrumbs() {
       crumbs.push({ label: contract.title })
     } else if (root === 'counterparties' && counterparty?.name) {
       crumbs.push({ label: counterparty.name })
-    } else if (root === 'matters' && matter?.name) {
-      crumbs.push({ label: matter.name })
+    } else if (root === 'spaces' && space?.name) {
+      crumbs.push({ label: space.name })
     } else if (root === 'admin') {
       // admin/<sub> like admin/users → "Users"
       crumbs.push({ label: prettyLabel(sub), to: `/${root}/${sub}` })

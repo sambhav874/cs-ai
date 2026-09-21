@@ -53,7 +53,7 @@ function withPoolLimit(url: string | undefined): string | undefined {
  */
 const SOFT_DELETE_MODELS = new Set([
   'ClauseLibraryItem', 'Contract', 'ContractComment', 'ContractFieldDefinition',
-  'ContractRequest', 'Counterparty', 'DiligenceRoom', 'Matter', 'Skill',
+  'ContractRequest', 'Counterparty', 'DiligenceRoom', 'Space', 'Skill',
   'Template', 'User', 'Webhook', 'WorkflowDefinition',
 ])
 
@@ -89,7 +89,7 @@ function withSoftDeleteNull<T extends PrismaClient>(client: T) {
  * field — the soft-delete extension above fixed this for `deletedAt` alone,
  * but the codebase compares 94 other optional fields to null:
  * `diligenceRoomId: null` hid every seeded contract from the contracts list,
- * and `revokedAt`, `archivedAt`, `matterId` and `orgId: null` (platform-wide
+ * and `revokedAt`, `archivedAt`, `spaceId` and `orgId: null` (platform-wide
  * rows) are all the same shape.
  *
  * This rewrites the query instead of the data, so it holds however a document

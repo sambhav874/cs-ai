@@ -585,7 +585,7 @@ export function ClausesPage() {
         Deleting used to be one unconfirmed click on a 14px icon, next to the
         approve toggle, on a row the user clicked to READ. There is no undo and
         no trash: the clause and its versions are gone. A destructive action
-        that cheap next to a benign one is a matter of time.
+        that cheap next to a benign one is a space of time.
       */}
       {pendingDelete && (
         <div
