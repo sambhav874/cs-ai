@@ -338,56 +338,77 @@ export interface ClauseMatch {
   clauseType: string
   content: string
   similarity: number
+  /** Page of the passage in the source PDF, when the pipeline knows it. */
+  page?: number | null
 }
 
+interface RetrievalHit {
+  platformContractId: string
+  passageId: string
+  section: string | null
+  page: number | null
+  quote: string
+  context: string
+  score: number
+}
+
+/**
+ * Passages from the org's contracts that answer `queryText`, best first.
+ *
+ * This used to be pgvector cosine similarity over contract_clauses, which
+ * cannot run on MongoDB — so since the database move every caller silently
+ * fell back to keyword matching. It now asks the intelligence tier, which
+ * ranks passages with ContractSense's hybrid evidence retrieval over each
+ * contract's linked analysis copy (runbook step 6). Same signature and shape,
+ * so contract_search, portfolio_search and both Q&A routes pick it up as-is.
+ *
+ * Throws when the intelligence tier is unreachable; every caller already
+ * wraps this and degrades to its keyword path.
+ */
 export async function searchClauses(
   queryText: string,
   orgId: string,
   limit = 20,
   contractId?: string, // scope to a single contract for Q&A
 ): Promise<ClauseMatch[]> {
-  const vec = await embedText(queryText)
-  const vectorLiteral = `[${vec.join(',')}]`
+  const base = (process.env.INTELLIGENCE_URL ?? 'http://localhost:8000').replace(/\/+$/, '')
+  const res = await fetch(`${base}/internal/retrieval/search`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET ?? '',
+    },
+    body: JSON.stringify({
+      org_id: orgId,
+      query: queryText,
+      limit,
+      platform_contract_ids: contractId ? [contractId] : undefined,
+    }),
+  })
+  if (!res.ok) throw new Error(`intelligence retrieval failed (${res.status})`)
+  const { hits } = await res.json() as { hits: RetrievalHit[] }
+  if (!hits.length) return []
 
-  // Raw SQL: pgvector cosine similarity, join to contracts for org scoping
-  const rows = contractId
-    ? await prisma.$queryRaw<Array<{
-        contract_id: string; version_id: string; clause_id: string
-        clause_type: string; content: string; similarity: number
-      }>>`
-        SELECT c.id AS contract_id, cv.id AS version_id, cc.id AS clause_id,
-               cc."clauseType" AS clause_type, cc.content,
-               1 - (cc.embedding <=> ${vectorLiteral}::vector) AS similarity
-        FROM   contract_clauses cc
-        JOIN   contract_versions cv ON cv.id = cc."versionId"
-        JOIN   contracts c ON c.id = cv."contractId"
-        WHERE  c."orgId" = ${orgId} AND c.id = ${contractId}
-               AND c."deletedAt" IS NULL AND cc.embedding IS NOT NULL
-        ORDER  BY cc.embedding <=> ${vectorLiteral}::vector
-        LIMIT  ${limit}
-      `
-    : await prisma.$queryRaw<Array<{
-        contract_id: string; version_id: string; clause_id: string
-        clause_type: string; content: string; similarity: number
-      }>>`
-        SELECT c.id AS contract_id, cv.id AS version_id, cc.id AS clause_id,
-               cc."clauseType" AS clause_type, cc.content,
-               1 - (cc.embedding <=> ${vectorLiteral}::vector) AS similarity
-        FROM   contract_clauses cc
-        JOIN   contract_versions cv ON cv.id = cc."versionId"
-        JOIN   contracts c ON c.id = cv."contractId"
-        WHERE  c."orgId" = ${orgId}
-               AND c."deletedAt" IS NULL AND cc.embedding IS NOT NULL
-        ORDER  BY cc.embedding <=> ${vectorLiteral}::vector
-        LIMIT  ${limit}
-      `
+  // Callers key on versionId (portfolio_search reads each version's nav), so
+  // each hit is pinned to its contract's current version — the one the
+  // analysis copy was last linked from. Org-scoped again here, so a hit can
+  // never surface a contract outside the caller's org.
+  const contracts = await prisma.contract.findMany({
+    where: { id: { in: [...new Set(hits.map(h => h.platformContractId))] }, orgId, deletedAt: null },
+    select: { id: true, currentVersionId: true },
+  })
+  const versionOf = new Map(contracts.map(c => [c.id, c.currentVersionId ?? '']))
 
-  return rows.map(r => ({
-    contractId: r.contract_id,
-    versionId:  r.version_id,
-    clauseId:   r.clause_id,
-    clauseType: r.clause_type,
-    content:    r.content,
-    similarity: Number(r.similarity),
-  }))
+  return hits
+    .filter(h => versionOf.has(h.platformContractId))
+    .map(h => ({
+      contractId: h.platformContractId,
+      versionId:  versionOf.get(h.platformContractId) ?? '',
+      clauseId:   h.passageId,
+      clauseType: h.section ?? 'passage',
+      content:    h.quote || h.context,
+      // The pipeline scores 0–100; callers expect a 0–1 similarity.
+      similarity: Math.min(h.score / 100, 1),
+      page:       h.page,
+    }))
 }

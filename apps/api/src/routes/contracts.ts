@@ -1306,7 +1306,7 @@ export async function contractRoutes(app: FastifyInstance) {
       `${process.env.AGENTS_URL ?? 'http://localhost:8000/agents'}/agent/ask`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET ?? '' },
         body: JSON.stringify({ question, orgId, contractId: id, clauseMatches }),
       },
     ).catch(() => null)

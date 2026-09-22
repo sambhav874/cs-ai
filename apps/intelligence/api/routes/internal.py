@@ -12,9 +12,10 @@ import hmac
 import logging
 import os
 from types import SimpleNamespace
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 
 from api.dependencies import queue_contract_ingestion
 from api.routes.projects import ensure_default_project
@@ -22,6 +23,7 @@ from core.database import collection, fs, projects_collection
 from core.platform_identity import PlatformIdentityError, _platform_db, platform_roles, resolve_platform_user
 from core.validators import extract_pdf_page_count, validate_pdf_upload
 from services.platform_contracts import PlatformContractError, link_platform_contract
+from services.platform_retrieval import search_platform_contracts
 
 logger = logging.getLogger(__name__)
 
@@ -75,3 +77,22 @@ async def link_contract(
         )
     except PlatformContractError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+
+class RetrievalRequest(BaseModel):
+    org_id: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1, max_length=4000)
+    limit: int = Field(20, ge=1, le=100)
+    platform_contract_ids: Optional[List[str]] = None
+
+
+@internal_router.post("/retrieval/search", dependencies=[Depends(require_internal_secret)])
+def retrieval_search(body: RetrievalRequest) -> Dict[str, Any]:
+    """Passages from the org's analysed contracts, ranked by ContractSense's
+    hybrid retrieval. Replaces the lifecycle API's pgvector clause search."""
+    hits = search_platform_contracts(
+        body.org_id, body.query,
+        limit=body.limit, contracts=collection,
+        platform_contract_ids=body.platform_contract_ids,
+    )
+    return {"hits": hits}
