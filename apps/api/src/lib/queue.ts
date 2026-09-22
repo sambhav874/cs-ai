@@ -14,6 +14,10 @@ export const webhookQueue     = new Queue('webhooks',      { connection: redis }
 // failing seal can't hold up document parsing, and so retries are visible
 // separately in Bull Board.
 export const signingQueue     = new Queue('signing',       { connection: redis })
+// Pushing stored contract files to the intelligence tier (runbook step 6).
+// Its own queue so an intelligence outage backs up here, visibly, without
+// slowing document parsing.
+export const intelligenceQueue = new Queue('intelligence', { connection: redis })
 
 // ─── Event bus (Redis Streams) ───────────────────────────────────────────────
 
@@ -103,6 +107,21 @@ export function queueParseDocument(payload: ParseDocumentJob): void {
     attempts: 3,
     backoff: { type: 'exponential', delay: 8000 },
   }).catch(err => console.warn('[queue] failed to enqueue parse-document:', err.message))
+}
+
+/**
+ * Link a stored contract file to its analysis copy in the intelligence tier.
+ * Retries with backoff: the intelligence tier may be restarting during a
+ * deploy. jobId dedupes a burst of uploads of the same version.
+ */
+export function queueLinkIntelligence(payload: import('./intelligence-link.js').LinkContractJob): void {
+  intelligenceQueue.add('link-contract', payload, {
+    jobId: `link:${payload.contractId}:${payload.s3Key}`,
+    attempts: 6,
+    backoff: { type: 'exponential', delay: 15_000 },
+    removeOnComplete: 500,
+    removeOnFail: 1000,
+  }).catch(err => console.warn('[queue] failed to enqueue link-contract:', err.message))
 }
 
 /** Service 2 — AI extraction: custom fields + open-ended + validate + score. */

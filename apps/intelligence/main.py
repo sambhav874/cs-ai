@@ -219,6 +219,9 @@ if settings.testing:
     logger.info("<<<<< SUCCESS: TESTING ROUTER HAS BEEN INCLUDED >>>>>")
 
 app.include_router(v1_router)
+# Service-to-service routes for the lifecycle API (shared-secret auth).
+from api.routes.internal import internal_router  # noqa: E402
+app.include_router(internal_router)
 
 @app.on_event("startup")
 async def startup_event():

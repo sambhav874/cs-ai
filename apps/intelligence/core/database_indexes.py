@@ -145,6 +145,19 @@ def initialize_all_indexes(db=None):
         except (OperationFailure, DuplicateKeyError) as e:
             logger.warning(f"Could not create unique index project_space_unique: {e}")
 
+        # At most one analysis copy per platform contract (see
+        # services/platform_contracts). Partial for the same reason as above:
+        # contracts uploaded straight to this tier have no platformContractId.
+        try:
+            target_core_db["contracts"].create_index(
+                [("platformContractId", ASCENDING)],
+                name="contract_platform_unique",
+                unique=True,
+                partialFilterExpression={"platformContractId": {"$type": "string"}},
+            )
+        except (OperationFailure, DuplicateKeyError) as e:
+            logger.warning(f"Could not create unique index contract_platform_unique: {e}")
+
         # At most one Unfiled space per owner (see ensure_default_project).
         # Built on existing data, it fails if an owner already has two; that
         # is logged rather than raised so the service still boots, and the

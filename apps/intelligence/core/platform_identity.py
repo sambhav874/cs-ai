@@ -189,6 +189,21 @@ def _sync_shadow_user(users, user_oid: ObjectId, org_oid: ObjectId, email: str,
             "ownedAccountId": str(org_oid) if is_admin else None}
 
 
+def platform_roles(platform_user_id: str, *, platform_db=None) -> list:
+    """A platform user's role names, read from the platform database.
+
+    For service-to-service calls, which carry a user id but no token. Reading
+    the roles here rather than accepting them from the caller matters:
+    resolve_platform_user writes the shadow team role from them, so calling it
+    with no roles would demote an admin until their next signed-in request.
+    """
+    pdb = platform_db if platform_db is not None else _platform_db()
+    role_ids = [r["roleId"] for r in pdb["user_roles"].find({"userId": platform_user_id}, {"roleId": 1})]
+    if not role_ids:
+        return []
+    return sorted(r["name"] for r in pdb["roles"].find({"_id": {"$in": role_ids}}, {"name": 1}))
+
+
 def resolve_platform_user(claims: Dict[str, Any], *, users=None, teams=None,
                           platform_db=None) -> Dict[str, Any]:
     """Map verified platform claims to a ContractSense user document.

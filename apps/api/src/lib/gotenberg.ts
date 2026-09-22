@@ -110,3 +110,23 @@ export async function renderHtmlToPdfAndStore({
 
   return { s3Key: key, size: pdfBuffer.length }
 }
+
+/**
+ * DOCX (or another office format) → PDF through Gotenberg's LibreOffice route.
+ * The intelligence tier ingests PDFs only, so a Word upload is converted
+ * before it is linked there. Returns the PDF bytes; stores nothing.
+ */
+export async function convertOfficeToPdf(buffer: Buffer, filename: string): Promise<Buffer> {
+  const formData = new FormData()
+  formData.append('files', new Blob([new Uint8Array(buffer)]), filename)
+  const upstream = await fetch(`${GOTENBERG_URL}/forms/libreoffice/convert`, {
+    method:  'POST',
+    headers: await gotenbergAuthHeaders(),
+    body:    formData,
+  })
+  if (!upstream.ok) {
+    const errText = await upstream.text().catch(() => '')
+    throw new Error(`Gotenberg office→PDF failed (${upstream.status}): ${errText.slice(0, 200)}`)
+  }
+  return Buffer.from(await upstream.arrayBuffer())
+}

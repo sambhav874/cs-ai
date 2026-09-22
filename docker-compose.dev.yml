@@ -93,6 +93,8 @@ services:
       # splits them the same way).
       WORKERS_ENABLED: 'false'
       GOTENBERG_URL: http://gotenberg:3000
+      # Where contract files are linked for analysis (runbook step 6).
+      INTELLIGENCE_URL: http://intelligence:8000
       DATABASE_URL: mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true
       REDIS_URL: redis://redis:6379
       # Public origin, used in signer-portal links and emails. Without it those
@@ -146,6 +148,8 @@ services:
       REDIS_URL: redis://redis:6379
       FRONTEND_URL: https://${APP_HOST:-${DEMO_HOST}}
       GOTENBERG_URL: http://gotenberg:3000
+      # Where contract files are linked for analysis (runbook step 6).
+      INTELLIGENCE_URL: http://intelligence:8000
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
       PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?set PORTAL_JWT_SECRET in Coolify}
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in Coolify}
@@ -195,6 +199,8 @@ services:
       # The intelligence tier's own signing key (its native tokens). Separate
       # from JWT_SECRET on purpose; the app refuses to start without it.
       SECRET_KEY: ${INTEL_SECRET_KEY:?set INTEL_SECRET_KEY in Coolify}
+      # Guards /internal/* — the lifecycle API's service-to-service calls.
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in Coolify}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}

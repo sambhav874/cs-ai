@@ -22,7 +22,7 @@ import { indexContract, deleteContractFromIndex } from '../lib/elasticsearch.js'
 import { proposeClauseAlternatives } from '../lib/clause-propose.js'
 import { applyClauseProposal } from '../lib/clause-apply.js'
 import { storeClauseSegments, searchClauses } from '../lib/embeddings.js'
-import { queueParseDocument, queueClassifyDocument, queueExtractAi, queueChunkAndIndex, queueSplitBinder, queueEmbedContract, queueRedlineAnalysis, queueApprovalSummary, queueNotification, queueDraftContract, queuePlaybookRedline } from '../lib/queue.js'
+import { queueParseDocument, queueLinkIntelligence, queueClassifyDocument, queueExtractAi, queueChunkAndIndex, queueSplitBinder, queueEmbedContract, queueRedlineAnalysis, queueApprovalSummary, queueNotification, queueDraftContract, queuePlaybookRedline } from '../lib/queue.js'
 import { applyClauseBatch } from '../lib/clause-apply.js'
 import { checkAutoApprove, resolveApprovers, type WorkflowStepDef } from '../lib/workflow-engine.js'
 import {
@@ -519,6 +519,9 @@ export async function contractRoutes(app: FastifyInstance) {
       filename,
     })
 
+    // One analysis copy in the intelligence tier, keyed by this contract.
+    queueLinkIntelligence({ contractId: contract.id, orgId, userId, s3Key, mimeType, filename })
+
     // Lightweight ES index with what we have now (will be re-indexed after parse with full text)
     indexContract(contract.id, {
       orgId,
@@ -738,6 +741,9 @@ export async function contractRoutes(app: FastifyInstance) {
       orgId,
       filename,
     })
+
+    // A new version replaces the analysis copy's file and re-runs ingestion.
+    queueLinkIntelligence({ contractId: id, orgId, userId, s3Key, mimeType, filename })
 
     await createAuditEvent({
       orgId, userId,

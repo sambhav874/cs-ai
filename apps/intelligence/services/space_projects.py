@@ -95,6 +95,10 @@ def resolve_space_project(
     if space.get("orgId") != org_id:
         raise SpaceAccessError("Space belongs to another organisation")
 
+    return _upsert_space_project(space, space_id, ObjectId(str(team_id)), projects)
+
+
+def _upsert_space_project(space: Dict[str, Any], space_id: str, team_oid: ObjectId, projects) -> Dict[str, Any]:
     now = datetime.utcnow()
     mirrored = {
         "name": space.get("name") or "Space",
@@ -114,7 +118,7 @@ def resolve_space_project(
                 "$setOnInsert": {
                     "spaceId": space_id,
                     "ownerType": "team",
-                    "ownerId": ObjectId(str(team_id)),
+                    "ownerId": team_oid,
                     "createdAt": now,
                 },
             },
@@ -124,3 +128,23 @@ def resolve_space_project(
     except DuplicateKeyError:
         # Another request created it between the query and the insert.
         return projects.find_one(query)
+
+
+def ensure_space_project(space_id: str, team_oid: ObjectId, *, projects, platform_db, teams=None) -> Optional[Dict[str, Any]]:
+    """The project for a Space on behalf of an org team, or None.
+
+    For service-to-service paths (the contract link, the watcher) that act for
+    an org rather than a signed-in user. None when the Space is missing,
+    deleted, or not the team's org -- the caller files the contract as Unfiled.
+    """
+    teams = teams if teams is not None else projects.database["teams"]
+    org_id = _team_org_id(teams, str(team_oid))
+    if not org_id:
+        return None
+    space = platform_db["spaces"].find_one(
+        {"_id": space_id},
+        {"name": 1, "description": 1, "orgId": 1, "deletedAt": 1, "status": 1},
+    )
+    if not space or space.get("deletedAt") is not None or space.get("orgId") != org_id:
+        return None
+    return _upsert_space_project(space, space_id, team_oid, projects)

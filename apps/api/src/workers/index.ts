@@ -8,6 +8,8 @@ export { scanWorker } from './scan.worker.js'
 export { webhookWorker } from './webhook.worker.js'
 // Retryable sealing of executed contracts into their signed PDF
 export { signingWorker } from './signing.worker.js'
+// Linking contract files to their analysis copy in apps/intelligence
+export { intelligenceWorker } from './intelligence.worker.js'
 
 // ─── Stuck-contract recovery ─────────────────────────────────────────────────
 // Contracts stuck in an in-progress status (e.g. agents service restarted

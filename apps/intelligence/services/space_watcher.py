@@ -21,11 +21,12 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 WATCHER_ID = "space_watcher"
+CONTRACT_WATCHER_ID = "contract_watcher"
 # Only these fields are ours to mirror; everything else about a Space stays on
 # the lifecycle side.
 WATCHED_FIELDS = ("name", "description", "status", "deletedAt")
@@ -80,65 +81,144 @@ def apply_change(change: Dict[str, Any], projects) -> bool:
     return bool(getattr(result, "matched_count", 0))
 
 
-def _load_token(state) -> Optional[Any]:
-    doc = state.find_one({"_id": WATCHER_ID})
+# Fields of a platform contract whose change matters to its analysis copy.
+CONTRACT_WATCHED_FIELDS = ("spaceId", "title", "deletedAt")
+
+
+def apply_contract_change(change: Dict[str, Any], contracts, *, place) -> bool:
+    """Mirror one change to a platform contract onto its analysis copy.
+
+    `place(space_id, team_oid)` returns the project the copy belongs in (its
+    Space's, or Unfiled); injected so this stays testable without a database.
+    Only contracts that were linked here are touched -- most platform
+    contracts have no copy until their file is pushed.
+    """
+    op = change.get("operationType")
+    platform_id = (change.get("documentKey") or {}).get("_id")
+    if not platform_id:
+        return False
+    copy = contracts.find_one(
+        {"platformContractId": platform_id},
+        {"_id": 1, "ownerId": 1, "spaceId": 1, "contract_name": 1},
+    )
+    if not copy:
+        return False
+
+    if op == "delete":
+        fields: Dict[str, Any] = {"platformDeleted": True}
+    elif op in ("insert", "replace", "update"):
+        if op == "update":
+            desc = change.get("updateDescription") or {}
+            touched = set((desc.get("updatedFields") or {}).keys()) | set(desc.get("removedFields") or [])
+            if not touched & set(CONTRACT_WATCHED_FIELDS):
+                return False
+        doc = change.get("fullDocument")
+        if doc is None:
+            # updateLookup found nothing: the contract was removed in between.
+            fields = {"platformDeleted": True}
+        else:
+            fields = {"platformDeleted": doc.get("deletedAt") is not None}
+            if doc.get("title"):
+                fields["contract_name"] = doc["title"]
+            space_id = doc.get("spaceId")
+            if space_id != copy.get("spaceId"):
+                project = place(space_id, copy["ownerId"])
+                fields["spaceId"] = space_id
+                fields["projectId"] = project["_id"]
+    else:
+        return False
+
+    result = contracts.update_one({"_id": copy["_id"]}, {"$set": fields})
+    return bool(getattr(result, "matched_count", 0))
+
+
+def _load_token(state, watcher_id: str = WATCHER_ID) -> Optional[Any]:
+    doc = state.find_one({"_id": watcher_id})
     return (doc or {}).get("resumeToken")
 
 
-def _save_token(state, token) -> None:
-    state.update_one({"_id": WATCHER_ID}, {"$set": {"resumeToken": token}}, upsert=True)
+def _save_token(state, token, watcher_id: str = WATCHER_ID) -> None:
+    state.update_one({"_id": watcher_id}, {"$set": {"resumeToken": token}}, upsert=True)
 
 
-def watch_spaces(projects, platform_db, state, stop: threading.Event, *, retry_seconds: float = 5.0) -> None:
-    """Follow the platform's spaces collection until `stop` is set."""
+def watch_collection(
+    source,
+    handle: Callable[[Dict[str, Any]], Any],
+    state,
+    stop: threading.Event,
+    *,
+    watcher_id: str,
+    retry_seconds: float = 5.0,
+) -> None:
+    """Follow one platform collection's change stream until `stop` is set."""
     from pymongo.errors import PyMongoError
 
     while not stop.is_set():
-        resume_after = _load_token(state)
+        resume_after = _load_token(state, watcher_id)
         try:
-            with platform_db["spaces"].watch(
-                full_document="updateLookup",
-                resume_after=resume_after,
-            ) as stream:
-                logger.info("Space watcher following the lifecycle spaces collection.")
+            with source.watch(full_document="updateLookup", resume_after=resume_after) as stream:
+                logger.info("%s following %s.", watcher_id, source.name)
                 while not stop.is_set():
                     change = stream.try_next()
                     if change is None:
                         time.sleep(0.5)
                         continue
                     try:
-                        apply_change(change, projects)
+                        handle(change)
                     except Exception:
-                        logger.exception("Space watcher could not apply a change; continuing.")
-                    _save_token(state, stream.resume_token)
+                        logger.exception("%s could not apply a change; continuing.", watcher_id)
+                    _save_token(state, stream.resume_token, watcher_id)
         except PyMongoError as e:
             # 286 ChangeStreamHistoryLost: the token is older than the oplog.
             if getattr(e, "code", None) == 286 and resume_after is not None:
-                logger.warning("Space watcher's resume token is too old; resynchronising from now.")
-                _save_token(state, None)
+                logger.warning("%s's resume token is too old; resynchronising from now.", watcher_id)
+                _save_token(state, None, watcher_id)
                 continue
-            logger.warning(f"Space watcher lost its change stream ({e}); retrying in {retry_seconds}s.")
+            logger.warning(f"{watcher_id} lost its change stream ({e}); retrying in {retry_seconds}s.")
             stop.wait(retry_seconds)
         except Exception:
-            logger.exception("Space watcher failed; retrying.")
+            logger.exception("%s failed; retrying.", watcher_id)
             stop.wait(retry_seconds)
+
+
+def watch_spaces(projects, platform_db, state, stop: threading.Event, *, retry_seconds: float = 5.0) -> None:
+    """Follow the platform's spaces collection until `stop` is set."""
+    watch_collection(
+        platform_db["spaces"], lambda c: apply_change(c, projects), state, stop,
+        watcher_id=WATCHER_ID, retry_seconds=retry_seconds,
+    )
 
 
 def start_space_watcher() -> Optional[threading.Event]:
-    """Start the watcher on a daemon thread. Returns its stop signal."""
+    """Start the Space and contract watchers on daemon threads. Returns their stop signal."""
     from core.database import core_db
     from core.platform_identity import _platform_db
+    from api.routes.projects import ensure_default_project
+    from services.platform_contracts import project_for_space
 
     stop = threading.Event()
     projects = core_db["projects"]
+    contracts = core_db["contracts"]
     state = core_db["watcher_state"]
     platform_db = _platform_db()
 
-    thread = threading.Thread(
+    def place(space_id, team_oid):
+        return project_for_space(
+            space_id, team_oid,
+            projects=projects, platform_db=platform_db, ensure_default=ensure_default_project,
+        )
+
+    threading.Thread(
         target=watch_spaces,
         args=(projects, platform_db, state, stop),
         name="space-watcher",
         daemon=True,
-    )
-    thread.start()
+    ).start()
+    threading.Thread(
+        target=watch_collection,
+        args=(platform_db["contracts"], lambda c: apply_contract_change(c, contracts, place=place), state, stop),
+        kwargs={"watcher_id": CONTRACT_WATCHER_ID},
+        name="contract-watcher",
+        daemon=True,
+    ).start()
     return stop
