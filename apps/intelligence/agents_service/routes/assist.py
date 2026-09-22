@@ -13,9 +13,9 @@ import re
 from ..jsonish import loads_lenient
 import os
 
-from app.agents.assist_agent import run_assist, AssistAction
-from app.router import resolve_llm
-from app.untrusted import wrap_untrusted_document
+from agents_service.agents.assist_agent import run_assist, AssistAction
+from agents_service.router import resolve_llm
+from agents_service.untrusted import wrap_untrusted_document
 from langchain_core.messages import HumanMessage, SystemMessage
 
 router = APIRouter()

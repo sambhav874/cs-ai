@@ -39,7 +39,7 @@ import os
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 
-from app.router import resolve_llm
+from agents_service.router import resolve_llm
 from langchain_core.messages import HumanMessage, SystemMessage
 
 logger = logging.getLogger("renewals")

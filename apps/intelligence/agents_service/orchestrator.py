@@ -20,10 +20,10 @@ import logging
 from typing import Any, AsyncIterator, NotRequired, TypedDict
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
-from app.memory import get_session_history, append_to_session
-from app.router import resolve_llm
-from app.config import active_provider, active_model
-from app.tools import get_read_tools
+from agents_service.memory import get_session_history, append_to_session
+from agents_service.router import resolve_llm
+from agents_service.config import active_provider, active_model
+from agents_service.tools import get_read_tools
 
 # ── Prompt-injection defense ─────────────────────────────────────────────────
 # Untrusted contract/counterparty text flows through every retrieval tool into
@@ -31,8 +31,8 @@ from app.tools import get_read_tools
 # app/untrusted.py so the specialist agents — which ingest whole documents
 # rather than snippets — share one implementation. See that module for what the
 # framing does and does not buy us.
-from app.untrusted import sanitize_untrusted as _sanitize_untrusted
-from app.untrusted import wrap_untrusted_document
+from agents_service.untrusted import sanitize_untrusted as _sanitize_untrusted
+from agents_service.untrusted import wrap_untrusted_document
 
 
 def _chunk_text(chunk) -> str:
@@ -151,7 +151,7 @@ def build_graph(provider: str, model_id: str) -> StateGraph:
     async def draft_node(state: AgentState) -> AgentState:
         """Invoke Draft Agent and format response for chat."""
         try:
-            from app.agents.draft_agent import run_draft
+            from agents_service.agents.draft_agent import run_draft
             result = await run_draft(
                 user_message=state["user_message"],
                 org_id=state["org_id"],

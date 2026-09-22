@@ -62,7 +62,7 @@ log = logging.getLogger(__name__)
 # Where fixtures live. Committed, reviewable, diffable — when a change alters
 # which tool the model picks, that shows up in code review rather than as a
 # flaky number in a nightly report.
-FIXTURE_DIR = Path(__file__).resolve().parent.parent / "evals" / "replay"
+FIXTURE_DIR = Path(__file__).resolve().parent / "evals" / "replay"
 
 MODE_ENV = "AGENT_REPLAY_MODE"          # "replay" | "record" | unset (off)
 _SAFE = re.compile(r"[^A-Za-z0-9._-]+")

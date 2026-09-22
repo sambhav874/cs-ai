@@ -136,7 +136,7 @@ export async function extractObligationsForContract({
     userId,
   })
 
-  const agentsUrl = process.env.AGENTS_URL ?? 'http://localhost:8002'
+  const agentsUrl = process.env.AGENTS_URL ?? 'http://localhost:8000/agents'
   const pyRes = await fetch(`${agentsUrl}/extract_obligations`, {
     method: 'POST',
     headers: {

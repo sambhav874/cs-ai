@@ -35,7 +35,7 @@ from .config import settings
 from .providers import build_llm
 from .tracing import get_callback
 # docs/37 E12 — record/replay seam. Inert unless AGENT_REPLAY_MODE is set.
-from app.replay import wrap as _replay_wrap, mode as _replay_mode
+from agents_service.replay import wrap as _replay_wrap, mode as _replay_mode
 
 Tier = Literal["reasoning", "default", "fast", "embed", "rerank", "vision_ocr"]
 Source = Literal["platform", "byok"]

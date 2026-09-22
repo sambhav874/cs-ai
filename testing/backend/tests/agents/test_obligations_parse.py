@@ -19,8 +19,8 @@ import json
 
 import pytest
 
-from app.jsonish import loads_lenient
-from app.routes.obligations import (
+from agents_service.jsonish import loads_lenient
+from agents_service.routes.obligations import (
     _SYSTEM,
     MAX_OBLIGATIONS,
     MAX_QUOTE_CHARS,

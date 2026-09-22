@@ -3,9 +3,9 @@ import json
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from app.orchestrator import run_chat, run_agent_chat_stream
-from app.providers import list_models, DEFAULT_PROVIDER, DEFAULT_MODEL, get_model_option
-from app.config import resolve_provider, model_for, is_provider_configured
+from agents_service.orchestrator import run_chat, run_agent_chat_stream
+from agents_service.providers import list_models, DEFAULT_PROVIDER, DEFAULT_MODEL, get_model_option
+from agents_service.config import resolve_provider, model_for, is_provider_configured
 
 router = APIRouter()
 
@@ -73,7 +73,7 @@ async def chat(req: ChatRequest):
     # operator still sees the fallback).
     # docs/37 E12 — under replay there is no provider and no key; validating
     # one would reinstate the key requirement this seam exists to remove.
-    from app.replay import mode as _replay_mode
+    from agents_service.replay import mode as _replay_mode
     resolved_provider = req.provider if _replay_mode() == "replay" else resolve_provider(req.provider)
     if _replay_mode() != "replay" and resolved_provider != req.provider:
         # Caller requested an unconfigured provider — pick a sensible

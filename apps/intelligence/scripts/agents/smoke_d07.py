@@ -18,11 +18,11 @@ import asyncio
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from app import tracing  # noqa: E402
-from app.config import settings  # noqa: E402
-from app.router import resolve_llm, ResolvedLlm  # noqa: E402
+from agents_service.config import settings  # noqa: E402
+from agents_service.router import resolve_llm, ResolvedLlm  # noqa: E402
 
 fail = 0
 

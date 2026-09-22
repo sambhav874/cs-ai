@@ -17,11 +17,11 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-from app.tools import get_read_tools  # noqa: E402
+from agents_service.tools import get_read_tools  # noqa: E402
 
 fail = 0
 
@@ -47,7 +47,7 @@ async def main() -> None:
     # Simpler: call contract_search with no filters and read the first hit
     # to confirm the seed is in place and to grab a contract id for the
     # subsequent tool calls.
-    from app.config import settings
+    from agents_service.config import settings
 
     # Get orgId from the admin user row via a tiny HTTP probe. The Fastify
     # API exposes /health which doesn't need auth; for orgId we'll shell out.

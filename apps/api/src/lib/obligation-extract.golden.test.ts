@@ -12,7 +12,7 @@
  * fix or accept by updating the expectation.
  *
  * The Python side of the same pipeline is pinned in
- * apps/agents/tests/test_obligations_parse.py. Read them together: the two
+ * testing/backend/tests/agents/test_obligations_parse.py. Read them together: the two
  * layers disagree in three places, and each disagreement is asserted below so
  * that closing one is a deliberate act.
  */
@@ -149,7 +149,7 @@ describe('toObligationRows', () => {
 
   describe('disagreements with the Python layer, pinned deliberately', () => {
     it('the 4000-char quote cap can never bind, because Python already cut at 240', () => {
-      // apps/agents/.../obligations.py caps `quote` at MAX_QUOTE_CHARS = 240
+      // apps/intelligence/agents_service/routes/obligations.py caps `quote` at MAX_QUOTE_CHARS = 240
       // before this code ever sees it. So a quote is already lossy upstream and
       // this bound is dead. Raising the Python cap without raising this one
       // would silently start truncating here instead — this test is where that

@@ -222,6 +222,11 @@ app.include_router(v1_router)
 # Service-to-service routes for the lifecycle API (shared-secret auth).
 from api.routes.internal import internal_router  # noqa: E402
 app.include_router(internal_router)
+# draftLegal's agent service, formerly apps/agents (runbook step 6).
+from agents_service.mount import agents_health_router, agents_router, flush_tracing  # noqa: E402
+app.include_router(agents_health_router)
+app.include_router(agents_router)
+app.on_event("shutdown")(flush_tracing)
 
 @app.on_event("startup")
 async def startup_event():

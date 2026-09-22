@@ -41,8 +41,6 @@ importers:
         specifier: ^8.63.0
         version: 8.70.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
 
-  apps/agents: {}
-
   apps/api:
     dependencies:
       '@anthropic-ai/sdk':

@@ -114,7 +114,7 @@ export async function runComplianceCheck({
     userId,
   })
 
-  const agentsUrl = process.env.AGENTS_URL ?? 'http://localhost:8002'
+  const agentsUrl = process.env.AGENTS_URL ?? 'http://localhost:8000/agents'
   const pyRes = await fetch(`${agentsUrl}/check_compliance`, {
     method: 'POST',
     headers: {

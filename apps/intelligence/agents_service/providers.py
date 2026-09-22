@@ -4,7 +4,7 @@ Add new providers/models here — the rest of the system picks them up automatic
 """
 from dataclasses import dataclass
 from langchain_core.language_models.chat_models import BaseChatModel
-from app.config import settings
+from agents_service.config import settings
 
 
 @dataclass

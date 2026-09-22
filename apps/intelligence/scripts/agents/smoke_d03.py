@@ -10,9 +10,9 @@ import os
 import sys
 
 # Make `app.*` imports work when running from apps/agents/
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from app.router import (  # noqa: E402
+from agents_service.router import (  # noqa: E402
     resolve_llm,
     assert_router_configured,
     ResolvedLlm,

@@ -95,6 +95,8 @@ services:
       GOTENBERG_URL: http://gotenberg:3000
       # Where contract files are linked for analysis (runbook step 6).
       INTELLIGENCE_URL: http://intelligence:8000
+      # draftLegal's agent routes, now served by the intelligence tier.
+      AGENTS_URL: http://intelligence:8000/agents
       DATABASE_URL: mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true
       REDIS_URL: redis://redis:6379
       # Public origin, used in signer-portal links and emails. Without it those
@@ -150,6 +152,8 @@ services:
       GOTENBERG_URL: http://gotenberg:3000
       # Where contract files are linked for analysis (runbook step 6).
       INTELLIGENCE_URL: http://intelligence:8000
+      # draftLegal's agent routes, now served by the intelligence tier.
+      AGENTS_URL: http://intelligence:8000/agents
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
       PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?set PORTAL_JWT_SECRET in Coolify}
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in Coolify}
@@ -201,6 +205,9 @@ services:
       SECRET_KEY: ${INTEL_SECRET_KEY:?set INTEL_SECRET_KEY in Coolify}
       # Guards /internal/* — the lifecycle API's service-to-service calls.
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in Coolify}
+      # The agent tools call back into the lifecycle API for contracts, Spaces,
+      # approvals and the rest.
+      API_URL: http://api:8080
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}

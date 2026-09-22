@@ -1303,7 +1303,7 @@ export async function contractRoutes(app: FastifyInstance) {
     }
 
     const agentRes = await fetch(
-      `${process.env.AGENTS_URL ?? 'http://localhost:8002'}/agent/ask`,
+      `${process.env.AGENTS_URL ?? 'http://localhost:8000/agents'}/agent/ask`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2553,7 +2553,7 @@ export async function contractRoutes(app: FastifyInstance) {
       userId: req.user.sub,
     })
 
-    const agentsUrl = process.env.AGENTS_URL ?? 'http://localhost:8002'
+    const agentsUrl = process.env.AGENTS_URL ?? 'http://localhost:8000/agents'
     const pyRes = await fetch(`${agentsUrl}/renewal_advice`, {
       method: 'POST',
       headers: {

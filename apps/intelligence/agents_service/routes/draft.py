@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import Any
 import os
 
-from app.agents.draft_agent import run_draft
+from agents_service.agents.draft_agent import run_draft
 
 router = APIRouter()
 INTERNAL_SECRET = os.getenv("INTERNAL_SERVICE_SECRET", "")
