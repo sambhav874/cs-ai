@@ -211,6 +211,13 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      # Read by the agent routes (formerly apps/agents): extra model providers
+      # and Langfuse tracing. All optional; tracing is off without the keys.
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
     depends_on:
       mongo:
         condition: service_healthy

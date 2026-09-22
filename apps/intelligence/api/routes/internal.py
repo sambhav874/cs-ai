@@ -22,6 +22,9 @@ from api.routes.projects import ensure_default_project
 from core.database import collection, fs, projects_collection
 from core.platform_identity import PlatformIdentityError, _platform_db, platform_roles, resolve_platform_user
 from core.validators import extract_pdf_page_count, validate_pdf_upload
+from bson import ObjectId
+from models.domain import UserInDB
+from utils.audit_logger import create_audit_log
 from services.platform_contracts import PlatformContractError, link_platform_contract
 from services.platform_retrieval import search_platform_contracts
 
@@ -60,7 +63,7 @@ async def link_contract(
     uploader = SimpleNamespace(id=shadow["_id"], teamIds=shadow.get("teamIds") or [])
 
     try:
-        return link_platform_contract(
+        result = link_platform_contract(
             platform_contract_id=platform_contract_id,
             org_id=org_id,
             content=content,
@@ -77,6 +80,30 @@ async def link_contract(
         )
     except PlatformContractError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+    # The same audit entry ContractSense's own upload writes, attributed to the
+    # platform user who uploaded, so the analysis side's audit trail and
+    # analytics see linked contracts too. A retry of identical bytes is not a
+    # new upload and records nothing.
+    if result.get("status") != "unchanged":
+        try:
+            await create_audit_log(
+                user=UserInDB.model_validate(shadow),
+                action="CONTRACT_UPLOADED",
+                contract_id=ObjectId(result["contract_id"]),
+                contract_name_override=filename,
+                account_id_override=ObjectId(str(uploader.teamIds[0])),
+                details={
+                    "source": "platform",
+                    "platformContractId": platform_contract_id,
+                    "linkStatus": result.get("status"),
+                    "page_count": page_count,
+                    "file_size": len(content),
+                },
+            )
+        except Exception:
+            logger.exception("Could not write the audit entry for linked contract %s", platform_contract_id)
+    return result
 
 
 class RetrievalRequest(BaseModel):

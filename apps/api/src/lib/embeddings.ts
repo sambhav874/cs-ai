@@ -369,8 +369,10 @@ export async function searchClauses(
   queryText: string,
   orgId: string,
   limit = 20,
-  contractId?: string, // scope to a single contract for Q&A
+  contractId?: string | string[], // scope to one contract (Q&A) or a set (precedents)
 ): Promise<ClauseMatch[]> {
+  const scope = contractId === undefined ? undefined : Array.isArray(contractId) ? contractId : [contractId]
+  if (scope && scope.length === 0) return []
   const base = (process.env.INTELLIGENCE_URL ?? 'http://localhost:8000').replace(/\/+$/, '')
   const res = await fetch(`${base}/internal/retrieval/search`, {
     method: 'POST',
@@ -382,7 +384,7 @@ export async function searchClauses(
       org_id: orgId,
       query: queryText,
       limit,
-      platform_contract_ids: contractId ? [contractId] : undefined,
+      platform_contract_ids: scope,
     }),
   })
   if (!res.ok) throw new Error(`intelligence retrieval failed (${res.status})`)

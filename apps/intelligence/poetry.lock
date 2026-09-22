@@ -523,6 +523,18 @@ typing-extensions = ">=4.6.0"
 aio = ["azure-core[aio] (>=1.30.0)"]
 
 [[package]]
+name = "backoff"
+version = "2.2.1"
+description = "Function decoration for backoff and retry"
+optional = false
+python-versions = ">=3.7,<4.0"
+groups = ["main"]
+files = [
+    {file = "backoff-2.2.1-py3-none-any.whl", hash = "sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8"},
+    {file = "backoff-2.2.1.tar.gz", hash = "sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba"},
+]
+
+[[package]]
 name = "backports-asyncio-runner"
 version = "1.2.0"
 description = "Backport of asyncio.Runner, a context manager that controls event loop life cycle."
@@ -1706,6 +1718,24 @@ local-tokenizer = ["protobuf", "sentencepiece (>=0.2.0)"]
 pyopenssl = ["pyopenssl"]
 
 [[package]]
+name = "googleapis-common-protos"
+version = "1.75.3"
+description = "Common protobufs used in Google APIs"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "googleapis_common_protos-1.75.3-py3-none-any.whl", hash = "sha256:a018d2bf098ca9fb6faa08d5bb780e2a2c2f73c566f069761331386c9596d3f2"},
+    {file = "googleapis_common_protos-1.75.3.tar.gz", hash = "sha256:57c435ac2c68b108999b6db075d9053e4d7a936ba57b4a3d45667b1346f1738a"},
+]
+
+[package.dependencies]
+protobuf = ">=6.33.5,<8.0.0"
+
+[package.extras]
+grpc = ["grpcio (>=1.59.0,<2.0.0)"]
+
+[[package]]
 name = "greenlet"
 version = "3.2.3"
 description = "Lightweight in-process concurrent programming"
@@ -2527,6 +2557,29 @@ files = [
 langchain-core = ">=1.0.0"
 pydantic = ">=2,<3"
 voyageai = ">=0.3.7,<1"
+
+[[package]]
+name = "langfuse"
+version = "4.15.4"
+description = "Langfuse Python SDK - LLM observability/tracing, datasets, experiments, LLM-as-a-judge evaluation, and prompt management"
+optional = false
+python-versions = "<4.0,>=3.10"
+groups = ["main"]
+files = [
+    {file = "langfuse-4.15.4-py3-none-any.whl", hash = "sha256:8e75c70b1522a722a11ab6c7d88e27534a5d0c3844a1a464ac5eb548b014e9c3"},
+    {file = "langfuse-4.15.4.tar.gz", hash = "sha256:b9a36194f4e968206d919313c24ea71c6ea68e21286370b01de752d20b26e7a3"},
+]
+
+[package.dependencies]
+backoff = ">=1.10.0"
+httpx = ">=0.15.4,<1.0"
+opentelemetry-api = ">=1.33.1,<2"
+opentelemetry-exporter-otlp-proto-http = ">=1.33.1,<2"
+opentelemetry-sdk = ">=1.33.1,<2"
+packaging = ">=23.2,<27.0"
+pydantic = ">=2,<3"
+typing-extensions = ">=4.12.2,<5"
+wrapt = ">=1.14,<3"
 
 [[package]]
 name = "langgraph"
@@ -3725,6 +3778,111 @@ numpy = [
 ]
 
 [[package]]
+name = "opentelemetry-api"
+version = "1.44.0"
+description = "OpenTelemetry Python API"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "opentelemetry_api-1.44.0-py3-none-any.whl", hash = "sha256:94b98c893a91b88657eaac1e3ba89618cdb85be6918196705354f34728b2cdef"},
+    {file = "opentelemetry_api-1.44.0.tar.gz", hash = "sha256:67647e5e9566edcf421166fdf022b3537f818635daa852b289e34604dc6fb33a"},
+]
+
+[package.dependencies]
+typing-extensions = ">=4.5.0"
+
+[[package]]
+name = "opentelemetry-exporter-otlp-proto-common"
+version = "1.44.0"
+description = "OpenTelemetry Protobuf encoding"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "opentelemetry_exporter_otlp_proto_common-1.44.0-py3-none-any.whl", hash = "sha256:9a9fe61bba73d802904bc989f1d6b4a7b1ee40f06c40e98d6f85af65aaebb694"},
+    {file = "opentelemetry_exporter_otlp_proto_common-1.44.0.tar.gz", hash = "sha256:dc87a5a5bc58f149a56d1547e4691588fa12994cdc3bc039a694ccb3375862ac"},
+]
+
+[package.dependencies]
+opentelemetry-proto = "1.44.0"
+
+[[package]]
+name = "opentelemetry-exporter-otlp-proto-http"
+version = "1.44.0"
+description = "OpenTelemetry Collector Protobuf over HTTP Exporter"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "opentelemetry_exporter_otlp_proto_http-1.44.0-py3-none-any.whl", hash = "sha256:838592fce774c1c8bb7b9a0a7facbfa82e17be5a8a4e94cef10cb84ae026bae3"},
+    {file = "opentelemetry_exporter_otlp_proto_http-1.44.0.tar.gz", hash = "sha256:c633d7270ad6b57cd4cfbe8b0007a9e2e7c0cb50bd6c50fe2a7b245f721a09d8"},
+]
+
+[package.dependencies]
+googleapis-common-protos = ">=1.52,<2.0"
+opentelemetry-api = ">=1.15,<2.0"
+opentelemetry-exporter-otlp-proto-common = "1.44.0"
+opentelemetry-proto = "1.44.0"
+opentelemetry-sdk = ">=1.44.0,<1.45.0"
+requests = ">=2.7,<3.0"
+typing-extensions = ">=4.5.0"
+
+[package.extras]
+gcp-auth = ["opentelemetry-exporter-credential-provider-gcp (>=0.59b0)"]
+
+[[package]]
+name = "opentelemetry-proto"
+version = "1.44.0"
+description = "OpenTelemetry Python Proto"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "opentelemetry_proto-1.44.0-py3-none-any.whl", hash = "sha256:898b155a0e1557afd867478fb6158e8122a46329ca0bb8dc53cc55e98f017f56"},
+    {file = "opentelemetry_proto-1.44.0.tar.gz", hash = "sha256:c547a79c2f8c0c515d31509154682e5921c7cfd5ca67b70e1f9266e2c3e103f3"},
+]
+
+[package.dependencies]
+protobuf = ">=5.0,<8.0"
+
+[[package]]
+name = "opentelemetry-sdk"
+version = "1.44.0"
+description = "OpenTelemetry Python SDK"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "opentelemetry_sdk-1.44.0-py3-none-any.whl", hash = "sha256:df081c4c6bcfdb1211e3e86140376792643128a25f8d72d1d27675936e7e96ad"},
+    {file = "opentelemetry_sdk-1.44.0.tar.gz", hash = "sha256:cebe7f65dc12f26ead75c6064de12fd2a9052e5060c0272d402cfa203aae123b"},
+]
+
+[package.dependencies]
+opentelemetry-api = "1.44.0"
+opentelemetry-semantic-conventions = "0.65b0"
+typing-extensions = ">=4.5.0"
+
+[package.extras]
+file-configuration = ["opentelemetry-configuration (==0.65b0)"]
+
+[[package]]
+name = "opentelemetry-semantic-conventions"
+version = "0.65b0"
+description = "OpenTelemetry Semantic Conventions"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "opentelemetry_semantic_conventions-0.65b0-py3-none-any.whl", hash = "sha256:1cacde7b0ad306f84c5ef08c3dbe1bbaf20165bba6f8bff43b670e555a086bcb"},
+    {file = "opentelemetry_semantic_conventions-0.65b0.tar.gz", hash = "sha256:f9b2b81e9d5b64f11bc952075e7e9c7fb0aab075c7fd1c46d597f1b919852d60"},
+]
+
+[package.dependencies]
+opentelemetry-api = "1.44.0"
+typing-extensions = ">=4.5.0"
+
+[[package]]
 name = "orjson"
 version = "3.11.9"
 description = "Fast, correct Python JSON library supporting dataclasses, datetimes, and numpy"
@@ -4791,6 +4949,22 @@ dev = ["flit", "pip-tools", "pre-commit", "pytest-cov", "pytest-socket", "pytest
 docs = ["myst_parser", "sphinx", "sphinx_rtd_theme"]
 full = ["Pillow (>=8.0.0)", "cryptography"]
 image = ["Pillow (>=8.0.0)"]
+
+[[package]]
+name = "pytesseract"
+version = "0.3.13"
+description = "Python-tesseract is a python wrapper for Google's Tesseract-OCR"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "pytesseract-0.3.13-py3-none-any.whl", hash = "sha256:7a99c6c2ac598360693d83a416e36e0b33a67638bb9d77fdcac094a3589d4b34"},
+    {file = "pytesseract-0.3.13.tar.gz", hash = "sha256:4bf5f880c99406f52a3cfc2633e42d9dc67615e69d8a509d74867d3baddb5db9"},
+]
+
+[package.dependencies]
+packaging = ">=21.3"
+Pillow = ">=8.0.0"
 
 [[package]]
 name = "pytest"
@@ -7214,4 +7388,4 @@ ml = ["accelerate", "langchain-huggingface", "sentence-transformers", "sentencep
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "310de0e8aea3133cc39dd064e58bc32fdba96255c6ba8101c0abee6e1ced3b59"
+content-hash = "6381aa43cd545af88e3ab5109223d7916822f87b8dd85707f42cbf005eb9d8b5"

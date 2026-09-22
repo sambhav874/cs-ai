@@ -61,13 +61,18 @@ try:
     TELEMETRY = _load_json("baltia_jfk_telemetry.json")
     CONFIG = _load_json("baltia_jfk_demo_config.json")
     DEMO_DATA_LOADED = True
-except Exception:
-    logger.warning(
-        "Baltia/Swissport JFK GHA demo data not found at %s (set DEMO_DATA_DIR or mount demo_data/) "
-        "-- the demo gate will stay inactive; this does not affect any other contract.",
-        DEMO_DATA_DIR,
-        exc_info=True,
-    )
+except Exception as e:
+    if isinstance(e, FileNotFoundError):
+        # The expected state wherever the demo is not deployed: one line, no
+        # traceback (it printed a full one on every boot of both processes).
+        logger.info("Baltia JFK demo data not present at %s; the demo gate stays inactive.", DEMO_DATA_DIR)
+    else:
+        logger.warning(
+            "Baltia/Swissport JFK GHA demo data at %s could not be read "
+            "-- the demo gate will stay inactive; this does not affect any other contract.",
+            DEMO_DATA_DIR,
+            exc_info=True,
+        )
     GROUND_TRUTH = {"kpis": []}
     TELEMETRY = {"sources": {}}
     CONFIG = {

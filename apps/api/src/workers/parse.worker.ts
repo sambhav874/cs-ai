@@ -11,11 +11,10 @@ import { redis } from '../lib/redis.js'
 import { prisma } from '../lib/prisma.js'
 import { s3, S3_BUCKET } from '../lib/storage.js'
 import { extractDocument } from '../lib/document.js'
-import { embedContractVersion } from '../lib/embeddings.js'
 import { legalChunkAndStore } from '../lib/legal-chunker.js'
 import { indexContract } from '../lib/elasticsearch.js'
 import { splitPdf, getPdfPageCount } from '../lib/pdf-splitter.js'
-import { queueDetectBinder, queueParseDocument, queueEmbedContract, queuePlaybookReview } from '../lib/queue.js'
+import { queueDetectBinder, queueParseDocument, queuePlaybookReview } from '../lib/queue.js'
 import type { ParseDocumentJob, ChunkAndIndexJob, SplitBinderJob } from '../lib/queue.js'
 
 // ─── parse-document ──────────────────────────────────────────────────────────
@@ -195,8 +194,9 @@ async function handleChunkAndIndex(data: ChunkAndIndexJob): Promise<void> {
 
   await legalChunkAndStore(versionId, contractId, orgId, clauses, contract)
 
-  // Queue embeddings (Service 3b)
-  queueEmbedContract(versionId)
+  // No embedding step: clause retrieval runs on the intelligence tier's own
+  // index of the linked copy (runbook step 6). The old pgvector write could
+  // not run on MongoDB and marked every analysed contract FAILED after DONE.
 
   await prisma.contract.update({
     where: { id: contractId },
@@ -334,7 +334,10 @@ export const parseWorker = new Worker(
     if (job.name === 'parse-document') {
       await handleParseDocument(job.data as ParseDocumentJob)
     } else if (job.name === 'embed-contract') {
-      await embedContractVersion(job.data.versionId as string)
+      // Retired (see handleChunkAndIndex). Jobs queued before the upgrade are
+      // acknowledged and dropped rather than run, since running them fails
+      // the contract.
+      console.info('[worker:documents] embed-contract retired; skipping versionId=%s', job.data.versionId)
     } else if (job.name === 'chunk-and-index') {
       await handleChunkAndIndex(job.data as ChunkAndIndexJob)
     } else if (job.name === 'split-binder') {

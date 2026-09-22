@@ -43,7 +43,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     ENVIRONMENT=prod \
     API_PORT=8000 \
     PATH="/opt/venv/bin:$PATH"
-RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 curl \
+# tesseract-ocr: scanned-PDF OCR for the agent routes' /extract (pytesseract
+# drives this binary). draftLegal's agents image had it; without it a scanned
+# upload extracts no text.
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 curl tesseract-ocr \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 WORKDIR /app

@@ -51,12 +51,21 @@ async def _process_and_update(
     logger.info("[review] START contractId=%s versionId=%s text_chars=%d customFields=%d",
                 contract_id, version_id, len(plain_text), len(custom_fields))
 
-    result = await run_review(
-        plain_text,
-        contract_type=contract_type,
-        custom_fields=custom_fields,
-        org_id=org_id,
-    )
+    try:
+        result = await run_review(
+            plain_text,
+            contract_type=contract_type,
+            custom_fields=custom_fields,
+            org_id=org_id,
+        )
+    except Exception as e:
+        # This runs as a background task, so an exception here used to vanish:
+        # the contract sat at EXTRACTING until the API's five-minute sweeper
+        # marked it FAILED as "timed out", which hides the real cause (most
+        # often: no model provider configured).
+        logger.exception("[review] failed contractId=%s", contract_id)
+        await _report_failure(contract_id, f"AI analysis could not run: {e}"[:500])
+        return
 
     if not result:
         logger.error("[review] run_review returned None for contractId=%s", contract_id)
@@ -302,6 +311,24 @@ async def _process_and_update(
                 logger.info("[review] POST /chunk status=%d", r.status_code)
             except Exception as e:
                 logger.warning("[review] POST /chunk EXCEPTION (non-fatal): %s", e)
+
+
+async def _report_failure(contract_id: str, message: str) -> None:
+    """Tell the API this contract's analysis failed, and why."""
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.patch(
+                f"{settings.api_url}/api/v1/contracts/{contract_id}",
+                json={"analysisStatus": "FAILED", "analysisError": message},
+                headers={
+                    "x-internal-service": "agents",
+                    "x-internal-secret": settings.internal_service_secret,
+                },
+                timeout=10,
+            )
+    except Exception:
+        # The sweeper still catches it; nothing more to do from here.
+        logger.exception("[review] could not report the failure for contractId=%s", contract_id)
 
 
 @router.post("/review")

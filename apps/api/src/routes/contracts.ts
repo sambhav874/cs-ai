@@ -22,7 +22,7 @@ import { indexContract, deleteContractFromIndex } from '../lib/elasticsearch.js'
 import { proposeClauseAlternatives } from '../lib/clause-propose.js'
 import { applyClauseProposal } from '../lib/clause-apply.js'
 import { storeClauseSegments, searchClauses } from '../lib/embeddings.js'
-import { queueParseDocument, queueLinkIntelligence, queueClassifyDocument, queueExtractAi, queueChunkAndIndex, queueSplitBinder, queueEmbedContract, queueRedlineAnalysis, queueApprovalSummary, queueNotification, queueDraftContract, queuePlaybookRedline } from '../lib/queue.js'
+import { queueParseDocument, queueLinkIntelligence, queueClassifyDocument, queueExtractAi, queueChunkAndIndex, queueSplitBinder, queueRedlineAnalysis, queueApprovalSummary, queueNotification, queueDraftContract, queuePlaybookRedline } from '../lib/queue.js'
 import { applyClauseBatch } from '../lib/clause-apply.js'
 import { checkAutoApprove, resolveApprovers, type WorkflowStepDef } from '../lib/workflow-engine.js'
 import {
@@ -845,8 +845,9 @@ export async function contractRoutes(app: FastifyInstance) {
     }
 
     if (clauseSegments?.length) {
+      // Stored for the playbook and clause features; retrieval itself runs on
+      // the intelligence tier, so there is no embedding step to queue.
       await storeClauseSegments(versionId, clauseSegments)
-      queueEmbedContract(versionId)
     }
 
     if (clauseFlags) {
@@ -1343,67 +1344,58 @@ export async function contractRoutes(app: FastifyInstance) {
 
     const selfRiskScore = normalizeRiskScore(contract.riskScore)
 
-    // Query-contract avg embedding (from all clauses across all its versions).
-    const selfAvg = await prisma.$queryRaw<Array<{ avg_vec: string | null }>>`
-      SELECT AVG(cc.embedding)::text AS avg_vec
-      FROM   contract_clauses cc
-      JOIN   contract_versions cv ON cv.id = cc."versionId"
-      WHERE  cv."contractId" = ${id}
-             AND cc.embedding IS NOT NULL
-             AND cc."isSubChunk" = FALSE
-    `
-
-    const avgVecText = selfAvg[0]?.avg_vec
-    if (!avgVecText) {
+    // Signed peers of the same type are the candidates, as before. They are
+    // ranked by ContractSense's retrieval (runbook step 6): this contract's
+    // summary -- or its title, before extraction has written one -- is the
+    // query, and each peer scores by its best-matching passage. This replaced
+    // an average-clause-embedding comparison in pgvector, which cannot run on
+    // MongoDB and made this route fail outright.
+    const self = await prisma.contract.findFirst({
+      where: { id, orgId },
+      select: { title: true, summary: true },
+    })
+    const candidates = await prisma.contract.findMany({
+      where: {
+        orgId, deletedAt: null, id: { not: id },
+        status: { in: ['APPROVED', 'EXECUTED'] },
+        type: contract.type,
+      },
+      select: {
+        id: true, title: true, type: true, value: true,
+        counterpartyName: true, updatedAt: true, riskScore: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 50,
+    })
+    const query = (self?.summary || self?.title || '').slice(0, 2000)
+    if (!candidates.length || !query.trim()) {
       return reply.send({
-        data:               [],
-        message:            'No embeddings yet for this contract — precedents unavailable',
-        selfRiskScore,
-        peerAvgRiskScore:   null,
-        riskDeltaLabel:     null,
+        data: [], message: 'No signed contracts of this type to compare with yet',
+        selfRiskScore, peerAvgRiskScore: null, riskDeltaLabel: null,
       })
     }
 
-    // Top-3 signed peers of the same type by cosine similarity on avg
-    // clause embedding. Excludes this contract and unsigned drafts.
-    const peers = await prisma.$queryRaw<Array<{
-      contract_id:   string
-      title:         string
-      contract_type: string
-      value:         number | null
-      counterparty:  string | null
-      signed_at:     Date | null
-      risk_score:    number | null
-      similarity:    number
-    }>>`
-      WITH peer_avg AS (
-        SELECT c.id            AS contract_id,
-               c.title,
-               c.type          AS contract_type,
-               c.value,
-               c."counterpartyName" AS counterparty,
-               c."updatedAt"   AS signed_at,
-               c."riskScore"   AS risk_score,
-               AVG(cc.embedding) AS avg_embedding
-        FROM   contracts c
-        JOIN   contract_versions cv ON cv."contractId" = c.id
-        JOIN   contract_clauses cc  ON cc."versionId"  = cv.id
-        WHERE  c."orgId"       = ${orgId}
-               AND c.id        <> ${id}
-               AND c."deletedAt" IS NULL
-               AND c.status IN ('APPROVED','EXECUTED')
-               AND c.type      = ${contract.type}
-               AND cc.embedding IS NOT NULL
-               AND cc."isSubChunk" = FALSE
-        GROUP  BY c.id, c.title, c.type, c.value, c."counterpartyName", c."updatedAt", c."riskScore"
-      )
-      SELECT contract_id, title, contract_type, value, counterparty,
-             signed_at, risk_score,
-             1 - (avg_embedding <=> ${avgVecText}::vector) AS similarity
-      FROM   peer_avg
-      ORDER  BY avg_embedding <=> ${avgVecText}::vector
-      LIMIT  3
-    `
+    let passages: Awaited<ReturnType<typeof searchClauses>>
+    try {
+      passages = await searchClauses(query, orgId, 30, candidates.map(c => c.id))
+    } catch (err) {
+      req.log.warn({ err }, '[precedents] retrieval unavailable')
+      return reply.send({
+        data: [], message: 'Precedent search is unavailable right now',
+        selfRiskScore, peerAvgRiskScore: null, riskDeltaLabel: null,
+      })
+    }
+    const best = new Map<string, number>()
+    for (const p of passages) best.set(p.contractId, Math.max(best.get(p.contractId) ?? 0, p.similarity))
+    const peers = candidates
+      .filter(c => best.has(c.id))
+      .sort((x, y) => best.get(y.id)! - best.get(x.id)!)
+      .slice(0, 3)
+      .map(c => ({
+        contract_id: c.id, title: c.title, contract_type: c.type, value: c.value,
+        counterparty: c.counterpartyName, signed_at: c.updatedAt,
+        risk_score: c.riskScore, similarity: best.get(c.id)!,
+      }))
 
     const peerRiskScores = peers
       .map(p => normalizeRiskScore(p.risk_score))
