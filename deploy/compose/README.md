@@ -50,7 +50,7 @@ signing requests and reminders.
 
 ## What runs
 
-Eleven containers, one of them published:
+Ten long-running containers and two one-shot setup containers; only `edge` is published:
 
 | Service | Role |
 | --- | --- |
@@ -68,10 +68,11 @@ MongoDB, Redis and MinIO are reachable only inside the Compose network, so
 they run without passwords of their own (MinIO has generated credentials).
 Do not publish their ports.
 
-**No separate vector database.** Retrieval uses MongoDB's text index on this
-install. MongoDB Community has no vector search, and adding a vector store
-would add a service and about 0.5 GiB of memory for a gain that has not been
-measured on this workload yet.
+**No separate vector database.** MongoDB Community has no vector search, so
+contracts are indexed without embeddings and the assistant ranks a
+contract's passages by keyword. Upload, extraction and review do not depend
+on it. A vector store would add a service and about 0.5 GiB of memory for a
+retrieval gain not yet measured on this workload.
 
 ## Configuration
 
