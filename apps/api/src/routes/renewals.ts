@@ -2,19 +2,29 @@
  * Renewal routes (P8 Step 7).
  *
  *   GET /api/v1/renewals
- *     Org-wide list of EXECUTED contracts whose expiryDate falls inside
- *     the lookahead window. Groups by month and exposes per-bucket KPIs
- *     (count, total ACV) so the calendar view can render without
- *     additional fetches.
+ *     Org-wide list of EXECUTED contracts that need a renewal decision
+ *     inside the lookahead window. Groups by month of expiry and exposes
+ *     per-month KPIs (count, total ACV) so the calendar view can render
+ *     without additional fetches.
  *
  *   GET /api/v1/renewals/stats
- *     Header KPIs: this month, next 30d, next 60d, next 90d, no-decision.
+ *     Header KPIs: this week, next 30d, next 60d, next 90d, no-decision.
+ *
+ * Windows, buckets and counts run on each contract's `actBy`: the last day
+ * to serve notice when it may renew itself, its expiry otherwise (see
+ * lib/renewal-terms.ts). Counting by expiry put a contract with 90 days'
+ * notice in "Next 30d" two months after it had already renewed.
  */
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { requirePermission } from '../middleware/permissions.js'
 import { buildCsv } from '../lib/csv.js'
+import {
+  candidateExpiryRange, daysFromToday, renewalJson, withRenewalTerms,
+} from '../lib/renewal-terms.js'
+
+const DAY_MS = 24 * 60 * 60 * 1000
 
 const ListSchema = z.object({
   bucket: z.enum(['all', 'this_week', 'next_30', 'next_60', 'next_90', 'overdue']).default('all'),
@@ -38,6 +48,8 @@ interface RenewalRow {
   // noticeDays to show the notice-to-terminate deadline, which is the date
   // that actually binds — expiry alone is too late to act on.
   keyTerms:         Record<string, unknown> | null
+  /** Renewal terms resolved from keyTerms and renewal obligations. */
+  renewal:          ReturnType<typeof renewalJson>
   // Renewal-specific from metadata
   renewalDecision:    string | null   // renew | renegotiate | let_expire | pause | unknown
   renewalDecisionAt:  string | null
@@ -59,15 +71,16 @@ export async function renewalRoutes(app: FastifyInstance) {
     const { orgId } = req.user
     const now = new Date()
 
-    // Date window — default 365 days lookahead, allow up to 30 days look-back.
-    const lookahead = new Date(now.getTime() + q.lookaheadDays * 24 * 60 * 60 * 1000)
-    const lookback  = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    // Default 365 days lookahead by actBy; expired up to 30 days ago.
+    const window    = { now, lookaheadDays: q.lookaheadDays }
+    const lookahead = new Date(now.getTime() + q.lookaheadDays * DAY_MS)
+    const lookback  = candidateExpiryRange(window).gte
 
-    const contracts = await prisma.contract.findMany({
+    const fetched = await prisma.contract.findMany({
       where: {
         orgId, deletedAt: null,
         status:     'EXECUTED',
-        expiryDate: { gte: lookback, lte: lookahead },
+        expiryDate: candidateExpiryRange(window),
       },
       select: {
         id: true, title: true, type: true,
@@ -77,8 +90,9 @@ export async function renewalRoutes(app: FastifyInstance) {
         owner: { select: { name: true } },
       },
       orderBy: { expiryDate: 'asc' },
-      take: 1_000,
+      take: 2_000,
     })
+    const contracts = await withRenewalTerms(fetched, window)
 
     const rows: RenewalRow[] = contracts.map(c => {
       const md = (c.metadata ?? {}) as {
@@ -100,6 +114,7 @@ export async function renewalRoutes(app: FastifyInstance) {
         keyTerms:         (c.keyTerms && typeof c.keyTerms === 'object' && !Array.isArray(c.keyTerms))
           ? (c.keyTerms as Record<string, unknown>)
           : null,
+        renewal:          renewalJson(c.renewal),
         renewalDecision:    md.renewalDecision ?? null,
         renewalDecisionAt:  md.renewalDecisionAt ?? null,
         renewalAdvice:    md.renewalAdvice
@@ -112,23 +127,10 @@ export async function renewalRoutes(app: FastifyInstance) {
       }
     })
 
-    // Bucket filter
+    // Bucket filter, by the date that binds.
     let filtered = rows
     if (q.bucket !== 'all') {
-      const cutoff7  = new Date(now.getTime() + 7  * 24 * 60 * 60 * 1000)
-      const cutoff30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
-      const cutoff60 = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000)
-      const cutoff90 = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000)
-      filtered = rows.filter(r => {
-        if (!r.expiryDate) return false
-        const d = new Date(r.expiryDate)
-        if (q.bucket === 'overdue')   return d < now
-        if (q.bucket === 'this_week') return d >= now && d <= cutoff7
-        if (q.bucket === 'next_30')   return d >= now && d <= cutoff30
-        if (q.bucket === 'next_60')   return d >= now && d <= cutoff60
-        if (q.bucket === 'next_90')   return d >= now && d <= cutoff90
-        return true
-      })
+      filtered = rows.filter(r => r.renewal.actBy != null && inBucket(q.bucket, new Date(r.renewal.actBy), now))
     }
     if (q.status !== 'all') {
       filtered = filtered.filter(r =>
@@ -170,37 +172,44 @@ export async function renewalRoutes(app: FastifyInstance) {
     if (format !== 'csv') return reply.status(400).send({ detail: 'Only csv is supported' })
     const { orgId } = req.user
     const now = new Date()
-    const lookahead = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
-    const lookback  = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const window = { now, lookaheadDays: 365 }
 
-    const contracts = await prisma.contract.findMany({
+    const fetched = await prisma.contract.findMany({
       where: {
         orgId, deletedAt: null, status: 'EXECUTED',
-        expiryDate: { gte: lookback, lte: lookahead },
+        expiryDate: candidateExpiryRange(window),
       },
       select: {
         id: true, title: true, type: true, counterpartyName: true,
         effectiveDate: true, expiryDate: true, value: true, currency: true,
-        metadata: true,
+        metadata: true, keyTerms: true,
         owner: { select: { name: true, email: true } },
       },
       orderBy: { expiryDate: 'asc' },
       take: 5_000,
     })
+    const contracts = await withRenewalTerms(fetched, window)
 
     const headers = [
       'Title', 'Type', 'Counterparty', 'Owner', 'Effective Date', 'Expiry Date',
-      'Days Until Expiry', 'Value', 'Currency', 'AI Recommendation', 'AI Confidence', 'Decision',
+      'Days Until Expiry', 'Auto-renews', 'Notice Period (days)', 'Notice Deadline', 'Act By',
+      'Days Until Act By', 'Value', 'Currency', 'AI Recommendation', 'AI Confidence', 'Decision',
     ]
+    const ymd = (d: Date | null) => d?.toISOString().slice(0, 10) ?? ''
     const rows = contracts.map(c => {
       const md = (c.metadata ?? {}) as { renewalAdvice?: { recommendation?: string; confidence?: string }; renewalDecision?: string }
-      const days = c.expiryDate ? Math.round((c.expiryDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)) : ''
+      const r = c.renewal
       return [
         c.title, c.type, c.counterpartyName ?? '',
         c.owner?.name ?? '',
-        c.effectiveDate?.toISOString().slice(0, 10) ?? '',
-        c.expiryDate?.toISOString().slice(0, 10) ?? '',
-        days,
+        ymd(c.effectiveDate),
+        ymd(c.expiryDate),
+        c.expiryDate ? daysFromToday(c.expiryDate, now) : '',
+        r.autoRenew == null ? 'unknown' : r.autoRenew ? 'yes' : 'no',
+        r.noticeDays ?? '',
+        ymd(r.noticeDeadline),
+        ymd(r.actBy),
+        r.actBy ? daysFromToday(r.actBy, now) : '',
         c.value ? Number(c.value.toString()) : '',
         c.currency ?? '',
         md.renewalAdvice?.recommendation ?? '',
@@ -218,28 +227,28 @@ export async function renewalRoutes(app: FastifyInstance) {
   app.get('/stats', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
     const { orgId } = req.user
     const now = new Date()
-    const cut7  = new Date(now.getTime() + 7  * 24 * 60 * 60 * 1000)
-    const cut30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
-    const cut60 = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000)
-    const cut90 = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000)
-    const back30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const window = { now, lookaheadDays: 90 }
 
-    const [overdue, thisWeek, next30, next60, next90, totalIn90] = await Promise.all([
-      prisma.contract.count({ where: { orgId, deletedAt: null, status: 'EXECUTED', expiryDate: { gte: back30, lt: now } } }),
-      prisma.contract.count({ where: { orgId, deletedAt: null, status: 'EXECUTED', expiryDate: { gte: now, lte: cut7 } } }),
-      prisma.contract.count({ where: { orgId, deletedAt: null, status: 'EXECUTED', expiryDate: { gte: now, lte: cut30 } } }),
-      prisma.contract.count({ where: { orgId, deletedAt: null, status: 'EXECUTED', expiryDate: { gte: now, lte: cut60 } } }),
-      prisma.contract.count({ where: { orgId, deletedAt: null, status: 'EXECUTED', expiryDate: { gte: now, lte: cut90 } } }),
-      prisma.contract.findMany({
-        where:  { orgId, deletedAt: null, status: 'EXECUTED', expiryDate: { gte: now, lte: cut90 } },
-        select: { value: true, currency: true, metadata: true },
-        take: 500,
-      }),
-    ])
+    const fetched = await prisma.contract.findMany({
+      where:  { orgId, deletedAt: null, status: 'EXECUTED', expiryDate: candidateExpiryRange(window) },
+      select: { id: true, expiryDate: true, keyTerms: true, value: true, metadata: true },
+      take: 5_000,
+    })
+    const contracts = await withRenewalTerms(fetched, window)
 
+    const counts = { overdue: 0, thisWeek: 0, next30: 0, next60: 0, next90: 0 }
     let totalAcvNext90 = 0
     let undecided = 0
-    for (const c of totalIn90) {
+    let noticeNext30 = 0
+    for (const c of contracts) {
+      const actBy = c.renewal.actBy!
+      if (inBucket('overdue', actBy, now))   counts.overdue++
+      if (inBucket('this_week', actBy, now)) counts.thisWeek++
+      if (inBucket('next_30', actBy, now))   counts.next30++
+      if (inBucket('next_60', actBy, now))   counts.next60++
+      if (!inBucket('next_90', actBy, now)) continue
+      counts.next90++
+      if (c.renewal.noticeDeadline && inBucket('next_30', c.renewal.noticeDeadline, now)) noticeNext30++
       if (c.value) {
         const n = Number(c.value.toString())
         if (!isNaN(n)) totalAcvNext90 += n
@@ -248,8 +257,21 @@ export async function renewalRoutes(app: FastifyInstance) {
       if (!md.renewalDecision || md.renewalDecision === 'unknown') undecided++
     }
 
-    return reply.send({
-      overdue, thisWeek, next30, next60, next90, undecided, totalAcvNext90,
-    })
+    return reply.send({ ...counts, undecided, totalAcvNext90, noticeNext30 })
   })
+}
+
+type Bucket = z.infer<typeof ListSchema>['bucket']
+
+/** Whether a binding date falls in a bucket. Day-granular: "today" is not overdue. */
+export function inBucket(bucket: Bucket, d: Date, now: Date): boolean {
+  const days = daysFromToday(d, now)
+  switch (bucket) {
+    case 'overdue':   return days < 0
+    case 'this_week': return days >= 0 && days <= 7
+    case 'next_30':   return days >= 0 && days <= 30
+    case 'next_60':   return days >= 0 && days <= 60
+    case 'next_90':   return days >= 0 && days <= 90
+    default:          return true
+  }
 }

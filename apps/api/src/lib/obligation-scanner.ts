@@ -21,7 +21,8 @@
 import { prisma } from './prisma.js'
 import { queueNotification } from './queue.js'
 import { createAuditEvent } from './audit.js'
-import { AuditAction } from '@clm/types'
+import { AuditAction, type RenewalTerms } from '@clm/types'
+import { candidateExpiryRange, daysFromToday, withRenewalTerms } from './renewal-terms.js'
 
 export interface ScanOptions {
   /** Only walk this one org. Omit to scan all orgs. */
@@ -172,16 +173,20 @@ export async function scanObligations(opts: ScanOptions = {}): Promise<ScanResul
     // writing, so re-running the scanner doesn't spam the trail.
     if (daysOut < 0) {
       try {
-        const prior = await prisma.auditEvent.findFirst({
+        // Matched on obligationId in memory: Prisma's JSON `path` filter is
+        // relational-only and throws on MongoDB, which meant this event was
+        // never written.
+        const priors = await prisma.auditEvent.findMany({
           where: {
             orgId: o.contract.orgId,
             action: AuditAction.OBLIGATION_OVERDUE,
             resourceType: 'contract',
             resourceId: o.contract.id,
-            metadata: { path: ['obligationId'], equals: o.id } as never,
           },
-          select: { id: true },
+          select: { metadata: true },
+          take: 1_000,
         })
+        const prior = priors.some(p => (p.metadata as { obligationId?: string } | null)?.obligationId === o.id)
         if (!prior) {
           await createAuditEvent({
             orgId: o.contract.orgId,
@@ -209,25 +214,30 @@ export async function scanObligations(opts: ScanOptions = {}): Promise<ScanResul
 
 // ─── P5.3 — Renewal scanner ─────────────────────────────────────────────────
 /**
- * Walk every EXECUTED contract with a populated expiryDate, fire a
- * RENEWAL_DUE notification for each that expires within the lookahead
+ * Walk every EXECUTED contract, fire a RENEWAL_DUE notification for each
+ * whose binding date — the notice deadline for a contract that may renew
+ * itself, else expiry (see lib/renewal-terms.ts) — falls within the lead
  * window and hasn't been notified during the cooldown.
  *
  * Separate from scanObligations() because the signal is different:
- *   • obligations scanner watches metadata.obligations[].dueDate
- *   • renewal  scanner watches Contract.expiryDate + metadata.renewalNotifiedAt
+ *   • obligations scanner watches Obligation.dueDate
+ *   • renewal  scanner watches the contract's renewal terms + metadata.renewalNotifiedAt
  *
- * A renewal notification is *high-value, low-frequency* — we only ping
- * the owner once per 7 days until they record a decision.
+ * Leading from expiry alone was the failure this exists to prevent: with
+ * 90 days' notice and a 90-day lead, the first reminder landed on the day
+ * the contract had already renewed. A renewal notification is *high-value,
+ * low-frequency* — we ping once per cooldown until someone records a decision.
  */
 export interface ScanRenewalsOptions {
   orgId?:       string
-  /** Default 90 days — the CLM industry standard renewal lookahead. */
+  /** Days ahead of the binding date to start reminding. Default 90. */
   leadDays?:    number
   /** Ignore cooldown and renotify. */
   force?:       boolean
   /** Min ms between renotifications. Default 7 days. */
   cooldownMs?:  number
+  /** For tests. */
+  now?:         Date
 }
 
 export interface RenewalScanResult {
@@ -235,8 +245,46 @@ export interface RenewalScanResult {
   candidates:        number
   notified:          number
   skippedCooldown:   number
+  skippedDecided:    number
   skippedNoOwner:    number
   errors:            string[]
+}
+
+const fmtDay = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+
+/** Title and body of a renewal reminder; exported for tests. */
+export function renewalMessage(
+  c: { title: string; counterpartyName: string | null; value: { toString(): string } | null; currency: string | null },
+  r: RenewalTerms,
+  now: Date,
+): { title: string; body: string } {
+  const valueStr = c.value ? ` · ${c.currency ?? 'USD'} ${c.value.toString()}` : ''
+  const who = `${c.counterpartyName ?? 'Counterparty'}${valueStr}`
+  const expiry = r.expiryDate!
+
+  if (r.noticeDeadline) {
+    const days = daysFromToday(r.noticeDeadline, now)
+    const notice = `${r.noticeDays} days' notice`
+    const renews = r.autoRenew ? 'Renews automatically' : 'May renew automatically'
+    if (days < 0) {
+      return {
+        title: `Notice deadline passed ${-days}d ago · ${c.title}`,
+        body:  `${who} — ${renews.toLowerCase()} on ${fmtDay(expiry)}; the ${notice} deadline was ${fmtDay(r.noticeDeadline)}. Check whether notice can still be served.`.slice(0, 400),
+      }
+    }
+    const when = days === 0 ? 'Notice due today' : `Notice due in ${days}d`
+    return {
+      title: `${when} · ${c.title}`,
+      body:  `${who} — ${renews} on ${fmtDay(expiry)} unless notice is served by ${fmtDay(r.noticeDeadline)} (${notice}). Record a renewal decision.`.slice(0, 400),
+    }
+  }
+
+  const days = daysFromToday(expiry, now)
+  const label = days < 0 ? `Expired ${-days}d ago` : days === 0 ? 'Expires today' : `Expires in ${days}d`
+  return {
+    title: `${label} · ${c.title}`,
+    body:  `${who} — review renewal options now.`.slice(0, 400),
+  }
 }
 
 export async function scanRenewals(
@@ -244,39 +292,45 @@ export async function scanRenewals(
 ): Promise<RenewalScanResult> {
   const leadDays   = opts.leadDays   ?? 90
   const cooldownMs = opts.cooldownMs ?? 7 * 24 * 60 * 60 * 1000
-  const now        = Date.now()
-  const windowEnd  = now + leadDays * 24 * 60 * 60 * 1000
+  const nowDate    = opts.now ?? new Date()
+  const now        = nowDate.getTime()
+  const window     = { now: nowDate, lookaheadDays: leadDays }
 
   const res: RenewalScanResult = {
     scannedContracts: 0, candidates: 0, notified: 0,
-    skippedCooldown: 0, skippedNoOwner: 0, errors: [],
+    skippedCooldown: 0, skippedDecided: 0, skippedNoOwner: 0, errors: [],
   }
 
   const where: Record<string, unknown> = {
-    deletedAt:     null,
-    status:        'EXECUTED',
-    expiryDate:    { lte: new Date(windowEnd), gte: new Date(now - 30 * 24 * 60 * 60 * 1000) },
+    deletedAt:  null,
+    status:     'EXECUTED',
+    expiryDate: candidateExpiryRange(window),
   }
   if (opts.orgId) where.orgId = opts.orgId
 
-  const contracts = await prisma.contract.findMany({
+  const fetched = await prisma.contract.findMany({
     where: where as never,
     select: {
       id: true, orgId: true, title: true, ownerId: true,
-      counterpartyName: true, metadata: true, expiryDate: true,
+      counterpartyName: true, metadata: true, expiryDate: true, keyTerms: true,
       type: true, value: true, currency: true,
     },
-    take: 2_000,
+    take: 5_000,
   })
-  res.scannedContracts = contracts.length
+  res.scannedContracts = fetched.length
+  const contracts = await withRenewalTerms(fetched, window)
 
   for (const c of contracts) {
-    if (!c.expiryDate) continue
     res.candidates++
 
     const md = (c.metadata ?? {}) as {
       renewalNotifiedAt?:  string
       renewalDecision?:    string  // 'renew' | 'renegotiate' | 'let_expire' | 'unknown'
+    }
+    if (md.renewalDecision && md.renewalDecision !== 'unknown') {
+      // Owner already logged a decision — no more reminders.
+      res.skippedDecided++
+      continue
     }
     if (!opts.force && md.renewalNotifiedAt) {
       const last = new Date(md.renewalNotifiedAt).getTime()
@@ -285,41 +339,24 @@ export async function scanRenewals(
         continue
       }
     }
-    if (md.renewalDecision && md.renewalDecision !== 'unknown') {
-      // Owner already logged a decision — no more reminders.
-      res.skippedCooldown++
-      continue
-    }
 
-    const owner = await prisma.user.findFirst({
-      where: { id: c.ownerId, orgId: c.orgId },
-      select: { id: true, email: true },
-    })
-    if (!owner) { res.skippedNoOwner++; continue }
+    const recipient = await resolveRecipient(c.orgId, null, c.ownerId)
+    if (!recipient) { res.skippedNoOwner++; continue }
 
-    // Anchor to midnight for a clean daysOut count.
-    const todayMid = new Date(); todayMid.setHours(0, 0, 0, 0)
-    const expMid   = new Date(c.expiryDate); expMid.setHours(0, 0, 0, 0)
-    const daysOut  = Math.round((expMid.getTime() - todayMid.getTime()) / (24 * 60 * 60 * 1000))
-    const label    = daysOut < 0 ? `Expired ${Math.abs(daysOut)}d ago`
-                   : daysOut === 0 ? 'Expires today'
-                   : `Expires in ${daysOut}d`
-
-    const valueStr = c.value ? `${c.currency ?? 'USD'} ${c.value.toString()}` : ''
-
+    const msg = renewalMessage(c, c.renewal, nowDate)
     queueNotification({
       orgId:        c.orgId,
-      userId:       owner.id,
+      userId:       recipient.userId,
       type:         'RENEWAL_DUE',
-      title:        `${label} · ${c.title}`,
-      body:         `${c.counterpartyName ?? 'Counterparty'}${valueStr ? ` · ${valueStr}` : ''} — review renewal options now.`.slice(0, 400),
+      title:        msg.title,
+      body:         msg.body,
       resourceType: 'contract',
       resourceId:   c.id,
-      email:        owner.email ?? undefined,
+      email:        recipient.email ?? undefined,
     })
 
     try {
-      const nextMeta = { ...(c.metadata as Record<string, unknown>), renewalNotifiedAt: new Date().toISOString() }
+      const nextMeta = { ...(c.metadata as Record<string, unknown>), renewalNotifiedAt: new Date(now).toISOString() }
       await prisma.contract.update({
         where: { id: c.id },
         data:  { metadata: nextMeta as never },
