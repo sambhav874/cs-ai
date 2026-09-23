@@ -480,7 +480,9 @@ class VectorStoreManager:
         except RuntimeError:
             raise
         except Exception as e:
-            logger.error(f"Failed to initialize embeddings: {e}")
+            # The caller decides whether this is fatal; indexing carries on
+            # without vectors, so it is not an error here.
+            logger.warning("No embeddings provider available: %s", e)
             raise RuntimeError("Could not initialize any embeddings provider") from e
 
         self.embeddings = bundle.embeddings

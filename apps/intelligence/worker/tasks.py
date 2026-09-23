@@ -668,7 +668,12 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                 # vendor keys -- could never extract a single obligation, and
                 # every retry repeated the same deterministic failure. The
                 # contract is indexed without vectors and says so.
-                log_exception(logger, f"Embedding unavailable for contract {contract_id}; indexing without vectors", embed_error)
+                # Expected on an install without an embedding provider, so one
+                # line, not a traceback per contract.
+                logger.warning(
+                    "Embedding unavailable for contract %s; indexing without vectors (%s)",
+                    contract_id, str(embed_error)[:200],
+                )
                 embedding_status = "unavailable"
                 embedding_error = str(embed_error)[:300]
                 embedding_metadata = {}
