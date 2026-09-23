@@ -48,11 +48,69 @@ export async function findCategoryForClauseType(
   return matchCategory(categories, clauseType)
 }
 
+/**
+ * The extractor's clause types (review_agent.py) and the category names the
+ * seeded playbook uses do not line up: the extractor says `payment`,
+ * `termination`, `ip_ownership`; the playbook says "Fees & Payment", "Term &
+ * Termination", "Intellectual Property". With exact matching alone most
+ * clauses of a real contract resolved to no category, the checker reported
+ * them unmapped and the rewriter ran without the playbook.
+ *
+ * This table is the bridge. It is explicit on purpose — every entry is a
+ * known extractor type and the category names that mean the same thing, tried
+ * in order — so it cannot drift into the substring guessing this module
+ * exists to prevent. `and` and `&` are the same word here.
+ */
+const CLAUSE_TYPE_ALIASES: Record<string, string[]> = {
+  payment:                   ['fees & payment', 'payment terms', 'fees'],
+  price_adjustment:          ['fees & payment', 'payment', 'pricing'],
+  minimum_commitment:        ['fees & payment', 'payment'],
+  termination:               ['term & termination', 'term'],
+  post_termination_services: ['term & termination', 'termination'],
+  auto_renewal:              ['term & termination', 'renewal', 'termination'],
+  renewal_term:              ['term & termination', 'renewal', 'termination'],
+  confidential_info_definition: ['confidentiality'],
+  ip_ownership:              ['intellectual property', 'intellectual property rights', 'ip'],
+  ip_license_back:           ['intellectual property', 'ip ownership'],
+  license_grant:             ['intellectual property', 'license', 'licence'],
+  joint_ip:                  ['intellectual property', 'ip ownership'],
+  source_code_escrow:        ['intellectual property', 'escrow'],
+  representations_warranties: ['representations & warranties', 'warranties'],
+  warranty:                  ['representations & warranties', 'warranties'],
+  warranty_duration:         ['representations & warranties', 'warranty', 'warranties'],
+  uncapped_liability:        ['limitation of liability'],
+  liquidated_damages:        ['limitation of liability'],
+  force_majeure:             ['force majeure & excused events'],
+  assignment:                ['assignment & change of control'],
+  change_of_control:         ['assignment & change of control', 'assignment'],
+  notice:                    ['notices & miscellaneous', 'notices'],
+  governing_law:             ['dispute resolution', 'governing law & dispute resolution'],
+  dispute_resolution:        ['governing law & dispute resolution', 'governing law'],
+  data_protection:           ['data protection & privacy', 'privacy', 'data privacy'],
+  acceptance:                ['scope of services', 'acceptance testing'],
+  audit_rights:              ['audit'],
+}
+
+const sameWord = (k: string) => k.replace(/\band\b/g, '&')
+
 /** Pure form, for callers that already hold the org's categories. */
 export function matchCategory(
   categories: MatchedCategory[],
   clauseType: string,
 ): MatchedCategory | null {
-  const key = normalisedKey(clauseType)
-  return categories.find(c => normalisedKey(c.name) === key) ?? null
+  const key = sameWord(normalisedKey(clauseType))
+  if (!key) return null
+  const byKey = new Map<string, MatchedCategory>()
+  for (const c of categories) {
+    const k = sameWord(normalisedKey(c.name))
+    if (!byKey.has(k)) byKey.set(k, c)
+  }
+  const exact = byKey.get(key)
+  if (exact) return exact
+  const aliases = CLAUSE_TYPE_ALIASES[normalisedKey(clauseType).replace(/ /g, '_')] ?? []
+  for (const a of aliases) {
+    const hit = byKey.get(sameWord(a))
+    if (hit) return hit
+  }
+  return null
 }
