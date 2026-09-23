@@ -136,7 +136,17 @@ export function DocumentCanvas({
       ],
       content: html,
       editable,
-      onUpdate: ({ editor: ed }) => onChange?.(ed.getHTML()),
+      // Only a person's edit is a change. Extensions (risk markers, defined-term
+      // and consistency passes) also transact on the document, in read mode
+      // too, and the page saves every onChange as a new version: opening a
+      // contract used to write "Edited in-place" v2 with no extracted clauses,
+      // which blanked the playbook review and the clause markers.
+      onUpdate: ({ editor: ed, transaction }) => {
+        if (!ed.isEditable || transaction.getMeta('addToHistory') === false) return
+        const next = ed.getHTML()
+        if (next === html) return
+        onChange?.(next)
+      },
     },
     // Re-init if the underlying contract changes; cheap enough for now.
     [state.kind === 'ready' ? html : state.kind, editable],
