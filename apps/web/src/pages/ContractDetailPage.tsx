@@ -19,6 +19,7 @@ import {
   Link, Paperclip, Trash2, ExternalLink, Scissors, RefreshCw,
   FileEdit, Share2, ArrowLeftRight, X, PenLine, GitBranch,
   PanelRightClose, PanelRightOpen,
+  Info,
 } from 'lucide-react'
 import { expiryLabel, relativeTime } from '@/components/contracts/dates'
 import { toast } from '@/components/common/Toaster'
@@ -1915,6 +1916,18 @@ export function ContractDetailPage() {
           )}
         </div>
       )}
+      {contract?.analysisStatus === 'SKIPPED' && (
+        <div className="bg-surface-50 border-b border-surface-200 text-fg-700 px-6 py-2.5 flex items-center gap-3 text-body" data-testid="analysis-skipped-banner">
+          <Info className="size-4 flex-shrink-0 text-fg-500" />
+          <span>{contract.analysisError ?? 'AI review is off: no model provider is configured.'}</span>
+          <div className="ml-auto">
+            <Button variant="outline" size="sm" onClick={() => analyze.mutate()} disabled={analyze.isPending} className="gap-1.5">
+              {analyze.isPending && <Loader2 className="size-3.5 animate-spin" />}
+              Retry
+            </Button>
+          </div>
+        </div>
+      )}
       {contract?.analysisStatus === 'FAILED' && (
         <div className="bg-risk-50 border-b border-risk-200 text-risk-700 px-6 py-2.5 flex items-center gap-3 text-body">
           <AlertCircle className="size-4 flex-shrink-0" />
@@ -2674,7 +2687,9 @@ export function ContractDetailPage() {
           ].includes(contract.analysisStatus ?? '')
 
           let canvasState: CanvasState
-          if (contract.analysisStatus === 'FAILED') {
+          // A failed AI step is a banner, not a reason to hide the contract:
+          // when the document's text is there, show it.
+          if (contract.analysisStatus === 'FAILED' && !hasText) {
             canvasState = {
               kind: 'analysis_failed',
               reason: contract.analysisError ?? undefined,
