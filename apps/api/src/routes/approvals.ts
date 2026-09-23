@@ -22,6 +22,8 @@ import { createAuditEvent } from '../lib/audit.js'
 import { advanceWorkflow } from '../lib/workflow-engine.js'
 import { queueNotification, notificationQueue } from '../lib/queue.js'
 import { AuditAction } from '@clm/types'
+import { isInternalSecret } from '../lib/internal-auth.js'
+import { getPermissionsForRoles, evaluatePermission } from '../lib/permissions.js'
 
 // Wave 3.8 — validate workflow step definitions at save time. Each step must
 // name at least one approver, and a parallel step's requiredApprovals must be
@@ -308,6 +310,12 @@ export async function approvalRoutes(app: FastifyInstance) {
     if (instance.status !== 'PENDING' && instance.status !== 'ESCALATED') {
       return reply.status(409).send({ error: 'Workflow is already closed' })
     }
+    // Sequential gating (F-66), enforced here and not only by when steps get
+    // created: a step that is not the instance's current one cannot decide.
+    if (step.stepOrder !== instance.currentStepOrder) {
+      return reply.status(409).send({ error: 'An earlier approval step has not been decided yet' })
+    }
+    const logAuditFailure = (err: Error) => req.log.error({ err, stepId }, '[approvals] audit write failed')
 
     // Cancel escalation timer for this step
     try { await notificationQueue.remove(`escalate-${stepId}`) } catch { /* no-op */ }
@@ -317,26 +325,39 @@ export async function approvalRoutes(app: FastifyInstance) {
       // into this separate block — assert delegateTo is present.
       if (!delegateTo) return reply.status(400).send({ error: 'delegateTo is required when delegating' })
       // Mark current step DELEGATED, create new PENDING step for delegatee
-      const delegatee = await prisma.user.findFirst({ where: { id: delegateTo, orgId } })
-      if (!delegatee) return reply.status(400).send({ error: 'Delegatee user not found in this org' })
+      if (delegateTo === userId) return reply.status(400).send({ error: 'You cannot delegate to yourself' })
+      const delegatee = await prisma.user.findFirst({
+        where:   { id: delegateTo, orgId, status: 'ACTIVE', deletedAt: null },
+        include: { userRoles: { include: { role: true } } },
+      })
+      if (!delegatee) return reply.status(400).send({ error: 'Delegatee must be an active member of this org' })
+      // A delegate who cannot approve would receive a step they can never
+      // decide, and the workflow would stall on it.
+      const delegateePerms = await getPermissionsForRoles(orgId, delegatee.userRoles.map(ur => ur.role.name))
+      if (!evaluatePermission(delegateePerms, 'approve', 'workflow').granted) {
+        return reply.status(400).send({ error: 'Delegatee does not have permission to approve' })
+      }
 
-      await prisma.$transaction([
-        prisma.approvalStep.update({
-          where: { id: stepId },
-          data:  { status: 'DELEGATED', decision: 'DELEGATED', comment: comment?.trim(), delegatedToId: delegateTo, decidedAt: new Date() },
-        }),
-        prisma.approvalStep.create({
-          data: {
-            approvalInstanceId: instanceId,
-            orgId,
-            stepOrder:  step.stepOrder,
-            stepName:   step.stepName,
-            approverId: delegateTo,
-            status:     'PENDING',
-            escalateAt: step.escalateAt, // preserve original deadline
-          },
-        }),
-      ])
+      // Conditional on PENDING: a decision and a delegation racing on the
+      // same step must not both land.
+      const claimed = await prisma.approvalStep.updateMany({
+        where: { id: stepId, status: 'PENDING' },
+        data:  { status: 'DELEGATED', decision: 'DELEGATED', comment: comment?.trim(), delegatedToId: delegateTo, decidedAt: new Date() },
+      })
+      if (claimed.count === 0) return reply.status(409).send({ error: 'This step has already been decided' })
+      await prisma.approvalStep.create({
+        data: {
+          approvalInstanceId: instanceId,
+          orgId,
+          stepOrder:  step.stepOrder,
+          stepName:   step.stepName,
+          approverId: delegateTo,
+          // Carries the chain: a re-delegated step still names who owned it first.
+          delegatedFromId: step.delegatedFromId ?? userId,
+          status:     'PENDING',
+          escalateAt: step.escalateAt, // preserve original deadline
+        },
+      })
 
       const contract = await prisma.contract.findUnique({ where: { id: instance.contractId } })
       queueNotification({
@@ -356,26 +377,31 @@ export async function approvalRoutes(app: FastifyInstance) {
         action:       AuditAction.APPROVAL_DECIDED,
         resourceType: 'approval_step',
         resourceId:   stepId,
-        metadata:     { decision: 'DELEGATED', delegateTo, instanceId },
-      }).catch(() => {})
+        metadata:     { decision: 'DELEGATED', delegateTo, instanceId, originalApproverId: step.delegatedFromId ?? userId },
+      }).catch(logAuditFailure)
 
       return reply.send({ stepId, decision: 'DELEGATED', delegatedTo: delegateTo })
     }
 
-    // APPROVED or REJECTED
-    await prisma.approvalStep.update({
-      where: { id: stepId },
+    // APPROVED or REJECTED — conditional, so a double-submit decides once.
+    const decided = await prisma.approvalStep.updateMany({
+      where: { id: stepId, status: 'PENDING' },
       data:  { status: decision, decision, comment: comment?.trim() ?? null, decidedAt: new Date() },
     })
+    if (decided.count === 0) return reply.status(409).send({ error: 'This step has already been decided' })
 
-    createAuditEvent({
+    // A delegate's decision names both: who decided, and whose step it was.
+    await createAuditEvent({
       orgId,
       userId,
       action:       AuditAction.APPROVAL_DECIDED,
       resourceType: 'approval_step',
       resourceId:   stepId,
-      metadata:     { decision, instanceId },
-    }).catch(() => {})
+      metadata:     {
+        decision, instanceId, stepOrder: step.stepOrder,
+        ...(step.delegatedFromId && { onBehalfOf: step.delegatedFromId, viaDelegation: true }),
+      },
+    }).catch(logAuditFailure)
 
     // Run the state machine to advance or close the workflow
     await advanceWorkflow(instanceId, prisma)
@@ -394,12 +420,10 @@ export async function approvalRoutes(app: FastifyInstance) {
   // Called by the Python approval agent after it finishes generating the summary.
   // Protected by internal secret header rather than user JWT.
   app.patch('/:instanceId/summary', async (req, reply) => {
-    const secret = req.headers['x-internal-secret']
-    if (!secret || secret !== process.env.INTERNAL_SERVICE_SECRET) {
-      // In dev with no secret set, allow all — in prod this header is required
-      if (process.env.NODE_ENV === 'production') {
-        return reply.status(401).send({ error: 'Unauthorized' })
-      }
+    // Required in every environment: "open in dev" meant open on any box
+    // that forgot to set NODE_ENV=production.
+    if (!isInternalSecret(req.headers['x-internal-secret'])) {
+      return reply.status(401).send({ error: 'Unauthorized' })
     }
 
     const { instanceId } = req.params as { instanceId: string }

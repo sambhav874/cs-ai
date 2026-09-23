@@ -163,15 +163,18 @@ export async function advanceWorkflow(instanceId: string, prisma: PrismaClient):
     // Cancel all pending escalation jobs at this step
     await Promise.all(currentSteps.filter(s => s.status === 'PENDING').map(s => cancelEscalation(s.id)))
 
+    // Close the instance first, conditionally: two rejections landing
+    // together must reject (and notify) once.
+    const closed = await prisma.approvalInstance.updateMany({
+      where: { id: instanceId, status: { in: ['PENDING', 'ESCALATED'] } },
+      data:  { status: 'REJECTED', decidedAt: new Date() },
+    })
+    if (closed.count === 0) return
+
     await prisma.$transaction([
       // Reject all still-pending steps
       prisma.approvalStep.updateMany({
         where: { approvalInstanceId: instanceId, status: 'PENDING' },
-        data:  { status: 'REJECTED', decidedAt: new Date() },
-      }),
-      // Close the instance
-      prisma.approvalInstance.update({
-        where: { id: instanceId },
         data:  { status: 'REJECTED', decidedAt: new Date() },
       }),
       // Revert contract to DRAFT so submitter can edit and resubmit
@@ -187,7 +190,7 @@ export async function advanceWorkflow(instanceId: string, prisma: PrismaClient):
       resourceType: 'approval_instance',
       resourceId:   instanceId,
       metadata:     { decision: 'REJECTED', contractId: instance.contractId },
-    }).catch(() => {})
+    }).catch((err: Error) => console.error('[workflow-engine] audit write failed: %s', err.message))
 
     // Notify submitter
     const contract = await prisma.contract.findUnique({ where: { id: instance.contractId } })
@@ -222,12 +225,14 @@ export async function advanceWorkflow(instanceId: string, prisma: PrismaClient):
   const nextStepDef = stepDefs.find(d => d.order === instance.currentStepOrder + 1)
 
   if (!nextStepDef) {
-    // All steps complete — approve the contract
+    // All steps complete — approve the contract. Conditional, so parallel
+    // approvals that resolve the last batch together approve it once.
+    const approved = await prisma.approvalInstance.updateMany({
+      where: { id: instanceId, status: { in: ['PENDING', 'ESCALATED'] } },
+      data:  { status: 'APPROVED', decidedAt: new Date() },
+    })
+    if (approved.count === 0) return
     await prisma.$transaction([
-      prisma.approvalInstance.update({
-        where: { id: instanceId },
-        data:  { status: 'APPROVED', decidedAt: new Date() },
-      }),
       prisma.contract.update({
         where: { id: instance.contractId },
         data:  { status: 'APPROVED' },
@@ -240,7 +245,7 @@ export async function advanceWorkflow(instanceId: string, prisma: PrismaClient):
       resourceType: 'approval_instance',
       resourceId:   instanceId,
       metadata:     { decision: 'APPROVED', contractId: instance.contractId },
-    }).catch(() => {})
+    }).catch((err: Error) => console.error('[workflow-engine] audit write failed: %s', err.message))
 
     const contract = await prisma.contract.findUnique({ where: { id: instance.contractId } })
     queueNotification({
@@ -259,14 +264,37 @@ export async function advanceWorkflow(instanceId: string, prisma: PrismaClient):
   // for parallel steps, single for sequential).
   const nextApproverIds = await resolveApprovers(nextStepDef, instance.orgId, prisma)
   if (nextApproverIds.length === 0) {
-    console.warn('[workflow-engine] no approvers found for step %d (def: %j) — skipping', nextStepDef.order, nextStepDef)
+    // Nobody can take the next step (role emptied, approver deactivated). The
+    // workflow cannot move on its own, and previously it just sat PENDING
+    // with no pending step and nobody told. Tell the submitter and record it.
+    console.error('[workflow-engine] no approvers resolvable for step %d of instance %s', nextStepDef.order, instanceId)
+    await createAuditEvent({
+      orgId:        instance.orgId,
+      action:       AuditAction.APPROVAL_DECIDED,
+      resourceType: 'approval_instance',
+      resourceId:   instanceId,
+      metadata:     { event: 'stalled_no_approver', stepOrder: nextStepDef.order, stepName: nextStepDef.name },
+    }).catch((err: Error) => console.error('[workflow-engine] audit write failed: %s', err.message))
+    queueNotification({
+      orgId:        instance.orgId,
+      userId:       instance.submittedById,
+      type:         'APPROVAL_DECIDED',
+      title:        'Approval needs attention',
+      body:         `No approver could be found for "${nextStepDef.name}". Update the workflow or its roles, then resubmit.`,
+      resourceType: 'approval_instance',
+      resourceId:   instanceId,
+    })
     return
   }
 
-  await prisma.approvalInstance.update({
-    where: { id: instanceId },
+  // Claim the advance: only the caller that moves currentStepOrder from this
+  // step creates the next one. Two parallel approvals resolving the batch
+  // together would otherwise both create (and notify) the next step.
+  const advanced = await prisma.approvalInstance.updateMany({
+    where: { id: instanceId, currentStepOrder: instance.currentStepOrder, status: { in: ['PENDING', 'ESCALATED'] } },
     data:  { currentStepOrder: nextStepDef.order },
   })
+  if (advanced.count === 0) return
 
   const newStepIds = await createStepsForDef(prisma, instanceId, instance.orgId, nextStepDef, nextApproverIds)
 
