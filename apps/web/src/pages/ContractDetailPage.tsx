@@ -938,7 +938,8 @@ export function ContractDetailPage() {
   // U.1.2 — does the current version have an actual PDF/source file? When
   // null it's a text-only / template-generated contract — the Original
   // toggle would crash with "Invalid PDF structure". We disable it instead.
-  const hasOriginal = !!(versions[0]?.s3Key && versions[0]?.mimeType)
+  // The newest version carries an uploaded file (the API says so; it does not send the key).
+  const hasOriginal = !!(versions[0]?.hasFile && versions[0]?.mimeType)
 
   const { data: commentsData } = useQuery({
     queryKey: ['comments', id],

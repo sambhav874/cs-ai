@@ -656,6 +656,7 @@ export async function contractRoutes(app: FastifyInstance) {
       select: {
         id: true, versionNumber: true, mimeType: true, fileSize: true,
         changeNote: true, changeSummary: true, createdById: true, createdAt: true,
+        s3Key: true,
       },
     })
 
@@ -667,7 +668,14 @@ export async function contractRoutes(app: FastifyInstance) {
     const authors = await resolveRevisionAuthors(versions.map(v => v.createdById))
 
     return reply.send({
-      data: versions.map(v => ({ ...v, createdByName: authors.get(v.createdById) ?? null })),
+      // `hasFile`, not the storage key: the page needs to know an uploaded
+      // original exists (to offer the Original view), not where it is stored.
+      // Without it the Original view was disabled for every uploaded contract.
+      data: versions.map(({ s3Key, ...v }) => ({
+        ...v,
+        hasFile: !!s3Key,
+        createdByName: authors.get(v.createdById) ?? null,
+      })),
     })
   })
 
