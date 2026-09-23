@@ -430,13 +430,18 @@ def extract_obligations_task(
         {"$set": {"obligations.status": "running", "obligations.started_at": datetime.utcnow()}},
     )
 
+    from services.platform_models import use_platform_org
+
     try:
-        result = ContractKPIManager(kpi_db).extract_for_contract(
-            contract_doc=contract_doc,
-            user_id=user_id,
-            replace_drafts=replace_drafts,
-            ai_provider=ai_provider,
-        )
+        # A linked contract runs on its platform org's Admin → AI settings
+        # (model per tier, BYOK key, cost cap), not this tier's env default.
+        with use_platform_org(_platform_org_for(platform_contract_id)):
+            result = ContractKPIManager(kpi_db).extract_for_contract(
+                contract_doc=contract_doc,
+                user_id=user_id,
+                replace_drafts=replace_drafts,
+                ai_provider=ai_provider,
+            )
     except Exception as exc:
         log_exception(logger, f"Automatic obligation extraction failed for contract {contract_id}", exc)
         collection.update_one(
@@ -478,6 +483,20 @@ def extract_obligations_task(
         result=result,
     )
     return {"status": "success", "contract_id": contract_id, "kpi_count": result.get("kpi_count")}
+
+
+def _platform_org_for(platform_contract_id: Optional[str]) -> Optional[str]:
+    """The org that owns a linked contract, from the platform's own record."""
+    if not platform_contract_id:
+        return None
+    try:
+        from core.platform_identity import _platform_db
+
+        doc = _platform_db()["contracts"].find_one({"_id": platform_contract_id}, {"orgId": 1}) or {}
+        return str(doc["orgId"]) if doc.get("orgId") else None
+    except Exception as exc:  # settings are an override; never fail the run over them
+        logger.warning("Could not resolve the platform org for contract %s: %s", platform_contract_id, exc)
+        return None
 
 
 def _sync_obligations_to_platform(

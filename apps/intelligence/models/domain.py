@@ -39,6 +39,10 @@ class UserInDB(User):
     teamIds: List[ObjectIdStr] = Field(default_factory=list)
     ownedAccountId: ObjectIdStr = None 
     
+    # Set on shadow users of platform accounts: the org whose Admin → AI
+    # settings apply to this user's model calls.
+    platformOrgId: Optional[str] = None
+
     model_config = ConfigDict(
         populate_by_name = True,
         json_encoders={ObjectId: str}

@@ -27,6 +27,8 @@ from services.model_settings import (
     team_id_for_user,
 )
 
+from services.platform_models import use_platform_org
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/model-settings", tags=["Model Settings"])
@@ -44,12 +46,20 @@ def apply_team_model_settings(current_user: UserInDB = Depends(get_current_activ
     than failing an otherwise-valid request.
     """
     token = None
+    org_scope = None
     try:
         resolved = resolve_for_team(db, team_id_for_user(current_user))
         if resolved:
             token = set_active_model_settings(resolved)
+        # A platform user's calls run on their org's Admin → AI settings.
+        platform_org = getattr(current_user, "platformOrgId", None)
+        if platform_org:
+            org_scope = use_platform_org(str(platform_org))
+            org_scope.__enter__()
         yield resolved
     finally:
+        if org_scope is not None:
+            org_scope.__exit__(None, None, None)
         if token is not None:
             try:
                 reset_active_model_settings(token)
