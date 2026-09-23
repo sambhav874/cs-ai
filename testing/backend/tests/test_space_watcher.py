@@ -114,3 +114,81 @@ def test_an_ordinary_project_is_never_blocked():
     col = mongomock.MongoClient().db.projects
     col.insert_one({"name": "Just a project"})
     assert space_write_block(col.find_one({})) is None
+
+
+# ── Stream recovery ───────────────────────────────────────────────────────────
+
+import threading
+
+from pymongo.errors import OperationFailure
+
+from services.space_watcher import watch_collection
+
+
+class _State:
+    def __init__(self, token=None):
+        self.doc = {"_id": "w", "resumeToken": token} if token is not None else None
+
+    def find_one(self, _q):
+        return self.doc
+
+    def update_one(self, _q, update, upsert=False):
+        self.doc = {"_id": "w", **update["$set"]}
+
+
+class _Stream:
+    def __init__(self, changes, stop):
+        self.changes, self.stop, self.resume_token = list(changes), stop, None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def try_next(self):
+        if not self.changes:
+            self.stop.set()
+            return None
+        change = self.changes.pop(0)
+        self.resume_token = change["_id"]
+        return change
+
+
+class _Source:
+    name = "spaces"
+
+    def __init__(self, script):
+        self.script, self.calls = script, []
+
+    def watch(self, full_document=None, resume_after=None):
+        self.calls.append(resume_after)
+        step = self.script.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        return step
+
+
+def test_an_invalidate_is_not_saved_as_the_resume_point():
+    stop = threading.Event()
+    state = _State(token={"t": 1})
+    seen = []
+    source = _Source([
+        _Stream([{"_id": {"t": 2}, "operationType": "insert"}, {"_id": {"t": 3}, "operationType": "invalidate"}], threading.Event()),
+        _Stream([{"_id": {"t": 4}, "operationType": "insert"}], stop),
+    ])
+    watch_collection(source, seen.append, state, stop, watcher_id="w", retry_seconds=0)
+    assert source.calls == [{"t": 1}, None]  # reopened from now, not after the invalidate
+    assert [c["_id"]["t"] for c in seen] == [2, 4]
+    assert state.doc["resumeToken"] == {"t": 4}
+
+
+def test_an_unusable_token_is_dropped_not_retried_forever():
+    stop = threading.Event()
+    state = _State(token={"t": "invalidate"})
+    source = _Source([
+        OperationFailure("cannot resume after an invalidate", code=280),
+        _Stream([{"_id": {"t": 9}, "operationType": "insert"}], stop),
+    ])
+    watch_collection(source, lambda c: None, state, stop, watcher_id="w", retry_seconds=0)
+    assert source.calls == [{"t": "invalidate"}, None]

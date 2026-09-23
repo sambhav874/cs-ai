@@ -163,15 +163,26 @@ def watch_collection(
                     if change is None:
                         time.sleep(0.5)
                         continue
+                    if change.get("operationType") == "invalidate":
+                        # The collection was dropped or renamed (a restore
+                        # does this). An invalidate token cannot be resumed
+                        # after, and saving it made every later attempt fail
+                        # the same way, forever. Start again from now.
+                        logger.warning("%s's stream was invalidated (collection dropped or renamed); reopening.", watcher_id)
+                        _save_token(state, None, watcher_id)
+                        break
                     try:
                         handle(change)
                     except Exception:
                         logger.exception("%s could not apply a change; continuing.", watcher_id)
                     _save_token(state, stream.resume_token, watcher_id)
         except PyMongoError as e:
-            # 286 ChangeStreamHistoryLost: the token is older than the oplog.
-            if getattr(e, "code", None) == 286 and resume_after is not None:
-                logger.warning("%s's resume token is too old; resynchronising from now.", watcher_id)
+            # The saved token cannot be used: 286 ChangeStreamHistoryLost (older
+            # than the oplog), 260 InvalidResumeToken, 280 ChangeStreamFatalError
+            # (e.g. resuming after an invalidate). Retrying it would fail the
+            # same way indefinitely.
+            if getattr(e, "code", None) in (260, 280, 286) and resume_after is not None:
+                logger.warning("%s's resume token cannot be used (%s); resynchronising from now.", watcher_id, getattr(e, "code", None))
                 _save_token(state, None, watcher_id)
                 continue
             logger.warning(f"{watcher_id} lost its change stream ({e}); retrying in {retry_seconds}s.")
