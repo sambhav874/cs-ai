@@ -59,7 +59,8 @@ rollback() {
       && docker tag "$prefix/$img:previous" "$prefix/$img:$current"
   done
   env_set CS_VERSION "$current"
-  if [ -n "${old_commit:-}" ]; then git -C "$CS_REPO" checkout --quiet "$old_commit" || true; fi
+  # Back to the branch (or commit) the checkout was on, not a detached HEAD.
+  if [ -n "${old_ref:-}" ]; then git -C "$CS_REPO" checkout --quiet "$old_ref" || true; fi
   dc up -d --remove-orphans
   if wait_healthy 600; then
     die "Rolled back to the previous version; it is running. Logs of the failed attempt: 'docker compose logs'."
@@ -73,6 +74,7 @@ if [ -n "$pull_version" ]; then
   dc pull api intelligence web || rollback
 else
   old_commit="$(git -C "$CS_REPO" rev-parse HEAD)"
+  old_ref="$(git -C "$CS_REPO" symbolic-ref -q --short HEAD || echo "$old_commit")"
   say "Updating the checkout"
   git -C "$CS_REPO" fetch --quiet --tags || warn "Could not fetch; using what this checkout already has."
   if [ -n "$ref" ]; then git -C "$CS_REPO" checkout --quiet "$ref"; else git -C "$CS_REPO" pull --quiet --ff-only; fi
