@@ -9,9 +9,14 @@
 .github
 .pytest_cache
 .claude
-.env
-.env.*
-!.env.example
+# Local secrets, at any depth. A bare `.env` matches only the repository root,
+# so apps/intelligence/.env — a developer's keys and PLATFORM_JWT_SECRET — was
+# copied into every locally built image, where it overrode the deployment's
+# own secrets and shipped with any image that was pushed.
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.template
 vendor
 testing
 final_evaluation

@@ -150,6 +150,9 @@ export const STATUS: Record<string, { meaning: Meaning; label: string }> = {
   DRAFTING: { meaning: 'inflight', label: 'Drafting' },
   MATCHED: { meaning: 'binding', label: 'Matched' },
   FAILED: { meaning: 'risk', label: 'Failed' },
+  // The AI review did not run because no model is configured — a setup
+  // state, not damage: the document itself is stored and usable.
+  SKIPPED: { meaning: 'neutral', label: 'AI off' },
 
   // ── User account states ─────────────────────────────────────────────────────
   // An invitation is out and the invitee hasn't acted, so it's in flight.

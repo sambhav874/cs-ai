@@ -63,6 +63,16 @@ async def _process_and_update(
         # the contract sat at EXTRACTING until the API's five-minute sweeper
         # marked it FAILED as "timed out", which hides the real cause (most
         # often: no model provider configured).
+        if _no_provider(e):
+            # No model key anywhere: the document is stored, parsed and
+            # analysed for obligations by the intelligence pipeline; only the
+            # AI review (summary, key terms, risk) is off. Reported as that,
+            # not as a failed upload.
+            logger.info("[review] skipped contractId=%s: no model provider configured", contract_id)
+            await _report_status(contract_id, "SKIPPED",
+                                 "AI review is off: no model provider is configured. "
+                                 "Add a model key in Admin → AI, then retry.")
+            return
         logger.exception("[review] failed contractId=%s", contract_id)
         await _report_failure(contract_id, f"AI analysis could not run: {e}"[:500])
         return
@@ -313,13 +323,32 @@ async def _process_and_update(
                 logger.warning("[review] POST /chunk EXCEPTION (non-fatal): %s", e)
 
 
+def _no_provider(exc: BaseException) -> bool:
+    """True when the failure, or anything it wraps, is a missing model key."""
+    from ..router import NoProviderConfigured
+
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        if isinstance(cur, NoProviderConfigured):
+            return True
+        seen.add(id(cur))
+        cur = cur.__cause__ or cur.__context__
+    return False
+
+
 async def _report_failure(contract_id: str, message: str) -> None:
     """Tell the API this contract's analysis failed, and why."""
+    await _report_status(contract_id, "FAILED", message)
+
+
+async def _report_status(contract_id: str, status: str, message: str) -> None:
+    """Set the contract's analysis outcome on the API."""
     try:
         async with httpx.AsyncClient() as client:
             await client.patch(
                 f"{settings.api_url}/api/v1/contracts/{contract_id}",
-                json={"analysisStatus": "FAILED", "analysisError": message},
+                json={"analysisStatus": status, "analysisError": message},
                 headers={
                     "x-internal-service": "agents",
                     "x-internal-secret": settings.internal_service_secret,

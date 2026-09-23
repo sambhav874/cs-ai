@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@xmldom/xmldom': '>=0.8.13'
+  '@xmldom/xmldom': ^0.8.13
   fast-xml-parser: '>=5.5.7'
   follow-redirects: '>=1.16.0'
   axios: '>=1.8.2'
@@ -94,6 +94,9 @@ importers:
       '@signpdf/signpdf':
         specifier: ^3.3.0
         version: 3.3.0
+      '@xmldom/xmldom':
+        specifier: ^0.8.13
+        version: 0.8.15
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -112,6 +115,9 @@ importers:
       jsonwebtoken:
         specifier: ^9.0.2
         version: 9.0.3
+      jszip:
+        specifier: 3.10.2
+        version: 3.10.2
       mammoth:
         specifier: ^1.12.0
         version: 1.12.3
@@ -2467,9 +2473,9 @@ packages:
   '@vitest/utils@2.1.9':
     resolution: {integrity: sha512-v0psaMSkNJ3A2NMrUEHFRzJtDPFn+/VWZ5WxImB21T9fjucJRmS7xCS3ppEnARb9y11OAzaD+P2Ps+b+BGX5iQ==}
 
-  '@xmldom/xmldom@0.9.12':
-    resolution: {integrity: sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A==}
-    engines: {node: '>=14.6'}
+  '@xmldom/xmldom@0.8.15':
+    resolution: {integrity: sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==}
+    engines: {node: '>=10.0.0'}
 
   abort-controller@3.0.0:
     resolution: {integrity: sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==}
@@ -6869,7 +6875,7 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 1.2.0
 
-  '@xmldom/xmldom@0.9.12': {}
+  '@xmldom/xmldom@0.8.15': {}
 
   abort-controller@3.0.0:
     dependencies:
@@ -7931,7 +7937,7 @@ snapshots:
 
   mammoth@1.12.3:
     dependencies:
-      '@xmldom/xmldom': 0.9.12
+      '@xmldom/xmldom': 0.8.15
       argparse: 1.0.10
       base64-js: 1.5.1
       bluebird: 3.4.7

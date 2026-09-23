@@ -33,7 +33,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: process.env.API_PROXY_TARGET ?? 'http://localhost:3001',
         changeOrigin: true,
       },
       // The intelligence service (apps/intelligence, FastAPI). Both APIs

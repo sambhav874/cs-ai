@@ -26,7 +26,11 @@ COPY apps/web/ apps/web/
 RUN pnpm --filter web exec vite build
 
 FROM nginx:1.27-alpine AS runtime
-COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+# A template, so the nginx image fills in the container's DNS resolver at
+# start (see the resolver line in nginx.conf). Only variables present in the
+# environment are substituted; nginx's own $host, $uri and so on are left alone.
+ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
+COPY apps/web/nginx.conf /etc/nginx/templates/default.conf.template
 COPY apps/web/proxy-common.conf /etc/nginx/proxy-common.conf
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 EXPOSE 8080

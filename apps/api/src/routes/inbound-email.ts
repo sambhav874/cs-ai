@@ -42,6 +42,7 @@ import { s3, S3_BUCKET } from '../lib/storage.js'
 import { queueParseDocument, queueNotification } from '../lib/queue.js'
 import { bareAddress, extractContractTag } from '../lib/email-address.js'
 import { AuditAction } from '@clm/types'
+import { isInternalSecret } from '../lib/internal-auth.js'
 
 const InboundEmailSchema = z.object({
   to: z.string().min(1),
@@ -163,8 +164,7 @@ export async function inboundEmailRoutes(app: FastifyInstance) {
       req.log.warn('[inbound-email] INBOUND_EMAIL_SECRET unset — accepting unauthenticated request (dev only)')
       return
     }
-    const got = req.headers['x-inbound-secret']
-    if (got !== expected) {
+    if (!isInternalSecret(req.headers['x-inbound-secret'], expected)) {
       return reply.status(401).send({ error: 'Invalid inbound secret' })
     }
   })

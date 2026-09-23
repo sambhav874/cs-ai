@@ -20,10 +20,25 @@ def convert_objectid_to_str(v):
 # Create a type that handles ObjectId conversion
 ObjectIdStr = Annotated[Optional[str], BeforeValidator(convert_objectid_to_str)]
 
+def _identity_email(v):
+    """An address someone already signed in with, checked for shape only.
+
+    Users arrive here from the lifecycle API, which has validated the address.
+    EmailStr also refuses special-use domains (.local, .test, .internal), so a
+    company whose directory uses jane@corp.local could sign in to the
+    platform and then got a 500 on every intelligence screen.
+    """
+    if not isinstance(v, str) or "@" not in v.strip() or v.strip().startswith("@") or v.strip().endswith("@"):
+        raise ValueError("not an email address")
+    return v.strip()
+
+
+IdentityEmail = Annotated[str, BeforeValidator(_identity_email)]
+
 # --- User Models ---
 class User(BaseModel):
     username: str
-    email: EmailStr
+    email: IdentityEmail
     hashed_password: str
     tokens: int = 0
     teamIds: List[ObjectIdStr] = Field(default_factory=list)
@@ -33,12 +48,16 @@ class UserInDB(User):
     id: str = Field(alias="_id")
     disabled: Optional[bool] = False
     username: str
-    email: EmailStr
+    email: IdentityEmail
     hashed_password: str
     tokens: int
     teamIds: List[ObjectIdStr] = Field(default_factory=list)
     ownedAccountId: ObjectIdStr = None 
     
+    # Set on shadow users of platform accounts: the org whose Admin → AI
+    # settings apply to this user's model calls.
+    platformOrgId: Optional[str] = None
+
     model_config = ConfigDict(
         populate_by_name = True,
         json_encoders={ObjectId: str}

@@ -26,7 +26,6 @@ interface SignerData {
   email: string
   role: string | null
   signOrder: number
-  token: string
   status: 'PENDING' | 'SIGNED' | 'DECLINED'
   signedAt: string | null
   declinedAt: string | null
@@ -151,11 +150,15 @@ export function SignatureStatus({
   }
   if (requests.length === 0) return null
 
-  const copyLink = async (token: string) => {
-    const url = `${window.location.origin}/sign/${token}`
+  // Signing tokens never reach the browser in list responses; the sender asks
+  // for one signer's link explicitly, and the API records that it was shared.
+  const copyLink = async (srId: string, signerId: string) => {
     try {
-      await navigator.clipboard.writeText(url)
-      setCopiedToken(token)
+      const { data } = await api.post<{ url: string }>(
+        `/contracts/${contractId}/signature-requests/${srId}/signers/${signerId}/link`,
+      )
+      await navigator.clipboard.writeText(data.url)
+      setCopiedToken(signerId)
       setTimeout(() => setCopiedToken(null), 2000)
     } catch { /* ignore */ }
   }
@@ -306,11 +309,11 @@ export function SignatureStatus({
                       <div className="mt-1.5 ml-9">
                         <button
                           type="button"
-                          onClick={() => copyLink(signer.token)}
+                          onClick={() => copyLink(sr.id, signer.id)}
                           className="text-dense text-fg-700 hover:text-fg-950 inline-flex items-center gap-1 px-2 py-1 rounded-md border border-surface-200 hover:border-surface-300 bg-card whitespace-nowrap"
                           title="Copy signing link"
                         >
-                          {copiedToken === signer.token ? (
+                          {copiedToken === signer.id ? (
                             <><CheckCircle2 className="size-3.5 text-fg-400" />Copied</>
                           ) : (
                             <><Copy className="size-3.5" />Copy link</>

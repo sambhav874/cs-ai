@@ -28,7 +28,7 @@ const DEV_PASSPHRASE = 'draftlegal-dev-signing'
 let cached: SigningP12 | null = null
 
 /** Build a self-signed X.509 cert + RSA key, packaged as a PKCS#12 buffer. */
-function generateSelfSignedP12(passphrase: string): Buffer {
+export function generateSelfSignedP12(passphrase: string, commonName = 'draftLegal Signing Authority', orgName = 'draftLegal'): Buffer {
   const keys = forge.pki.rsa.generateKeyPair(2048)
   const cert = forge.pki.createCertificate()
   cert.publicKey = keys.publicKey
@@ -37,8 +37,8 @@ function generateSelfSignedP12(passphrase: string): Buffer {
   cert.validity.notAfter = new Date()
   cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 10)
   const attrs = [
-    { name: 'commonName', value: 'draftLegal Signing Authority' },
-    { name: 'organizationName', value: 'draftLegal' },
+    { name: 'commonName', value: commonName },
+    { name: 'organizationName', value: orgName },
     { shortName: 'OU', value: 'e-Signature' },
   ]
   cert.setSubject(attrs)
@@ -90,4 +90,20 @@ export function getSigningP12(): SigningP12 {
   )
   cached = { p12, passphrase: DEV_PASSPHRASE }
   return cached
+}
+
+/**
+ * Called once at boot. In production a missing cert means every seal job
+ * fails and executed contracts have no sealed PDF — found at the first
+ * signature, days later. Say so at startup instead.
+ */
+export function reportSigningCertAtBoot(log: (msg: string) => void = console.error): void {
+  const configured = !!(process.env.SIGNING_CERT_P12_BASE64 && process.env.SIGNING_CERT_PASSPHRASE)
+  if (process.env.NODE_ENV === 'production' && !configured) {
+    log(
+      '[signing-cert] SIGNING_CERT_P12_BASE64 / SIGNING_CERT_PASSPHRASE are not set. ' +
+      'Executed contracts CANNOT be sealed until they are. Generate one with ' +
+      '`pnpm --filter api signing-cert` or supply a CA-issued PKCS#12.',
+    )
+  }
 }

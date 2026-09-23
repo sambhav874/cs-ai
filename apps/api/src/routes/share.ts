@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify'
 import crypto from 'crypto'
 import jwt from 'jsonwebtoken'
 import { prisma } from '../lib/prisma.js'
-import { requirePermission } from '../middleware/permissions.js'
+import { requirePermission, requireContractPermission } from '../middleware/permissions.js'
 import { createAuditEvent } from '../lib/audit.js'
 import { AuditAction } from '@clm/types'
 import { resolveSecret } from '../lib/secrets.js'
@@ -51,7 +51,7 @@ export function verifyPortalToken(token: string): PortalTokenPayload {
 export async function shareRoutes(app: FastifyInstance) {
 
   // ── Create a share link ───────────────────────────────────────────────────
-  app.post('/:id/share', { preHandler: requirePermission('configure', 'contract') }, async (req, reply) => {
+  app.post('/:id/share', { preHandler: requireContractPermission('configure') }, async (req, reply) => {
     const { orgId, sub: userId } = req.user
     const { id: contractId } = req.params as { id: string }
     const {
@@ -153,7 +153,7 @@ export async function shareRoutes(app: FastifyInstance) {
 
 
   // ── List active share links for a contract ─────────────────────────────────
-  app.get('/:id/share', { preHandler: requirePermission('configure', 'contract') }, async (req, reply) => {
+  app.get('/:id/share', { preHandler: requireContractPermission('configure') }, async (req, reply) => {
     const { orgId } = req.user
     const { id: contractId } = req.params as { id: string }
 
@@ -170,7 +170,7 @@ export async function shareRoutes(app: FastifyInstance) {
 
 
   // ── Revoke a share link ───────────────────────────────────────────────────
-  app.delete('/:id/share/:linkId', { preHandler: requirePermission('configure', 'contract') }, async (req, reply) => {
+  app.delete('/:id/share/:linkId', { preHandler: requireContractPermission('configure') }, async (req, reply) => {
     const { orgId, sub: userId } = req.user
     const { id: contractId, linkId } = req.params as { id: string; linkId: string }
 

@@ -5,14 +5,14 @@
  */
 import type { FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma.js'
-import { requirePermission } from '../middleware/permissions.js'
+import { requirePermission, requireContractPermission } from '../middleware/permissions.js'
 import { createAuditEvent } from '../lib/audit.js'
 import { AuditAction } from '@clm/types'
 
 export async function commentRoutes(app: FastifyInstance) {
 
   // ── List comments for a contract ──────────────────────────────────────────
-  app.get('/:id/comments', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/comments', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { orgId } = req.user
     const { id: contractId } = req.params as { id: string }
     const { clauseRef, resolved, cursor, limit = '50' } = req.query as Record<string, string>
@@ -49,7 +49,7 @@ export async function commentRoutes(app: FastifyInstance) {
 
 
   // ── Add a comment ──────────────────────────────────────────────────────────
-  app.post('/:id/comments', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/comments', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { orgId, sub: userId } = req.user
     const { id: contractId } = req.params as { id: string }
     const { body, clauseRef, versionId, parentId } = req.body as {
@@ -82,7 +82,7 @@ export async function commentRoutes(app: FastifyInstance) {
 
 
   // ── Update a comment (body or resolve) ────────────────────────────────────
-  app.patch('/:id/comments/:commentId', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.patch('/:id/comments/:commentId', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { orgId, sub: userId } = req.user
     const { id: contractId, commentId } = req.params as { id: string; commentId: string }
     const { body, resolved } = req.body as { body?: string; resolved?: boolean }
@@ -117,7 +117,7 @@ export async function commentRoutes(app: FastifyInstance) {
 
 
   // ── Soft-delete a comment ─────────────────────────────────────────────────
-  app.delete('/:id/comments/:commentId', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.delete('/:id/comments/:commentId', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { orgId, sub: userId } = req.user
     const { id: contractId, commentId } = req.params as { id: string; commentId: string }
 

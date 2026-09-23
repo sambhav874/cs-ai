@@ -136,6 +136,12 @@ def _tier_model_for(provider: str, tier: Tier) -> str | None:
 
 # ─── Caller-pinned provider/model override ───────────────────────────────────
 
+class NoProviderConfigured(RuntimeError):
+    """No model key for this tier, platform-wide or BYOK. A setup state, not a
+    failure: a self-hosted install with no vendor keys is a supported
+    configuration, and callers report it as "AI is off" rather than "failed"."""
+
+
 class CostCapExceeded(RuntimeError):
     """The org has spent past its daily cap and the policy is `block`.
 
@@ -286,7 +292,7 @@ async def resolve_llm(
     # Fallback path (no org_id, or Node call failed)
     pick = _platform_resolve(tier)
     if not pick:
-        raise RuntimeError(f"No provider configured for tier={tier}. Set OPENAI_API_KEY (or ANTHROPIC_API_KEY) in .env.")
+        raise NoProviderConfigured(f"No provider configured for tier={tier}. Set OPENAI_API_KEY (or ANTHROPIC_API_KEY) in .env.")
     provider, model, key = pick
     return _build_resolved(
         provider=provider, model=model, api_key=key,

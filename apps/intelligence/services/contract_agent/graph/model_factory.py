@@ -73,6 +73,7 @@ def build_chat_model(
     max_tokens: Optional[int] = None,
     task_type: str = "default",
     optional: bool = False,
+    platform_model: Any = None,
 ) -> Any:
     """Build a LangChain chat model.
 
@@ -90,15 +91,29 @@ def build_chat_model(
     # arguments still win — a call site that names a provider means it.
     overrides = _active_settings()
 
+    # The platform org's Admin → AI choice (model per tier, BYOK key, cost
+    # cap) comes first when an org is in scope and the caller named no
+    # provider. It is what an admin can actually change in the product; the
+    # env default below is only the fallback when the org has no answer.
+    # `platform_model` lets a caller that resolved once (an extraction run)
+    # pass the result through worker threads, where the org context variable
+    # does not follow.
+    platform = platform_model
+    if platform is None and not provider and not (state is not None and state.ai_provider):
+        from services.platform_models import PURPOSE_TIER, active_platform_org, resolve_platform_model
+
+        platform = resolve_platform_model(active_platform_org(), PURPOSE_TIER.get(purpose, "default"))
+
     resolved_provider = _normalize_provider_name(
-        provider
+        (platform.provider if platform else None)
+        or provider
         or (state.ai_provider if state is not None else None)
         or overrides.get("provider")
         or getattr(settings, "ai_provider", None)
         or "groq"
     ) or "groq"
 
-    api_key = _api_key_for(resolved_provider)
+    api_key = platform.api_key if platform else _api_key_for(resolved_provider)
     if not api_key:
         if optional:
             return None
@@ -120,7 +135,7 @@ def build_chat_model(
             2048,
         )
     )
-    model_name = _resolve_model_name(
+    model_name = platform.model if platform else _resolve_model_name(
         resolved_provider,
         lightweight=profile["lightweight"],
         overrides=overrides,

@@ -2603,7 +2603,19 @@ class ContractKPIManager:
         project_id = str(contract_doc.get("projectId")) if contract_doc.get("projectId") else None
         contract_name = contract_doc.get("contract_name") or "Contract"
         now = datetime.utcnow()
-        provider = (ai_provider or self.ai_provider or "groq").lower()
+        # The platform org's Admin → AI choice wins over this tier's env
+        # default when the caller did not name a provider. Resolved once per
+        # run: every batch in a run uses the same model.
+        self._platform_model = None
+        if not ai_provider:
+            from services.contract_agent.graph.model_factory import _normalize_provider_name
+            from services.platform_models import active_platform_org, resolve_platform_model
+
+            self._platform_model = resolve_platform_model(active_platform_org(), "default")
+        provider = (
+            _normalize_provider_name(self._platform_model.provider) if self._platform_model
+            else (ai_provider or self.ai_provider or "groq")
+        ).lower()
 
         self._reset_meter()
         run_id = f"kpi_run_{hashlib.md5(f'{contract_id}:{now.isoformat()}'.encode()).hexdigest()[:12]}"
@@ -2619,6 +2631,8 @@ class ContractKPIManager:
             "post_extraction_ai_allowed": False,
             "breach_evaluation_mode": "deterministic_rule_engine",
             "ai_provider": provider,
+            "ai_model": self._platform_model.model if self._platform_model else None,
+            "model_source": self._platform_model.source if self._platform_model else "env",
             "started_at": now,
         }
         self.extraction_runs.insert_one(run_doc)
@@ -5722,6 +5736,10 @@ class ContractKPIManager:
         return deduped
 
     def _llm_provider_available(self, provider: str) -> bool:
+        if getattr(self, "_platform_model", None):
+            return True
+        if provider == "claude":
+            return bool(getattr(settings, "anthropic_api_key", "") or getattr(settings, "claude_api_key", ""))
         if provider == "groq":
             return bool(self.groq_api_key)
         if provider == "gemini":
@@ -6011,7 +6029,13 @@ class ContractKPIManager:
             from services.contract_agent.graph.model_factory import build_chat_model
 
             llm = build_chat_model(
-                provider=provider,
+                # With a platform model resolved, let the factory apply it
+                # (provider, model and the org's key) rather than pinning the
+                # provider name and falling back to this tier's env key.
+                provider=None if getattr(self, "_platform_model", None) else provider,
+                # Passed explicitly: batches run in a thread pool, and the org
+                # context variable does not cross into its threads.
+                platform_model=getattr(self, "_platform_model", None),
                 purpose="classify",
                 temperature=0,
                 max_tokens=self._kpi_max_tokens(provider, max_tokens_override),

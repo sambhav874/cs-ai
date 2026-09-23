@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
+import { useRegistration } from '@/hooks/useRegistration'
 
 // ─── Password strength (simple, deterministic) ────────────────────────────────
 
@@ -67,6 +68,7 @@ const STRENGTH_TEXT = ['', 'text-risk-700', 'text-attention-700', 'text-success-
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export function RegisterPage() {
+  const registration = useRegistration()
   const navigate = useNavigate()
   const register = useAuthStore((s) => s.register)
 
@@ -124,12 +126,32 @@ export function RegisterPage() {
     }
   }
 
+  if (!registration.open) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-50 py-10">
+        <div className="w-full max-w-sm space-y-3 p-8 border border-surface-200 rounded-card bg-card shadow-e1" data-testid="registration-closed">
+          <h1 className="text-title text-fg-950">Sign-up is closed</h1>
+          <p className="text-body text-fg-500">
+            This instance is invite-only. Ask an admin to invite you, then use the link in the email.
+          </p>
+          <Link to="/login" className="inline-block text-body text-fg-950 underline underline-offset-2">Back to sign in</Link>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-surface-50 py-10">
       <div className="w-full max-w-sm space-y-6 p-8 border border-surface-200 rounded-card bg-card shadow-e1">
         <div>
-          <h1 className="text-title text-fg-950">Create account</h1>
-          <p className="text-body text-fg-500 mt-1">Set up your CLM workspace</p>
+          <h1 className="text-title text-fg-950">
+            {registration.mode === 'first-user' ? 'Set up this instance' : 'Create account'}
+          </h1>
+          <p className="text-body text-fg-500 mt-1">
+            {registration.mode === 'first-user'
+              ? 'You will be its first admin. Everyone else joins by invite.'
+              : 'Set up your CLM workspace'}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

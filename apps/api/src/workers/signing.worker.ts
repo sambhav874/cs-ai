@@ -12,7 +12,7 @@
 import { Worker } from 'bullmq'
 import { redis } from '../lib/redis.js'
 import { sealSignedContract } from '../lib/seal-contract.js'
-import type { SealSignedPdfJob } from '../lib/queue.js'
+import { queueLinkIntelligence, type SealSignedPdfJob } from '../lib/queue.js'
 
 export const signingWorker = new Worker(
   'signing',
@@ -31,11 +31,24 @@ export const signingWorker = new Worker(
         '[signing-worker] seal SKIPPED sr=%s — contract may be executed without a sealed PDF: %s',
         signatureRequestId, outcome.reason,
       )
-    } else if (outcome.status === 'already_sealed') {
-      console.info('[signing-worker] seal already present sr=%s version=%s', signatureRequestId, outcome.versionId)
     } else {
-      console.info('[signing-worker] sealed sr=%s version=%s key=%s',
-        signatureRequestId, outcome.versionId, outcome.signedKey)
+      if (outcome.status === 'already_sealed') {
+        console.info('[signing-worker] seal already present sr=%s version=%s', signatureRequestId, outcome.versionId)
+      } else {
+        console.info('[signing-worker] sealed sr=%s version=%s key=%s',
+          signatureRequestId, outcome.versionId, outcome.signedKey)
+      }
+      // The executed PDF is the system of record for what was promised, so it
+      // is what the intelligence tier extracts obligations from. Its link job
+      // treats identical bytes as a no-op, so re-queueing on a retry is safe.
+      queueLinkIntelligence({
+        contractId: outcome.contractId,
+        orgId:      outcome.orgId,
+        userId:     outcome.userId,
+        s3Key:      outcome.signedKey,
+        mimeType:   'application/pdf',
+        filename:   `signed-${outcome.contractId}.pdf`,
+      })
     }
     return outcome
   },

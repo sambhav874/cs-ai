@@ -150,29 +150,35 @@ async function seedTemplates(orgId: string, adminId: string, templates: SeedTemp
 }
 
 // ─── 4. Playbook positions ─────────────────────────────────────────────────
-// Idempotency key for playbook positions: we embed the seed `key` at the
-// start of `notes` (in a stable marker) and skip rows whose `notes` already
-// contains a matching marker. This works without a unique index.
+// Idempotency key for playbook positions: `seedKey` holds the seed row's key
+// and rows already carrying one are skipped. Older seeds embedded the key as
+// a "[seed-key:…]" prefix on `notes`, where every reviewer read it; those rows
+// are moved to `seedKey` and their notes cleaned the next time the seed runs.
 
-const PB_MARKER_PREFIX = '[seed-key:'
+const LEGACY_MARKER = /^\[seed-key:([^\]]+)\]\s*/
 
-function markedNotes(key: string, notes: string): string {
-  return `${PB_MARKER_PREFIX}${key}] ${notes}`
-}
-
-function extractKey(notes: string): string | null {
-  if (!notes.startsWith(PB_MARKER_PREFIX)) return null
-  const end = notes.indexOf(']')
-  if (end < 0) return null
-  return notes.slice(PB_MARKER_PREFIX.length, end)
+/** The seed key and clean notes from a legacy-marked note, or null. */
+export function splitLegacyMarker(notes: string | null): { key: string; notes: string } | null {
+  const m = (notes ?? '').match(LEGACY_MARKER)
+  return m ? { key: m[1], notes: (notes ?? '').slice(m[0].length) } : null
 }
 
 async function seedPlaybook(orgId: string, adminId: string, categoryIdBySlug: Map<string, string>, positions: SeedPlaybookPosition[]): Promise<number> {
   const existing = await prisma.playbookPosition.findMany({
     where: { orgId },
-    select: { notes: true },
+    select: { id: true, notes: true, seedKey: true },
   })
-  const existingKeys = new Set(existing.map(p => extractKey(p.notes ?? '')).filter((k): k is string => k !== null))
+  const existingKeys = new Set<string>()
+  for (const p of existing) {
+    if (p.seedKey) { existingKeys.add(p.seedKey); continue }
+    const legacy = splitLegacyMarker(p.notes)
+    if (!legacy) continue
+    existingKeys.add(legacy.key)
+    await prisma.playbookPosition.update({
+      where: { id: p.id },
+      data:  { seedKey: legacy.key, notes: legacy.notes || null },
+    })
+  }
 
   const toCreate = positions
     .filter(p => !existingKeys.has(p.key))
@@ -184,7 +190,8 @@ async function seedPlaybook(orgId: string, adminId: string, categoryIdBySlug: Ma
         clauseCategoryId: categoryId,
         positionType: p.positionType,
         content: p.content,
-        notes: markedNotes(p.key, p.notes),
+        notes: p.notes,
+        seedKey: p.key,
         riskThreshold: p.riskThreshold,
         contractTypes: p.contractTypes,
         sortOrder: p.sortOrder,

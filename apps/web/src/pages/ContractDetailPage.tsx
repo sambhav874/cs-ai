@@ -4,8 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 // B.5.2 — PDF viewer re-enabled as the "Original" view via the
 // [Styled | Original] toggle. Styled (TipTap / DocumentCanvas) remains the
 // default; Legal users typically flip to Original for pixel fidelity.
-import { Worker, Viewer } from '@react-pdf-viewer/core'
-import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { MEANING_CLASS, RISK_BAND_CLASS, normalizeRisk, riskBand } from '@/lib/status'
@@ -19,6 +17,7 @@ import {
   Link, Paperclip, Trash2, ExternalLink, Scissors, RefreshCw,
   FileEdit, Share2, ArrowLeftRight, X, PenLine, GitBranch,
   PanelRightClose, PanelRightOpen,
+  Info,
 } from 'lucide-react'
 import { expiryLabel, relativeTime } from '@/components/contracts/dates'
 import { toast } from '@/components/common/Toaster'
@@ -34,6 +33,7 @@ import { ContractSpacePicker } from '@/components/contracts/ContractSpacePicker'
 import { ObligationsRailSection } from '@/components/contracts/ObligationsRailSection'
 import { ComplianceRailSection } from '@/components/contracts/ComplianceRailSection'
 import { PlaybookRedlineRailSection } from '@/components/contracts/PlaybookRedlineRailSection'
+import { PlaybookReviewRailSection } from '@/components/contracts/PlaybookReviewRailSection'
 import { SpaceRailSection } from '@/components/contracts/SpaceRailSection'
 import { RenewalAdviceRailSection, type RenewalAdvice } from '@/components/contracts/RenewalAdviceRailSection'
 import { BubbleAiPopover } from '@/components/contracts/BubbleAiPopover'
@@ -64,8 +64,6 @@ import { CoachMarks } from '@/components/contracts/CoachMarks'
 import { useMediaQuery, BREAKPOINTS } from '@/hooks/useMediaQuery'
 import { track } from '@/lib/telemetry'
 
-import '@react-pdf-viewer/core/lib/styles/index.css'
-import '@react-pdf-viewer/default-layout/lib/styles/index.css'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -382,7 +380,6 @@ export function ContractDetailPage() {
   // Q&A surface removed by U.4.4 — rail handles per-contract chat now.
 
   const qc = useQueryClient()
-  const layoutPlugin = defaultLayoutPlugin()
 
   // B.5.2 — Styled | Original document view.
   const [docView, setDocView] = useState<'styled' | 'original'>(() => {
@@ -411,6 +408,19 @@ export function ContractDetailPage() {
   // Seed effect + mutation live lower in the file, after clausesData is
   // declared (the query for contract-clauses uses `id` from useParams).
   const [focusedClauseId, setFocusedClauseId] = useState<string | null>(null)
+
+  // Scroll a clause's marker into view; with no marker on the canvas, open the
+  // focused-review drawer on it instead.
+  const jumpToClause = (clauseId: string, ring = 'ring-fg-700') => {
+    const el = document.querySelector(`[data-clause-id="${clauseId}"]`) as HTMLElement | null
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('ring-2', ring)
+      setTimeout(() => el.classList.remove('ring-2', ring), 1500)
+    } else {
+      setFocusedClauseId(clauseId)
+    }
+  }
   // P7.4.4 — Expand the REVIEW PROGRESS row into a checklist so users
   // can mark items reviewed without hunting for each red underline.
   const [reviewExpanded, setReviewExpanded] = useState(false)
@@ -633,10 +643,12 @@ export function ContractDetailPage() {
       // "working…" forever and only a manual refresh reveals the result. The
       // playbook redline takes minutes, so it is exactly the case that suffers.
       const pr = meta?._playbookRedlineStatus
+      const pv = meta?._playbookReviewStatus
       const inFlight =
         (s && IN_PROGRESS_STATUSES.includes(s)) ||
         rm === 'ANALYZING' ||
-        pr === 'QUEUED' || pr === 'RUNNING'
+        pr === 'QUEUED' || pr === 'RUNNING' ||
+        pv === 'QUEUED' || pv === 'RUNNING'
       return inFlight ? 4000 : false
     },
   })
@@ -906,7 +918,8 @@ export function ContractDetailPage() {
   const handleViewPdf = async () => {
     try {
       setPdfError(null)
-      const res = await api.get(`/contracts/${id}/download`)
+      // inline: served for display, not as a download.
+      const res = await api.get(`/contracts/${id}/download`, { params: { inline: '1' } })
       setPdfUrl(res.data.url)
       setTab('document')
     } catch {
@@ -921,7 +934,8 @@ export function ContractDetailPage() {
   // U.1.2 — does the current version have an actual PDF/source file? When
   // null it's a text-only / template-generated contract — the Original
   // toggle would crash with "Invalid PDF structure". We disable it instead.
-  const hasOriginal = !!(versions[0]?.s3Key && versions[0]?.mimeType)
+  // The newest version carries an uploaded file (the API says so; it does not send the key).
+  const hasOriginal = !!versions[0]?.hasPdf
 
   const { data: commentsData } = useQuery({
     queryKey: ['comments', id],
@@ -1118,7 +1132,7 @@ export function ContractDetailPage() {
               B.5.2 — Styled / Original document-view toggle.
               - "Styled" (default): TipTap + contract-paper CSS. Editable when
                 user flips Edit mode (B.5.3).
-              - "Original": the source PDF via @react-pdf-viewer. Read-only,
+              - "Original": the source PDF in the browser's own viewer. Read-only,
                 pixel-exact. The escape hatch that wins Legal's trust.
               Persisted per user (localStorage).
             */}
@@ -1152,7 +1166,9 @@ export function ContractDetailPage() {
                   isEditing
                     ? 'Exit Edit mode to switch to Original PDF'
                     : !hasOriginal
-                      ? 'No original file — this contract was created from text or a template.'
+                      ? (versions[0]?.hasFile
+                          ? 'The original is a Word file. Use Download to open it in Word.'
+                          : 'No original file — this contract was created from text or a template.')
                       : 'View the original PDF — pixel-exact, read-only.'
                 }
                 data-testid="doc-view-original"
@@ -1802,23 +1818,8 @@ export function ContractDetailPage() {
         <DecisionStrip
           awaitingMe={approvalData}
           riskScore={contract?.riskScore ?? null}
-          onJumpToClause={(clauseId) => {
-            // Scroll the underlined clause marker into view. If the risk
-            // markers extension has labelled a span with data-clause-id,
-            // this locates it. Falls back to opening the focused-review
-            // drawer on that clause.
-            const el = document.querySelector(
-              `[data-clause-id="${clauseId}"]`,
-            ) as HTMLElement | null
-            if (el) {
-              el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-              // Approver mode: the clause is the approver's turn, so attention.
-              el.classList.add('ring-2', 'ring-attention-600')
-              setTimeout(() => el.classList.remove('ring-2', 'ring-attention-600'), 1500)
-            } else {
-              setFocusedClauseId(clauseId)
-            }
-          }}
+          // Approver mode: the clause is the approver's turn, so attention.
+          onJumpToClause={(clauseId) => jumpToClause(clauseId, 'ring-attention-600')}
           onDecided={() => {
             qc.invalidateQueries({ queryKey: ['contract', id] })
             qc.invalidateQueries({ queryKey: ['contract-approval', id] })
@@ -1913,6 +1914,18 @@ export function ContractDetailPage() {
               </button>
             </div>
           )}
+        </div>
+      )}
+      {contract?.analysisStatus === 'SKIPPED' && (
+        <div className="bg-surface-50 border-b border-surface-200 text-fg-700 px-6 py-2.5 flex items-center gap-3 text-body" data-testid="analysis-skipped-banner">
+          <Info className="size-4 flex-shrink-0 text-fg-500" />
+          <span>{contract.analysisError ?? 'AI review is off: no model provider is configured.'}</span>
+          <div className="ml-auto">
+            <Button variant="outline" size="sm" onClick={() => analyze.mutate()} disabled={analyze.isPending} className="gap-1.5">
+              {analyze.isPending && <Loader2 className="size-3.5 animate-spin" />}
+              Retry
+            </Button>
+          </div>
         </div>
       )}
       {contract?.analysisStatus === 'FAILED' && (
@@ -2649,10 +2662,19 @@ export function ContractDetailPage() {
               // The document canvas: paper on warm ground, and the only surface
               // in the system allowed a drop shadow.
               <div className="h-full overflow-hidden bg-surface-50 p-4">
-                <div className="bg-card rounded-paper shadow-page h-full">
-                  <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
-                    <Viewer fileUrl={pdfUrl} plugins={[layoutPlugin]} />
-                  </Worker>
+                <div className="bg-card rounded-paper shadow-page h-full overflow-hidden">
+                  {/* The browser's own PDF viewer: pixel-exact, with search and
+                      zoom, and nothing to keep in step. The previous viewer
+                      loaded pdf.js 3.11's worker from a public CDN against the
+                      6.x library the security override installs, so it never
+                      rendered — and a firewalled self-host could not reach the
+                      CDN anyway. The link is same-origin (/api/v1/files). */}
+                  <iframe
+                    src={pdfUrl}
+                    title="Original document"
+                    className="w-full h-full border-0"
+                    data-testid="original-pdf-frame"
+                  />
                 </div>
               </div>
             )
@@ -2674,7 +2696,9 @@ export function ContractDetailPage() {
           ].includes(contract.analysisStatus ?? '')
 
           let canvasState: CanvasState
-          if (contract.analysisStatus === 'FAILED') {
+          // A failed AI step is a banner, not a reason to hide the contract:
+          // when the document's text is there, show it.
+          if (contract.analysisStatus === 'FAILED' && !hasText) {
             canvasState = {
               kind: 'analysis_failed',
               reason: contract.analysisError ?? undefined,
@@ -3406,9 +3430,20 @@ export function ContractDetailPage() {
             markup the reviewer accepts change by change; nothing reaches the
             document until they do. Status lives in contract.metadata, which is
             what the 4s poll above is already watching. */}
+        {/* What is wrong against the playbook: AI review + phrase checks +
+            missing required clauses. The redline below is how to fix it. */}
+        {id && (
+          <PlaybookReviewRailSection
+            contractId={id}
+            reviewStatus={(contract?.metadata as Record<string, unknown> | undefined)?._playbookReviewStatus as string | null}
+            onJumpToClause={(clauseId) => jumpToClause(clauseId)}
+          />
+        )}
+
         {id && (
           <PlaybookRedlineRailSection
             contractId={id}
+            currentVersionId={contract?.currentVersionId ?? null}
             status={((contract?.metadata as Record<string, unknown> | undefined)
               ?._playbookRedlineStatus as 'IDLE' | 'QUEUED' | 'RUNNING' | 'DONE' | 'APPLIED' | 'FAILED') ?? 'IDLE'}
             staged={(contract?.metadata as Record<string, unknown> | undefined)?._playbookRedline as never}

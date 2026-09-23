@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CheckCircle2, Loader2, MailCheck } from 'lucide-react'
 import { Wordmark } from '@/components/brand/Wordmark'
+import { useRegistration } from '@/hooks/useRegistration'
 
 /**
  * B.6.10 — login now exposes:
@@ -205,6 +206,7 @@ function MicrosoftMark() {
 }
 
 export function LoginPage() {
+  const registration = useRegistration()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const login = useAuthStore((s) => s.login)
@@ -351,12 +353,16 @@ export function LoginPage() {
           </Button>
         </form>
 
-        <p className="text-body text-center text-fg-500">
-          No account?{' '}
-          <Link to="/register" className="text-fg-950 underline underline-offset-2 decoration-surface-300 hover:decoration-primary-700 hover:text-primary-700">
-            Create one
-          </Link>
-        </p>
+        {registration.open ? (
+          <p className="text-body text-center text-fg-500">
+            No account?{' '}
+            <Link to="/register" className="text-fg-950 underline underline-offset-2 decoration-surface-300 hover:decoration-primary-700 hover:text-primary-700">
+              {registration.mode === 'first-user' ? 'Set up this instance' : 'Create one'}
+            </Link>
+          </p>
+        ) : (
+          <p className="text-body text-center text-fg-500">No account? Ask your admin for an invite.</p>
+        )}
       </div>
 
       {stub && <StubDialog kind={stub} onClose={() => setStub(null)} />}

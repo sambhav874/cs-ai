@@ -57,6 +57,8 @@ export interface ClauseCategory {
   description: string | null
   parentCategoryId: string | null
   sortOrder: number
+  /** The playbook review flags a contract with no clause of this type. */
+  isRequired?: boolean
   createdAt: string
   updatedAt: string
   children?: ClauseCategory[]
@@ -101,7 +103,10 @@ export interface PlaybookPosition {
   createdById: string
   createdAt: string
   updatedAt: string
-  clauseCategory?: Pick<ClauseCategory, 'id' | 'name' | 'parentCategoryId'>
+  /** Phrases a clause on this rung should contain / should not contain. */
+  mustInclude?: string[]
+  mustNotInclude?: string[]
+  clauseCategory?: Pick<ClauseCategory, 'id' | 'name' | 'parentCategoryId' | 'isRequired'>
 }
 
 export interface GenerateResult {

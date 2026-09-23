@@ -270,66 +270,7 @@ export async function storeClauseSegments(
   ])
 }
 
-// ─── Embed all clauses for a version (BullMQ job body) ───────────────────────
-
-export async function embedContractVersion(versionId: string): Promise<void> {
-  const clauses = await prisma.contractClause.findMany({
-    where: { versionId, embeddedAt: null },
-    select: { id: true, content: true },
-  })
-
-  if (!clauses.length) return
-
-  // Look up contractId for failure reporting
-  const version = await prisma.contractVersion.findUnique({
-    where: { id: versionId },
-    select: { contractId: true },
-  })
-
-  // Batch all clause texts into a single OpenAI call (up to 2048 inputs)
-  let vectors: number[][]
-  try {
-    vectors = await embedTexts(clauses.map(c => c.content))
-  } catch (err) {
-    console.error('[embeddings] batch embed failed for versionId=%s:', versionId, (err as Error).message)
-    if (version?.contractId) {
-      await prisma.contract.update({
-        where: { id: version.contractId },
-        data: { analysisStatus: 'FAILED', analysisError: `Embedding failed: ${(err as Error).message}` },
-      })
-    }
-    throw err
-  }
-
-  let failures = 0
-  for (let i = 0; i < clauses.length; i++) {
-    const clause = clauses[i]
-    const vec = vectors[i]
-    try {
-      const vectorLiteral = `[${vec.join(',')}]`
-      await prisma.$executeRaw`
-        UPDATE contract_clauses
-        SET    embedding  = ${vectorLiteral}::vector,
-               "embeddedAt" = NOW()
-        WHERE  id = ${clause.id}
-      `
-    } catch (err) {
-      failures++
-      console.warn(`[embeddings] failed to store embedding for clause ${clause.id}:`, (err as Error).message)
-    }
-  }
-
-  if (failures > clauses.length / 2 && version?.contractId) {
-    const msg = `Embedding storage failed for ${failures}/${clauses.length} clauses — RAG search may not work`
-    console.error('[embeddings] %s versionId=%s', msg, versionId)
-    await prisma.contract.update({
-      where: { id: version.contractId },
-      data: { analysisStatus: 'FAILED', analysisError: msg },
-    })
-  }
-}
-
-// ─── Cosine similarity search over contract_clauses ──────────────────────────
+// ─── Passage search (intelligence tier) ──────────────────────────────────────
 
 export interface ClauseMatch {
   contractId: string

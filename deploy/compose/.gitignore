@@ -1,0 +1,5 @@
+# Written by install.sh: secrets.
+.env
+.env.*
+# backup.sh default target.
+backups/

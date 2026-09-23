@@ -4,6 +4,7 @@ import type { Permission } from '@clm/types'
 import { verifyToken, type JwtPayload } from '../lib/jwt.js'
 import { prisma } from '../lib/prisma.js'
 import { resolveApiScopePermissions } from '../lib/permissions.js'
+import { isInternalSecret } from '../lib/internal-auth.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -33,9 +34,8 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
   // org's user). When absent, we fall back to the legacy 'system'
   // sentinel which most route handlers special-case.
   if (
-    INTERNAL_SECRET &&
     req.headers['x-internal-service'] === 'agents' &&
-    req.headers['x-internal-secret'] === INTERNAL_SECRET
+    isInternalSecret(req.headers['x-internal-secret'], INTERNAL_SECRET)
   ) {
     const orgIdHeader = (req.headers['x-org-id'] as string | undefined)?.trim()
     req.user = {

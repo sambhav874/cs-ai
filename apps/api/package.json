@@ -21,7 +21,8 @@
     "backfill-es-index": "tsx --env-file=../../.env scripts/backfill-es-index.ts",
     "cleanup-broken-drafts": "tsx scripts/cleanup-broken-drafts.ts",
     "clean-demo": "tsx scripts/clean-demo.ts",
-    "backfill-unnamed-titles": "tsx scripts/backfill-unnamed-titles.ts"
+    "backfill-unnamed-titles": "tsx scripts/backfill-unnamed-titles.ts",
+    "signing-cert": "tsx scripts/generate-signing-cert.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.0",
@@ -41,12 +42,14 @@
     "@signpdf/placeholder-pdf-lib": "^3.3.0",
     "@signpdf/signer-p12": "^3.3.0",
     "@signpdf/signpdf": "^3.3.0",
+    "@xmldom/xmldom": "^0.8.13",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.12.0",
     "docx": "^9.7.1",
     "fastify": "^4.28.0",
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.2",
+    "jszip": "3.10.2",
     "mammoth": "^1.12.0",
     "mongodb": "^7.6.0",
     "node-forge": "^1.4.0",

@@ -30,47 +30,18 @@ import { MEANING_CLASS, type Meaning } from '@/lib/status'
 type Bucket = 'all' | 'this_week' | 'next_30' | 'next_60' | 'next_90' | 'overdue'
 type StatusFilter = 'all' | 'pending' | 'decided'
 
-/** AI-extracted term sheet. Every field is best-effort and may be missing. */
-interface KeyTerms {
-  autoRenew?: boolean | null
-  /**
-   * Days of notice-to-terminate required before expiry.
-   *
-   * Four writers, four spellings, and no migration ever unified them:
-   * `noticePeriodDays` is what the extraction agent emits (review_agent.py
-   * rawFields), `noticePeriod` is what a human writes when they correct the
-   * field in the review queue (FIELD_LABELS in api/routes/review-queue.ts) and
-   * is a phrase like "90 days", `renewalNoticeDays` comes from the audit seed,
-   * and `noticeDays` from the demo portfolio seed. See noticeDays() below —
-   * reading only one of these is why a contract whose notice period was known
-   * still reported it as unknown.
-   */
-  noticeDays?:       number | string | null
-  noticePeriodDays?: number | string | null
-  renewalNoticeDays?: number | string | null
-  noticePeriod?:     number | string | null
-}
-
 /**
- * The notice period in whole days, across every spelling the codebase writes
- * and both shapes it stores them in — 90 or "90 days".
- *
- * Only a leading integer counts. "30-60 days" would be a guess about which
- * bound binds, and this feeds a date people diarise against, so it is left
- * unknown instead.
+ * Renewal terms the API resolved from the review's key terms and, failing
+ * those, the contract's extracted renewal-notice obligation (renewalTerms in
+ * @clm/types). `actBy` is the date that binds: the notice deadline when the
+ * contract may renew itself, else expiry. Buckets and counts use it too.
  */
-function noticeDaysOf(kt: KeyTerms): number | null {
-  for (const raw of [kt.noticeDays, kt.noticePeriodDays, kt.renewalNoticeDays, kt.noticePeriod]) {
-    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return Math.round(raw)
-    if (typeof raw === 'string') {
-      const m = raw.trim().match(/^(\d+)\s*(?:days?|d)?\s*$/i)
-      if (m) {
-        const n = Number(m[1])
-        if (n > 0) return n
-      }
-    }
-  }
-  return null
+interface RenewalTerms {
+  autoRenew:      boolean | null
+  noticeDays:     number | null
+  noticeSource:   'key_terms' | 'obligation' | null
+  noticeDeadline: string | null
+  actBy:          string | null
 }
 
 interface RenewalRow {
@@ -84,7 +55,7 @@ interface RenewalRow {
   currency:         string | null
   ownerId:          string
   ownerName:        string | null
-  keyTerms:         KeyTerms | null
+  renewal:          RenewalTerms
   renewalDecision:    string | null
   renewalDecisionAt:  string | null
   renewalAdvice: {
@@ -117,6 +88,7 @@ interface ApiStats {
   next90:         number
   undecided:      number
   totalAcvNext90: number
+  noticeNext30?:  number
 }
 
 const BUCKETS: { key: Bucket; label: string; statKey?: keyof ApiStats }[] = [
@@ -166,8 +138,6 @@ function dueText(iso: string | null): { text: string; tone: string } {
   return { text: `${dateStr} · in ${d}d`, tone: 'text-fg-500' }
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
 /**
  * The auto-renewal notice deadline: expiry minus the notice-to-terminate
  * period — the last day anyone can stop the contract renewing.
@@ -181,8 +151,9 @@ const DAY_MS = 24 * 60 * 60 * 1000
  * colour rather than the expiry date's chrome, and carries an icon so the
  * colour is not the only signal.
  *
- * Returns null for contracts that do not auto-renew: there is no deadline to
- * miss, and a line on every row would spend the risk colour as decoration.
+ * Returns null for contracts that do not auto-renew, or whose renewal type
+ * and notice period are both unknown: there is no deadline to show, and a
+ * line on every row would spend the risk colour as decoration.
  */
 function noticeDeadline(r: RenewalRow): {
   text: string
@@ -190,16 +161,14 @@ function noticeDeadline(r: RenewalRow): {
   title: string
   atRisk: boolean
 } | null {
-  const kt = r.keyTerms
-  if (!kt?.autoRenew) return null
-
-  const days  = noticeDaysOf(kt)
-  const expiry = r.expiryDate ? new Date(r.expiryDate) : null
+  const t = r.renewal
+  if (!t || t.autoRenew === false) return null
 
   // Auto-renewing, but there is no notice period (or no expiry) to subtract.
   // Say so — a fabricated date is worse than an admitted gap, because this is
   // a date people diarise against.
-  if (days == null || !expiry || isNaN(expiry.getTime())) {
+  if (!t.noticeDeadline) {
+    if (!t.autoRenew) return null
     return {
       text:   'Auto-renews · notice period unknown',
       tone:   'text-fg-500',
@@ -208,10 +177,11 @@ function noticeDeadline(r: RenewalRow): {
     }
   }
 
-  const deadline = new Date(expiry.getTime() - days * DAY_MS)
-  const dateStr  = deadline.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  const d        = daysUntil(deadline.toISOString())
-  const title    = `Auto-renews. ${days} days' notice to terminate, so notice must be served by ${dateStr}.`
+  const dateStr  = new Date(t.noticeDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+  const d        = daysUntil(t.noticeDeadline)
+  const renews   = t.autoRenew ? 'Auto-renews.' : 'Renewal type not stated; it may renew automatically.'
+  const source   = t.noticeSource === 'obligation' ? ' Notice period from the extracted renewal obligation.' : ''
+  const title    = `${renews} ${t.noticeDays} days' notice to terminate, so notice must be served by ${dateStr}.${source}`
   const risky    = 'text-risk-700 font-medium'
 
   if (d == null) return { text: `Notice by ${dateStr}`, tone: 'text-fg-500', title, atRisk: false }
@@ -303,7 +273,7 @@ export function RenewalsPage() {
         </Button>
       </div>
       <p className="text-body text-fg-500 mb-5">
-        Every executed contract heading toward its expiry — grouped by month so you can see what decisions are needed when.
+        Every executed contract heading toward its expiry, grouped by month. Windows count from the date that binds: the notice deadline when a contract renews itself, otherwise expiry.
       </p>
 
       {/* Stats strip */}
@@ -317,7 +287,11 @@ export function RenewalsPage() {
           meaning="turn"
           icon={AlertTriangle}
           data-testid="stat-undecided"
-          subtitle={stats?.totalAcvNext90 ? `next 90d · ${formatMoney(stats.totalAcvNext90)} ACV` : 'next 90d'}
+          subtitle={[
+            'next 90d',
+            stats?.totalAcvNext90 ? `${formatMoney(stats.totalAcvNext90)} ACV` : null,
+            stats?.noticeNext30 ? `${stats.noticeNext30} notice due ≤30d` : null,
+          ].filter(Boolean).join(' · ')}
         />
       </div>
 

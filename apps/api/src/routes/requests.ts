@@ -6,7 +6,10 @@ import { requirePermission } from '../middleware/permissions.js'
 import { createAuditEvent } from '../lib/audit.js'
 import { s3, S3_BUCKET } from '../lib/storage.js'
 import { CreateRequestSchema, UpdateRequestSchema, AuditAction } from '@clm/types'
-import { queueClassifyRequest, queueParseDocument, queueDraftContract } from '../lib/queue.js'
+import { queueClassifyRequest, queueParseDocument, queueDraftContract, queueLinkIntelligence } from '../lib/queue.js'
+import { generateDocument } from '../lib/template-engine.js'
+import { requestTemplateVariables } from '../lib/request-template.js'
+import { z } from 'zod'
 import { indexContract } from '../lib/elasticsearch.js'
 
 const ALLOWED_MIME = new Set(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'])
@@ -237,9 +240,21 @@ export async function requestRoutes(app: FastifyInstance) {
   })
 
   // POST /api/v1/requests/:id/convert — accept request and create a Contract
+  // POST /api/v1/requests/:id/convert
+  //
+  // Turns a request into a contract without anyone re-typing it:
+  //   • with an attachment → that document becomes version 1 and is parsed
+  //     and linked for analysis (the third-party-paper path)
+  //   • else with a template → the org's published template for the type (or
+  //     the one named) is generated with variables filled from the request —
+  //     deterministic, and works on a self-hosted install with no model key
+  //   • else → the AI drafting agent, as before
   app.post('/:id/convert', { preHandler: requirePermission('edit', 'request') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId, sub: userId } = req.user
+    const parsed = ConvertSchema.safeParse(req.body ?? {})
+    if (!parsed.success) return reply.status(400).send({ detail: 'Invalid request', issues: parsed.error.issues })
+    const body = parsed.data
 
     const request = await prisma.contractRequest.findFirst({
       where: { id, orgId, deletedAt: null },
@@ -250,104 +265,168 @@ export async function requestRoutes(app: FastifyInstance) {
     }
 
     const attachments = (request.attachments as Array<{ filename: string; s3Key: string; mimeType: string; size: number }>) ?? []
-
     const hasAttachments = attachments.length > 0
     const reqMeta = (request.metadata ?? {}) as Record<string, unknown>
 
-    // Draft context — stored in metadata so retry can re-queue without the original request
-    const draftContext = !hasAttachments ? {
-      requestTitle:      request.title,
-      // `description` is a top-level column on ContractRequest (not in metadata);
-      // read it first so the AI drafts from the requester's actual ask, not just
-      // the title. Fall back to legacy metadata, then title, to stay defensive.
-      requestDescription: request.description ?? (reqMeta.description as string) ?? request.title,
-      contractType:      request.type,
-      counterpartyName:  request.counterpartyName ?? undefined,
-      estimatedValue:    request.estimatedValue != null ? Number(request.estimatedValue) : undefined,
-    } : undefined
+    // Resolve the template before claiming, so a bad templateId is a clean 404.
+    let template: Awaited<ReturnType<typeof loadTemplate>> = null
+    if (!hasAttachments && body.draftWith !== 'ai') {
+      template = await loadTemplate(orgId, request.type, body.templateId)
+      if (body.templateId && !template) return reply.status(404).send({ detail: 'Template not found' })
+    }
 
-    // Create the contract from request data
-    const contract = await prisma.contract.create({
-      data: {
+    // Claim the request: two converts racing must create one contract.
+    const claimed = await prisma.contractRequest.updateMany({
+      where: { id, orgId, deletedAt: null, status: { notIn: ['ACCEPTED', 'COMPLETED'] } },
+      data:  { status: 'ACCEPTED' },
+    })
+    if (claimed.count === 0) return reply.status(400).send({ detail: 'Request already converted' })
+
+    let contractId: string
+    let mode: 'attachment' | 'template' | 'ai'
+    try {
+      const base = {
         orgId,
         title:            request.title,
         type:             request.type,
         status:           'DRAFT',
-        analysisStatus:   hasAttachments ? 'PENDING' : 'DRAFTING',
         counterpartyName: request.counterpartyName ?? undefined,
         value:            request.estimatedValue ?? undefined,
         ownerId:          userId,
-        ...(draftContext && { metadata: { _draftContext: draftContext } }),
-      },
-    })
+        spaceId:          request.spaceId ?? undefined,
+      }
 
-    if (hasAttachments) {
-      // Request had a document — parse and analyze it
-      const att = attachments[0]
-      const version = await prisma.contractVersion.create({
-        data: {
-          contractId:    contract.id,
-          versionNumber: 1,
-          s3Key:         att.s3Key,
-          mimeType:      att.mimeType,
-          createdById:   userId,
-          // ContractVersion has no `filename` column; the name travels
-          // with the parse job below and is derived from s3Key for display.
-        },
-      })
-      queueParseDocument({
-        contractId: contract.id,
-        versionId:  version.id,
-        s3Key:      att.s3Key,
-        mimeType:   att.mimeType,
-        filename:   att.filename,
-        orgId,
-      })
-    } else {
-      // No document — trigger AI drafting from request context
-      queueDraftContract({
-        contractId:        contract.id,
-        orgId,
-        userId,
-        ...draftContext!,
-      })
+      if (hasAttachments) {
+        mode = 'attachment'
+        const att = attachments[0]
+        const contract = await prisma.contract.create({
+          data: {
+            ...base,
+            analysisStatus: 'PENDING',
+            metadata: { fromRequestId: id },
+            versions: { create: { versionNumber: 1, s3Key: att.s3Key, mimeType: att.mimeType, fileSize: att.size, createdById: userId } },
+          },
+          include: { versions: true },
+        })
+        await prisma.contract.update({ where: { id: contract.id }, data: { currentVersionId: contract.versions[0].id } })
+        contractId = contract.id
+        queueParseDocument({
+          contractId, versionId: contract.versions[0].id,
+          s3Key: att.s3Key, mimeType: att.mimeType, filename: att.filename, orgId,
+        })
+        // The upload route links every stored file for analysis; a document
+        // arriving through intake is the same third-party paper.
+        queueLinkIntelligence({ contractId, orgId, userId, s3Key: att.s3Key, mimeType: att.mimeType, filename: att.filename })
+      } else if (template) {
+        mode = 'template'
+        const requester = await prisma.user.findFirst({ where: { id: request.requestedById, orgId }, select: { name: true } })
+        const variableDefs = Array.isArray(template.variables) ? (template.variables as Array<{ key: string }>) : []
+        const variables = requestTemplateVariables({
+          title: request.title, type: request.type, description: request.description,
+          counterpartyName: request.counterpartyName, estimatedValue: request.estimatedValue,
+          requesterName: requester?.name ?? null, metadata: reqMeta,
+        }, variableDefs)
+        const clauseRefs = template.sections.flatMap(sec => Array.isArray(sec.clauseRefs) ? (sec.clauseRefs as string[]) : [])
+        const clauseItems = clauseRefs.length
+          ? await prisma.clauseLibraryItem.findMany({ where: { id: { in: clauseRefs }, orgId, deletedAt: null } })
+          : []
+        const doc = generateDocument({ template, variables, clauseMap: new Map(clauseItems.map(c => [c.id, c])) })
+
+        const contract = await prisma.contract.create({
+          data: {
+            ...base,
+            analysisStatus: 'DONE',
+            metadata: {
+              fromRequestId: id,
+              fromTemplate: { id: template.id, name: template.name, version: template.version, unfilledVariables: doc.unfilledVariables },
+            },
+            versions: {
+              create: {
+                versionNumber: 1,
+                htmlContent:   doc.html,
+                plainText:     doc.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+                mimeType:      'text/html',
+                fileSize:      Buffer.byteLength(doc.html),
+                changeNote:    `Generated from template "${template.name}" v${template.version}`,
+                createdById:   userId,
+              },
+            },
+          },
+          include: { versions: true },
+        })
+        await prisma.contract.update({ where: { id: contract.id }, data: { currentVersionId: contract.versions[0].id } })
+        await prisma.template.update({ where: { id: template.id }, data: { usageCount: { increment: 1 } } })
+        contractId = contract.id
+      } else {
+        mode = 'ai'
+        // Draft context — stored in metadata so retry can re-queue without the original request
+        const draftContext = {
+          requestTitle:       request.title,
+          requestDescription: request.description ?? (reqMeta.description as string) ?? request.title,
+          contractType:       request.type,
+          counterpartyName:   request.counterpartyName ?? undefined,
+          estimatedValue:     request.estimatedValue != null ? Number(request.estimatedValue) : undefined,
+        }
+        const contract = await prisma.contract.create({
+          data: { ...base, analysisStatus: 'DRAFTING', metadata: { fromRequestId: id, _draftContext: draftContext } },
+        })
+        contractId = contract.id
+        queueDraftContract({ contractId, orgId, userId, ...draftContext })
+      }
+    } catch (err) {
+      // Nothing was created that the request points at; let it be converted again.
+      await prisma.contractRequest.updateMany({ where: { id, status: 'ACCEPTED' }, data: { status: request.status } })
+      throw err
     }
 
-    // Index into ES so the new contract is searchable immediately. plainText is
-    // empty for now; the attachment path re-indexes with full text once parsing
-    // finishes (see parse.worker.ts). Fire-and-forget — never block the response.
-    indexContract(contract.id, {
+    // Index into ES so the new contract is searchable immediately.
+    // Fire-and-forget — never block the response.
+    indexContract(contractId, {
       orgId,
-      title:            contract.title,
-      type:             contract.type,
-      status:           contract.status,
-      counterpartyName: contract.counterpartyName ?? undefined,
+      title:            request.title,
+      type:             request.type,
+      status:           'DRAFT',
+      counterpartyName: request.counterpartyName ?? undefined,
       plainText:        '',
-      tags:             contract.tags,
-      createdAt:        contract.createdAt.toISOString(),
+      tags:             [],
+      createdAt:        new Date().toISOString(),
     }).catch(err => req.log.warn({ err }, 'ES index on request-convert failed'))
-
-    // Mark request as accepted
-    await prisma.contractRequest.update({
-      where: { id },
-      data:  { status: 'ACCEPTED' },
-    })
 
     await createAuditEvent({
       orgId, userId,
       action: AuditAction.CONTRACT_CREATED,
       resourceType: 'contract',
-      resourceId: contract.id,
-      metadata: { fromRequestId: id },
+      resourceId: contractId,
+      metadata: { fromRequestId: id, mode, ...(template && { templateId: template.id, templateVersion: template.version }) },
     })
     await createAuditEvent({
       orgId, userId,
       action: AuditAction.REQUEST_STATUS_CHANGED,
       resourceType: 'contract_request',
       resourceId: id,
-      metadata: { status: 'ACCEPTED', contractId: contract.id },
+      metadata: { status: 'ACCEPTED', contractId },
     })
 
-    return reply.status(201).send({ contractId: contract.id })
+    return reply.status(201).send({ contractId, mode })
+  })
+}
+
+const ConvertSchema = z.object({
+  /** A specific template; otherwise the org's most-used published one for the type. */
+  templateId: z.string().trim().min(1).max(64).optional(),
+  /** Force AI drafting even when a template exists. */
+  draftWith:  z.enum(['template', 'ai']).optional(),
+})
+
+/** The template a conversion drafts from, with its sections. */
+async function loadTemplate(orgId: string, contractType: string, templateId?: string) {
+  const include = { sections: { orderBy: { sortOrder: 'asc' as const } } }
+  if (templateId) {
+    return prisma.template.findFirst({ where: { id: templateId, orgId, deletedAt: null }, include })
+  }
+  return prisma.template.findFirst({
+    where:   { orgId, deletedAt: null, isPublished: true, contractType },
+    orderBy: [{ usageCount: 'desc' }, { updatedAt: 'desc' }],
+    include,
   })
 }

@@ -20,7 +20,7 @@ import { api } from '@/lib/api'
 import { RailSection } from '@/components/contracts/RailSection'
 import { Button } from '@/components/ui/button'
 import { AssistMark } from '@/components/ui/assist'
-import { Check, X, AlertTriangle, ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
+import { Check, X, AlertTriangle, ChevronDown, ChevronRight, Loader2, Download } from 'lucide-react'
 
 export interface StagedProposal {
   clauseId:      string
@@ -63,11 +63,14 @@ const SEVERITY_STYLE: Record<string, string> = {
 
 export function PlaybookRedlineRailSection({
   contractId,
+  currentVersionId,
   status,
   staged,
   error,
 }: {
   contractId: string
+  /** The version the accepted changes produced — the "after" side of the Word export. */
+  currentVersionId?: string | null
   status:     Status
   staged?:    StagedRedline | null
   error?:     string | null
@@ -100,6 +103,26 @@ export function PlaybookRedlineRailSection({
       setAccepted(new Set())
     },
   })
+
+  // The accepted changes as a Word file with native tracked changes: the
+  // version that was redlined against the version the changes produced.
+  const downloadDocx = useMutation({
+    mutationFn: async () => {
+      const r = await api.get(
+        `/contracts/${contractId}/versions/${staged!.versionId}/redline-docx/${currentVersionId}`,
+        { responseType: 'blob' },
+      )
+      const url = URL.createObjectURL(new Blob([r.data], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `playbook-redline-${new Date().toISOString().slice(0, 10)}.docx`
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    },
+  })
+  const canDownload = status === 'APPLIED' && !!staged?.versionId && !!currentVersionId && staged.versionId !== currentVersionId
 
   const usable = useMemo(
     () => (staged?.proposals ?? []).filter(p => p.proposedText),
@@ -170,7 +193,42 @@ export function PlaybookRedlineRailSection({
         </div>
       )}
 
-      {(status === 'DONE' || status === 'APPLIED') && staged && (
+      {status === 'APPLIED' && staged && (
+        <div className="space-y-2" data-testid="redline-applied">
+          <p className="text-[11px] text-success-700">
+            {staged.acceptedClauseIds?.length ?? 0} change{(staged.acceptedClauseIds?.length ?? 0) === 1 ? '' : 's'} applied
+            as a new version. Everything you did not accept was left alone.
+          </p>
+          {canDownload && (
+            <Button
+              size="sm" variant="outline" className="w-full gap-1.5"
+              onClick={() => downloadDocx.mutate()}
+              disabled={downloadDocx.isPending}
+              data-testid="download-playbook-redline-docx"
+            >
+              {downloadDocx.isPending ? <Loader2 className="animate-spin" /> : <Download />}
+              Download Word with tracked changes
+            </Button>
+          )}
+          {downloadDocx.isError && (
+            <p className="text-[11px] text-risk-700">
+              {(downloadDocx.error as { response?: { status?: number } })?.response?.status === 409
+                ? 'The new version is still being processed. Try again in a moment.'
+                : 'The Word file could not be produced.'}
+            </p>
+          )}
+          <Button
+            size="sm" variant="assistOutline" className="w-full gap-1.5"
+            onClick={() => start.mutate()}
+            disabled={start.isPending}
+          >
+            <AssistMark />
+            Redline the new version
+          </Button>
+        </div>
+      )}
+
+      {status === 'DONE' && staged && (
         <div className="space-y-2.5">
           <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
             <span className="text-fg-700">

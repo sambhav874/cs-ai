@@ -30,7 +30,11 @@ import { CostCapExceededError } from '../lib/costCap.js'
 import { AuditAction } from '@clm/types'
 import { applyClauseProposal, applyClauseBatch } from '../lib/clause-apply.js'
 import { rrfScore } from '../lib/rrf.js'
-import { normalisedKey } from '../lib/clause-category.js'
+import { matchCategory, normalisedKey } from '../lib/clause-category.js'
+import {
+  evaluatePlaybookRules, pickWorstSeverity, ruleCountOf, type PlaybookRules,
+} from '../lib/playbook-rules.js'
+import { requireInternalSecret } from '../lib/internal-auth.js'
 
 const TIERS: Tier[] = ['reasoning', 'default', 'fast', 'embed', 'rerank', 'vision_ocr']
 
@@ -93,146 +97,6 @@ async function redactExcerpts(
   }
   idx.forEach((position, k) => { out[position] = redacted[k] ?? REDACTION_UNAVAILABLE })
   return out
-}
-
-// ── P1.2 — Structured playbook rules (docs/28 C.2.1) ────────────────────
-// `PlaybookPosition.rules` is free-form JSON; we runtime-type it via
-// the shape below. Everything optional — orgs can ship must_have without
-// must_not, bounds-only configs, etc.
-/**
- * One severity vocabulary for the whole playbook surface.
- *
- * The structured-rules path used `low|medium|high|walkaway`; the LLM review
- * path (playbook_review_agent.py) emits `low|medium|high|critical`. Both write
- * into the same field, so an org whose rules say `critical` was silently
- * mis-ranked. `critical` is accepted here and treated as equivalent to
- * `walkaway` — both mean "a human must look at this before it goes anywhere".
- */
-type PlaybookSeverity = 'low' | 'medium' | 'high' | 'critical' | 'walkaway'
-type PlaybookRuleCheck = 'contains' | 'regex' | 'present' | 'absent'
-
-interface PlaybookRule {
-  id?:          string
-  description:  string
-  check:        PlaybookRuleCheck
-  value:        string     // substring / regex source / marker token
-  severity:     PlaybookSeverity
-}
-
-interface PlaybookBound {
-  min?:         number
-  max?:         number
-  units?:       string
-  severity:     PlaybookSeverity
-  description?: string
-}
-
-interface PlaybookRules {
-  must_have?:   PlaybookRule[]
-  must_not?:    PlaybookRule[]
-  bounds?:      Record<string, PlaybookBound>
-  variables?:   Array<{ key: string; type: string; required?: boolean; default?: unknown }>
-}
-
-// Ascending. `critical` and `walkaway` are peers — different words for the same
-// stop condition, arriving from the LLM path and the rules path respectively.
-const SEVERITY_ORDER: PlaybookSeverity[] = ['low', 'medium', 'high', 'critical', 'walkaway']
-
-/**
- * Rank a severity, tolerating values written by hand into a rules JSON.
- *
- * `SEVERITY_ORDER.indexOf(x)` returns -1 for anything unrecognised, and -1 is
- * LOWER than every real rank — so an unknown severity lost to the next `low`
- * that came along. That is how a `critical` violation ended up reported as
- * `low`. Unknown values now rank at the TOP: if we cannot interpret how
- * serious something is, the safe reading is "serious".
- */
-function severityRank(sev: string | undefined | null): number {
-  if (!sev) return -1
-  const i = SEVERITY_ORDER.indexOf(sev as PlaybookSeverity)
-  return i === -1 ? SEVERITY_ORDER.length : i
-}
-
-/**
- * Walk a rules object against a clause's text. Returns one entry per
- * evaluated rule with `{passed, ...}`. "Bounds" checks compile to
- * "no strong assertion" today (P1.3 will pair them with an LLM judge);
- * they appear in the output so the agent LLM can reason over them.
- */
-function evaluatePlaybookRules(
-  rules:        PlaybookRules,
-  clauseText:   string,
-  positionType: string,
-): Array<Record<string, unknown>> {
-  const out: Array<Record<string, unknown>> = []
-  const text = clauseText.toLowerCase()
-
-  for (const r of rules.must_have ?? []) {
-    const passed = ruleMatches(r, text)
-    out.push({
-      kind: 'must_have', position: positionType,
-      ruleId: r.id, description: r.description, severity: r.severity,
-      check: r.check, value: r.value,
-      // "passed" for a must_have rule means the match hit.
-      passed,
-    })
-  }
-  for (const r of rules.must_not ?? []) {
-    const hit = ruleMatches(r, text)
-    out.push({
-      kind: 'must_not', position: positionType,
-      ruleId: r.id, description: r.description, severity: r.severity,
-      check: r.check, value: r.value,
-      // For must_not we flip: "passed" means the text does NOT contain it.
-      passed: !hit,
-    })
-  }
-  for (const [key, b] of Object.entries(rules.bounds ?? {})) {
-    out.push({
-      kind: 'bound', position: positionType,
-      boundKey: key, description: b.description, severity: b.severity,
-      min: b.min, max: b.max, units: b.units,
-      // Leave `passed` null — bounds need numeric extraction which we
-      // defer to P1.3 (two-stage compare). The agent LLM can still see
-      // the bound and reason over the clause text.
-      passed: null,
-    })
-  }
-  return out
-}
-
-function ruleMatches(rule: PlaybookRule, lowerText: string): boolean {
-  switch (rule.check) {
-    case 'contains': return lowerText.includes(rule.value.toLowerCase())
-    case 'regex':
-      try { return new RegExp(rule.value, 'i').test(lowerText) }
-      catch { return false }
-    case 'present':  return lowerText.includes(rule.value.toLowerCase())
-    case 'absent':   return !lowerText.includes(rule.value.toLowerCase())
-    default:         return false
-  }
-}
-
-function pickWorstSeverity(
-  violations: Array<Record<string, unknown>>,
-): PlaybookSeverity | null {
-  let worst: PlaybookSeverity | null = null
-  for (const v of violations) {
-    if (v.passed === true || v.passed === null) continue // no violation
-    const sev = v.severity as PlaybookSeverity | undefined
-    if (!sev) continue
-    if (!worst || severityRank(sev) > severityRank(worst)) {
-      worst = sev
-    }
-  }
-  return worst
-}
-
-function ruleCountOf(rules: PlaybookRules | null): number {
-  if (!rules) return 0
-  return (rules.must_have?.length ?? 0)
-       + (rules.must_not?.length  ?? 0)
-       + Object.keys(rules.bounds ?? {}).length
 }
 
 const ResolveSchema = z.object({
@@ -684,12 +548,7 @@ const ContractUpdateSchema = z.object({
 
 export async function internalAiRoutes(app: FastifyInstance) {
   // ── x-internal-secret guard for every route in this plugin ─────────────────
-  app.addHook('preHandler', async (req, reply) => {
-    const secret = req.headers['x-internal-secret']
-    if (!secret || secret !== process.env.INTERNAL_SERVICE_SECRET) {
-      return reply.status(401).send({ detail: 'Internal endpoint — bad secret' })
-    }
-  })
+  app.addHook('preHandler', requireInternalSecret)
 
   // ── POST /internal/ai/resolve ──────────────────────────────────────────────
   // Body:  { orgId: string, tier: Tier }
@@ -1960,10 +1819,6 @@ export async function internalAiRoutes(app: FastifyInstance) {
       where: { orgId: body.orgId },
       select: { id: true, name: true },
     })
-    const categoryByNormalisedName = new Map<string, { id: string; name: string }>()
-    for (const c of categories) {
-      categoryByNormalisedName.set(normalisedKey(c.name), { id: c.id, name: c.name })
-    }
 
     // Load every position for the contract's type (or type-agnostic).
     // We also pull `rules` (P1.2) — the structured playbook schema the
@@ -1999,8 +1854,7 @@ export async function internalAiRoutes(app: FastifyInstance) {
     // because a redlining pipeline treats the first as done.
     const uncovered: Array<{ clauseId: string; clauseType: string; sectionRef: string | null; reason: string }> = []
     for (const cl of clauses) {
-      const key = normalisedKey(cl.clauseType)
-      const category = categoryByNormalisedName.get(key)
+      const category = matchCategory(categories, cl.clauseType)
       if (!category) { unmapped.add(cl.clauseType); continue }
       const matchingPositions = positionsByCategory.get(category.id) ?? []
       if (matchingPositions.length === 0) {

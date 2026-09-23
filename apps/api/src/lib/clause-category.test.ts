@@ -101,3 +101,40 @@ describe('matchCategory', () => {
     expect(matchCategory([], 'indemnification')).toBeNull()
   })
 })
+
+describe('matchCategory — extractor vocabulary', () => {
+  // The seeded universal playbook's names.
+  const seeded = [
+    'Fees & Payment', 'Term & Termination', 'Intellectual Property', 'Representations & Warranties',
+    'Limitation of Liability', 'Force Majeure & Excused Events', 'Assignment & Change of Control',
+    'Notices & Miscellaneous', 'Dispute Resolution', 'Data Protection & Privacy', 'Confidentiality',
+  ].map((n, i) => cat(n, `s${i}`))
+  const name = (t: string) => matchCategory(seeded, t)?.name ?? null
+
+  it('maps the review agent\'s clause types onto the seeded playbook', () => {
+    expect(name('payment')).toBe('Fees & Payment')
+    expect(name('termination')).toBe('Term & Termination')
+    expect(name('auto_renewal')).toBe('Term & Termination')
+    expect(name('ip_ownership')).toBe('Intellectual Property')
+    expect(name('representations_warranties')).toBe('Representations & Warranties')
+    expect(name('uncapped_liability')).toBe('Limitation of Liability')
+    expect(name('force_majeure')).toBe('Force Majeure & Excused Events')
+    expect(name('change_of_control')).toBe('Assignment & Change of Control')
+    expect(name('notice')).toBe('Notices & Miscellaneous')
+    expect(name('governing_law')).toBe('Dispute Resolution')
+    expect(name('data_protection')).toBe('Data Protection & Privacy')
+    expect(name('confidential_info_definition')).toBe('Confidentiality')
+  })
+
+  it('an exact name still wins over an alias, and "and" is "&"', () => {
+    const cats = [cat('Fees & Payment', 'a'), cat('Payment', 'b'), cat('Term and Termination', 'c')]
+    expect(matchCategory(cats, 'payment')?.id).toBe('b')
+    expect(matchCategory(cats, 'termination')?.id).toBe('c')
+  })
+
+  it('types with no counterpart stay unmapped', () => {
+    expect(name('non_compete')).toBeNull()
+    expect(name('mfn')).toBeNull()
+    expect(name('general')).toBeNull()
+  })
+})

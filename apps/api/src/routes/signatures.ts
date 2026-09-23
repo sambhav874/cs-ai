@@ -32,13 +32,11 @@ import type { FastifyInstance, FastifyRequest } from 'fastify'
 import crypto from 'node:crypto'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
-import { requireAuth } from '../middleware/auth.js'
-import { requirePermission } from '../middleware/permissions.js'
+import { requirePermission, requireContractPermission } from '../middleware/permissions.js'
 import { createAuditEvent } from '../lib/audit.js'
 import { AuditAction } from '@clm/types'
 import { sendSigningEmailForSigner } from '../lib/signing-email.js'
 import { queueSigningReminder, queueSealSignedPdf } from '../lib/queue.js'
-import { extractObligationsForContract, CostCapExceededError } from '../lib/obligation-extract.js'
 import { fireWebhook } from '../lib/webhook-events.js'
 
 const SignersSchema = z.object({
@@ -56,10 +54,10 @@ const SignersSchema = z.object({
 
 const SignBodySchema = z.object({
   signedName: z.string().min(1).max(200),
-  // Wave 2.7 — explicit ESIGN/UETA consent to conduct business electronically.
-  // Optional for backward-compat with older clients, but recorded in the
-  // signature event so the audit trail shows affirmative consent when present.
-  consent: z.boolean().optional(),
+  // ESIGN/UETA affirmative consent to conduct business electronically. A
+  // signature without it is not one this product will stand behind, so it is
+  // required rather than merely recorded when present.
+  consent: z.literal(true, { errorMap: () => ({ message: 'Consent to sign electronically is required' }) }),
 })
 
 const DeclineBodySchema = z.object({
@@ -70,12 +68,37 @@ function newToken(): string {
   return crypto.randomBytes(32).toString('hex')
 }
 
+/**
+ * A signer's token IS their signature authority: whoever holds it can sign as
+ * them. It goes out once, in the signer's own email, and never in an API
+ * response — an org member listing requests must not be able to sign as the
+ * counterparty.
+ */
+function withoutTokens<T extends { signers?: Array<{ token?: unknown }> }>(sr: T): T {
+  if (!sr.signers) return sr
+  return { ...sr, signers: sr.signers.map(({ token: _token, ...rest }) => rest) } as T
+}
+
+// A contract in these states cannot be sent: it is done, gone, or still
+// waiting on its approvers.
+const UNSENDABLE = new Set(['EXECUTED', 'TERMINATED', 'ARCHIVED', 'EXPIRED', 'PENDING_APPROVAL'])
+
+/** The status to return a contract to when its signature request ends unsigned. */
+async function statusBeforeSending(signatureRequestId: string): Promise<string> {
+  const sent = await prisma.signatureEvent.findFirst({
+    where:  { signatureRequestId, kind: 'SENT' },
+    select: { metadata: true },
+  })
+  const prev = (sent?.metadata as { previousContractStatus?: string } | null)?.previousContractStatus
+  return prev && prev !== 'PENDING_SIGNATURE' ? prev : 'APPROVED'
+}
+
 export async function signatureRoutes(app: FastifyInstance) {
 
   // ── POST /contracts/:id/send-for-signature ────────────────────────────
   app.post<{ Params: { id: string } }>(
     '/contracts/:id/send-for-signature',
-    { preHandler: requirePermission('sign', 'contract') },
+    { preHandler: requireContractPermission('sign') },
     async (req, reply) => {
       const { id } = req.params
       const { orgId, sub: userId } = req.user
@@ -91,6 +114,27 @@ export async function signatureRoutes(app: FastifyInstance) {
       }
       if (contract.status === 'EXECUTED') {
         return reply.status(409).send({ detail: 'Contract already executed' })
+      }
+      if (UNSENDABLE.has(contract.status)) {
+        return reply.status(409).send({ detail: `A ${contract.status.toLowerCase().replace(/_/g, ' ')} contract cannot be sent for signature` })
+      }
+      // Signing is what approval gates. An approval still in flight means the
+      // approvers have not decided, whatever the contract status says.
+      const approvalInFlight = await prisma.approvalInstance.findFirst({
+        where:  { contractId: id, orgId, status: 'PENDING' },
+        select: { id: true },
+      })
+      if (approvalInFlight) {
+        return reply.status(409).send({ detail: 'Approval is still in progress for this contract' })
+      }
+      // One live request per contract: two would let the same document be
+      // executed twice, by different signer sets.
+      const live = await prisma.signatureRequest.findFirst({
+        where:  { contractId: id, orgId, status: 'PENDING' },
+        select: { id: true },
+      })
+      if (live) {
+        return reply.status(409).send({ detail: 'This contract already has an active signature request. Void it before sending a new one.' })
       }
 
       const expiresAt = new Date(Date.now() + body.expiresInDays * 86_400_000)
@@ -127,7 +171,7 @@ export async function signatureRoutes(app: FastifyInstance) {
           data: {
             signatureRequestId: sr.id,
             kind: 'SENT',
-            metadata: { signerCount: body.signers.length },
+            metadata: { signerCount: body.signers.length, previousContractStatus: contract.status },
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'] ?? null,
           },
@@ -221,7 +265,7 @@ export async function signatureRoutes(app: FastifyInstance) {
         }
       }
 
-      return reply.status(201).send(fresh)
+      return reply.status(201).send(fresh ? withoutTokens(fresh) : fresh)
     },
   )
 
@@ -231,7 +275,7 @@ export async function signatureRoutes(app: FastifyInstance) {
   // Filterable by status. Authenticated users see their own org only.
   app.get<{ Querystring: { status?: string; limit?: string; offset?: string } }>(
     '/signature-requests',
-    { preHandler: requireAuth },
+    { preHandler: requirePermission('view', 'contract') },
     async (req, reply) => {
       const { orgId } = req.user
       const limit = Math.min(100, parseInt(req.query.limit ?? '50', 10) || 50)
@@ -279,7 +323,7 @@ export async function signatureRoutes(app: FastifyInstance) {
   // ── GET /contracts/:id/signature-requests ─────────────────────────────
   app.get<{ Params: { id: string } }>(
     '/contracts/:id/signature-requests',
-    { preHandler: requireAuth },
+    { preHandler: requireContractPermission('view') },
     async (req, reply) => {
       const { id } = req.params
       const { orgId } = req.user
@@ -288,7 +332,7 @@ export async function signatureRoutes(app: FastifyInstance) {
         orderBy: { createdAt: 'desc' },
         include: { signers: true, events: { orderBy: { createdAt: 'desc' }, take: 20 } },
       })
-      return reply.send({ data: requests })
+      return reply.send({ data: requests.map(withoutTokens) })
     },
   )
 
@@ -386,6 +430,10 @@ export async function signatureRoutes(app: FastifyInstance) {
       if (!signer) return reply.status(404).send({ detail: 'Invalid signing link' })
       const sr = signer.signatureRequest
       if (sr.status !== 'PENDING') return reply.status(410).send({ detail: 'Signing request is no longer active' })
+      // The GET lazily expires a stale link, but a signer can POST without it.
+      if (sr.expiresAt && sr.expiresAt < new Date()) {
+        return reply.status(410).send({ detail: 'This signing link has expired' })
+      }
       if (signer.status === 'SIGNED')  return reply.status(409).send({ detail: 'Already signed' })
       if (signer.status === 'DECLINED') return reply.status(409).send({ detail: 'Already declined' })
 
@@ -402,8 +450,9 @@ export async function signatureRoutes(app: FastifyInstance) {
       }
 
       const now = new Date()
-      const updated = await prisma.signer.update({
-        where: { id: signer.id },
+      // Conditional on PENDING so a double-submit signs once, not twice.
+      const claimed = await prisma.signer.updateMany({
+        where: { id: signer.id, status: 'PENDING' },
         data: {
           status: 'SIGNED',
           signedAt: now,
@@ -412,6 +461,8 @@ export async function signatureRoutes(app: FastifyInstance) {
           signedUserAgent: req.headers['user-agent'] ?? null,
         },
       })
+      if (claimed.count === 0) return reply.status(409).send({ detail: 'Already responded' })
+      const updated = await prisma.signer.findUniqueOrThrow({ where: { id: signer.id } })
       await prisma.signatureEvent.create({
         data: {
           signatureRequestId: sr.id,
@@ -427,6 +478,20 @@ export async function signatureRoutes(app: FastifyInstance) {
           userAgent: req.headers['user-agent'] ?? null,
         },
       })
+      // Each signature is anchored in the org's tamper-evident chain, not only
+      // in the request's own event list.
+      await createAuditEvent({
+        orgId: sr.orgId,
+        action: AuditAction.SIGNATURE_SIGNED,
+        resourceType: 'contract',
+        resourceId: sr.contractId,
+        metadata: {
+          signatureRequestId: sr.id, signerId: signer.id,
+          signerEmail: signer.email, signedName: body.signedName, consentGiven: true,
+        },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'] ?? undefined,
+      })
 
       // Check if everyone has signed → flip request COMPLETED + contract EXECUTED.
       const fresh = await prisma.signatureRequest.findUnique({
@@ -434,13 +499,18 @@ export async function signatureRoutes(app: FastifyInstance) {
         include: { signers: true },
       })
       const allSigned = fresh!.signers.every(s => s.status === 'SIGNED')
-      if (allSigned) {
-        const completedAt = new Date()
+      // Two last signatures landing together would both see allSigned. Only
+      // the one that flips the request from PENDING completes it; the other
+      // skips the completion side effects (audit, webhooks, seal).
+      const completedAt = new Date()
+      const won = allSigned
+        ? (await prisma.signatureRequest.updateMany({
+            where: { id: sr.id, status: 'PENDING' },
+            data:  { status: 'COMPLETED', completedAt },
+          })).count === 1
+        : false
+      if (won) {
         await prisma.$transaction([
-          prisma.signatureRequest.update({
-            where: { id: sr.id },
-            data: { status: 'COMPLETED', completedAt },
-          }),
           prisma.contract.update({
             where: { id: sr.contractId },
             data: { status: 'EXECUTED' },
@@ -483,34 +553,9 @@ export async function signatureRoutes(app: FastifyInstance) {
         // state and is idempotent, so retries are safe.
         queueSealSignedPdf({ signatureRequestId: sr.id })
 
-        // ── P8 Step 2: auto-extract obligations on signature completion ──
-        // Fire-and-forget — the signed contract becomes the system of
-        // record for what was promised, and we want a structured list of
-        // those promises ready for the obligations rail / list view as
-        // soon as the signing flow settles. Failures (cost cap, agents
-        // service down, etc.) are logged but never block the sign call.
-        ;(async () => {
-          try {
-            const result = await extractObligationsForContract({
-              orgId:      sr.orgId,
-              contractId: sr.contractId,
-              userId:     'system',
-            })
-            app.log.info(
-              { contractId: sr.contractId, count: result.count, skipped: result.skippedReason ?? null },
-              '[obligations] auto-extracted on signature.completed',
-            )
-          } catch (err) {
-            if (err instanceof CostCapExceededError) {
-              app.log.info({ contractId: sr.contractId }, '[obligations] auto-extract skipped: daily cost cap reached')
-            } else {
-              app.log.warn(
-                { contractId: sr.contractId, err: (err as Error).message },
-                '[obligations] auto-extract failed',
-              )
-            }
-          }
-        })().catch(() => { /* swallow */ })
+        // Obligations: the seal job links the sealed PDF to the intelligence
+        // tier, whose ingestion extracts from the executed document and syncs
+        // the register back (signing.worker → /api/internal/obligations/sync).
       } else if (sr.signOrder === 'SEQUENTIAL') {
         // Wave 3.7 — sequential flow, not everyone has signed yet. If this
         // signature just unblocked a later signOrder bucket, email those signers
@@ -578,7 +623,19 @@ export async function signatureRoutes(app: FastifyInstance) {
       if (!signer) return reply.status(404).send({ detail: 'Invalid signing link' })
       const sr = signer.signatureRequest
       if (sr.status !== 'PENDING') return reply.status(410).send({ detail: 'Signing request is no longer active' })
+      if (sr.expiresAt && sr.expiresAt < new Date()) {
+        return reply.status(410).send({ detail: 'This signing link has expired' })
+      }
       if (signer.status !== 'PENDING') return reply.status(409).send({ detail: 'Signer already responded' })
+
+      // Claim the request first, so a decline racing a final signature cannot
+      // void a request that just completed.
+      const claimed = await prisma.signatureRequest.updateMany({
+        where: { id: sr.id, status: 'PENDING' },
+        data:  { status: 'VOIDED', voidedAt: new Date(), voidedReason: `${signer.name} declined: ${body.reason ?? '(no reason given)'}` },
+      })
+      if (claimed.count === 0) return reply.status(410).send({ detail: 'Signing request is no longer active' })
+      const restoreTo = await statusBeforeSending(sr.id)
 
       await prisma.$transaction([
         prisma.signer.update({
@@ -595,19 +652,21 @@ export async function signatureRoutes(app: FastifyInstance) {
             userAgent: req.headers['user-agent'] ?? null,
           },
         }),
-        prisma.signatureRequest.update({
-          where: { id: sr.id },
-          data: { status: 'VOIDED', voidedAt: new Date(), voidedReason: `${signer.name} declined: ${body.reason ?? '(no reason given)'}` },
+        // Back to where it was before sending, so it can be revised and re-sent.
+        prisma.contract.updateMany({
+          where: { id: sr.contractId, status: 'PENDING_SIGNATURE' },
+          data:  { status: restoreTo },
         }),
       ])
 
       await createAuditEvent({
         orgId: sr.orgId,
-        userId: sr.createdById,
-        action: AuditAction.SIGNATURE_VOIDED,
+        action: AuditAction.SIGNATURE_DECLINED,
         resourceType: 'contract',
         resourceId: sr.contractId,
-        metadata: { signatureRequestId: sr.id, declinedBy: signer.email, reason: body.reason },
+        metadata: { signatureRequestId: sr.id, signerId: signer.id, declinedBy: signer.email, reason: body.reason ?? null },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'] ?? undefined,
       })
 
       return reply.send({ ok: true })
@@ -619,7 +678,7 @@ export async function signatureRoutes(app: FastifyInstance) {
   // by virtue of the worker's status-recheck. No effect on a non-PENDING SR.
   app.post<{ Params: { id: string; srId: string } }>(
     '/contracts/:id/signature-requests/:srId/remind',
-    { preHandler: requirePermission('sign', 'contract') },
+    { preHandler: requireContractPermission('sign') },
     async (req, reply) => {
       const { id, srId } = req.params
       const { orgId } = req.user
@@ -650,10 +709,42 @@ export async function signatureRoutes(app: FastifyInstance) {
     },
   )
 
+  // ── POST /contracts/:id/signature-requests/:srId/signers/:signerId/link ─
+  // The sender's "copy signing link", for when email is not configured or a
+  // signer lost the message. The link carries the signer's authority to sign,
+  // so it is handed out only to someone who may send for signature, only for
+  // a signer still pending, and every hand-out is in the audit chain.
+  app.post<{ Params: { id: string; srId: string; signerId: string } }>(
+    '/contracts/:id/signature-requests/:srId/signers/:signerId/link',
+    { preHandler: requireContractPermission('sign') },
+    async (req, reply) => {
+      const { id, srId, signerId } = req.params
+      const { orgId, sub: userId } = req.user
+      const signer = await prisma.signer.findFirst({
+        where:  { id: signerId, signatureRequest: { is: { id: srId, contractId: id, orgId } } },
+        select: { id: true, email: true, token: true, status: true, signatureRequest: { select: { status: true } } },
+      })
+      if (!signer) return reply.status(404).send({ detail: 'Signer not found' })
+      if (signer.signatureRequest.status !== 'PENDING' || signer.status !== 'PENDING') {
+        return reply.status(409).send({ detail: 'This signer has no active signing link' })
+      }
+      await createAuditEvent({
+        orgId, userId,
+        action: AuditAction.SIGNATURE_SENT,
+        resourceType: 'contract',
+        resourceId: id,
+        metadata: { event: 'signing_link_shared', signatureRequestId: srId, signerId, signerEmail: signer.email },
+        ipAddress: req.ip,
+      })
+      const baseUrl = (process.env.WEB_BASE_URL ?? 'http://localhost:5173').replace(/\/+$/, '')
+      return reply.send({ url: `${baseUrl}/sign/${signer.token}` })
+    },
+  )
+
   // ── POST /contracts/:id/signature-requests/:srId/void ─────────────────
   app.post<{ Params: { id: string; srId: string } }>(
     '/contracts/:id/signature-requests/:srId/void',
-    { preHandler: requirePermission('sign', 'contract') },
+    { preHandler: requireContractPermission('sign') },
     async (req, reply) => {
       const { id, srId } = req.params
       const { orgId, sub: userId } = req.user
@@ -663,13 +754,20 @@ export async function signatureRoutes(app: FastifyInstance) {
       if (!sr) return reply.status(404).send({ detail: 'Signature request not found' })
       if (sr.status !== 'PENDING') return reply.status(409).send({ detail: 'Already terminated' })
 
+      const claimed = await prisma.signatureRequest.updateMany({
+        where: { id: srId, status: 'PENDING' },
+        data:  { status: 'VOIDED', voidedAt: new Date(), voidedReason: 'Voided by sender' },
+      })
+      if (claimed.count === 0) return reply.status(409).send({ detail: 'Already terminated' })
+      const restoreTo = await statusBeforeSending(srId)
+
       await prisma.$transaction([
-        prisma.signatureRequest.update({
-          where: { id: srId },
-          data: { status: 'VOIDED', voidedAt: new Date(), voidedReason: 'Voided by sender' },
-        }),
         prisma.signatureEvent.create({
           data: { signatureRequestId: srId, kind: 'VOIDED', metadata: { actor: userId } },
+        }),
+        prisma.contract.updateMany({
+          where: { id, status: 'PENDING_SIGNATURE' },
+          data:  { status: restoreTo },
         }),
       ])
 

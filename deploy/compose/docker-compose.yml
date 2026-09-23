@@ -1,0 +1,279 @@
+# ContractSense — self-host.
+#
+# One machine, one command: ./install.sh writes .env next to this file and
+# starts everything. ./upgrade.sh and ./backup.sh keep it running. See
+# README.md in this directory.
+#
+# Only `edge` (Caddy) is published. It terminates TLS — a Let's Encrypt
+# certificate for CS_DOMAIN, obtained and renewed on its own — and hands every
+# request to `web`, which serves the app and proxies /api and /intel inside
+# the network. The databases, queue and object store are never reachable from
+# outside the compose network.
+#
+# Images build from this checkout by default (CS_IMAGE_PREFIX/CS_VERSION name
+# them). Point CS_IMAGE_PREFIX at a registry and run `docker compose pull`
+# instead once published images exist.
+
+name: contractsense
+
+x-build-api: &build-api
+  context: ../..
+  dockerfile: apps/api/Dockerfile
+
+x-build-intelligence: &build-intelligence
+  context: ../..
+  dockerfile: apps/intelligence/Dockerfile
+
+x-restart: &restart
+  restart: unless-stopped
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: 20m
+      max-file: '5'
+
+# Shared by the lifecycle API and its job runner.
+x-api-env: &api-env
+  NODE_ENV: production
+  DATABASE_URL: mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true
+  REDIS_URL: redis://redis:6379
+  GOTENBERG_URL: http://gotenberg:3000
+  INTELLIGENCE_URL: http://intelligence:8000
+  AGENTS_URL: http://intelligence:8000/agents
+  FRONTEND_URL: ${CS_PUBLIC_URL:?run ./install.sh first}
+  API_URL: ${CS_PUBLIC_URL}
+  WEB_BASE_URL: ${CS_PUBLIC_URL}
+  GIT_COMMIT_SHA: ${CS_VERSION:-local}
+  # Self-host: the first person to sign up becomes the admin; everyone else
+  # joins by invite.
+  REGISTRATION_MODE: ${REGISTRATION_MODE:-first-user}
+  JWT_SECRET: ${JWT_SECRET:?run ./install.sh first}
+  PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?run ./install.sh first}
+  INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?run ./install.sh first}
+  # Encrypts stored model keys. Changing it makes every stored key unreadable.
+  AI_KEY_ENCRYPTION_KEY: ${AI_KEY_ENCRYPTION_KEY:?run ./install.sh first}
+  # Optional platform-wide model keys. Without them AI is off until an admin
+  # adds a key in Admin → AI.
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+  S3_ENDPOINT: http://minio:9000
+  S3_BUCKET: ${S3_BUCKET:-clm-documents}
+  S3_REGION: us-east-1
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?run ./install.sh first}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?run ./install.sh first}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  SMTP_FROM: ${SMTP_FROM:-noreply@localhost}
+  # Seals executed PDFs. install.sh generates a self-signed one.
+  SIGNING_CERT_P12_BASE64: ${SIGNING_CERT_P12_BASE64:-}
+  SIGNING_CERT_PASSPHRASE: ${SIGNING_CERT_PASSPHRASE:-}
+
+# Shared by the intelligence service and its Celery worker.
+x-intel-env: &intel-env
+  ENVIRONMENT: prod
+  MONGODB_URI: mongodb://mongo:27017/?replicaSet=rs0&directConnection=true
+  MONGODB_DB_NAME: contract_core_db
+  PLATFORM_DATABASE_URL: mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true
+  REDIS_URL: redis://redis:6379/1
+  CELERY_BROKER_URL: redis://redis:6379/2
+  CELERY_RESULT_BACKEND: redis://redis:6379/3
+  # The same JWT_SECRET as the API: a platform token resolves to a user here.
+  JWT_SECRET: ${JWT_SECRET}
+  SECRET_KEY: ${INTEL_SECRET_KEY:?run ./install.sh first}
+  INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET}
+  API_URL: http://api:8080
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+
+services:
+  edge:
+    <<: [*restart, *logging]
+    image: caddy:2.8-alpine
+    ports:
+      - '${CS_HTTP_PORT:-80}:80'
+      - '${CS_HTTPS_PORT:-443}:443'
+    environment:
+      CS_SITE_ADDRESS: ${CS_SITE_ADDRESS:?run ./install.sh first}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+
+  web:
+    <<: [*restart, *logging]
+    image: ${CS_IMAGE_PREFIX:-contractsense}/web:${CS_VERSION:-local}
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+      intelligence:
+        condition: service_started
+
+  # One-shot: MongoDB has no migration files; the schema (indexes, uniques) is
+  # pushed on every start and upgrade. Idempotent; the API waits for it.
+  migrate:
+    <<: *logging
+    image: ${CS_IMAGE_PREFIX:-contractsense}/api:${CS_VERSION:-local}
+    pull_policy: never
+    restart: 'no'
+    entrypoint: ['sh', '-c']
+    command:
+      - ./node_modules/.bin/prisma db push --schema prisma/schema.mongo.prisma --skip-generate
+    environment:
+      DATABASE_URL: mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  # Creates the documents bucket; MinIO does not create one on first write.
+  minio-init:
+    <<: *logging
+    image: quay.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    restart: 'no'
+    entrypoint: ['sh', '-c']
+    command:
+      - >-
+        i=0; until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null 2>&1;
+        do i=$$((i+1)); [ $$i -ge 60 ] && echo "MinIO did not come up" && exit 1; sleep 1; done &&
+        mc mb --ignore-existing local/${S3_BUCKET:-clm-documents} &&
+        mc anonymous set none local/${S3_BUCKET:-clm-documents}
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    depends_on:
+      minio:
+        condition: service_started
+
+  api:
+    <<: [*restart, *logging]
+    image: ${CS_IMAGE_PREFIX:-contractsense}/api:${CS_VERSION:-local}
+    build: *build-api
+    environment:
+      <<: *api-env
+      PORT: 8080
+      HOST: 0.0.0.0
+      # The jobs service runs the queues; the API must not consume them too.
+      WORKERS_ENABLED: 'false'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  # BullMQ workers and the daily obligation and renewal scans.
+  jobs:
+    <<: [*restart, *logging]
+    image: ${CS_IMAGE_PREFIX:-contractsense}/api:${CS_VERSION:-local}
+    pull_policy: never
+    command: ['node', '--import', 'tsx', 'src/worker-entrypoint.ts']
+    # The image's health check probes the API's HTTP port; this serves none.
+    healthcheck:
+      disable: true
+    environment:
+      <<: *api-env
+      WORKERS_ENABLED: 'true'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  # HTML → PDF. Chromium renders caller-supplied HTML, so it may not fetch
+  # local files, private ranges, or any service on this network.
+  gotenberg:
+    <<: [*restart, *logging]
+    image: gotenberg/gotenberg:8
+    command:
+      - gotenberg
+      - --api-port=3000
+      - >-
+        --chromium-deny-list=^(file:(?!//\/tmp/)|https?://(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|169\.254\.|0\.0\.0\.0|\[)|https?://(localhost|mongo|redis|minio|minio-init|api|jobs|intelligence|worker|web|edge|gotenberg)([:/]|$$)).*
+
+  intelligence:
+    <<: [*restart, *logging]
+    image: ${CS_IMAGE_PREFIX:-contractsense}/intelligence:${CS_VERSION:-local}
+    build: *build-intelligence
+    environment:
+      <<: *intel-env
+      API_WORKERS: ${INTEL_WORKERS:-2}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    <<: [*restart, *logging]
+    image: ${CS_IMAGE_PREFIX:-contractsense}/intelligence:${CS_VERSION:-local}
+    pull_policy: never
+    entrypoint: ['/app/celery_entrypoint.sh']
+    healthcheck:
+      disable: true
+    environment:
+      <<: *intel-env
+      CELERY_MODE: worker
+      # Sized for a 2-4 vCPU machine; raise on a bigger one.
+      CELERY_CONCURRENCY: ${CELERY_CONCURRENCY:-2}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  mongo:
+    <<: [*restart, *logging]
+    image: mongo:7
+    # Single-node replica set: Prisma needs one for transactions, change
+    # streams need the oplog. Initiated by the health check on first boot.
+    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --eval
+          'try { rs.status().ok } catch (e) { rs.initiate({_id:"rs0",members:[{_id:0,host:"mongo:27017"}]}).ok }'
+          | grep -q 1
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
+  redis:
+    <<: [*restart, *logging]
+    image: redis:7-alpine
+    # AOF: a restart must not lose queued jobs.
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+
+  minio:
+    <<: [*restart, *logging]
+    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    command: ['server', '/data']
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    volumes:
+      - minio-data:/data
+
+volumes:
+  mongo-data:
+  redis-data:
+  minio-data:
+  caddy-data:
+  caddy-config:

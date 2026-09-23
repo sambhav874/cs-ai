@@ -9,6 +9,9 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { requirePermission } from '../middleware/permissions.js'
+import { phrasesFromRules, rulesWithPhrases, type PlaybookRules } from '../lib/playbook-rules.js'
+import { judgeByRules } from '../lib/playbook-review.js'
+import { splitLegacyMarker } from '../lib/org-seed/seed.js'
 
 const POSITION_TYPES = ['preferred', 'acceptable', 'fallback', 'walkaway'] as const
 
@@ -22,9 +25,41 @@ const CreatePositionSchema = z.object({
   riskThreshold: z.number().min(0).max(1).default(0.5),
   contractTypes: z.array(z.string()).default([]),
   sortOrder: z.number().int().default(0),
+  /** Phrases the clause should contain / should not contain; stored as `rules`. */
+  mustInclude: z.array(z.string().max(200)).max(25).optional(),
+  mustNotInclude: z.array(z.string().max(200)).max(25).optional(),
 })
 
 const UpdatePositionSchema = CreatePositionSchema.partial().omit({ clauseCategoryId: true })
+
+const UpdateCategorySchema = z.object({ isRequired: z.boolean() })
+
+type PositionRow = { notes: string | null; rules: unknown; seedKey?: string | null }
+
+/** A position as the page reads it: rules as two phrase lists, notes without seed markers. */
+function present<T extends PositionRow>(p: T) {
+  const { seedKey: _seedKey, ...rest } = p
+  return {
+    ...rest,
+    notes: splitLegacyMarker(p.notes)?.notes ?? p.notes,
+    ...phrasesFromRules(p.rules as PlaybookRules | null),
+  }
+}
+
+/** The data a create/update writes: phrase lists folded into `rules`. */
+function withRules<B extends { mustInclude?: string[]; mustNotInclude?: string[]; positionType?: string }>(
+  body: B, existingRules: unknown, positionType: string,
+) {
+  const { mustInclude, mustNotInclude, ...rest } = body
+  if (mustInclude === undefined && mustNotInclude === undefined && body.positionType === undefined) return rest
+  // A position moved to another rung re-derives its phrase severities.
+  const current = phrasesFromRules(existingRules as PlaybookRules | null)
+  const rules = rulesWithPhrases(existingRules as PlaybookRules | null, {
+    mustInclude:    mustInclude ?? current.mustInclude,
+    mustNotInclude: mustNotInclude ?? current.mustNotInclude,
+  }, positionType)
+  return { ...rest, rules: rules as never }
+}
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
@@ -53,14 +88,25 @@ export async function playbookRoutes(app: FastifyInstance) {
     const positions = await prisma.playbookPosition.findMany({
       where,
       include: {
-        clauseCategory: { select: { id: true, name: true, parentCategoryId: true } },
+        clauseCategory: { select: { id: true, name: true, parentCategoryId: true, isRequired: true } },
       },
       orderBy: [{ clauseCategoryId: 'asc' }, { sortOrder: 'asc' }],
     })
 
+    // Seeds before seedKey wrote a "[seed-key:…]" marker into notes. Move it
+    // out the first time an org's playbook is read, so nobody reads it again.
+    const legacy = positions.filter(p => !p.seedKey && splitLegacyMarker(p.notes))
+    for (const p of legacy) {
+      const split = splitLegacyMarker(p.notes)!
+      await prisma.playbookPosition.update({
+        where: { id: p.id }, data: { seedKey: split.key, notes: split.notes || null },
+      }).catch(() => {})
+    }
+
     // Group by clause category
     const grouped: Record<string, any> = {}
-    for (const pos of positions) {
+    for (const raw of positions) {
+      const pos = present(raw)
       const catId = pos.clauseCategoryId
       if (!grouped[catId]) {
         grouped[catId] = {
@@ -71,7 +117,7 @@ export async function playbookRoutes(app: FastifyInstance) {
       grouped[catId].positions.push(pos)
     }
 
-    return reply.send({ data: positions, grouped: Object.values(grouped) })
+    return reply.send({ data: positions.map(present), grouped: Object.values(grouped) })
   })
 
   // ── Get a single position ─────────────────────────────────────────────────
@@ -85,7 +131,7 @@ export async function playbookRoutes(app: FastifyInstance) {
     })
 
     if (!position) return reply.status(404).send({ detail: 'Position not found' })
-    return reply.send(position)
+    return reply.send(present(position))
   })
 
   // ── Create position ───────────────────────────────────────────────────────
@@ -100,11 +146,11 @@ export async function playbookRoutes(app: FastifyInstance) {
     if (!category) return reply.status(404).send({ detail: 'Clause category not found' })
 
     const position = await prisma.playbookPosition.create({
-      data: { orgId, createdById: userId, ...body },
+      data: { orgId, createdById: userId, ...withRules(body, null, body.positionType) },
       include: { clauseCategory: { select: { id: true, name: true } } },
     })
 
-    return reply.status(201).send(position)
+    return reply.status(201).send(present(position))
   })
 
   // ── Update position ───────────────────────────────────────────────────────
@@ -118,11 +164,11 @@ export async function playbookRoutes(app: FastifyInstance) {
 
     const updated = await prisma.playbookPosition.update({
       where: { id },
-      data: body,
+      data: withRules(body, existing.rules, body.positionType ?? existing.positionType),
       include: { clauseCategory: { select: { id: true, name: true } } },
     })
 
-    return reply.send(updated)
+    return reply.send(present(updated))
   })
 
   // ── Delete position ───────────────────────────────────────────────────────
@@ -135,6 +181,22 @@ export async function playbookRoutes(app: FastifyInstance) {
 
     await prisma.playbookPosition.delete({ where: { id } })
     return reply.status(204).send()
+  })
+
+  // ── Mark a clause type required ─────────────────────────────────────────
+  // A contract with no clause of a required type is flagged by the review.
+  app.patch('/categories/:id', { preHandler: requirePermission('edit', 'playbook') }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { orgId } = req.user
+    const parsed = UpdateCategorySchema.safeParse(req.body)
+    if (!parsed.success) return reply.status(400).send({ detail: 'isRequired (boolean) is required' })
+    const existing = await prisma.clauseCategory.findFirst({ where: { id, orgId }, select: { id: true } })
+    if (!existing) return reply.status(404).send({ detail: 'Clause category not found' })
+    const updated = await prisma.clauseCategory.update({
+      where: { id }, data: { isRequired: parsed.data.isRequired },
+      select: { id: true, name: true, isRequired: true },
+    })
+    return reply.send(updated)
   })
 
   // ── Test clause against playbook ──────────────────────────────────────────
@@ -172,6 +234,9 @@ export async function playbookRoutes(app: FastifyInstance) {
       return reply.status(404).send({ detail: 'No playbook positions found for this category' })
     }
 
+    // The phrase rules need no model, so they answer even with AI off.
+    const rules = judgeByRules(positions, clauseText)
+
     // Call the agent service for comparison
     try {
       // AGENTS_URL, not AGENT_SERVICE_URL: the latter is set by no env file,
@@ -191,16 +256,21 @@ export async function playbookRoutes(app: FastifyInstance) {
       if (!agentRes.ok) {
         const err = await agentRes.text()
         app.log.error({ err }, 'Agent compare failed')
-        return reply.status(502).send({ detail: 'Agent service error' })
+        // The rules still have an answer; say the AI half is missing.
+        return reply.send({
+          positions: positions.map(present), rules, comparison: null,
+          warning: 'AI comparison unavailable — showing the playbook rule check only',
+        })
       }
 
       const result = await agentRes.json()
-      return reply.send(result)
+      return reply.send({ ...result, rules })
     } catch (err) {
       app.log.error({ err }, 'Agent service unreachable')
       // Fallback: return positions with no AI comparison
       return reply.send({
-        positions,
+        positions: positions.map(present),
+        rules,
         comparison: null,
         warning: 'Agent service unavailable — returning positions without AI comparison',
       })
