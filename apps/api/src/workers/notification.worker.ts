@@ -15,7 +15,6 @@ import type { NotificationJob, EscalationJob, SigningReminderJob } from '../lib/
 import { createAuditEvent } from '../lib/audit.js'
 import { AuditAction } from '@clm/types'
 import { sendSigningEmailForSigner } from '../lib/signing-email.js'
-import { sendEmail, isEmailConfigured } from '../lib/mailer.js'
 // L6 #3 — the delivery path. Lives in lib/ rather than here because importing
 // this file constructs a BullMQ Worker as a side effect, so nothing could
 // import it to check whether the preference gate is actually honoured.

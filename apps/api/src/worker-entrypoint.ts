@@ -15,6 +15,10 @@
  */
 import http from 'node:http'
 import './workers/index.js' // starts every BullMQ worker as an import side effect
+import { reportSigningCertAtBoot } from './lib/signing-cert.js'
+
+// The seal job runs here, so this is where a missing cert bites.
+reportSigningCertAtBoot()
 
 const PORT = Number(process.env.PORT ?? 8080)
 
