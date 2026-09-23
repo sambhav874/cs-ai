@@ -22,7 +22,8 @@ import { indexContract, deleteContractFromIndex } from '../lib/elasticsearch.js'
 import { proposeClauseAlternatives } from '../lib/clause-propose.js'
 import { applyClauseProposal } from '../lib/clause-apply.js'
 import { storeClauseSegments, searchClauses } from '../lib/embeddings.js'
-import { queueParseDocument, queueLinkIntelligence, queueClassifyDocument, queueExtractAi, queueChunkAndIndex, queueSplitBinder, queueRedlineAnalysis, queueApprovalSummary, queueNotification, queueDraftContract, queuePlaybookRedline } from '../lib/queue.js'
+import { queueParseDocument, queueLinkIntelligence, queueClassifyDocument, queueExtractAi, queueChunkAndIndex, queueSplitBinder, queueRedlineAnalysis, queueApprovalSummary, queueNotification, queueDraftContract, queuePlaybookRedline, queuePlaybookReview } from '../lib/queue.js'
+import { buildPlaybookReview } from '../lib/playbook-review.js'
 import { applyClauseBatch } from '../lib/clause-apply.js'
 import { checkAutoApprove, resolveApprovers, type WorkflowStepDef } from '../lib/workflow-engine.js'
 import {
@@ -2092,25 +2093,39 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── GET /:id/playbook-review ──────────────────────────────────────────────
-  // The automatic review from the parse pipeline has been written to
-  // contract.metadata._playbookReview since it shipped, and nothing ever read
-  // it — a repo-wide grep found the write and no reader. Exposing it means the
-  // redline surface can show what the org already paid to compute.
+  // The contract's playbook review: the AI review the parse pipeline runs on
+  // each new version, the playbook's phrase rules checked on this read, and
+  // required clause types with no clause. See lib/playbook-review.ts.
   app.get('/:id/playbook-review', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { orgId } = req.user
     const { id: contractId } = req.params as { id: string }
+    const view = await buildPlaybookReview(contractId, orgId)
+    if (!view) return reply.status(404).send({ detail: 'Contract not found' })
+    return reply.send(view)
+  })
 
+  // ── POST /:id/playbook-review — run the AI review again ───────────────────
+  // After the playbook changed, or when the automatic pass was skipped or
+  // failed. The rules half needs no run: it is checked on every read.
+  app.post('/:id/playbook-review', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
+    const { orgId } = req.user
+    const { id: contractId } = req.params as { id: string }
     const contract = await prisma.contract.findFirst({
       where:  { id: contractId, orgId, deletedAt: null },
-      select: { metadata: true },
+      select: { currentVersionId: true, metadata: true },
     })
     if (!contract) return reply.status(404).send({ detail: 'Contract not found' })
-
-    const review = (contract.metadata as Record<string, unknown> | null)?._playbookReview
-    if (!review) {
-      return reply.status(404).send({ detail: 'No playbook review has been run for this contract' })
+    if (!contract.currentVersionId) return reply.status(400).send({ detail: 'Contract has no current version to review' })
+    const meta = (contract.metadata as Record<string, unknown> | null) ?? {}
+    if (meta._playbookReviewStatus === 'QUEUED' || meta._playbookReviewStatus === 'RUNNING') {
+      return reply.status(409).send({ detail: 'A playbook review is already running for this contract' })
     }
-    return reply.send(review)
+    await prisma.contract.update({
+      where: { id: contractId },
+      data:  { metadata: { ...meta, _playbookReviewStatus: 'QUEUED', _playbookReviewError: null } as never },
+    })
+    queuePlaybookReview({ contractId, orgId, versionId: contract.currentVersionId, runKey: Date.now().toString(36) })
+    return reply.status(202).send({ status: 'QUEUED' })
   })
 
   app.post('/:id/redline', { preHandler: requireContractPermission('edit') }, async (req, reply) => {

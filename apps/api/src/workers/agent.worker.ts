@@ -560,6 +560,21 @@ async function handlePlaybookRedline(data: PlaybookRedlineJob): Promise<void> {
   }
 }
 
+/**
+ * Record where the automatic playbook review stands, so the contract page can
+ * say "running", "AI is off" or "failed" instead of showing nothing. Merged
+ * into a fresh read of metadata: other jobs write there too.
+ */
+async function setPlaybookReviewState(contractId: string, patch: Record<string, unknown>): Promise<void> {
+  const fresh = await prisma.contract.findUnique({ where: { id: contractId }, select: { metadata: true } })
+  if (!fresh) return
+  const existing = (fresh.metadata as Record<string, unknown> | null) ?? {}
+  await prisma.contract.update({
+    where: { id: contractId },
+    data:  { metadata: { ...existing, ...patch } as never },
+  })
+}
+
 async function handlePlaybookReview(data: PlaybookReviewJob): Promise<void> {
   const { contractId, orgId, versionId } = data
 
@@ -582,6 +597,9 @@ async function handlePlaybookReview(data: PlaybookReviewJob): Promise<void> {
   })
   if (clauses.length === 0) {
     console.info('[agent-worker] playbook-review skip contractId=%s — no clauses extracted', contractId)
+    await setPlaybookReviewState(contractId, {
+      _playbookReviewStatus: 'SKIPPED', _playbookReviewError: 'No clauses were extracted from this version.',
+    })
     return
   }
 
@@ -599,8 +617,13 @@ async function handlePlaybookReview(data: PlaybookReviewJob): Promise<void> {
   if (relevant.length === 0) {
     console.info('[agent-worker] playbook-review skip contractId=%s — no playbook positions for type=%s',
       contractId, contract.type)
+    await setPlaybookReviewState(contractId, {
+      _playbookReviewStatus: 'SKIPPED', _playbookReviewError: 'The playbook has no positions for this contract type.',
+    })
     return
   }
+
+  await setPlaybookReviewState(contractId, { _playbookReviewStatus: 'RUNNING', _playbookReviewError: null })
 
   const res = await callAgents('/playbook-review', {
     method:  'POST',
@@ -620,6 +643,16 @@ async function handlePlaybookReview(data: PlaybookReviewJob): Promise<void> {
   }, { orgId, toolName: 'playbook_review' })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
+    // No model key: AI is off for this org. Nothing to retry.
+    if (res.status === 409 && text.includes('NO_PROVIDER')) {
+      await setPlaybookReviewState(contractId, {
+        _playbookReviewStatus: 'SKIPPED', _playbookReviewError: 'AI review is off: no model key is configured.',
+      })
+      return
+    }
+    await setPlaybookReviewState(contractId, {
+      _playbookReviewStatus: 'FAILED', _playbookReviewError: `The review service returned ${res.status}.`,
+    })
     throw new Error(`Agents /playbook-review returned ${res.status}: ${text.slice(0, 200)}`)
   }
   const result = await res.json() as {
@@ -649,6 +682,8 @@ async function handlePlaybookReview(data: PlaybookReviewJob): Promise<void> {
           reviewedAt: new Date().toISOString(),
           versionId,
         },
+        _playbookReviewStatus: 'DONE',
+        _playbookReviewError:  null,
       } as never,
     },
   })

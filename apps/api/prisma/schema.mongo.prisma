@@ -414,6 +414,8 @@ model ClauseCategory {
   description      String?
   parentCategoryId String? // Self-referential for category tree
   sortOrder        Int      @default(0)
+  // The playbook review flags a contract that has no clause of this type.
+  isRequired       Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -459,6 +461,9 @@ model PlaybookPosition {
   positionType     String // preferred | acceptable | fallback | walkaway
   content          String   @default("") // HTML — what we want to see in this position
   notes            String? // Legal team guidance notes
+  // Which org-seed row this came from, so re-seeding skips it. Was a
+  // "[seed-key:…]" prefix on notes, which every reviewer then read.
+  seedKey          String?
   riskThreshold    Float    @default(0.5) // 0-1, score below which we escalate
   contractTypes    String[] @default([]) // [] = applies to all; otherwise filter by type
   sortOrder        Int      @default(0)

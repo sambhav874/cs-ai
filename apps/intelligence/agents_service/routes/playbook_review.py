@@ -19,6 +19,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..agents.playbook_review_agent import run_playbook_review
+from ..router import NoProviderConfigured
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -55,6 +56,11 @@ async def playbook_review(body: PlaybookReviewRequest):
             contract_type=body.contractType or "general commercial",
             org_id=body.orgId,
         )
+    except NoProviderConfigured as e:
+        # Not a failure to retry: the org has AI off. 409 tells the worker to
+        # record "skipped" and stop, instead of spending its retries on it.
+        logger.info("[playbook-review] SKIPPED contractId=%s: %s", body.contractId, e)
+        raise HTTPException(status_code=409, detail={"code": "NO_PROVIDER", "message": str(e)}) from e
     except Exception as e:
         logger.error("[playbook-review] FAILED contractId=%s: %s", body.contractId, e)
         # 502 (not 500) so the caller can distinguish an upstream model failure

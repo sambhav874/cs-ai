@@ -240,6 +240,8 @@ export interface PlaybookReviewJob {
   orgId:      string
   /** The version that was just extracted — also scopes the job identity. */
   versionId:  string
+  /** Set for a re-run someone asked for, so it is not deduplicated against the automatic one. */
+  runKey?:    string
 }
 export function queuePlaybookReview(payload: PlaybookReviewJob): void {
   agentQueue.add('playbook-review', payload, {
@@ -252,7 +254,7 @@ export function queuePlaybookReview(payload: PlaybookReviewJob): void {
     // reviewed once and every later version — including the counterparty's
     // returned redline, the case this feature exists for — would be dropped in
     // silence while the stored result still pointed at v1.
-    jobId: `playbook-review-${payload.contractId}-${payload.versionId}`,
+    jobId: `playbook-review-${payload.contractId}-${payload.versionId}${payload.runKey ? `-${payload.runKey}` : ''}`,
     // Don't accumulate keys indefinitely either.
     removeOnComplete: 100,
     removeOnFail:     50,

@@ -35,6 +35,7 @@ import { ContractSpacePicker } from '@/components/contracts/ContractSpacePicker'
 import { ObligationsRailSection } from '@/components/contracts/ObligationsRailSection'
 import { ComplianceRailSection } from '@/components/contracts/ComplianceRailSection'
 import { PlaybookRedlineRailSection } from '@/components/contracts/PlaybookRedlineRailSection'
+import { PlaybookReviewRailSection } from '@/components/contracts/PlaybookReviewRailSection'
 import { SpaceRailSection } from '@/components/contracts/SpaceRailSection'
 import { RenewalAdviceRailSection, type RenewalAdvice } from '@/components/contracts/RenewalAdviceRailSection'
 import { BubbleAiPopover } from '@/components/contracts/BubbleAiPopover'
@@ -412,6 +413,19 @@ export function ContractDetailPage() {
   // Seed effect + mutation live lower in the file, after clausesData is
   // declared (the query for contract-clauses uses `id` from useParams).
   const [focusedClauseId, setFocusedClauseId] = useState<string | null>(null)
+
+  // Scroll a clause's marker into view; with no marker on the canvas, open the
+  // focused-review drawer on it instead.
+  const jumpToClause = (clauseId: string, ring = 'ring-fg-700') => {
+    const el = document.querySelector(`[data-clause-id="${clauseId}"]`) as HTMLElement | null
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('ring-2', ring)
+      setTimeout(() => el.classList.remove('ring-2', ring), 1500)
+    } else {
+      setFocusedClauseId(clauseId)
+    }
+  }
   // P7.4.4 — Expand the REVIEW PROGRESS row into a checklist so users
   // can mark items reviewed without hunting for each red underline.
   const [reviewExpanded, setReviewExpanded] = useState(false)
@@ -634,10 +648,12 @@ export function ContractDetailPage() {
       // "working…" forever and only a manual refresh reveals the result. The
       // playbook redline takes minutes, so it is exactly the case that suffers.
       const pr = meta?._playbookRedlineStatus
+      const pv = meta?._playbookReviewStatus
       const inFlight =
         (s && IN_PROGRESS_STATUSES.includes(s)) ||
         rm === 'ANALYZING' ||
-        pr === 'QUEUED' || pr === 'RUNNING'
+        pr === 'QUEUED' || pr === 'RUNNING' ||
+        pv === 'QUEUED' || pv === 'RUNNING'
       return inFlight ? 4000 : false
     },
   })
@@ -1803,23 +1819,8 @@ export function ContractDetailPage() {
         <DecisionStrip
           awaitingMe={approvalData}
           riskScore={contract?.riskScore ?? null}
-          onJumpToClause={(clauseId) => {
-            // Scroll the underlined clause marker into view. If the risk
-            // markers extension has labelled a span with data-clause-id,
-            // this locates it. Falls back to opening the focused-review
-            // drawer on that clause.
-            const el = document.querySelector(
-              `[data-clause-id="${clauseId}"]`,
-            ) as HTMLElement | null
-            if (el) {
-              el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-              // Approver mode: the clause is the approver's turn, so attention.
-              el.classList.add('ring-2', 'ring-attention-600')
-              setTimeout(() => el.classList.remove('ring-2', 'ring-attention-600'), 1500)
-            } else {
-              setFocusedClauseId(clauseId)
-            }
-          }}
+          // Approver mode: the clause is the approver's turn, so attention.
+          onJumpToClause={(clauseId) => jumpToClause(clauseId, 'ring-attention-600')}
           onDecided={() => {
             qc.invalidateQueries({ queryKey: ['contract', id] })
             qc.invalidateQueries({ queryKey: ['contract-approval', id] })
@@ -3421,9 +3422,20 @@ export function ContractDetailPage() {
             markup the reviewer accepts change by change; nothing reaches the
             document until they do. Status lives in contract.metadata, which is
             what the 4s poll above is already watching. */}
+        {/* What is wrong against the playbook: AI review + phrase checks +
+            missing required clauses. The redline below is how to fix it. */}
+        {id && (
+          <PlaybookReviewRailSection
+            contractId={id}
+            reviewStatus={(contract?.metadata as Record<string, unknown> | undefined)?._playbookReviewStatus as string | null}
+            onJumpToClause={(clauseId) => jumpToClause(clauseId)}
+          />
+        )}
+
         {id && (
           <PlaybookRedlineRailSection
             contractId={id}
+            currentVersionId={contract?.currentVersionId ?? null}
             status={((contract?.metadata as Record<string, unknown> | undefined)
               ?._playbookRedlineStatus as 'IDLE' | 'QUEUED' | 'RUNNING' | 'DONE' | 'APPLIED' | 'FAILED') ?? 'IDLE'}
             staged={(contract?.metadata as Record<string, unknown> | undefined)?._playbookRedline as never}

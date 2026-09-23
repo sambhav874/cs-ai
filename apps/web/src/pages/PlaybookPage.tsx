@@ -78,32 +78,41 @@ function PositionCard({
       {position.notes && (
         <p className="text-[11.5px] text-fg-500 mt-2 italic">{position.notes}</p>
       )}
-      {/*
-        The bar used to set `background: currentColor` inline on top of a wash
-        class and a brightness filter, so it painted in whatever the inherited
-        text colour happened to be — ink, in every position type — while the
-        class said otherwise. And "threshold 50%" named a number without naming
-        what it gates. It is the match score at which the agent will treat a
-        counterparty's clause as landing on this rung, so it says so.
-      */}
-      <div className="flex items-center gap-2 mt-3">
-        <span
-          className="block h-1 w-20 shrink-0 overflow-hidden rounded-full bg-surface-200"
-          role="meter"
-          aria-valuenow={Math.round((position.riskThreshold ?? 0.5) * 100)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label={`Match threshold ${Math.round((position.riskThreshold ?? 0.5) * 100)} percent`}
-        >
-          <span
-            className="block h-full rounded-full bg-fg-700"
-            style={{ width: `${(position.riskThreshold ?? 0.5) * 100}%` }}
-          />
-        </span>
-        <span className="text-[11px] tabular-nums text-fg-500">
-          matches at {Math.round((position.riskThreshold ?? 0.5) * 100)}%+
-        </span>
-      </div>
+      <PhraseSummary position={position} />
+    </div>
+  )
+}
+
+/**
+ * The phrases the review checks this rung for, read-only on the card. They
+ * replace a "matches at 70%+" meter whose number nothing ever read.
+ */
+function PhraseSummary({ position }: { position: PlaybookPosition }) {
+  const include = position.mustInclude ?? []
+  const exclude = position.mustNotInclude ?? []
+  if (include.length === 0 && exclude.length === 0) {
+    return <p className="text-[11px] text-fg-400 mt-3">No phrases to check yet</p>
+  }
+  const walkaway = position.positionType === 'walkaway'
+  return (
+    <div className="mt-3 space-y-1.5" data-testid={`playbook-phrases-${position.id}`}>
+      {include.length > 0 && (
+        <PhraseLine label="Must include" phrases={include} />
+      )}
+      {exclude.length > 0 && (
+        <PhraseLine label={walkaway ? 'Red flags' : 'Must not include'} phrases={exclude} />
+      )}
+    </div>
+  )
+}
+
+function PhraseLine({ label, phrases }: { label: string; phrases: string[] }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <span className="text-[10.5px] font-medium text-fg-500 mr-0.5">{label}</span>
+      {phrases.map(p => (
+        <span key={p} className="px-1.5 py-0.5 rounded bg-card/70 border border-surface-200 text-[10.5px] text-fg-700">{p}</span>
+      ))}
     </div>
   )
 }
@@ -182,13 +191,21 @@ function PositionEditor({
   )
   const [content, setContent] = useState(position?.content ?? '')
   const [notes, setNotes] = useState(position?.notes ?? '')
-  const [riskThreshold, setRiskThreshold] = useState(position?.riskThreshold ?? 0.5)
+  const [mustInclude, setMustInclude] = useState<string[]>(position?.mustInclude ?? [])
+  const [mustNotInclude, setMustNotInclude] = useState<string[]>(position?.mustNotInclude ?? [])
   const [saving, setSaving] = useState(false)
+  const walkaway = positionType === 'walkaway'
 
   const handleSave = async () => {
     setSaving(true)
     try {
-      await onSave({ clauseCategoryId: categoryId, positionType, content, notes, riskThreshold })
+      await onSave({
+        clauseCategoryId: categoryId, positionType, content, notes,
+        // A walkaway rung describes language to refuse; "must include" has no
+        // meaning there, so switching a position to walkaway drops it.
+        mustInclude: walkaway ? [] : mustInclude,
+        mustNotInclude,
+      })
     } finally {
       setSaving(false)
     }
@@ -239,23 +256,29 @@ function PositionEditor({
               placeholder="Guidance for the legal team..."
             />
           </div>
-          <div>
-            <label className="text-[11px] font-medium text-fg-700 mb-1 block">
-              Risk Threshold: {Math.round(riskThreshold * 100)}%
-            </label>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={riskThreshold}
-              onChange={e => setRiskThreshold(Number(e.target.value))}
-              className="w-full accent-fg-950"
-            />
-            <div className="flex justify-between text-[11px] text-fg-400 mt-0.5">
-              <span>Walk away</span>
-              <span>Preferred</span>
+          <div className="rounded-md border border-surface-200 p-3 space-y-3">
+            <div>
+              <p className="text-[11px] font-medium text-fg-700">Phrases to check</p>
+              <p className="text-[11px] text-fg-500 mt-0.5">
+                Every contract's review checks its clauses for these words. No AI needed. Press Enter after each phrase.
+              </p>
             </div>
+            {!walkaway && (
+              <PhraseInput
+                label="Must include"
+                hint='e.g. "consequential damages", "12 months"'
+                value={mustInclude}
+                onChange={setMustInclude}
+                testId="phrases-must-include"
+              />
+            )}
+            <PhraseInput
+              label={walkaway ? 'Red flags — walk away if the clause says' : 'Must not include'}
+              hint={walkaway ? 'e.g. "unlimited liability", "sole discretion"' : 'e.g. "without notice"'}
+              value={mustNotInclude}
+              onChange={setMustNotInclude}
+              testId="phrases-must-not-include"
+            />
           </div>
         </div>
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-surface-200 bg-surface-50">
@@ -265,6 +288,56 @@ function PositionEditor({
             Save Position
           </Button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/** A list of short phrases: type, Enter to add, × to remove. */
+function PhraseInput({
+  label, hint, value, onChange, testId,
+}: {
+  label: string
+  hint: string
+  value: string[]
+  onChange: (next: string[]) => void
+  testId: string
+}) {
+  const [draft, setDraft] = useState('')
+  const add = () => {
+    const p = draft.replace(/\s+/g, ' ').trim()
+    if (p && !value.some(v => v.toLowerCase() === p.toLowerCase())) onChange([...value, p])
+    setDraft('')
+  }
+  return (
+    <div data-testid={testId}>
+      <label className="text-[11px] font-medium text-fg-700 mb-1 block">{label}</label>
+      <div className="flex flex-wrap items-center gap-1.5 min-h-9 px-2 py-1.5 border border-input rounded-md bg-card focus-within:border-primary-700 focus-within:ring-[3px] focus-within:ring-primary-700/15">
+        {value.map(p => (
+          <span key={p} className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded bg-surface-100 text-[12px] text-fg-950">
+            {p}
+            <button
+              type="button"
+              aria-label={`Remove ${p}`}
+              onClick={() => onChange(value.filter(v => v !== p))}
+              className="p-0.5 rounded text-fg-400 hover:text-fg-950"
+            >
+              <X className="size-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add() }
+            else if (e.key === 'Backspace' && !draft && value.length) onChange(value.slice(0, -1))
+          }}
+          onBlur={add}
+          placeholder={value.length ? '' : hint}
+          maxLength={200}
+          className="flex-1 min-w-[140px] bg-transparent text-[12.5px] text-fg-950 placeholder:text-fg-400 outline-none"
+        />
       </div>
     </div>
   )
@@ -332,6 +405,27 @@ function TestPanel({ categoryId }: { categoryId: string }) {
 
       {result && !result.error && (
         <div className="mt-3 space-y-2">
+          {result.rules?.alignment && (
+            <div className="p-2.5 rounded-md border border-surface-200 bg-card" data-testid="playbook-test-rules">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium text-fg-500">Phrase check</span>
+                <span className={cn('px-2 py-0.5 rounded-full text-[11px] font-semibold', MATCH_COLORS[result.rules.alignment] ?? 'text-fg-700 bg-surface-100')}>
+                  {result.rules.alignment === 'outside_playbook' ? 'Outside the playbook' : `Reaches ${result.rules.alignment}`}
+                </span>
+              </div>
+              {result.rules.issues?.length > 0 && (
+                <ul className="mt-1.5 space-y-0.5">
+                  {result.rules.issues.map((i: { description: string; position: string }, k: number) => (
+                    <li key={k} className="text-[11.5px] text-fg-700">
+                      <span className="capitalize text-fg-500">{i.position}:</span> {i.description}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+          {result.warning && <p className="text-[11.5px] text-fg-500">{result.warning}</p>}
+          {result.bestMatch !== undefined && (<>
           <div className="flex items-center gap-2">
             {/* bestMatch can come back as something not on the ladder (or
                 absent) — cn() then emits a pill with no colour and the label
@@ -357,6 +451,7 @@ function TestPanel({ categoryId }: { categoryId: string }) {
               ))}
             </div>
           )}
+          </>)}
         </div>
       )}
     </div>
@@ -420,6 +515,12 @@ export function PlaybookPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/playbook/positions/${id}`),
     onSuccess: () => refreshPlaybook(),
+  })
+
+  const requiredMutation = useMutation({
+    mutationFn: ({ id, isRequired }: { id: string; isRequired: boolean }) =>
+      api.patch(`/playbook/categories/${id}`, { isRequired }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clause-categories'] }),
   })
 
   const categories: (ClauseCategory & { children?: ClauseCategory[] })[] = categoriesData?.data ?? []
@@ -510,6 +611,7 @@ export function PlaybookPage() {
                   ? (expandedCategories.has(cat.id) ? <ChevronDown className="size-3.5 shrink-0" /> : <ChevronRight className="size-3.5 shrink-0" />)
                   : <span className="w-3.5" />}
                 <span className="flex-1 text-left truncate">{cat.name}</span>
+                {cat.isRequired && <span className="text-[9.5px] uppercase tracking-wide text-fg-400" title="Required clause">req</span>}
                 <CoverageTicks filled={coverageOf(cat.id)} name={cat.name} />
               </button>
               {expandedCategories.has(cat.id) && cat.children?.map(child => (
@@ -546,8 +648,8 @@ export function PlaybookPage() {
               const missingTypes = POSITION_TYPES.filter(t => !positions.find(p => p.positionType === t))
               const allFilled = missingTypes.length === 0
               return (
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex-1 min-w-[260px]">
                     <h2 className="text-title text-fg-950">
                       {categoryName(categories, selectedCategoryId) ?? 'Positions'}
                     </h2>
@@ -558,13 +660,32 @@ export function PlaybookPage() {
                         ? `All 4 positions defined · ${positions.length} in total`
                         : `${POSITION_TYPES.length - missingTypes.length} of 4 positions defined — missing ${missingTypes.join(', ')}`}
                     </p>
+                    {(() => {
+                      const cat = findCategory(categories, selectedCategoryId)
+                      if (!cat) return null
+                      return (
+                        <label className="mt-2 flex items-start gap-2 text-[11.5px] text-fg-700 cursor-pointer select-none" data-testid="playbook-required-toggle">
+                          <input
+                            type="checkbox"
+                            checked={!!cat.isRequired}
+                            disabled={requiredMutation.isPending}
+                            onChange={e => requiredMutation.mutate({ id: cat.id, isRequired: e.target.checked })}
+                            className="size-3.5 mt-px shrink-0 accent-fg-950"
+                          />
+                          <span>
+                            <span className="font-medium">Required clause</span>
+                            <span className="text-fg-500"> · the review flags contracts that don't have one</span>
+                          </span>
+                        </label>
+                      )
+                    })()}
                     {positions.length > 0 && !showTest && (
                       <p className="text-[11.5px] text-muted-foreground mt-0.5">
                         Tip: paste a clause into <span className="font-semibold">Test playbook</span> to see which position it matches.
                       </p>
                     )}
                   </div>
-                  <div className="flex gap-2 items-center">
+                  <div className="flex gap-2 items-center shrink-0">
                     {/* P7.4.13 / F-65 — Test Mode promoted from outline
                         button to a primary-tier CTA (filled when active,
                         emphasised border when off). It's a major UX win
@@ -709,6 +830,19 @@ export function PlaybookPage() {
  * that says which playbook you are editing, blank exactly when the tree is
  * deep enough to need it.
  */
+function findCategory(
+  categories: (ClauseCategory & { children?: ClauseCategory[] })[],
+  id: string | null,
+): ClauseCategory | undefined {
+  if (!id) return undefined
+  for (const c of categories) {
+    if (c.id === id) return c
+    const child = c.children?.find(ch => ch.id === id)
+    if (child) return child
+  }
+  return undefined
+}
+
 function categoryName(
   categories: (ClauseCategory & { children?: ClauseCategory[] })[],
   id: string | null,
