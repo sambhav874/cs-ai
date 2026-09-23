@@ -134,3 +134,14 @@ def test_an_explicit_platform_model_survives_a_worker_thread(monkeypatch):
         out = pool.submit(lambda: model_factory.build_chat_model(purpose="classify", platform_model=resolved)).result()
     assert out == "openai-model"
     assert built["model_name"] == "gpt-4.1-mini" and built["api_key"] == "sk-org-key"
+
+
+def test_a_platform_user_with_an_internal_domain_is_a_valid_identity():
+    """jane@corp.local signs in to the platform; the intelligence tier must accept her too."""
+    from models.domain import UserInDB
+
+    for email in ("jane@corp.local", "admin@selfhost.test", "ops@acme.internal"):
+        user = UserInDB.model_validate({"_id": "u1", "username": email, "email": email, "hashed_password": "x", "tokens": 0})
+        assert user.email == email
+    with pytest.raises(Exception):
+        UserInDB.model_validate({"_id": "u1", "username": "x", "email": "not-an-address", "hashed_password": "x", "tokens": 0})
