@@ -1955,9 +1955,12 @@ export async function contractRoutes(app: FastifyInstance) {
     const { orgId } = req.user
     const { id: contractId, v1Id, v2Id } = req.params as { id: string; v1Id: string; v2Id: string }
     try {
-      const { bytes, title } = await generateRedlineDocx({ contractId, orgId, v1Id, v2Id })
+      const { bytes, title, mode } = await generateRedlineDocx({ contractId, orgId, v1Id, v2Id })
       const safeTitle = title.replace(/[^\w.\-]+/g, '_').slice(0, 100) || 'contract'
       return reply
+        // native: marked up in the counterparty's own .docx; rebuilt: regenerated from our HTML.
+        .header('x-redline-mode', mode)
+        .header('access-control-expose-headers', 'x-redline-mode')
         .header('content-type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
         .header('content-disposition', `attachment; filename="redline-${safeTitle}-${new Date().toISOString().slice(0, 10)}.docx"`)
         .send(Buffer.from(bytes))

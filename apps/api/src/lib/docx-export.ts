@@ -22,6 +22,18 @@ import { prisma } from './prisma.js'
 import { computeVersionDiff } from './diff.js'
 import { DocxMapper, ORDERED_LIST_REF, type RevisionMeta } from './html-to-docx.js'
 import { resolveRevisionAuthor, toRevisionDate } from './revision-author.js'
+import { GetObjectCommand } from '@aws-sdk/client-s3'
+import { s3, S3_BUCKET } from './storage.js'
+import { redlineOriginalDocx, type DocxRedlineStats } from './docx-redline.js'
+
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+async function readObject(key: string): Promise<Buffer> {
+  const obj = await s3.send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }))
+  const chunks: Buffer[] = []
+  for await (const chunk of obj.Body as AsyncIterable<Buffer>) chunks.push(chunk)
+  return Buffer.concat(chunks)
+}
 
 export interface RedlineDocxArgs {
   contractId: string
@@ -35,6 +47,13 @@ export interface RedlineDocxResult {
   title:      string
   author:     string
   stats:      { insertions: number; deletions: number }
+  /**
+   * native: the tracked changes are written into the uploaded .docx itself,
+   * so its numbering, styles, headers and page setup survive. rebuilt: the
+   * document is regenerated from the app's HTML (no uploaded Word base).
+   */
+  mode:       'native' | 'rebuilt'
+  native?:    DocxRedlineStats
 }
 
 export async function generateRedlineDocx(args: RedlineDocxArgs): Promise<RedlineDocxResult> {
@@ -52,7 +71,7 @@ export async function generateRedlineDocx(args: RedlineDocxArgs): Promise<Redlin
   const [v1, v2] = await Promise.all([
     prisma.contractVersion.findFirst({
       where: { id: v1Id, contractId },
-      select: { id: true, versionNumber: true, htmlContent: true, createdById: true, createdAt: true },
+      select: { id: true, versionNumber: true, htmlContent: true, createdById: true, createdAt: true, s3Key: true, mimeType: true },
     }),
     prisma.contractVersion.findFirst({
       where: { id: v2Id, contractId },
@@ -74,6 +93,23 @@ export async function generateRedlineDocx(args: RedlineDocxArgs): Promise<Redlin
   // on only a minority of version-create paths — deliberately out of scope.
   const author = await resolveRevisionAuthor(v2.createdById, contract.org?.name ?? 'draftLegal')
   const meta: RevisionMeta = { author, date: toRevisionDate(v2.createdAt) }
+
+  // The base is the counterparty's Word file: mark the changes up in it,
+  // rather than send back a document we rebuilt.
+  if (v1.s3Key && v1.mimeType === DOCX_MIME) {
+    try {
+      const original = await readObject(v1.s3Key)
+      const native = await redlineOriginalDocx({
+        docx: original, baseHtml: v1.htmlContent, nextHtml: v2.htmlContent,
+        revision: { author, date: meta.date },
+      })
+      return { bytes: native.bytes, title: contract.title, author, stats, mode: 'native', native: native.stats }
+    } catch (err) {
+      // An unreadable or unusual file falls back to the rebuilt document,
+      // which still carries every change; say so in the logs.
+      console.warn('[redline-docx] native redline failed, rebuilding instead:', (err as Error).message)
+    }
+  }
 
   const body = new DocxMapper(meta).map(diffHtml) as (Paragraph | Table)[]
 
@@ -107,7 +143,7 @@ export async function generateRedlineDocx(args: RedlineDocxArgs): Promise<Redlin
   })
 
   const bytes = await Packer.toBuffer(doc)
-  return { bytes, title: contract.title, author, stats }
+  return { bytes, title: contract.title, author, stats, mode: 'rebuilt' }
 }
 
 /**
