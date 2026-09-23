@@ -4,8 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 // B.5.2 — PDF viewer re-enabled as the "Original" view via the
 // [Styled | Original] toggle. Styled (TipTap / DocumentCanvas) remains the
 // default; Legal users typically flip to Original for pixel fidelity.
-import { Worker, Viewer } from '@react-pdf-viewer/core'
-import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { MEANING_CLASS, RISK_BAND_CLASS, normalizeRisk, riskBand } from '@/lib/status'
@@ -66,8 +64,6 @@ import { CoachMarks } from '@/components/contracts/CoachMarks'
 import { useMediaQuery, BREAKPOINTS } from '@/hooks/useMediaQuery'
 import { track } from '@/lib/telemetry'
 
-import '@react-pdf-viewer/core/lib/styles/index.css'
-import '@react-pdf-viewer/default-layout/lib/styles/index.css'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -384,7 +380,6 @@ export function ContractDetailPage() {
   // Q&A surface removed by U.4.4 — rail handles per-contract chat now.
 
   const qc = useQueryClient()
-  const layoutPlugin = defaultLayoutPlugin()
 
   // B.5.2 — Styled | Original document view.
   const [docView, setDocView] = useState<'styled' | 'original'>(() => {
@@ -923,7 +918,8 @@ export function ContractDetailPage() {
   const handleViewPdf = async () => {
     try {
       setPdfError(null)
-      const res = await api.get(`/contracts/${id}/download`)
+      // inline: served for display, not as a download.
+      const res = await api.get(`/contracts/${id}/download`, { params: { inline: '1' } })
       setPdfUrl(res.data.url)
       setTab('document')
     } catch {
@@ -939,7 +935,7 @@ export function ContractDetailPage() {
   // null it's a text-only / template-generated contract — the Original
   // toggle would crash with "Invalid PDF structure". We disable it instead.
   // The newest version carries an uploaded file (the API says so; it does not send the key).
-  const hasOriginal = !!(versions[0]?.hasFile && versions[0]?.mimeType)
+  const hasOriginal = !!versions[0]?.hasPdf
 
   const { data: commentsData } = useQuery({
     queryKey: ['comments', id],
@@ -1136,7 +1132,7 @@ export function ContractDetailPage() {
               B.5.2 — Styled / Original document-view toggle.
               - "Styled" (default): TipTap + contract-paper CSS. Editable when
                 user flips Edit mode (B.5.3).
-              - "Original": the source PDF via @react-pdf-viewer. Read-only,
+              - "Original": the source PDF in the browser's own viewer. Read-only,
                 pixel-exact. The escape hatch that wins Legal's trust.
               Persisted per user (localStorage).
             */}
@@ -1170,7 +1166,9 @@ export function ContractDetailPage() {
                   isEditing
                     ? 'Exit Edit mode to switch to Original PDF'
                     : !hasOriginal
-                      ? 'No original file — this contract was created from text or a template.'
+                      ? (versions[0]?.hasFile
+                          ? 'The original is a Word file. Use Download to open it in Word.'
+                          : 'No original file — this contract was created from text or a template.')
                       : 'View the original PDF — pixel-exact, read-only.'
                 }
                 data-testid="doc-view-original"
@@ -2664,10 +2662,19 @@ export function ContractDetailPage() {
               // The document canvas: paper on warm ground, and the only surface
               // in the system allowed a drop shadow.
               <div className="h-full overflow-hidden bg-surface-50 p-4">
-                <div className="bg-card rounded-paper shadow-page h-full">
-                  <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
-                    <Viewer fileUrl={pdfUrl} plugins={[layoutPlugin]} />
-                  </Worker>
+                <div className="bg-card rounded-paper shadow-page h-full overflow-hidden">
+                  {/* The browser's own PDF viewer: pixel-exact, with search and
+                      zoom, and nothing to keep in step. The previous viewer
+                      loaded pdf.js 3.11's worker from a public CDN against the
+                      6.x library the security override installs, so it never
+                      rendered — and a firewalled self-host could not reach the
+                      CDN anyway. The link is same-origin (/api/v1/files). */}
+                  <iframe
+                    src={pdfUrl}
+                    title="Original document"
+                    className="w-full h-full border-0"
+                    data-testid="original-pdf-frame"
+                  />
                 </div>
               </div>
             )

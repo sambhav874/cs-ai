@@ -20,11 +20,11 @@
  */
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { PutObjectCommand } from '@aws-sdk/client-s3'
 import { prisma } from '../lib/prisma.js'
 import { requirePermission } from '../middleware/permissions.js'
 import { s3, S3_BUCKET } from '../lib/storage.js'
+import { fileLink } from '../lib/file-links.js'
 import { createAuditEvent } from '../lib/audit.js'
 import { AuditAction, nextDueDate, termsHeadline, consequenceLine, ObligationTermsSchema, type ObligationTerms } from '@clm/types'
 import { buildCsv } from '../lib/csv.js'
@@ -650,11 +650,11 @@ export async function obligationRoutes(app: FastifyInstance) {
       : o
     if (!src?.evidenceS3Key) return reply.status(404).send({ detail: 'No evidence on this obligation' })
 
-    const url = await getSignedUrl(s3, new GetObjectCommand({
-      Bucket: S3_BUCKET,
-      Key:    src.evidenceS3Key,
-      ResponseContentDisposition: `attachment; filename="${(src.evidenceFilename ?? 'evidence').replace(/"/g, '')}"`,
-    }), { expiresIn: 600 })
+    const url = await fileLink({
+      key: src.evidenceS3Key,
+      filename: src.evidenceFilename ?? 'evidence',
+      contentType: src.evidenceMimeType ?? null,
+    })
 
     return reply.send({ url, filename: src.evidenceFilename, mimeType: src.evidenceMimeType })
   })

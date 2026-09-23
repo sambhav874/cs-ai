@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import type { Prisma } from '@prisma/client'
-import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { PutObjectCommand } from '@aws-sdk/client-s3'
 // @ts-ignore — no type definitions for node-htmldiff
 import htmldiff from 'node-htmldiff'
 import { prisma } from '../lib/prisma.js'
 import { s3, S3_BUCKET } from '../lib/storage.js'
+import { fileLink } from '../lib/file-links.js'
 import { renderHtmlToPdfAndStore } from '../lib/gotenberg.js'
 import { requirePermission, requireContractPermission } from '../middleware/permissions.js'
 import { createAuditEvent } from '../lib/audit.js'
@@ -629,11 +629,16 @@ export async function contractRoutes(app: FastifyInstance) {
     const key = canonicalKey(version)
     if (!key) return reply.status(404).send({ detail: 'No file stored for this version' })
 
-    const url = await getSignedUrl(
-      s3,
-      new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }),
-      { expiresIn: 3600 },
-    )
+    // `inline=1` for viewing in the page (the Original view), otherwise a download.
+    const inline = (req.query as { inline?: string }).inline === '1'
+    const isRendered = artifact !== 'source' && !!version?.renderedPdfKey
+    const url = await fileLink({
+      key,
+      filename: key.split('/').pop(),
+      contentType: isRendered ? 'application/pdf' : version?.mimeType ?? null,
+      disposition: inline ? 'inline' : 'attachment',
+      expiresIn: 3600,
+    })
 
     return reply.send({
       url,
@@ -656,7 +661,7 @@ export async function contractRoutes(app: FastifyInstance) {
       select: {
         id: true, versionNumber: true, mimeType: true, fileSize: true,
         changeNote: true, changeSummary: true, createdById: true, createdAt: true,
-        s3Key: true,
+        s3Key: true, renderedPdfKey: true,
       },
     })
 
@@ -671,9 +676,12 @@ export async function contractRoutes(app: FastifyInstance) {
       // `hasFile`, not the storage key: the page needs to know an uploaded
       // original exists (to offer the Original view), not where it is stored.
       // Without it the Original view was disabled for every uploaded contract.
-      data: versions.map(({ s3Key, ...v }) => ({
+      // hasPdf: there is a PDF the Original view can show — the upload itself,
+      // or a PDF rendering of it.
+      data: versions.map(({ s3Key, renderedPdfKey, ...v }) => ({
         ...v,
         hasFile: !!s3Key,
+        hasPdf: !!renderedPdfKey || (!!s3Key && v.mimeType === 'application/pdf'),
         createdByName: authors.get(v.createdById) ?? null,
       })),
     })
@@ -1772,15 +1780,12 @@ export async function contractRoutes(app: FastifyInstance) {
     const attachment = current[idx]
     if (!attachment) return reply.status(404).send({ detail: 'Attachment not found' })
 
-    const url = await getSignedUrl(
-      s3,
-      new GetObjectCommand({
-        Bucket: S3_BUCKET,
-        Key: attachment.s3Key,
-        ResponseContentDisposition: `attachment; filename="${attachment.filename}"`,
-      }),
-      { expiresIn: 300 },
-    )
+    const url = await fileLink({
+      key: attachment.s3Key,
+      filename: attachment.filename,
+      contentType: attachment.mimeType ?? null,
+      expiresIn: 300,
+    })
 
     return reply.send({ url, filename: attachment.filename })
   })

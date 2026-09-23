@@ -39,6 +39,7 @@ import { metricsRoutes } from './routes/metrics.js'
 import { teamRoutes } from './routes/team.js'
 import { organizationRoutes } from './routes/organization.js'
 import { healthRoutes } from './routes/health.js'
+import { fileRoutes } from './routes/files.js'
 import { internalAiRoutes } from './routes/internal-ai.js'
 import { internalObligationRoutes } from './routes/internal-obligations.js'
 import { adminAiRoutes } from './routes/admin-ai.js'
@@ -227,6 +228,7 @@ export async function buildApp() {
   // Routes
   await app.register(healthRoutes)
   await app.register(authRoutes,         { prefix: '/api/v1/auth' })
+  await app.register(fileRoutes,         { prefix: '/api/v1/files' })
   await app.register(contractRoutes,     { prefix: '/api/v1/contracts' })
   await app.register(searchRoutes,       { prefix: '/api/v1/search' })
   await app.register(counterpartyRoutes, { prefix: '/api/v1/counterparties' })
