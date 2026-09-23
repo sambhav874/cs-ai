@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 import crypto from 'node:crypto'
 import { prisma } from '../lib/prisma.js'
 import { redis } from '../lib/redis.js'
-import { signAccessToken, signRefreshToken, verifyToken } from '../lib/jwt.js'
+import { signAccessToken, signRefreshToken, verifyToken, hashRefreshToken } from '../lib/jwt.js'
 import { createAuditEvent } from '../lib/audit.js'
 import { seedOrgDefaults } from '../lib/org-seed.js'
 import { DEFAULT_ROLE_PERMISSIONS, DEFAULT_ROLE_DESCRIPTIONS } from '../lib/permissions.js'
@@ -114,7 +114,7 @@ export async function authRoutes(app: FastifyInstance) {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken: tokens.refreshToken },
+      data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
     })
 
     // Provision default templates, clause library, and playbook in background
@@ -195,7 +195,10 @@ export async function authRoutes(app: FastifyInstance) {
       include: { userRoles: { include: { role: true } } },
     })
 
-    if (!user || user.deletedAt || !(await bcrypt.compare(body.password, user.passwordHash))) {
+    // Always run one bcrypt comparison, so an unknown email takes as long as a
+    // wrong password and response time does not reveal which emails exist.
+    const passwordOk = await bcrypt.compare(body.password, user?.passwordHash ?? DUMMY_BCRYPT_HASH)
+    if (!user || user.deletedAt || !passwordOk) {
       return reply.status(401).send({ detail: 'Invalid email or password' })
     }
 
@@ -217,7 +220,7 @@ export async function authRoutes(app: FastifyInstance) {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken: tokens.refreshToken, lastActiveAt: new Date() },
+      data: { refreshToken: hashRefreshToken(tokens.refreshToken), lastActiveAt: new Date() },
     })
 
     await createAuditEvent({
@@ -246,7 +249,9 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const user = await prisma.user.findFirst({
-      where: { id: payload.sub, refreshToken, deletedAt: null },
+      // Status too: deactivation clears the token, but a user must never
+      // refresh into a session while not ACTIVE, whatever path set the status.
+      where: { id: payload.sub, refreshToken: hashRefreshToken(refreshToken), status: 'ACTIVE', deletedAt: null },
       include: { userRoles: { include: { role: true } } },
     })
 
@@ -259,7 +264,7 @@ export async function authRoutes(app: FastifyInstance) {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken: tokens.refreshToken },
+      data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
     })
 
     return reply.send(tokens)
@@ -461,6 +466,10 @@ export async function authRoutes(app: FastifyInstance) {
     return reply.status(204).send()
   })
 }
+
+// A valid bcrypt hash of a random string, compared against when no user
+// matches. Cost 12, the same as real hashes (see register), so timing matches.
+const DUMMY_BCRYPT_HASH = '$2b$12$swcUdGiER1XKDsJS1mr.wOywIcCX4kJa07hExHukFdtL2Fy4XtkQq'
 
 function issueTokens(userId: string, orgId: string, roles: string[]) {
   const base = { sub: userId, orgId, roles }

@@ -31,6 +31,7 @@ import { AuditAction } from '@clm/types'
 import { applyClauseProposal, applyClauseBatch } from '../lib/clause-apply.js'
 import { rrfScore } from '../lib/rrf.js'
 import { normalisedKey } from '../lib/clause-category.js'
+import { requireInternalSecret } from '../lib/internal-auth.js'
 
 const TIERS: Tier[] = ['reasoning', 'default', 'fast', 'embed', 'rerank', 'vision_ocr']
 
@@ -684,12 +685,7 @@ const ContractUpdateSchema = z.object({
 
 export async function internalAiRoutes(app: FastifyInstance) {
   // ── x-internal-secret guard for every route in this plugin ─────────────────
-  app.addHook('preHandler', async (req, reply) => {
-    const secret = req.headers['x-internal-secret']
-    if (!secret || secret !== process.env.INTERNAL_SERVICE_SECRET) {
-      return reply.status(401).send({ detail: 'Internal endpoint — bad secret' })
-    }
-  })
+  app.addHook('preHandler', requireInternalSecret)
 
   // ── POST /internal/ai/resolve ──────────────────────────────────────────────
   // Body:  { orgId: string, tier: Tier }

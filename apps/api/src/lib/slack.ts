@@ -57,13 +57,16 @@ export async function getSlackConfig(orgId: string): Promise<SlackOrgConfig | nu
 
 /** Find the org connected to a Slack workspace (team_id). */
 export async function findOrgBySlackTeam(teamId: string): Promise<{ orgId: string; config: SlackOrgConfig } | null> {
-  const org = await prisma.organization.findFirst({
-    where: { settings: { path: ['slack', 'teamId'], equals: teamId } },
-    select: { id: true, settings: true },
-  })
+  // JSON-path filters are relational-only in Prisma; on MongoDB the nested
+  // field is queried directly.
+  const rows = await prisma.organization.findRaw({
+    filter:  { 'settings.slack.teamId': teamId },
+    options: { projection: { _id: 1, settings: 1 }, limit: 1 },
+  }) as unknown as Array<{ _id: string; settings?: { slack?: SlackOrgConfig } }>
+  const org = rows[0]
   if (!org) return null
-  const config = (org.settings as Record<string, unknown>).slack as SlackOrgConfig
-  return config?.signingSecret ? { orgId: org.id, config } : null
+  const config = org.settings?.slack as SlackOrgConfig
+  return config?.signingSecret ? { orgId: String(org._id), config } : null
 }
 
 /**

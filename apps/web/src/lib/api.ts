@@ -29,7 +29,13 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !original._retry && !isPortalRequest) {
       original._retry = true
       try {
-        await useAuthStore.getState().refresh()
+        // A request that went out before a concurrent refresh finished carries
+        // the old token; if the store already holds a newer one, retry with it
+        // rather than refreshing again.
+        const sent = String(original.headers?.Authorization ?? '').replace(/^Bearer /, '')
+        if (!useAuthStore.getState().accessToken || useAuthStore.getState().accessToken === sent) {
+          await useAuthStore.getState().refresh()
+        }
         const token = useAuthStore.getState().accessToken
         original.headers.Authorization = `Bearer ${token}`
         return api(original)

@@ -74,8 +74,8 @@ services:
         mc mb --ignore-existing local/${S3_BUCKET:-clm-documents} &&
         mc anonymous set none local/${S3_BUCKET:-clm-documents}
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in Coolify}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set S3_SECRET_KEY in Coolify}
     depends_on:
       minio:
         condition: service_started
@@ -116,13 +116,18 @@ services:
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
       S3_BUCKET: ${S3_BUCKET:-clm-documents}
       S3_REGION: ${S3_REGION:-us-east-1}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in Coolify}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in Coolify}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-noreply@example.com}
+      # The X.509 cert executed PDFs are sealed with (PAdES). Required in
+      # production: without it every seal fails and a signed contract has no
+      # sealed document. Generate: pnpm --filter api signing-cert
+      SIGNING_CERT_P12_BASE64: ${SIGNING_CERT_P12_BASE64:-}
+      SIGNING_CERT_PASSPHRASE: ${SIGNING_CERT_PASSPHRASE:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -163,13 +168,18 @@ services:
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
       S3_BUCKET: ${S3_BUCKET:-clm-documents}
       S3_REGION: ${S3_REGION:-us-east-1}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in Coolify}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in Coolify}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-noreply@example.com}
+      # The X.509 cert executed PDFs are sealed with (PAdES). Required in
+      # production: without it every seal fails and a signed contract has no
+      # sealed document. Generate: pnpm --filter api signing-cert
+      SIGNING_CERT_P12_BASE64: ${SIGNING_CERT_P12_BASE64:-}
+      SIGNING_CERT_PASSPHRASE: ${SIGNING_CERT_PASSPHRASE:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -180,7 +190,16 @@ services:
   gotenberg:
     <<: *restart
     image: gotenberg/gotenberg:8
-    command: ['gotenberg', '--api-port=3000']
+    # Chromium renders caller-supplied HTML (contract export, drafts). Left at
+    # the default it would fetch any URL that HTML names — including this
+    # stack's own services and cloud metadata — and print the response into
+    # the PDF. Deny local files (except its own /tmp input), loopback, private
+    # and link-local ranges, and every service name on this network.
+    command:
+      - gotenberg
+      - --api-port=3000
+      - >-
+        --chromium-deny-list=^(file:(?!//\/tmp/)|https?://(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|169\.254\.|0\.0\.0\.0|\[)|https?://(localhost|mongo|redis|minio|minio-init|api|jobs|intelligence|worker|web|gotenberg)([:/]|$$)).*
 
   intelligence:
     <<: *restart
@@ -231,6 +250,10 @@ services:
     # Built once by its sibling service; never pulled from a registry.
     pull_policy: never
     entrypoint: ['/app/celery_entrypoint.sh']
+    # The image's health check probes the API's HTTP port; the Celery worker
+    # serves no HTTP, so it would always read unhealthy.
+    healthcheck:
+      disable: true
     environment:
       ENVIRONMENT: prod
       CELERY_MODE: worker
@@ -243,6 +266,10 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/3
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
       SECRET_KEY: ${INTEL_SECRET_KEY:?set INTEL_SECRET_KEY in Coolify}
+      # Extraction runs here, and hands each run's obligations to the
+      # lifecycle API (/api/internal/obligations/sync).
+      API_URL: http://api:8080
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in Coolify}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
@@ -287,8 +314,8 @@ services:
     image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: ['server', '/data']
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in Coolify}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set S3_SECRET_KEY in Coolify}
     volumes:
       - minio-data:/data
 

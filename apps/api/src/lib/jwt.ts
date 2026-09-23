@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { resolveSecret } from './secrets.js'
 
@@ -33,4 +34,12 @@ export function signRefreshToken(payload: Omit<JwtPayload, 'type'>): string {
 
 export function verifyToken(token: string): JwtPayload {
   return jwt.verify(token, secret()) as JwtPayload
+}
+
+/**
+ * What the database stores for a refresh token: its SHA-256, never the token.
+ * A leaked users collection then yields no session that can be refreshed.
+ */
+export function hashRefreshToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex')
 }

@@ -40,6 +40,7 @@ import { teamRoutes } from './routes/team.js'
 import { organizationRoutes } from './routes/organization.js'
 import { healthRoutes } from './routes/health.js'
 import { internalAiRoutes } from './routes/internal-ai.js'
+import { internalObligationRoutes } from './routes/internal-obligations.js'
 import { adminAiRoutes } from './routes/admin-ai.js'
 import { adminPackRoutes } from './routes/admin-packs.js'
 import { agentThreadRoutes } from './routes/agent-threads.js'
@@ -61,6 +62,7 @@ import { slackRoutes } from './routes/slack.js'
 import { errorHandler } from './middleware/error-handler.js'
 import { assertRouterConfigured } from './lib/aiRouter.js'
 import { assertSecretsConfigured } from './lib/secrets.js'
+import { isInternalSecret } from './lib/internal-auth.js'
 
 function devLogger() {
   const stream = pinoPretty({ colorize: true })
@@ -183,8 +185,7 @@ export async function buildApp() {
     // global cap (the per-route limits — login, register — still apply).
     // Externally-issued requests can never set this.
     skip: (req: FastifyRequest) => {
-      const s = req.headers['x-internal-secret']
-      return !!s && s === process.env.INTERNAL_SERVICE_SECRET
+      return isInternalSecret(req.headers['x-internal-secret'])
     },
   })
 
@@ -205,8 +206,7 @@ export async function buildApp() {
   app.addHook('onRequest', async (req, reply) => {
     if (!req.url.startsWith('/admin/queues')) return
     if (process.env.NODE_ENV !== 'production') return // open in dev
-    const secret = req.headers['x-internal-secret']
-    if (!secret || secret !== process.env.INTERNAL_SERVICE_SECRET) {
+    if (!isInternalSecret(req.headers['x-internal-secret'])) {
       return reply.status(401).send({ error: 'Unauthorized' })
     }
   })
@@ -248,6 +248,7 @@ export async function buildApp() {
   await app.register(teamRoutes,           { prefix: '/api/v1/team' })
   await app.register(organizationRoutes,   { prefix: '/api/v1/organization' })
   await app.register(internalAiRoutes,     { prefix: '/api/internal/ai' })
+  await app.register(internalObligationRoutes, { prefix: '/api/internal/obligations' })
   await app.register(adminAiRoutes,        { prefix: '/api/v1/admin/ai' })
   await app.register(adminPackRoutes,      { prefix: '/api/v1/admin/packs' })
   await app.register(agentThreadRoutes,    { prefix: '/api/v1/agent/threads' })

@@ -7,6 +7,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import { requireAuth } from './auth.js'
 import { getPermissionsForRoles, evaluatePermission } from '../lib/permissions.js'
+import { prisma } from '../lib/prisma.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -52,5 +53,31 @@ export function requirePermission(action: string, resource: string) {
 
     // Attach scope so route handlers can filter queries accordingly
     req.permissionScope = result.scope
+  }
+}
+
+/**
+ * requirePermission for routes addressed by a contract id, plus ownership for
+ * roles whose contract permission is scoped to their own (SALES_REP).
+ *
+ * The contracts LIST filtered an own-scoped user to their contracts, but every
+ * route taking `:id` checked only the permission — so the same user could read
+ * or act on any contract in the org by id. A contract outside their scope
+ * answers 404, exactly like one that does not exist.
+ */
+export function requireContractPermission(action: string, param = 'id') {
+  const base = requirePermission(action, 'contract')
+  return async (req: FastifyRequest, reply: FastifyReply) => {
+    await base(req, reply)
+    if (reply.sent || req.permissionScope !== 'own') return
+    const contractId = (req.params as Record<string, string> | undefined)?.[param]
+    if (!contractId) return
+    const contract = await prisma.contract.findFirst({
+      where:  { id: contractId, orgId: req.user.orgId },
+      select: { ownerId: true },
+    })
+    if (contract && contract.ownerId !== req.user.sub) {
+      return reply.status(404).send({ detail: 'Contract not found' })
+    }
   }
 }

@@ -7,9 +7,9 @@ import htmldiff from 'node-htmldiff'
 import { prisma } from '../lib/prisma.js'
 import { s3, S3_BUCKET } from '../lib/storage.js'
 import { renderHtmlToPdfAndStore } from '../lib/gotenberg.js'
-import { requirePermission } from '../middleware/permissions.js'
+import { requirePermission, requireContractPermission } from '../middleware/permissions.js'
 import { createAuditEvent } from '../lib/audit.js'
-import { extractObligationsForContract } from '../lib/obligation-extract.js'
+import { requestObligationExtraction, defaultExtractDeps } from '../lib/intelligence-extract.js'
 import { generateRedlineDocx, generatePlainDocx } from '../lib/docx-export.js'
 import { resolveRevisionAuthors } from '../lib/revision-author.js'
 import { runComplianceCheck, COMPLIANCE_FRAMEWORKS } from '../lib/compliance-check.js'
@@ -32,6 +32,7 @@ import {
   AuditAction,
   normalizeRiskScore,
 } from '@clm/types'
+import { isInternalSecret } from '../lib/internal-auth.js'
 
 // riskScore is served as 0-100 (RiskScoreSchema in @clm/types) whatever scale
 // the row happens to hold, so a client never has to guess which one it got.
@@ -284,6 +285,8 @@ export async function contractRoutes(app: FastifyInstance) {
     if (q.type)            where.type = q.type
     if (q.counterpartyId)  where.counterpartyId = q.counterpartyId
     if (q.ownerId)         where.ownerId = q.ownerId
+    // Same scope as the list: an own-scoped role exports only its contracts.
+    if (req.permissionScope === 'own') where.ownerId = req.user.sub
     // 0-100 bands, matching riskBand() in the web app so an exported row lands
     // in the same band the user saw on screen. These read 0.67/0.34 before,
     // which on real 0-100 data put the entire portfolio in "high".
@@ -552,7 +555,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Detail ───────────────────────────────────────────────────────────────
-  app.get('/:id', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId, sub: userId } = req.user
 
@@ -585,7 +588,7 @@ export async function contractRoutes(app: FastifyInstance) {
   //
   // Callers can pass ?artifact=source to explicitly force the source file
   // (useful for diff-against-original views). Default is canonical.
-  app.get('/:id/download', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/download', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { versionId, artifact = 'canonical' } = req.query as {
       versionId?: string
@@ -639,7 +642,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Versions ─────────────────────────────────────────────────────────────
-  app.get('/:id/versions', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/versions', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
 
@@ -668,7 +671,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Upload new version ───────────────────────────────────────────────────
-  app.post('/:id/versions', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/versions', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { sub: userId, orgId } = req.user
 
@@ -757,7 +760,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Save editor HTML as a new text version (no file upload) ─────────────
-  app.post('/:id/html-version', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/html-version', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { sub: userId, orgId } = req.user
     const { htmlContent, changeNote = 'Edited in browser' } = req.body as { htmlContent: string; changeNote?: string }
@@ -818,7 +821,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Store clause segments (called by Review Agent) ───────────────────────
-  app.post('/:id/versions/:versionId/clauses', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/versions/:versionId/clauses', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id, versionId } = req.params as { id: string; versionId: string }
     const { orgId } = req.user
 
@@ -866,7 +869,7 @@ export async function contractRoutes(app: FastifyInstance) {
   // reached when the chat agent chose to call it — the review drawer had no way
   // to ask for a suggestion, and showed a hardcoded placeholder instead.
   // Both paths share lib/clause-propose so they can't drift apart.
-  app.post('/:id/clauses/:clauseId/suggest', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/clauses/:clauseId/suggest', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id, clauseId } = req.params as { id: string; clauseId: string }
     const { orgId } = req.user
     const { instructions } = (req.body ?? {}) as { instructions?: string }
@@ -883,7 +886,7 @@ export async function contractRoutes(app: FastifyInstance) {
   // internal-only AND the UI path to it went through the agent thread, which
   // hard-fails without an existing conversation — so a reviewer looking at
   // proposed language had no way to apply it. Shares lib/clause-apply.
-  app.post('/:id/clauses/:clauseId/apply', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/clauses/:clauseId/apply', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id, clauseId } = req.params as { id: string; clauseId: string }
     const { orgId, sub: userId } = req.user
     const body = (req.body ?? {}) as {
@@ -957,7 +960,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── List clauses for current version ────────────────────────────────────
-  app.get('/:id/clauses', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/clauses', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
 
@@ -1037,7 +1040,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Activity timeline ────────────────────────────────────────────────────
-  app.get('/:id/timeline', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/timeline', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
 
@@ -1054,7 +1057,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Update metadata ──────────────────────────────────────────────────────
-  app.patch('/:id', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.patch('/:id', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId, sub: userId } = req.user
     const body = UpdateContractSchema.parse(req.body)
@@ -1139,7 +1142,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Re-trigger AI analysis ───────────────────────────────────────────────
-  app.post('/:id/analyze', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/analyze', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
 
@@ -1218,7 +1221,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Cancel analysis (reset stuck in-progress status to FAILED) ───────────
-  app.post('/:id/cancel-analysis', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/cancel-analysis', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
 
@@ -1236,7 +1239,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Retype (correct contract type → re-extract with corrected type context) ──
-  app.post('/:id/retype', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/retype', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
     const { contractType } = req.body as { contractType: string }
@@ -1272,8 +1275,7 @@ export async function contractRoutes(app: FastifyInstance) {
   // ── Internal: trigger chunk-and-index (called by agents after clauses stored) ─
   app.post('/:id/versions/:versionId/chunk', async (req, reply) => {
     // Internal-only — validated via x-internal-secret header
-    const secret = req.headers['x-internal-secret']
-    if (secret !== process.env.INTERNAL_SERVICE_SECRET) {
+    if (!isInternalSecret(req.headers['x-internal-secret'])) {
       return reply.status(401).send({ detail: 'Unauthorized' })
     }
     const { id, versionId } = req.params as { id: string; versionId: string }
@@ -1287,7 +1289,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Contract Q&A (RAG) ───────────────────────────────────────────────────
-  app.post('/:id/ask', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.post('/:id/ask', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
     const { question, limit = 8 } = req.body as { question: string; limit?: number }
@@ -1332,7 +1334,7 @@ export async function contractRoutes(app: FastifyInstance) {
   // Performance: for a few dozen contracts this is a single query; if we
   // ever have thousands, we'll materialize the roll-up into a column.
   // Not worth the extra write-path complexity at V1 scale.
-  app.get('/:id/precedents', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/precedents', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
 
@@ -1438,7 +1440,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Soft delete ──────────────────────────────────────────────────────────
-  app.delete('/:id', { preHandler: requirePermission('delete', 'contract') }, async (req, reply) => {
+  app.delete('/:id', { preHandler: requireContractPermission('delete') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId, sub: userId } = req.user
 
@@ -1459,7 +1461,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Contract Family ────────────────────────────────────────────────────────
-  app.get('/:id/family', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/family', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
 
@@ -1505,7 +1507,7 @@ export async function contractRoutes(app: FastifyInstance) {
   // ── GET /:id/compliance-export (P9 Step 6) ──────────────────────────────
   // Bundles the contract's full lifecycle into one auditor-ready PDF:
   // cover page, signers + signature timestamps, audit trail, signed PDF.
-  app.get('/:id/compliance-export', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/compliance-export', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
     try {
@@ -1534,7 +1536,7 @@ export async function contractRoutes(app: FastifyInstance) {
   // parent's counterparty and (if not overridden) type to save typing.
   // The amendment lands in DRAFT status so the user can edit / draft via
   // the agent / upload a file before signing.
-  app.post('/:id/amendments', { preHandler: requirePermission('create', 'contract') }, async (req, reply) => {
+  app.post('/:id/amendments', { preHandler: requireContractPermission('create') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { sub: userId, orgId } = req.user
     const body = (req.body ?? {}) as {
@@ -1660,7 +1662,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Attach exhibit / schedule (non-AI) ─────────────────────────────────────
-  app.post('/:id/attach', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/attach', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId, sub: userId } = req.user
 
@@ -1723,7 +1725,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Delete attachment by index ─────────────────────────────────────────────
-  app.delete('/:id/attachments/:index', { preHandler: requirePermission('delete', 'contract') }, async (req, reply) => {
+  app.delete('/:id/attachments/:index', { preHandler: requireContractPermission('delete') }, async (req, reply) => {
     const { id, index } = req.params as { id: string; index: string }
     const { orgId } = req.user
     const idx = parseInt(index, 10)
@@ -1746,7 +1748,7 @@ export async function contractRoutes(app: FastifyInstance) {
   })
 
   // ── Download attachment ────────────────────────────────────────────────────
-  app.get('/:id/attachments/:index/download', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/attachments/:index/download', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { id, index } = req.params as { id: string; index: string }
     const { orgId } = req.user
     const idx = parseInt(index, 10)
@@ -1776,7 +1778,7 @@ export async function contractRoutes(app: FastifyInstance) {
 
   // ── Binder split ──────────────────────────────────────────────────────────
   // POST /:id/split — queue a split-binder job; returns 202 immediately
-  app.post('/:id/split', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/split', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId, sub: userId } = req.user
     const { splits } = req.body as {
@@ -1875,7 +1877,7 @@ export async function contractRoutes(app: FastifyInstance) {
 
 
   // ── Version diff ───────────────────────────────────────────────────────────
-  app.get('/:id/versions/:v1Id/diff/:v2Id', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/versions/:v1Id/diff/:v2Id', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { orgId } = req.user
     const { id: contractId, v1Id, v2Id } = req.params as { id: string; v1Id: string; v2Id: string }
 
@@ -1935,7 +1937,7 @@ export async function contractRoutes(app: FastifyInstance) {
   // 'view' rather than 'export': PermissionAction.EXPORT exists but no route
   // in this codebase enforces it, so using it here would narrow access for
   // view-but-not-export roles and require a system-role permission refresh.
-  app.get('/:id/versions/:v1Id/redline-docx/:v2Id', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/versions/:v1Id/redline-docx/:v2Id', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { orgId } = req.user
     const { id: contractId, v1Id, v2Id } = req.params as { id: string; v1Id: string; v2Id: string }
     try {
@@ -1971,7 +1973,7 @@ export async function contractRoutes(app: FastifyInstance) {
   //
   // It stages rather than applies on purpose. Writing the markup into the
   // contract before a lawyer has seen it is an unreviewed edit, not a redline.
-  app.post('/:id/redline-against-playbook', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/redline-against-playbook', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { orgId, sub: userId } = req.user
     const { id: contractId } = req.params as { id: string }
     const body = (req.body ?? {}) as { aggression?: string }
@@ -2021,7 +2023,7 @@ export async function contractRoutes(app: FastifyInstance) {
   // Applies the subset the reviewer accepted, as ONE version (Phase 2).
   // Anything not named here is not applied — a change the reviewer did not
   // accept must never reach the document.
-  app.post('/:id/redline-against-playbook/apply', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/redline-against-playbook/apply', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { orgId, sub: userId } = req.user
     const { id: contractId } = req.params as { id: string }
     const body = (req.body ?? {}) as { acceptedClauseIds?: unknown }
@@ -2094,7 +2096,7 @@ export async function contractRoutes(app: FastifyInstance) {
   // contract.metadata._playbookReview since it shipped, and nothing ever read
   // it — a repo-wide grep found the write and no reader. Exposing it means the
   // redline surface can show what the org already paid to compute.
-  app.get('/:id/playbook-review', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/playbook-review', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { orgId } = req.user
     const { id: contractId } = req.params as { id: string }
 
@@ -2111,7 +2113,7 @@ export async function contractRoutes(app: FastifyInstance) {
     return reply.send(review)
   })
 
-  app.post('/:id/redline', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/redline', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { orgId, sub: userId } = req.user
     const { id: contractId } = req.params as { id: string }
     const { v1Id, v2Id } = req.body as { v1Id: string; v2Id: string }
@@ -2134,7 +2136,7 @@ export async function contractRoutes(app: FastifyInstance) {
 
 
   // ── Submit contract for approval — Phase 06 ───────────────────────────────
-  app.post('/:id/submit-approval', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/submit-approval', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { orgId, sub: userId } = req.user
     const { id: contractId } = req.params as { id: string }
     const { workflowDefinitionId, comment } = req.body as {
@@ -2360,52 +2362,49 @@ export async function contractRoutes(app: FastifyInstance) {
     })
   })
 
-  // ── POST /:id/extract-obligations (P5.1 / P8 Step 2) ──────────────────────
-  // Triggers the obligations LLM pass on the current version's plaintext.
-  // Auto-fires on signature.completed (P8 Step 2); also exposed manually
-  // via the "Extract obligations" rail button.
-  app.post('/:id/extract-obligations', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  // ── POST /:id/extract-obligations ─────────────────────────────────────────
+  // Starts a ContractSense extraction run on the contract's analysis copy.
+  // Records arrive through the internal sync when the run finishes, so this
+  // answers 202 at once; the rail polls GET /:id/obligations for the outcome.
+  app.post('/:id/extract-obligations', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id } = req.params as { id: string }
-    const { orgId } = req.user
-    try {
-      const result = await extractObligationsForContract({
-        orgId, contractId: id, userId: req.user.sub,
-      })
-      if (result.skippedReason === 'no version') {
-        return reply.status(400).send({ detail: 'No version to extract from' })
-      }
-      if (result.skippedReason === 'no plaintext') {
-        return reply.status(400).send({ detail: 'No plaintext on current version' })
-      }
-      if (result.error?.startsWith('contract not found')) {
-        return reply.status(404).send({ detail: 'Contract not found' })
-      }
-      if (result.error?.startsWith('agents service error')) {
-        return reply.status(502).send({ detail: 'obligations extractor failed', upstream: result.error })
-      }
-      const fresh = await prisma.obligation.findMany({
-        where: { contractId: id }, orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
-      })
-      return reply.send({
-        ok:          result.ok,
-        obligations: fresh,
-        summary:     result.summary,
-        error:       result.error,
-      })
-    } catch (err) {
-      if (err instanceof CostCapExceededError) {
-        return reply.status(429).send({
-          detail: `Daily AI cost cap reached ($${err.usedUsd.toFixed(2)} of $${err.capUsd.toFixed(2)}). Try again tomorrow or raise the cap in Admin → AI Config.`,
-          retryAfter: 86400,
-        })
-      }
-      throw err
+    const { orgId, sub: userId } = req.user
+    const contract = await prisma.contract.findFirst({
+      where:  { id, orgId, deletedAt: null },
+      select: { id: true, currentVersionId: true },
+    })
+    if (!contract) return reply.status(404).send({ detail: 'Contract not found' })
+
+    const outcome = await requestObligationExtraction({ contractId: id, orgId, userId }, defaultExtractDeps())
+    if (outcome.status === 'queued') return reply.status(202).send({ status: 'queued' })
+    if (outcome.status === 'busy') return reply.status(409).send({ detail: outcome.detail || 'Extraction is already running' })
+    if (outcome.status === 'unavailable') {
+      return reply.status(502).send({ detail: 'Obligation extraction is unavailable', upstream: outcome.detail })
     }
+
+    // Never linked (e.g. drafted here and not yet signed): link the current
+    // file now. Ingestion there queues extraction as soon as parsing is done.
+    const version = contract.currentVersionId
+      ? await prisma.contractVersion.findUnique({
+          where:  { id: contract.currentVersionId },
+          select: { s3Key: true, renderedPdfKey: true, mimeType: true },
+        })
+      : null
+    const s3Key = version?.renderedPdfKey ?? version?.s3Key
+    if (!s3Key) {
+      return reply.status(400).send({ detail: 'This contract has no stored document to extract from yet' })
+    }
+    queueLinkIntelligence({
+      contractId: id, orgId, userId, s3Key,
+      mimeType: version?.renderedPdfKey ? 'application/pdf' : (version?.mimeType ?? 'application/pdf'),
+      filename: `${id}.pdf`,
+    })
+    return reply.status(202).send({ status: 'linking' })
   })
 
   // ── GET /:id/obligations (P8 Step 1) ──────────────────────────────────────
   // List obligations for one contract (used by the rail section + agent).
-  app.get('/:id/obligations', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/obligations', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
     const contract = await prisma.contract.findFirst({
@@ -2417,19 +2416,25 @@ export async function contractRoutes(app: FastifyInstance) {
     const items = await prisma.obligation.findMany({
       where: { contractId: id },
       orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+      include: { assignee: { select: { id: true, name: true, email: true } } },
     })
     const md = (contract.metadata ?? {}) as Record<string, unknown>
+    const extraction = (md.obligationExtraction ?? null) as Record<string, unknown> | null
     return reply.send({
       data: items,
       summary:     (md.obligationsSummary as string | null) ?? null,
-      extractedAt: (md.obligationsExtractedAt as string | null) ?? null,
+      extractedAt: (extraction?.syncedAt as string | null) ?? (md.obligationsExtractedAt as string | null) ?? null,
+      // Status, error and clause ledger of the last run. `ledger.lost > 0`
+      // means clauses were read and neither kept nor explicitly declined —
+      // the UI shows it rather than presenting the list as complete.
+      extraction,
     })
   })
 
   // ── POST /:id/compliance-check (Phase 10 — Compliance Agent) ─────────────
   // Runs GDPR / HIPAA / SOX / CCPA regulatory clause checks on the current
   // version's plaintext. Persists the report onto Contract.metadata._compliance.
-  app.post('/:id/compliance-check', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/compliance-check', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
     const body = (req.body ?? {}) as { frameworks?: string[] }
@@ -2474,7 +2479,7 @@ export async function contractRoutes(app: FastifyInstance) {
 
   // ── GET /:id/compliance (Phase 10) ────────────────────────────────────────
   // Returns the last persisted compliance report (or null when never run).
-  app.get('/:id/compliance', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
+  app.get('/:id/compliance', { preHandler: requireContractPermission('view') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
     const contract = await prisma.contract.findFirst({
@@ -2491,7 +2496,7 @@ export async function contractRoutes(app: FastifyInstance) {
   // contract whose expiry is inside the 90-day window. Persists the
   // result onto Contract.metadata.renewalAdvice so the rail section +
   // the agent tool can read it cheaply.
-  app.post('/:id/renewal-advice', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/renewal-advice', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
 
@@ -2604,7 +2609,7 @@ export async function contractRoutes(app: FastifyInstance) {
   // ── POST /:id/renewal-decision (P5.3) ────────────────────────────────────
   // Records the owner's decision ("renew"/"renegotiate"/"let_expire"/"pause")
   // so the renewal scanner stops pinging this contract.
-  app.post('/:id/renewal-decision', { preHandler: requirePermission('edit', 'contract') }, async (req, reply) => {
+  app.post('/:id/renewal-decision', { preHandler: requireContractPermission('edit') }, async (req, reply) => {
     const { id } = req.params as { id: string }
     const { orgId } = req.user
     const body = req.body as { decision?: string; note?: string } | undefined
