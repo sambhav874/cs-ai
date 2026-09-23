@@ -9,8 +9,8 @@
  * button appears on the row hover (Step 4 wires the modal).
  */
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import {
   CalendarClock, DollarSign, Shield, RefreshCw, FileSearch, Bell,
@@ -23,6 +23,9 @@ import { StatusPill, MeaningDot } from '@/components/ui/status-pill'
 import { CountBadge, EmptyState } from '@/components/ui/primitives'
 import type { Meaning } from '@/lib/status'
 import { CompleteObligationModal } from '@/components/contracts/CompleteObligationModal'
+import { UserPicker } from '@/components/common/UserPicker'
+import { ObligationDrawer, parseTerms } from '@/components/obligations/ObligationDrawer'
+import { termsHeadline, consequenceLine } from '@clm/types'
 
 type Bucket = 'all' | 'open' | 'due_soon' | 'overdue' | 'completed'
 
@@ -40,6 +43,10 @@ interface ApiObligation {
   status:           'OPEN' | 'COMPLETED' | 'OVERDUE' | 'WAIVED'
   completedAt:      string | null
   notifiedAt:       string | null
+  page?:            number | null
+  needsReview?:     boolean
+  assignee?:        { id: string; name: string; email: string } | null
+  terms?:           unknown
   contract: {
     id: string
     title: string
@@ -54,7 +61,15 @@ interface ApiStats {
   dueSoon: number
   overdue: number
   completedRecent: number
+  unassigned?: number
 }
+
+type AssigneeFilter = 'anyone' | 'me' | 'unassigned'
+const ASSIGNEE_FILTERS: { key: AssigneeFilter; label: string }[] = [
+  { key: 'anyone',     label: 'Anyone' },
+  { key: 'me',         label: 'Mine' },
+  { key: 'unassigned', label: 'Unassigned' },
+]
 
 const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   payment:     DollarSign,
@@ -133,9 +148,35 @@ export function ObligationsPage() {
   // scroll below. A queue should open on the work: "Open" is every commitment
   // still owed, oldest due date first, which is the order you drain them in.
   const [bucket, setBucket] = useState<Bucket>('open')
+  // The open obligation lives in the URL (?obligation=<id>), so a reminder
+  // email, a notification or a colleague's link lands on it directly.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const openId = searchParams.get('obligation')
+  const openObligation = (id: string | null) => {
+    const next = new URLSearchParams(searchParams)
+    if (id) next.set('obligation', id); else next.delete('obligation')
+    setSearchParams(next, { replace: !id })
+  }
+  const [typeFilter, setTypeFilter] = useState('')
   const [q, setQ] = useState('')
   const [completeTarget, setCompleteTarget] = useState<{ id: string; description: string } | null>(null)
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('anyone')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkAssignee, setBulkAssignee] = useState('')
   const qc = useQueryClient()
+  const filterQs = `bucket=${bucket}${q ? `&q=${encodeURIComponent(q)}` : ''}${assigneeFilter !== 'anyone' ? `&assignee=${assigneeFilter}` : ''}${typeFilter ? `&type=${typeFilter}` : ''}`
+
+  const bulkAssign = useMutation({
+    mutationFn: async (assigneeId: string | null) =>
+      (await api.post<{ updated: number }>('/obligations/bulk-assign', { ids: [...selected], assigneeId })).data,
+    onSuccess: () => {
+      setSelected(new Set())
+      setBulkAssignee('')
+      qc.invalidateQueries({ queryKey: ['obligations-list'] })
+      qc.invalidateQueries({ queryKey: ['obligations-stats'] })
+      qc.invalidateQueries({ queryKey: ['contract-obligations'] })
+    },
+  })
 
   const { data: stats } = useQuery<ApiStats>({
     queryKey: ['obligations-stats'],
@@ -144,45 +185,22 @@ export function ObligationsPage() {
   })
 
   const { data, isLoading, isError } = useQuery<{ data: ApiObligation[]; total: number }>({
-    queryKey: ['obligations-list', bucket, q],
-    queryFn:  () => api.get(`/obligations?bucket=${bucket}${q ? `&q=${encodeURIComponent(q)}` : ''}&limit=100`).then(r => r.data),
+    queryKey: ['obligations-list', bucket, q, assigneeFilter, typeFilter],
+    queryFn:  () => api.get(`/obligations?${filterQs}&limit=100`).then(r => r.data),
     refetchInterval: 60_000,
   })
 
-  /*
-   * The obligations whose STORED status is the literal 'OVERDUE'.
-   *
-   * The server's overdue bucket and its overdue KPI both compute
-   * `status = 'OPEN' AND dueDate < now`, so a row stored as OVERDUE is in
-   * neither: it is not OPEN, so it fails the bucket, and it is not COMPLETED,
-   * so it never leaves. Eight commitments up to 94 days late rendered a red
-   * "Overdue" pill on the All tab and matched no filter on the page whose whole
-   * job is to find them.
-   *
-   * The real fix is one line of server predicate (see the note in the handover);
-   * until then this page refuses to under-report lateness, and asks for the rows
-   * the bucket drops so both the count and the list are true.
-   */
-  const { data: storedOverdue } = useQuery<{ data: ApiObligation[]; total: number }>({
-    queryKey: ['obligations-list', 'stored-overdue', q],
-    queryFn:  () => api.get(`/obligations?status=OVERDUE${q ? `&q=${encodeURIComponent(q)}` : ''}&limit=100`).then(r => r.data),
-    refetchInterval: 60_000,
+  // The server counts a row stored as OVERDUE and an OPEN row past its due
+  // date as overdue alike, so the list and the KPI agree without help here.
+  const items = data?.data ?? []
+  const total = data?.total ?? 0
+  const overdueTotal = stats?.overdue ?? 0
+  const allSelected = items.length > 0 && items.every(o => selected.has(o.id))
+  const toggle = (id: string) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
   })
-  const storedOverdueRows  = storedOverdue?.data ?? []
-  // Disjoint by construction: the KPI counts status OPEN, these are status
-  // OVERDUE, so the two can be added without double-counting.
-  const storedOverdueTotal = storedOverdue?.total ?? 0
-  const overdueTotal = (stats?.overdue ?? 0) + storedOverdueTotal
-
-  const rows  = data?.data ?? []
-  const items = bucket === 'overdue'
-    ? [...rows, ...storedOverdueRows].sort((a, b) => {
-        const at = a.dueDate ? new Date(a.dueDate).getTime() : Infinity
-        const bt = b.dueDate ? new Date(b.dueDate).getTime() : Infinity
-        return at - bt
-      })
-    : rows
-  const total = bucket === 'overdue' ? overdueTotal : (data?.total ?? 0)
 
   return (
     <div className="px-6 py-6 max-w-7xl mx-auto" data-testid="obligations-page">
@@ -195,7 +213,7 @@ export function ObligationsPage() {
           variant="outline"
           size="sm"
           onClick={async () => {
-            const r = await api.get(`/obligations/export?bucket=${bucket}${q ? `&q=${encodeURIComponent(q)}` : ''}`, { responseType: 'blob' })
+            const r = await api.get(`/obligations/export?${filterQs}`, { responseType: 'blob' })
             const url = URL.createObjectURL(new Blob([r.data], { type: 'text/csv' }))
             const a = document.createElement('a'); a.href = url; a.download = `obligations-${new Date().toISOString().slice(0,10)}.csv`
             document.body.appendChild(a); a.click(); a.remove()
@@ -249,6 +267,36 @@ export function ObligationsPage() {
             )
           })}
         </div>
+        <div className="flex items-center gap-2">
+        <select
+          value={typeFilter}
+          onChange={e => { setTypeFilter(e.target.value); setSelected(new Set()) }}
+          aria-label="Filter by type"
+          data-testid="obligation-type-filter"
+          className="h-8 rounded-md border border-surface-200 bg-card px-2 text-[12px] text-fg-700"
+        >
+          <option value="">All types</option>
+          {Object.keys(TYPE_ICON).map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <div className="inline-flex rounded-md border border-surface-200 p-0.5" role="group" aria-label="Filter by assignee">
+          {ASSIGNEE_FILTERS.map(f => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => { setAssigneeFilter(f.key); setSelected(new Set()) }}
+              aria-pressed={assigneeFilter === f.key}
+              data-testid={`assignee-filter-${f.key}`}
+              className={`px-2.5 py-1 text-[12px] rounded-[5px] ${
+                assigneeFilter === f.key ? 'bg-surface-100 text-fg-950 font-medium' : 'text-fg-500 hover:text-fg-950'
+              }`}
+            >
+              {f.label}
+              {f.key === 'unassigned' && (stats?.unassigned ?? 0) > 0 && (
+                <span className="ml-1 tabular-nums text-attention-700">{stats?.unassigned}</span>
+              )}
+            </button>
+          ))}
+        </div>
         <div className="relative">
           <Search className="absolute left-2.5 top-2 size-4 text-fg-400" />
           <Input
@@ -259,6 +307,7 @@ export function ObligationsPage() {
             data-testid="obligations-search"
             className="pl-8 w-full sm:w-72"
           />
+        </div>
         </div>
       </div>
 
@@ -294,8 +343,44 @@ export function ObligationsPage() {
         </div>
       ) : (
         <div className="bg-card border border-surface-200 rounded-card overflow-hidden">
-          <div className="px-5 py-2 text-[11px] text-fg-500 bg-surface-50 border-b border-surface-200 flex items-center justify-between">
-            <span className="tabular-nums">{total} {total === 1 ? 'obligation' : 'obligations'}</span>
+          <div className="px-5 py-1.5 text-[11px] text-fg-500 bg-surface-50 border-b border-surface-200 flex items-center justify-between gap-3 h-[52px]">
+            {selected.size === 0 ? (
+              <span className="tabular-nums">{total} {total === 1 ? 'obligation' : 'obligations'}</span>
+            ) : (
+              <div className="flex items-center gap-2 flex-wrap" data-testid="bulk-assign-bar">
+                <span className="tabular-nums font-medium text-fg-950">{selected.size} selected</span>
+                <UserPicker
+                  value={bulkAssignee}
+                  onChange={id => setBulkAssignee(id)}
+                  placeholder="Assign to…"
+                  testId="bulk-assign-picker"
+                  className="w-64"
+                />
+                <Button
+                  size="xs"
+                  disabled={!bulkAssignee || bulkAssign.isPending}
+                  onClick={() => bulkAssign.mutate(bulkAssignee)}
+                  data-testid="bulk-assign-btn"
+                >
+                  {bulkAssign.isPending ? 'Assigning…' : 'Assign'}
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={bulkAssign.isPending}
+                  onClick={() => bulkAssign.mutate(null)}
+                  data-testid="bulk-unassign-btn"
+                >
+                  Unassign
+                </Button>
+                <button type="button" className="text-fg-500 hover:text-fg-950 underline" onClick={() => setSelected(new Set())}>
+                  Clear
+                </button>
+                {bulkAssign.isError && (
+                  <span className="text-risk-700">{(bulkAssign.error as Error).message ?? 'Could not assign.'}</span>
+                )}
+              </div>
+            )}
           </div>
           {/* Fixed layout, not content-driven. Six auto-width columns measured
               1116px inside a 730px shell with the assistant rail open, so
@@ -304,9 +389,21 @@ export function ObligationsPage() {
               scrollbar on every row. Severity moved into the description's meta
               line, where it reads as the property of the commitment it is. */}
           <div className="overflow-x-auto">
-          <table className="w-full table-fixed text-[13px]" data-testid="obligations-table">
+          {/* A floor on width: below it the fixed columns squeezed the
+              description to a few characters. Past it the table scrolls
+              inside its card instead. */}
+          <table className="w-full min-w-[760px] table-fixed text-[13px]" data-testid="obligations-table">
             <thead className="bg-surface-50 text-eyebrow uppercase text-fg-500">
               <tr>
+                <th className="w-9 pl-4 py-2">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all obligations on this page"
+                    checked={allSelected}
+                    onChange={() => setSelected(allSelected ? new Set() : new Set(items.map(o => o.id)))}
+                    data-testid="select-all-obligations"
+                  />
+                </th>
                 <th className="text-left px-4 py-2 font-semibold">Description</th>
                 <th className="text-left px-3 py-2 font-semibold w-[24%]">Contract</th>
                 <th className="text-left px-3 py-2 font-semibold w-[104px]">Due</th>
@@ -322,13 +419,40 @@ export function ObligationsPage() {
                 const overdue = isOverdue(o)
                 return (
                   <tr key={o.id} className="hover:bg-surface-50 align-top" data-testid={`obligation-row-${o.id}`}>
+                    <td className="pl-4 py-2.5">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select obligation: ${o.description}`}
+                        checked={selected.has(o.id)}
+                        onChange={() => toggle(o.id)}
+                        data-testid={`select-obligation-${o.id}`}
+                      />
+                    </td>
                     <td className="px-4 py-2">
                       <div className="flex items-start gap-2">
                         <TypeIcon className="size-3.5 text-fg-400 mt-0.5 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-fg-950 truncate" title={o.description}>
+                          <button
+                            type="button"
+                            onClick={() => openObligation(o.id)}
+                            className="w-full text-left font-medium text-fg-950 line-clamp-2 hover:underline underline-offset-2 decoration-surface-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                            title={o.description}
+                            data-testid={`open-obligation-${o.id}`}
+                          >
                             {o.description}
-                          </div>
+                          </button>
+                          {(() => {
+                            const t = parseTerms(o.terms)
+                            const req = termsHeadline(t)
+                            const miss = consequenceLine(t)
+                            return req || miss ? (
+                              <div className="text-[11.5px] mt-0.5 line-clamp-2" data-testid={`obligation-terms-${o.id}`}>
+                                {req && <span className="text-fg-700">{req}</span>}
+                                {req && miss && <span className="text-fg-400"> · </span>}
+                                {miss && <span className="text-risk-700">if missed: {miss}</span>}
+                              </div>
+                            ) : null
+                          })()}
                           <div className="text-[11px] text-fg-500 mt-0.5 flex items-center gap-1.5 truncate">
                             {/* Severity used to own a column of its own, which
                                 cost 107px to say one word. It is a property of
@@ -340,6 +464,10 @@ export function ObligationsPage() {
                             </span>
                             <span className="uppercase font-mono tracking-[0.08em] text-[10px] shrink-0">· {o.type}</span>
                             <span className="truncate">· {o.owner}</span>
+                            <span className={`shrink-0 ${o.assignee ? 'text-fg-700' : 'text-attention-700'}`}>
+                              · {o.assignee ? o.assignee.name : 'unassigned'}
+                            </span>
+                            {o.needsReview && <span className="shrink-0 text-attention-700">· review</span>}
                             {o.sectionRef && <span className="font-mono shrink-0">§{o.sectionRef}</span>}
                             {o.recurrence !== 'one-time' && o.recurrence !== 'unknown' && (
                               // Recurrence is a property of the obligation, not a
@@ -408,6 +536,8 @@ export function ObligationsPage() {
           </div>
         </div>
       )}
+
+      {openId && <ObligationDrawer obligationId={openId} onClose={() => openObligation(null)} />}
 
       {completeTarget && (
         <CompleteObligationModal

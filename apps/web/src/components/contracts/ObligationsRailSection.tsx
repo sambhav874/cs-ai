@@ -7,13 +7,15 @@
  * soonest-due-first. Empty state offers an "Extract obligations"
  * button that fires POST /contracts/:id/extract-obligations.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { RailSection } from '@/components/contracts/RailSection'
 import { Button } from '@/components/ui/button'
 import { CalendarClock, DollarSign, Shield, RefreshCw, FileSearch, Bell, Check, AlertTriangle, Sparkles, CheckCircle2 } from 'lucide-react'
 import { CompleteObligationModal } from '@/components/contracts/CompleteObligationModal'
+import { ObligationDrawer, parseTerms } from '@/components/obligations/ObligationDrawer'
+import { termsHeadline } from '@clm/types'
 
 export interface ObligationShape {
   id: string
@@ -29,7 +31,25 @@ export interface ObligationShape {
   status?: string
   completedAt?: string | null
   notifiedAt?: string | null
+  page?: number | null
+  needsReview?: boolean
+  source?: string
+  assignee?: { id: string; name: string; email: string } | null
+  terms?: unknown
 }
+
+/** The last extraction run, as the API stores it on the contract. */
+export interface ObligationExtraction {
+  status: 'success' | 'degraded' | 'error'
+  error: string | null
+  syncedAt: string
+  ledger: { total: number; extracted: number; rejected: number; lost: number; quarantined: number } | null
+  truncated?: boolean
+}
+
+// How long the rail waits for a run it started before it stops polling.
+// Long contracts take minutes; the NHS contract took 11.
+const EXTRACTION_WAIT_MS = 20 * 60 * 1000
 
 const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   payment:     DollarSign,
@@ -80,28 +100,47 @@ export function ObligationsRailSection({
   onAfterExtract?: () => void
 }) {
   const qc = useQueryClient()
+  // Set while a run this rail started is in flight: the time it was started
+  // and the syncedAt it is waiting to see change.
+  const [waiting, setWaiting] = useState<{ since: number; baseline: string | null } | null>(null)
   const list = useQuery({
     queryKey: ['contract-obligations', contractId],
     enabled:  !!contractId,
     queryFn:  async () => (await api.get<{
       data: ObligationShape[]; summary: string | null; extractedAt: string | null
+      extraction: ObligationExtraction | null
     }>(`/contracts/${contractId}/obligations`)).data,
+    // Extraction runs in the intelligence tier and reports back when done;
+    // poll only while waiting for it.
+    refetchInterval: waiting ? 5000 : false,
   })
   const obligations = list.data?.data ?? []
   const extractedAt = list.data?.extractedAt ?? null
+  const extraction = list.data?.extraction ?? null
+
+  useEffect(() => {
+    if (!waiting) return
+    const landed = extraction?.syncedAt && extraction.syncedAt !== waiting.baseline
+    if (landed || Date.now() - waiting.since > EXTRACTION_WAIT_MS) {
+      setWaiting(null)
+      if (landed) onAfterExtract?.()
+    }
+  }, [extraction?.syncedAt, waiting, onAfterExtract])
 
   const extract = useMutation({
-    mutationFn: async () => (await api.post<{ ok: boolean; obligations: ObligationShape[]; summary: string }>(
+    mutationFn: async () => (await api.post<{ status: 'queued' | 'linking' }>(
       `/contracts/${contractId}/extract-obligations`,
     )).data,
     onSuccess: () => {
+      setWaiting({ since: Date.now(), baseline: extraction?.syncedAt ?? null })
       qc.invalidateQueries({ queryKey: ['contract-obligations', contractId] })
-      onAfterExtract?.()
     },
   })
+  const running = extract.isPending || !!waiting
 
   const [showAll, setShowAll] = useState(false)
   const [completeTarget, setCompleteTarget] = useState<{ id: string; description: string } | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
 
   const sorted = useMemo(() => {
     return [...obligations].sort((a, b) => {
@@ -121,6 +160,7 @@ export function ObligationsRailSection({
 
   return (
     <RailSection title="Obligations" defaultOpen count={obligations.length > 0 ? obligations.length : null}>
+      <ExtractionStatus extraction={extraction} running={running} />
       {obligations.length === 0 ? (
         <div className="text-[12px] text-muted-foreground" data-testid={`obligations-empty-${emptyVariant}`}>
           {emptyVariant === 'pre_execution' && (
@@ -138,11 +178,11 @@ export function ObligationsRailSection({
               <button
                 type="button"
                 onClick={() => extract.mutate()}
-                disabled={extract.isPending}
+                disabled={running}
                 data-testid="obligations-extract-btn"
                 className="text-[11px] font-medium text-fg-950 hover:underline disabled:opacity-50"
               >
-                {extract.isPending ? 'Extracting…' : 'Extract anyway →'}
+                {running ? 'Extracting…' : 'Extract anyway →'}
               </button>
             </>
           )}
@@ -155,12 +195,12 @@ export function ObligationsRailSection({
                 size="sm"
                 variant="outline"
                 onClick={() => extract.mutate()}
-                disabled={extract.isPending}
+                disabled={running}
                 data-testid="obligations-extract-btn"
                 className="gap-1 text-[11px]"
               >
                 <Sparkles className="size-3" />
-                {extract.isPending ? 'Extracting…' : 'Extract obligations'}
+                {running ? 'Extracting…' : 'Extract obligations'}
               </Button>
             </>
           )}
@@ -198,13 +238,30 @@ export function ObligationsRailSection({
                   <div className="flex items-start gap-1.5">
                     <Icon className={`size-3 mt-0.5 flex-shrink-0 ${o.status === 'COMPLETED' ? 'text-success-700' : 'text-fg-500'}`} />
                     <div className="flex-1 min-w-0">
-                      <div className={`font-medium text-[11.5px] leading-tight ${o.status === 'COMPLETED' ? 'text-fg-500 line-through' : 'text-fg-950'}`}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenId(o.id)}
+                        className={`block w-full text-left font-medium text-[11.5px] leading-tight hover:underline underline-offset-2 decoration-surface-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm ${o.status === 'COMPLETED' ? 'text-fg-500 line-through' : 'text-fg-950'}`}
+                        data-testid={`rail-open-obligation-${o.id}`}
+                      >
                         {o.description}
-                      </div>
+                      </button>
+                      {termsHeadline(parseTerms(o.terms)) && (
+                        <div className="text-[10.5px] text-fg-700 mt-0.5">{termsHeadline(parseTerms(o.terms))}</div>
+                      )}
                       <div className="mt-0.5 flex items-center gap-1.5 flex-wrap text-[10px]">
                         <span className="font-mono uppercase tracking-wider text-fg-400">{o.type}</span>
                         <span className="text-muted-foreground">· {o.owner}</span>
                         {o.sectionRef && <span className="font-mono text-fg-500">§{o.sectionRef}</span>}
+                        {o.page != null && <span className="font-mono text-fg-500" title="Page of the quoted clause">p.{o.page}</span>}
+                        <span className={o.assignee ? 'text-fg-700' : 'text-attention-700'} data-testid={`obligation-assignee-${o.id}`}>
+                          · {o.assignee ? o.assignee.name : 'unassigned'}
+                        </span>
+                        {o.needsReview && (
+                          <span className="uppercase tracking-wider text-attention-700 bg-attention-50 border border-attention-200 rounded-chip px-1">
+                            review
+                          </span>
+                        )}
                         {o.dueDate && (
                           <span className={dueColor}>
                             {days == null ? new Date(o.dueDate).toLocaleDateString()
@@ -265,15 +322,17 @@ export function ObligationsRailSection({
             <button
               type="button"
               onClick={() => extract.mutate()}
-              disabled={extract.isPending}
+              disabled={running}
               data-testid="obligations-refresh-btn"
               className="ml-2 underline hover:text-fg-950"
             >
-              {extract.isPending ? 're-running…' : 're-run'}
+              {running ? 're-running…' : 're-run'}
             </button>
           </div>
         </>
       )}
+
+      {openId && <ObligationDrawer obligationId={openId} onClose={() => setOpenId(null)} />}
 
       {completeTarget && (
         <CompleteObligationModal
@@ -289,5 +348,55 @@ export function ObligationsRailSection({
         />
       )}
     </RailSection>
+  )
+}
+
+
+/**
+ * What the last run says about completeness. A list is only as trustworthy as
+ * the run behind it: a failed run, a regex-only run and a run that lost
+ * clauses each say so here instead of presenting the list as complete.
+ */
+function ExtractionStatus({ extraction, running }: { extraction: ObligationExtraction | null; running: boolean }) {
+  if (running) {
+    return (
+      <div className="mb-2 text-[10.5px] text-muted-foreground" data-testid="obligations-extraction-running">
+        Extracting — long contracts take several minutes. This list updates when the run finishes.
+      </div>
+    )
+  }
+  if (!extraction) return null
+  if (extraction.status === 'error') {
+    return (
+      <div className="mb-2 text-[10.5px] text-risk-700" data-testid="obligations-extraction-error">
+        Last extraction failed{extraction.error ? `: ${extraction.error}` : '.'}
+      </div>
+    )
+  }
+  const lost = extraction.ledger?.lost ?? 0
+  const quarantined = extraction.ledger?.quarantined ?? 0
+  return (
+    <>
+      {extraction.status === 'degraded' && (
+        <div className="mb-2 text-[10.5px] text-attention-700" data-testid="obligations-extraction-degraded">
+          Pattern-matched only — no AI model was available. Review before relying on this list.
+        </div>
+      )}
+      {lost > 0 && (
+        <div className="mb-2 text-[10.5px] text-attention-700" data-testid="obligations-extraction-lost">
+          {lost} clause{lost === 1 ? ' was' : 's were'} read but neither kept nor declined — this list may be incomplete.
+        </div>
+      )}
+      {quarantined > 0 && (
+        <div className="mb-2 text-[10.5px] text-muted-foreground" data-testid="obligations-extraction-quarantined">
+          {quarantined} candidate{quarantined === 1 ? '' : 's'} left out: the quote did not match the contract text.
+        </div>
+      )}
+      {extraction.truncated && (
+        <div className="mb-2 text-[10.5px] text-attention-700">
+          Only the first 1,000 obligations are shown.
+        </div>
+      )}
+    </>
   )
 }

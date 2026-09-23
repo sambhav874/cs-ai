@@ -8,7 +8,9 @@ TODO(merge): the routes below are draftLegal's original HTTP contract, kept
 so the lifecycle API's callers did not have to change in the same commit.
 Each one that ContractSense's pipeline already covers (extraction,
 obligations, Q&A with citations) is being pointed at that pipeline; when the
-last caller has moved, the duplicate route goes.
+last caller has moved, the duplicate route goes. /extract_obligations has
+gone: obligations come from ContractSense's extraction and reach the API
+through /api/internal/obligations/sync.
 
 Every route requires the shared INTERNAL_SERVICE_SECRET, exactly as the old
 service's middleware did, and fails closed when it is not configured.
@@ -31,7 +33,6 @@ from agents_service.routes import (
     draft,
     extract,
     intake,
-    obligations,
     playbook_review,
     redline,
     renewals,
@@ -43,7 +44,7 @@ from agents_service.routes import (
 agents_router = APIRouter(prefix="/agents", dependencies=[Depends(require_internal_secret)])
 agents_router.include_router(chat.router, prefix="/agent")
 for module in (review, agent, detect_binder, classify, intake, draft, assist, extract,
-               redline, playbook_review, approval, obligations, renewals, compliance):
+               redline, playbook_review, approval, renewals, compliance):
     agents_router.include_router(module.router)
 
 # Health sits outside the secret, as it did before: probes carry no secret.

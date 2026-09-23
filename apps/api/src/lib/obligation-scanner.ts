@@ -46,26 +46,35 @@ export interface ScanResult {
 
 /**
  * Resolve who to notify for a given obligation + contract.
- * Priority: contract.ownerId → first admin user in the org.
+ * Priority: the obligation's assignee → the contract owner → an org admin.
+ * Each must be an ACTIVE, non-deleted user in the same org: a reminder to a
+ * deactivated owner is a reminder nobody reads. The last resort is an admin,
+ * never "whichever user was created first", which could be anyone.
  * We never send to the counterparty (they're not in our Users table
  * unless they invited themselves; the portal has its own channel).
  */
 async function resolveRecipient(
   orgId: string,
+  assigneeId: string | null,
   contractOwnerId: string,
 ): Promise<{ userId: string; email: string | null } | null> {
-  const owner = await prisma.user.findFirst({
-    where: { id: contractOwnerId, orgId },
-    select: { id: true, email: true },
-  })
-  if (owner) return { userId: owner.id, email: owner.email }
-  // fallback — any active org user
-  const any = await prisma.user.findFirst({
-    where: { orgId, status: 'ACTIVE' },
+  for (const id of [assigneeId, contractOwnerId]) {
+    if (!id) continue
+    const user = await prisma.user.findFirst({
+      where: { id, orgId, status: 'ACTIVE', deletedAt: null },
+      select: { id: true, email: true },
+    })
+    if (user) return { userId: user.id, email: user.email }
+  }
+  const admin = await prisma.user.findFirst({
+    where: {
+      orgId, status: 'ACTIVE', deletedAt: null,
+      userRoles: { some: { role: { name: 'ADMIN' } } },
+    },
     select: { id: true, email: true },
     orderBy: { createdAt: 'asc' },
   })
-  return any ? { userId: any.id, email: any.email } : null
+  return admin ? { userId: admin.id, email: admin.email } : null
 }
 
 /**
@@ -92,6 +101,8 @@ export async function scanObligations(opts: ScanOptions = {}): Promise<ScanResul
   const obWhere: Record<string, unknown> = {
     status:  'OPEN',
     dueDate: { gte: graceStart, lte: windowEnd },
+    // A deleted contract's obligations are not anyone's job any more.
+    contract: { is: { deletedAt: null } },
   }
   if (opts.orgId) obWhere.orgId = opts.orgId
 
@@ -119,7 +130,7 @@ export async function scanObligations(opts: ScanOptions = {}): Promise<ScanResul
       }
     }
 
-    const recipient = await resolveRecipient(o.contract.orgId, o.contract.ownerId)
+    const recipient = await resolveRecipient(o.contract.orgId, o.assigneeId, o.contract.ownerId)
     if (!recipient) { res.skippedNoOwner++; continue }
 
     const todayMid = new Date(); todayMid.setHours(0, 0, 0, 0)

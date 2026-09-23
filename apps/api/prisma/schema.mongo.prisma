@@ -102,6 +102,7 @@ model User {
   ownedSpaces     Space[]          @relation("SpaceOwner")
   // P8 — Obligation completion back-relation
   completedObligations Obligation[]  @relation("ObligationCompleter")
+  assignedObligations  Obligation[]  @relation("ObligationAssignee")
 
   // [orgId, email] kept as a composite unique for backwards compatibility
   // with code paths that still upsert by `orgId_email`. The single-column
@@ -556,11 +557,39 @@ model Obligation {
   description   String   
   owner         String    @default("unknown") // customer | provider | either | unknown
   dueDate       DateTime?
-  recurrence    String    @default("one-time") // one-time | monthly | quarterly | annually | on-event | unknown
+  recurrence    String    @default("one-time") // one-time | daily | weekly | monthly | quarterly | annually | on-event | unknown
+  // Day of month a recurring obligation is due on. Set on its first roll, so
+  // "the 31st, monthly" returns to the 31st after a 28-day February.
+  anchorDay     Int?
   trigger       String?  
   quote         String   
   severity      String    @default("medium") // low | medium | high
   sectionRef    String?
+  // 1-based page of `quote` in the source file, for the citation link.
+  page          Int?
+
+  // ── Provenance ──
+  // manual | contractsense. `contractsense` rows are written by the
+  // intelligence tier's extraction and re-synced on every run; `externalId`
+  // is that tier's stable record id, so a re-run updates rather than
+  // duplicates, and keeps whatever a person set on the row.
+  source        String    @default("manual")
+  externalId    String?
+  needsReview   Boolean   @default(false)
+  packId        String?
+  packVersion   String?
+  // What the obligation requires, from ContractSense's record: rule
+  // (operator, target, range or tiers), measurement, consequence of a miss,
+  // remediation. Shape: ObligationTermsSchema in @clm/types. `ruleType` is
+  // lifted out of it so the list can filter on it.
+  terms         Json?
+  ruleType      String?
+
+  // ── Assignment ──
+  // The person accountable for this obligation. `owner` above is the
+  // contractual party (customer / provider); this is who does the work.
+  assigneeId    String?
+  assignedAt    DateTime?
 
   // ── Lifecycle state ──
   status         String    @default("OPEN") // OPEN | COMPLETED | OVERDUE | WAIVED
@@ -582,11 +611,15 @@ model Obligation {
   org         Organization @relation(fields: [orgId], references: [id])
   contract    Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
   completedBy User?        @relation("ObligationCompleter", fields: [completedById], references: [id])
+  assignee    User?        @relation("ObligationAssignee", fields: [assigneeId], references: [id])
+  events      ObligationEvent[]
 
   @@index([orgId, status])
   @@index([orgId, dueDate])
   @@index([orgId, status, dueDate])
   @@index([contractId])
+  @@index([contractId, externalId])
+  @@index([orgId, assigneeId, status])
   @@map("obligations")
 
   // P8 Step 9 — back-relation for matched invoices.
@@ -962,6 +995,9 @@ model ApprovalStep {
   decision           String? // APPROVED | REJECTED | DELEGATED
   comment            String?
   delegatedToId      String? // set when DELEGATED
+  // On a step created by delegation: whose step it was. The audit of the
+  // delegate's decision names both people.
+  delegatedFromId    String?
   decidedAt          DateTime?
   escalationJobId    String? // BullMQ job ID — removed on decision to cancel timer
   escalateAt         DateTime? // absolute time when escalation fires
@@ -1297,4 +1333,33 @@ model CollabState {
   updatedAt    DateTime @updatedAt
 
   @@map("collab_states")
+}
+
+// The history of one obligation: who was assigned, when the due date moved,
+// each time a recurring obligation was discharged (with its evidence), waivers
+// and notes. A recurring obligation stays one row whose due date rolls
+// forward; this is where its past periods live.
+model ObligationEvent {
+  id               String   @id @default(cuid()) @map("_id")
+  orgId            String
+  obligationId     String
+  contractId       String
+  // assigned | unassigned | due_changed | updated | completed | reopened | waived | note
+  kind             String
+  actorId          String?
+  note             String?
+  data             Json      @default("{}")
+  // The period this event discharged, for a completion.
+  periodDue        DateTime?
+  evidenceS3Key    String?
+  evidenceFilename String?
+  evidenceMimeType String?
+  evidenceSize     Int?
+  createdAt        DateTime  @default(now())
+
+  obligation Obligation @relation(fields: [obligationId], references: [id], onDelete: Cascade)
+
+  @@index([obligationId, createdAt])
+  @@index([orgId, createdAt])
+  @@map("obligation_events")
 }

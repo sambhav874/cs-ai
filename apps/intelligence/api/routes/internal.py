@@ -123,3 +123,61 @@ def retrieval_search(body: RetrievalRequest) -> Dict[str, Any]:
         platform_contract_ids=body.platform_contract_ids,
     )
     return {"hits": hits}
+
+
+class ExtractObligationsRequest(BaseModel):
+    org_id: str = Field(..., min_length=1)
+    user_id: str = Field(..., min_length=1)
+
+
+@internal_router.post(
+    "/contracts/{platform_contract_id}/extract-obligations",
+    dependencies=[Depends(require_internal_secret)],
+)
+def extract_platform_obligations(platform_contract_id: str, body: ExtractObligationsRequest) -> Dict[str, Any]:
+    """Re-run obligation extraction on a linked contract's analysis copy.
+
+    The lifecycle API's "Extract obligations" action lands here; the result
+    comes back to it through the usual post-run sync, not in this response.
+    """
+    from datetime import datetime, timedelta
+
+    from api.routes.kpis import EXTRACTION_STALE_MINUTES
+    from services.platform_contracts import find_by_platform_id
+    from worker.tasks import extract_obligations_task
+
+    try:
+        roles = platform_roles(body.user_id)
+        shadow = resolve_platform_user({"sub": body.user_id, "orgId": body.org_id, "type": "access", "roles": roles})
+    except PlatformIdentityError as e:
+        raise HTTPException(status_code=422, detail=f"Unknown platform user: {e}")
+    team_ids = shadow.get("teamIds") or []
+    if not team_ids:
+        raise HTTPException(status_code=422, detail="Platform user has no org team.")
+
+    contract = find_by_platform_id(platform_contract_id, ObjectId(str(team_ids[0])), contracts=collection)
+    if contract is None:
+        # Not linked yet (or linked under another org): nothing to extract from.
+        raise HTTPException(status_code=404, detail="Contract has no analysis copy yet.")
+    if (contract.get("index") or {}).get("status") != "success":
+        raise HTTPException(status_code=409, detail="Contract is still being analysed.")
+
+    obligations = contract.get("obligations") or {}
+    started = obligations.get("started_at") or obligations.get("queued_at")
+    stale_after = datetime.utcnow() - timedelta(minutes=EXTRACTION_STALE_MINUTES)
+    if obligations.get("status") in {"queued", "running"} and (started is None or started > stale_after):
+        raise HTTPException(status_code=409, detail="Obligation extraction is already running.")
+
+    collection.update_one(
+        {"_id": contract["_id"]},
+        {"$set": {"obligations.status": "queued", "obligations.queued_at": datetime.utcnow()}},
+    )
+    try:
+        extract_obligations_task.delay(contract_id=str(contract["_id"]), user_id=str(shadow["_id"]))
+    except Exception as exc:
+        collection.update_one(
+            {"_id": contract["_id"]},
+            {"$set": {"obligations.status": "error", "obligations.error": str(exc)[:500]}},
+        )
+        raise HTTPException(status_code=503, detail="Extraction queue is unavailable.")
+    return {"status": "queued", "contract_id": str(contract["_id"])}

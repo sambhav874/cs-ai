@@ -23,9 +23,17 @@ import { renderHtmlToPdfAndStore } from './gotenberg.js'
 import { createAuditEvent } from './audit.js'
 import { AuditAction } from '@clm/types'
 
+/** Enough to hand the executed PDF on for analysis (see signing.worker). */
+export interface SealedDocument {
+  contractId: string
+  orgId:      string
+  userId:     string
+  signedKey:  string
+}
+
 export type SealOutcome =
-  | { status: 'sealed';         versionId: string; signedKey: string }
-  | { status: 'already_sealed'; versionId: string }
+  | ({ status: 'sealed';         versionId: string } & SealedDocument)
+  | ({ status: 'already_sealed'; versionId: string } & SealedDocument)
   | { status: 'skipped';        reason: string }
 
 export async function sealSignedContract(signatureRequestId: string): Promise<SealOutcome> {
@@ -75,7 +83,10 @@ export async function sealSignedContract(signatureRequestId: string): Promise<Se
         })
       }
     }
-    return { status: 'already_sealed', versionId: existing.id }
+    return {
+      status: 'already_sealed', versionId: existing.id,
+      contractId: sr.contractId, orgId: sr.orgId, userId: sr.createdById, signedKey,
+    }
   }
 
   const ver = await prisma.contractVersion.findUnique({
@@ -169,12 +180,20 @@ export async function sealSignedContract(signatureRequestId: string): Promise<Se
     resourceType: 'contract',
     resourceId:   sr.contractId,
     metadata:     { event: 'document_sealed', sha256: documentHash, algorithm: 'SHA-256', signatureRequestId: sr.id },
-  }).catch(() => { /* audit best-effort; the seal is already stored on the version */ })
+  }).catch((err: Error) => {
+    // The seal is already stored on the version, and a retry would take the
+    // already_sealed path and never reach here again — so the one thing to do
+    // is make the gap in the audit chain loud rather than silent.
+    console.error('[seal] audit write FAILED for sealed contract=%s sr=%s: %s', sr.contractId, sr.id, err.message)
+  })
 
   await prisma.contract.update({
     where: { id: sr.contractId },
     data:  { currentVersionId: newVersion.id },
   })
 
-  return { status: 'sealed', versionId: newVersion.id, signedKey }
+  return {
+    status: 'sealed', versionId: newVersion.id,
+    contractId: sr.contractId, orgId: sr.orgId, userId: sr.createdById, signedKey,
+  }
 }

@@ -418,10 +418,12 @@ def extract_obligations_task(
             "ownerId": 1,
             "contract_family": 1,
             "index.content": 1,
+            "platformContractId": 1,
         },
     )
     if not contract_doc:
         return {"status": "error", "reason": "contract not found"}
+    platform_contract_id = contract_doc.get("platformContractId")
 
     collection.update_one(
         {"_id": contract_oid},
@@ -445,6 +447,7 @@ def extract_obligations_task(
                 "obligations.finished_at": datetime.utcnow(),
             }},
         )
+        _sync_obligations_to_platform(contract_oid, platform_contract_id, status="error", error=str(exc))
         return {"status": "error", "contract_id": contract_id}
 
     collection.update_one(
@@ -468,7 +471,44 @@ def extract_obligations_task(
             "obligations.error": None,
         }},
     )
+    _sync_obligations_to_platform(
+        contract_oid,
+        platform_contract_id,
+        status="degraded" if result.get("extraction_method") == "deterministic_fallback" else "success",
+        result=result,
+    )
     return {"status": "success", "contract_id": contract_id, "kpi_count": result.get("kpi_count")}
+
+
+def _sync_obligations_to_platform(
+    contract_oid: ObjectId,
+    platform_contract_id: Optional[str],
+    *,
+    status: str,
+    result: Optional[Dict[str, Any]] = None,
+    error: Optional[str] = None,
+) -> None:
+    """Push this run's register to the lifecycle API, if the contract is linked.
+
+    Contracts uploaded straight to this tier have no platform copy and are
+    left alone. The outcome is stored on the contract so a failed delivery is
+    visible rather than silently leaving the platform's list stale.
+    """
+    if not platform_contract_id:
+        return
+    from services.platform_obligations import build_sync_payload, push_to_platform
+
+    try:
+        outcome = push_to_platform(
+            build_sync_payload(platform_contract_id, status=status, result=result, error=error)
+        )
+    except Exception as exc:  # never fail the extraction over the hand-off
+        log_exception(logger, f"Obligation sync crashed for contract {contract_oid}", exc)
+        outcome = {"status": "failed", "error": str(exc)[:300]}
+    collection.update_one(
+        {"_id": contract_oid},
+        {"$set": {"obligations.platform_sync": {**outcome, "at": datetime.utcnow()}}},
+    )
 
 
 @celery_app.task(bind=True, name='index_contract_task')
@@ -587,6 +627,8 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
             project_id = contract_record.get("projectId")
             project_id_str = str(project_id) if project_id else None
             contract_uploaded_at = contract_record.get("uploaded_at")
+            embedding_status = "success"
+            embedding_error: Optional[str] = None
             try:
                 rag_system = ContractRAGSystem(ai_provider="groq")
                 embedding_metadata = rag_system.embed_contract_text(
@@ -600,8 +642,17 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                     require_mongodb=True,
                 )
             except Exception as embed_error:
-                log_exception(logger, f"Failed to embed extracted text for contract {contract_id}", embed_error)
-                raise RuntimeError("Failed to embed extracted contract text in MongoDB") from embed_error
+                # Embeddings serve retrieval (Q&A, search), not extraction:
+                # extraction reads its candidates from index.content when no
+                # vectors exist. Failing the whole ingestion here meant an
+                # install with no embedding provider -- a self-host with no
+                # vendor keys -- could never extract a single obligation, and
+                # every retry repeated the same deterministic failure. The
+                # contract is indexed without vectors and says so.
+                log_exception(logger, f"Embedding unavailable for contract {contract_id}; indexing without vectors", embed_error)
+                embedding_status = "unavailable"
+                embedding_error = str(embed_error)[:300]
+                embedding_metadata = {}
             index_table_count = embedding_metadata.get("table_count", index_table_count)
             index_lexical_table_count = embedding_metadata.get("lexical_table_count", index_lexical_table_count)
             job_manager.update_job_status(
@@ -652,7 +703,8 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                         "index.table_classifications": index_table_classifications,
                         "index.lexical_table_count": index_lexical_table_count,
                         "index.error": index_error,
-                        "index.embedding_status": "success",
+                        "index.embedding_status": embedding_status,
+                        "index.embedding_error": embedding_error,
                         "index.vector_namespace": embedding_metadata.get("namespace"),
                         "index.vector_backend": embedding_metadata.get("backend"),
                         "index.vector_collection": embedding_metadata.get("collection"),
@@ -780,6 +832,14 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
                         "index.updated_at": datetime.utcnow(),
                         "status": "Index Error"
                     }}
+                )
+                # A linked contract's platform copy would otherwise wait for
+                # an extraction that can never start, with nothing on screen
+                # to say why.
+                linked = collection.find_one({"_id": oid}, {"platformContractId": 1}) or {}
+                _sync_obligations_to_platform(
+                    oid, linked.get("platformContractId"),
+                    status="error", error=f"Document analysis failed: {str(e)[:300]}",
                 )
             raise
 
