@@ -37,6 +37,12 @@ export interface GenerateResult {
 
 // ─── Variable Interpolation ─────────────────────────────────────────────────
 
+const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
+
+export function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, ch => HTML_ESCAPES[ch])
+}
+
 /**
  * Replace {{key}} tokens in HTML with values from the variable map.
  * Unfilled tokens are left with a visible placeholder.
@@ -50,7 +56,10 @@ export function interpolateVariables(html: string, variables: VariableMap): { ht
       unfilled.push(key)
       return `<span class="template-variable-unfilled" data-key="${key}">[[${key}]]</span>`
     }
-    return String(value)
+    // Values are data, not markup: they come from requests, intake forms and
+    // inbound email, and the result is rendered in the editor and the signer
+    // portal. Unescaped, a counterparty name could carry a script.
+    return escapeHtml(String(value))
   })
 
   return { html: result, unfilled }

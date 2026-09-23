@@ -732,7 +732,7 @@ async function handleDraftContract(data: DraftContractJobData): Promise<void> {
   })
   const nextVersion = (latest?.versionNumber ?? 0) + 1
 
-  await prisma.contractVersion.create({
+  const drafted = await prisma.contractVersion.create({
     data: {
       contractId,
       versionNumber: nextVersion,
@@ -745,10 +745,12 @@ async function handleDraftContract(data: DraftContractJobData): Promise<void> {
     },
   })
 
-  // Mark contract as done drafting
+  // Mark contract as done drafting, and point it at the draft: without
+  // currentVersionId every "current version" reader — the editor, review,
+  // send-for-signature — saw a contract with no document.
   await prisma.contract.update({
     where: { id: contractId },
-    data:  { analysisStatus: 'DONE' },
+    data:  { analysisStatus: 'DONE', currentVersionId: drafted.id },
   })
 
   console.info('[agent-worker] draft-contract done contractId=%s', contractId)
