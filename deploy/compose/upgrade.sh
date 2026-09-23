@@ -31,6 +31,16 @@ require_docker
 prefix="$(env_get CS_IMAGE_PREFIX)"; prefix="${prefix:-contractsense}"
 current="$(env_get CS_VERSION)"; current="${current:-local}"
 images=(api intelligence web)
+# How long the new version gets to become healthy before rolling back.
+health_timeout="${CS_UPGRADE_HEALTH_TIMEOUT:-600}"
+
+# Refuse before touching anything: a checkout with local edits would be
+# silently mixed into the new build, or lost by the checkout.
+if [ -z "$pull_version" ]; then
+  command -v git >/dev/null || die "git is needed to update the checkout (or use --pull)."
+  [ -z "$(git -C "$CS_REPO" status --porcelain --untracked-files=no)" ] \
+    || die "The checkout at $CS_REPO has local changes. Commit or stash them first."
+fi
 
 if [ "$backup" -eq 1 ]; then
   "$CS_DIR/backup.sh" || die "Backup failed; not upgrading."
@@ -62,12 +72,9 @@ if [ -n "$pull_version" ]; then
   env_set CS_VERSION "$pull_version"
   dc pull api intelligence web || rollback
 else
-  command -v git >/dev/null || die "git is needed to update the checkout (or use --pull)."
-  [ -z "$(git -C "$CS_REPO" status --porcelain --untracked-files=no)" ] \
-    || die "The checkout at $CS_REPO has local changes. Commit or stash them first."
   old_commit="$(git -C "$CS_REPO" rev-parse HEAD)"
   say "Updating the checkout"
-  git -C "$CS_REPO" fetch --quiet --tags
+  git -C "$CS_REPO" fetch --quiet --tags || warn "Could not fetch; using what this checkout already has."
   if [ -n "$ref" ]; then git -C "$CS_REPO" checkout --quiet "$ref"; else git -C "$CS_REPO" pull --quiet --ff-only; fi
   new_commit="$(git -C "$CS_REPO" rev-parse HEAD)"
   if [ "$new_commit" = "$old_commit" ]; then
@@ -81,7 +88,7 @@ fi
 
 say "Starting the new version"
 dc up -d --remove-orphans || rollback
-wait_healthy 600 && check_oneshots || rollback
+wait_healthy "$health_timeout" && check_oneshots || rollback
 
 say "Upgraded. Running $(env_get CS_VERSION)$([ -n "${new_commit:-}" ] && echo " at $(git -C "$CS_REPO" rev-parse --short HEAD)")."
 note "The previous images stay tagged :previous until the next upgrade."
