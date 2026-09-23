@@ -30,7 +30,22 @@ async function emailThrottleReset(email: string): Promise<void> {
   await redis.del(`login-attempt:${email.toLowerCase()}`)
 }
 
+type RegistrationMode = 'open' | 'first-user' | 'closed'
+
+/** Who may sign up: anyone (SaaS), only the first account (self-host), or nobody. */
+export function registrationMode(): RegistrationMode {
+  const v = (process.env.REGISTRATION_MODE ?? 'open').trim().toLowerCase()
+  return v === 'first-user' || v === 'closed' ? v : 'open'
+}
+
 export async function authRoutes(app: FastifyInstance) {
+  // GET /api/v1/auth/registration — whether the sign-up page should be offered.
+  app.get('/registration', async (_req, reply) => {
+    const mode = registrationMode()
+    const open = mode === 'open' || (mode === 'first-user' && await prisma.organization.count() === 0)
+    return reply.send({ mode, open })
+  })
+
   // POST /api/v1/auth/register
   // Tight cap to prevent automated org-creation spam: 5 per IP per
   // hour. Genuine users register once; anything beyond that is a bot.
@@ -50,23 +65,26 @@ export async function authRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const body = RegisterSchema.parse(req.body)
 
-    // Create org if orgName provided, else require existing org (invite flow later)
-    let orgId: string
-
-    let orgSlug: string
-    if (body.orgName) {
-      orgSlug = body.orgSlug ?? body.orgName.toLowerCase().replace(/\s+/g, '-')
-      const org = await prisma.organization.create({
-        data: { name: body.orgName, slug: orgSlug },
+    // Self-host installs run with REGISTRATION_MODE=first-user: the first
+    // person to register becomes the admin, and after that people join by
+    // invite. Left open, anyone who can reach the instance could create an
+    // organisation on it.
+    const mode = registrationMode()
+    if (mode === 'closed' || (mode === 'first-user' && await prisma.organization.count() > 0)) {
+      return reply.status(403).send({
+        code: 'REGISTRATION_CLOSED',
+        detail: 'Sign-up is closed on this instance. Ask an admin for an invite.',
       })
-      orgId = org.id
-    } else {
+    }
+    if (!body.orgName) {
       return reply.status(400).send({ detail: 'orgName required for self-registration' })
     }
 
     // P7.0.1 — Email is globally unique, so check across the whole DB.
     // A user trying to "self-register a new org" with an email that
     // already has an account anywhere should be told to log in instead.
+    // Checked before the org is created, or a refused sign-up left an empty
+    // organisation behind.
     const existing = await prisma.user.findUnique({
       where: { email: body.email },
       select: { id: true, deletedAt: true },
@@ -76,6 +94,12 @@ export async function authRoutes(app: FastifyInstance) {
         detail: 'An account with this email already exists. Please log in or use a different email.',
       })
     }
+
+    const orgSlug = body.orgSlug ?? body.orgName.toLowerCase().replace(/\s+/g, '-')
+    const org = await prisma.organization.create({
+      data: { name: body.orgName, slug: orgSlug },
+    })
+    const orgId = org.id
 
     const passwordHash = await bcrypt.hash(body.password, 12)
 
