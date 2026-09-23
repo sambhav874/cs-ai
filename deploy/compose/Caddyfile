@@ -1,0 +1,11 @@
+# The public edge. CS_SITE_ADDRESS is written by install.sh:
+#   contracts.example.com   HTTPS, certificate from Let's Encrypt, renewed automatically
+#   http://:80              plain HTTP, for a machine without a public name
+{$CS_SITE_ADDRESS} {
+	encode zstd gzip
+	# Uploads are capped by web's nginx (100 MB); allow a little over.
+	request_body {
+		max_size 110MB
+	}
+	reverse_proxy web:8080
+}
