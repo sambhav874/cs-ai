@@ -37,7 +37,7 @@ x-logging: &logging
 # Shared by the lifecycle API and its job runner.
 x-api-env: &api-env
   NODE_ENV: production
-  DATABASE_URL: ${DATABASE_URL:-mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true}
+  MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/?replicaSet=rs0&directConnection=true}
   REDIS_URL: redis://redis:6379
   GOTENBERG_URL: http://gotenberg:3000
   INTELLIGENCE_URL: http://intelligence:8000
@@ -81,7 +81,6 @@ x-intel-env: &intel-env
   ENVIRONMENT: prod
   MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/?replicaSet=rs0&directConnection=true}
   MONGODB_DB_NAME: contract_core_db
-  PLATFORM_DATABASE_URL: ${DATABASE_URL:-mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true}
   REDIS_URL: redis://redis:6379/1
   CELERY_BROKER_URL: redis://redis:6379/2
   CELERY_RESULT_BACKEND: redis://redis:6379/3
@@ -135,9 +134,11 @@ services:
     restart: 'no'
     entrypoint: ['sh', '-c']
     command:
-      - ./node_modules/.bin/prisma db push --schema prisma/schema.mongo.prisma --skip-generate
+      - >-
+        DATABASE_URL="$$(node --import tsx src/lib/database-url.ts)"
+        ./node_modules/.bin/prisma db push --schema prisma/schema.mongo.prisma --skip-generate
     environment:
-      DATABASE_URL: ${DATABASE_URL:-mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/?replicaSet=rs0&directConnection=true}
     depends_on:
       mongo:
         condition: service_healthy

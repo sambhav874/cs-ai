@@ -145,3 +145,16 @@ def test_a_platform_user_with_an_internal_domain_is_a_valid_identity():
         assert user.email == email
     with pytest.raises(Exception):
         UserInDB.model_validate({"_id": "u1", "username": "x", "email": "not-an-address", "hashed_password": "x", "tokens": 0})
+
+
+def test_the_platform_database_derives_from_the_cluster(monkeypatch):
+    from core import platform_identity as pi
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setattr(pi.settings, "platform_database_url", "")
+    monkeypatch.setattr(pi.settings, "mongodb_uri", "mongodb+srv://u:p@c0.ab.mongodb.net/?retryWrites=true&w=majority")
+    assert pi.platform_database_url() == "mongodb+srv://u:p@c0.ab.mongodb.net/csai?retryWrites=true&w=majority"
+    monkeypatch.setattr(pi.settings, "mongodb_uri", "mongodb://mongo:27017/?replicaSet=rs0&directConnection=true")
+    assert pi.platform_database_url() == "mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true"
+    monkeypatch.setenv("DATABASE_URL", "mongodb://explicit/db")
+    assert pi.platform_database_url() == "mongodb://explicit/db"

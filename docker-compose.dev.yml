@@ -51,9 +51,11 @@ services:
     restart: 'no'
     entrypoint: ['sh', '-c']
     command:
-      - ./node_modules/.bin/prisma db push --schema prisma/schema.mongo.prisma --skip-generate
+      - >-
+        DATABASE_URL="$$(node --import tsx src/lib/database-url.ts)"
+        ./node_modules/.bin/prisma db push --schema prisma/schema.mongo.prisma --skip-generate
     environment:
-      DATABASE_URL: ${DATABASE_URL:-mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/?replicaSet=rs0&directConnection=true}
     depends_on:
       mongo:
         condition: service_healthy
@@ -99,7 +101,7 @@ services:
       INTELLIGENCE_URL: http://intelligence:8000
       # draftLegal's agent routes, now served by the intelligence tier.
       AGENTS_URL: http://intelligence:8000/agents
-      DATABASE_URL: ${DATABASE_URL:-mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/?replicaSet=rs0&directConnection=true}
       REDIS_URL: redis://redis:6379
       # Public origin, used in signer-portal links and emails. Without it those
       # links point nowhere.
@@ -156,7 +158,7 @@ services:
     environment:
       NODE_ENV: production
       WORKERS_ENABLED: 'true'
-      DATABASE_URL: ${DATABASE_URL:-mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/?replicaSet=rs0&directConnection=true}
       REDIS_URL: redis://redis:6379
       FRONTEND_URL: https://${APP_HOST:-${DEMO_HOST}}
       GOTENBERG_URL: http://gotenberg:3000
@@ -220,7 +222,6 @@ services:
       MONGODB_DB_NAME: contract_core_db
       # The platform database the identity adapter and the Space watcher read.
       # Its name comes from the URL path, so csai must stay in it.
-      PLATFORM_DATABASE_URL: ${DATABASE_URL:-mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true}
       REDIS_URL: redis://redis:6379/1
       CELERY_BROKER_URL: redis://redis:6379/2
       CELERY_RESULT_BACKEND: redis://redis:6379/3
@@ -273,7 +274,6 @@ services:
       CELERY_CONCURRENCY: ${CELERY_CONCURRENCY:-8}
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/?replicaSet=rs0&directConnection=true}
       MONGODB_DB_NAME: contract_core_db
-      PLATFORM_DATABASE_URL: ${DATABASE_URL:-mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true}
       REDIS_URL: redis://redis:6379/1
       CELERY_BROKER_URL: redis://redis:6379/2
       CELERY_RESULT_BACKEND: redis://redis:6379/3

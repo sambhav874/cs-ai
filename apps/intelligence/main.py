@@ -272,7 +272,9 @@ async def startup_event():
     # their intelligence half (services/space_watcher). Off under TESTING, and
     # off without a platform database to follow.
     try:
-        if not settings.testing and (settings.platform_database_url or os.getenv("DATABASE_URL")):
+        from core.platform_identity import platform_database_url
+
+        if not settings.testing and platform_database_url():
             from services.space_watcher import start_space_watcher
 
             app.state.space_watcher_stop = start_space_watcher()

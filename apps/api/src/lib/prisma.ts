@@ -14,6 +14,12 @@
  */
 import { Prisma, PrismaClient } from '@prisma/client'
 import pino from 'pino'
+import { resolveDatabaseUrl } from './database-url.js'
+
+// DATABASE_URL, or the `csai` database on MONGODB_URI's cluster. Set on the
+// environment because the Prisma schema reads env("DATABASE_URL").
+const resolvedDatabaseUrl = resolveDatabaseUrl()
+if (resolvedDatabaseUrl) process.env.DATABASE_URL = resolvedDatabaseUrl
 
 const SLOW_QUERY_MS = Number(process.env.SLOW_QUERY_MS ?? 250)
 const POOL_LIMIT    = Number(process.env.PRISMA_POOL_LIMIT ?? 20)

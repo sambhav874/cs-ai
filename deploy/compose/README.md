@@ -77,10 +77,12 @@ Atlas (routed to MongoDB's endpoint automatically). Without a key, contracts
 are indexed without embeddings and the assistant ranks passages by keyword;
 upload, extraction and review do not depend on it.
 
-**Or use MongoDB Atlas.** Set `DATABASE_URL` (the `csai` database) and
-`MONGODB_URI` (the cluster, no database) in `.env` to your Atlas connection
-strings; vector search then runs in Atlas, and the local `mongo` and `mongot`
-sit idle.
+**Or use MongoDB Atlas.** Set `MONGODB_URI` in `.env` to your cluster's
+connection string, without a database name
+(`mongodb+srv://USER:PASS@cluster0.xxxx.mongodb.net/?retryWrites=true&w=majority`).
+Every service uses it: the API opens the `csai` database on it, ContractSense
+its own. Vector search then runs in Atlas, and the local `mongo` and `mongot`
+sit idle. Allow this server's IP in Atlas → Network Access.
 
 ## Configuration
 

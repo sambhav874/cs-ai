@@ -108,13 +108,36 @@ _platform_client: Optional[MongoClient] = None
 _client_lock = threading.Lock()
 
 
+PLATFORM_DB = "csai"
+
+
+def with_database(uri: str, db: str) -> str:
+    """The cluster string with its database path set to `db`, options kept."""
+    head, sep, query = uri.partition("?")
+    hosts_start = head.find("://") + 3
+    slash = head.find("/", hosts_start)
+    hosts = head if slash < 0 else head[:slash]
+    return f"{hosts}/{db}{sep}{query}"
+
+
+def platform_database_url() -> str:
+    """The lifecycle API's database: PLATFORM_DATABASE_URL, DATABASE_URL, or
+    the `csai` database on MONGODB_URI's cluster — one setting, local or Atlas,
+    is enough for both tiers. Mirrors apps/api/src/lib/database-url.ts."""
+    explicit = (settings.platform_database_url or os.getenv("DATABASE_URL", "")).strip()
+    if explicit:
+        return explicit
+    cluster = (settings.mongodb_uri or "").strip()
+    return with_database(cluster, PLATFORM_DB) if cluster else ""
+
+
 def _platform_db():
     global _platform_client
-    url = settings.platform_database_url or os.getenv("DATABASE_URL", "")
+    url = platform_database_url()
     if not url:
         raise PlatformIdentityError(
-            "No platform database: set PLATFORM_DATABASE_URL or DATABASE_URL "
-            "(the lifecycle API's MongoDB)."
+            "No platform database: set MONGODB_URI, or PLATFORM_DATABASE_URL / "
+            "DATABASE_URL (the lifecycle API's MongoDB)."
         )
     with _client_lock:
         if _platform_client is None:
