@@ -15,6 +15,7 @@ import { PDFDocument, StandardFonts, rgb, PageSizes } from 'pdf-lib'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { prisma } from './prisma.js'
 import { s3, S3_BUCKET } from './storage.js'
+import { auditIdsForContract } from './json-field-filter.js'
 
 const A4 = PageSizes.A4
 const PAGE_W = A4[0]
@@ -93,12 +94,15 @@ export async function generateCompliancePackage({ contractId, orgId }: Complianc
     orderBy: { completedAt: 'desc' },
   })
 
+  // Events about the contract, plus ones that name it in their metadata
+  // (queried directly: JSON path filters are relational-only in Prisma).
+  const namedIn = await auditIdsForContract(orgId, contractId, CONTRACT_AUDIT_ACTIONS)
   const auditEvents = await prisma.auditEvent.findMany({
     where: {
       orgId,
       OR: [
         { resourceId: contractId },
-        { metadata: { path: ['contractId'], equals: contractId } as never },
+        { id: { in: namedIn } },
       ],
       action: { in: CONTRACT_AUDIT_ACTIONS },
     },

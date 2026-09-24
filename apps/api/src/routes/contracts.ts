@@ -34,6 +34,7 @@ import {
   normalizeRiskScore,
 } from '@clm/types'
 import { isInternalSecret } from '../lib/internal-auth.js'
+import { contractIdsByMetadata } from '../lib/json-field-filter.js'
 
 // riskScore is served as 0-100 (RiskScoreSchema in @clm/types) whatever scale
 // the row happens to hold, so a client never has to guess which one it got.
@@ -71,20 +72,13 @@ export async function contractRoutes(app: FastifyInstance) {
     // SLA. We persist these as Contract.metadata.otdSlaPct /
     // .uptimeSlaPct on logistics + cloud contracts during seeding so
     // the list page can answer "OTD < 95%" without invoking the agent.
-    // Prisma JSON path filters use { path: [...], gt/gte/lt/lte } —
-    // works with Postgres ::jsonb columns.
-    if (query.otdMax !== undefined) {
-      andClauses.push({ metadata: { path: ['otdSlaPct'], lte: query.otdMax } as never })
-    }
-    if (query.otdMin !== undefined) {
-      andClauses.push({ metadata: { path: ['otdSlaPct'], gte: query.otdMin } as never })
-    }
-    if (query.uptimeSlaMax !== undefined) {
-      andClauses.push({ metadata: { path: ['uptimeSlaPct'], lte: query.uptimeSlaMax } as never })
-    }
-    if (query.uptimeSlaMin !== undefined) {
-      andClauses.push({ metadata: { path: ['uptimeSlaPct'], gte: query.uptimeSlaMin } as never })
-    }
+    // Queried on the nested field directly: JSON path filters are
+    // relational-only in Prisma.
+    const slaIds = await contractIdsByMetadata(orgId, {
+      otdSlaPct:    { gte: query.otdMin, lte: query.otdMax },
+      uptimeSlaPct: { gte: query.uptimeSlaMin, lte: query.uptimeSlaMax },
+    })
+    if (slaIds) andClauses.push({ id: { in: slaIds } })
 
     // Risk band, 0-100. Writes are normalised at the boundary now, so this is a
     // plain range rather than the dual-scale OR it used to be — that OR made
