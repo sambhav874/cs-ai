@@ -9,9 +9,8 @@ Uses the same direct-HTTP pattern as kpi_manager.py for consistency.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
-import requests
 
 from core.config import settings
 
@@ -39,19 +38,19 @@ class VoyageReranker:
         self.api_key = api_key or settings.voyageai_api_key
         self.model = model or getattr(settings, "voyage_rerank_model", "rerank-2-lite")
         self.top_k = top_k or getattr(settings, "voyage_rerank_final_k", 8)
-        self._session: Optional[requests.Session] = None
+        self._client: Any = None
 
     @property
-    def session(self) -> requests.Session:
-        if self._session is None:
-            self._session = requests.Session()
-            self._session.headers.update(
-                {
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                }
-            )
-        return self._session
+    def client(self) -> Any:
+        # The SDK, not a hand-built request: it sends a MongoDB Atlas model API
+        # key to ai.mongodb.com and a Voyage platform key to api.voyageai.com,
+        # picking by the key's format. The old hardcoded api.voyageai.com URL
+        # rejected every Atlas-issued key.
+        if self._client is None:
+            import voyageai
+
+            self._client = voyageai.Client(api_key=self.api_key, max_retries=0, timeout=10.0)
+        return self._client
 
     def rerank(
         self, query: str, documents: List[str], top_k: Optional[int] = None
@@ -65,25 +64,8 @@ class VoyageReranker:
             return []
 
         k = min(top_k or self.top_k, len(documents))
-        payload: Dict[str, Any] = {
-            "query": query,
-            "documents": documents,
-            "model": self.model,
-            "top_k": k,
-            "truncation": True,
-        }
-        resp = self.session.post(
-            "https://api.voyageai.com/v1/rerank",
-            json=payload,
-            timeout=10.0,
-        )
-        resp.raise_for_status()
-        data = resp.json().get("data") or []
-        return [
-            (int(item["index"]), float(item["relevance_score"]))
-            for item in data
-            if "index" in item and "relevance_score" in item
-        ]
+        result = self.client.rerank(query, documents, model=self.model, top_k=k, truncation=True)
+        return [(int(r.index), float(r.relevance_score)) for r in result.results]
 
     def rerank_hits(
         self, query: str, hits: List[EvidenceHit], top_k: Optional[int] = None

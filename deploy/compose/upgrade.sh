@@ -46,6 +46,13 @@ if [ "$backup" -eq 1 ]; then
   "$CS_DIR/backup.sh" || die "Backup failed; not upgrading."
 fi
 
+# Secrets a newer version needs that an older install never generated.
+# MONGOT_PASSWORD: the user MongoDB's search process syncs as (MongoDB 8.3).
+if [ -z "$(env_get MONGOT_PASSWORD)" ]; then
+  env_set MONGOT_PASSWORD "$(openssl rand -hex 32)"
+  note "Added MONGOT_PASSWORD to .env (MongoDB search)."
+fi
+
 say "Keeping the running version ($current) as :previous"
 for img in "${images[@]}"; do
   docker image inspect "$prefix/$img:$current" >/dev/null 2>&1 \

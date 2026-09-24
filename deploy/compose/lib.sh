@@ -47,7 +47,7 @@ env_set() {
 # Wait until every long-running service with a health check reports healthy.
 wait_healthy() {
   local timeout="${1:-600}" waited=0 svc state pending
-  local services=(mongo api intelligence web)
+  local services=(mongo mongot api intelligence web)
   while :; do
     pending=()
     for svc in "${services[@]}"; do

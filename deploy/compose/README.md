@@ -50,7 +50,7 @@ signing requests and reminders.
 
 ## What runs
 
-Ten long-running containers and two one-shot setup containers; only `edge` is published:
+Eleven long-running containers and three one-shot setup containers; only `edge` is published:
 
 | Service | Role |
 | --- | --- |
@@ -58,21 +58,29 @@ Ten long-running containers and two one-shot setup containers; only `edge` is pu
 | `web` | nginx: the app, and the proxy to `api` and `intelligence`. |
 | `api`, `jobs` | Lifecycle API, and its queue workers and daily scans. |
 | `intelligence`, `worker` | Extraction, review and the assistant, and their background worker. |
-| `mongo` | MongoDB 7, single-node replica set. |
+| `mongo` | MongoDB 8.3, single-node replica set. |
+| `mongot` | MongoDB's search process: the vector index contract Q&A retrieves from. |
 | `redis` | Queues. Append-only, so a restart loses no jobs. |
 | `minio` | Document storage. |
 | `gotenberg` | HTML → PDF, blocked from reaching anything on the network. |
 | `migrate`, `minio-init` | Run once per start: schema update, storage bucket. |
+| `mongo-migrate` | Runs once, ever: copies an older install's MongoDB 7 data into 8.3. |
 
 MongoDB, Redis and MinIO are reachable only inside the Compose network, so
 they run without passwords of their own (MinIO has generated credentials).
 Do not publish their ports.
 
-**No separate vector database.** MongoDB Community has no vector search, so
-contracts are indexed without embeddings and the assistant ranks a
-contract's passages by keyword. Upload, extraction and review do not depend
-on it. A vector store would add a service and about 0.5 GiB of memory for a
-retrieval gain not yet measured on this workload.
+**Vector search is MongoDB's own.** `mongot` indexes what `mongo` holds, so
+there is no separate vector database. Embeddings need a Voyage key in
+`VOYAGE_API_KEY`: one from dash.voyageai.com, or a model API key from MongoDB
+Atlas (routed to MongoDB's endpoint automatically). Without a key, contracts
+are indexed without embeddings and the assistant ranks passages by keyword;
+upload, extraction and review do not depend on it.
+
+**Or use MongoDB Atlas.** Set `DATABASE_URL` (the `csai` database) and
+`MONGODB_URI` (the cluster, no database) in `.env` to your Atlas connection
+strings; vector search then runs in Atlas, and the local `mongo` and `mongot`
+sit idle.
 
 ## Configuration
 
@@ -102,6 +110,14 @@ waits for health. If the new version is not healthy within ten minutes it
 starts the previous images again. Data is not rolled back automatically: the
 schema update only adds fields and indexes, which the previous version
 ignores. The backup taken at the start is there if you need `./restore.sh`.
+
+**Upgrading from MongoDB 7.** MongoDB 8.3 cannot open 7.0's data files, so
+the first upgrade to a version with `mongot` starts 8.3 on a new volume
+(`mongo8-data`) and `mongo-migrate` copies every database across from the old
+one (`mongo-data`) before anything else starts. The old volume is left as it
+was. Once you are satisfied, remove it with
+`docker volume rm contractsense_mongo-data`. The upgrade also adds
+`MONGOT_PASSWORD` to `.env`.
 
 ## Backups
 

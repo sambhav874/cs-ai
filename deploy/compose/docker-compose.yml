@@ -37,7 +37,7 @@ x-logging: &logging
 # Shared by the lifecycle API and its job runner.
 x-api-env: &api-env
   NODE_ENV: production
-  DATABASE_URL: mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true
+  DATABASE_URL: ${DATABASE_URL:-mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true}
   REDIS_URL: redis://redis:6379
   GOTENBERG_URL: http://gotenberg:3000
   INTELLIGENCE_URL: http://intelligence:8000
@@ -59,6 +59,8 @@ x-api-env: &api-env
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   GROQ_API_KEY: ${GROQ_API_KEY:-}
+  VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+  VOYAGEAI_API_KEY: ${VOYAGE_API_KEY:-}
   MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
   S3_ENDPOINT: http://minio:9000
   S3_BUCKET: ${S3_BUCKET:-clm-documents}
@@ -77,9 +79,9 @@ x-api-env: &api-env
 # Shared by the intelligence service and its Celery worker.
 x-intel-env: &intel-env
   ENVIRONMENT: prod
-  MONGODB_URI: mongodb://mongo:27017/?replicaSet=rs0&directConnection=true
+  MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/?replicaSet=rs0&directConnection=true}
   MONGODB_DB_NAME: contract_core_db
-  PLATFORM_DATABASE_URL: mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true
+  PLATFORM_DATABASE_URL: ${DATABASE_URL:-mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true}
   REDIS_URL: redis://redis:6379/1
   CELERY_BROKER_URL: redis://redis:6379/2
   CELERY_RESULT_BACKEND: redis://redis:6379/3
@@ -91,6 +93,8 @@ x-intel-env: &intel-env
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   GROQ_API_KEY: ${GROQ_API_KEY:-}
+  VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+  VOYAGEAI_API_KEY: ${VOYAGE_API_KEY:-}
   MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
 
 services:
@@ -133,10 +137,12 @@ services:
     command:
       - ./node_modules/.bin/prisma db push --schema prisma/schema.mongo.prisma --skip-generate
     environment:
-      DATABASE_URL: mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true
+      DATABASE_URL: ${DATABASE_URL:-mongodb://mongo:27017/csai?replicaSet=rs0&directConnection=true}
     depends_on:
       mongo:
         condition: service_healthy
+      mongo-migrate:
+        condition: service_completed_successfully
 
   # Creates the documents bucket; MinIO does not create one on first write.
   minio-init:
@@ -202,7 +208,7 @@ services:
       - gotenberg
       - --api-port=3000
       - >-
-        --chromium-deny-list=^(file:(?!//\/tmp/)|https?://(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|169\.254\.|0\.0\.0\.0|\[)|https?://(localhost|mongo|redis|minio|minio-init|api|jobs|intelligence|worker|web|edge|gotenberg)([:/]|$$)).*
+        --chromium-deny-list=^(file:(?!//\/tmp/)|https?://(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|169\.254\.|0\.0\.0\.0|\[)|https?://(localhost|mongo|mongot|redis|minio|minio-init|api|jobs|intelligence|worker|web|edge|gotenberg)([:/]|$$)).*
 
   intelligence:
     <<: [*restart, *logging]
@@ -214,6 +220,8 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      mongo-migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_started
 
@@ -232,28 +240,133 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      mongo-migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_started
 
+  # MongoDB 8.3 with its search process, mongot, which serves $search and
+  # $vectorSearch — contract Q&A retrieves by meaning through it. A single-node
+  # replica set: Prisma needs one for transactions, change streams and mongot
+  # need the oplog. The health check initiates the set on first boot and
+  # creates the user mongot syncs as. Data lives in mongo8-data; mongo-data is
+  # the MongoDB 7 volume of an older install, copied once by mongo-migrate.
   mongo:
     <<: [*restart, *logging]
-    image: mongo:7
-    # Single-node replica set: Prisma needs one for transactions, change
-    # streams need the oplog. Initiated by the health check on first boot.
-    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
+    image: mongodb/mongodb-community-server:8.3-ubuntu2204
+    command:
+      - mongod
+      - --replSet=rs0
+      - --bind_ip_all
+      - --setParameter
+      - searchIndexManagementHostAndPort=mongot:27028
+      - --setParameter
+      - mongotHost=mongot:27028
+      - --setParameter
+      - skipAuthenticationToSearchIndexManagementServer=false
+      - --setParameter
+      - useGrpcForSearch=true
+      - --setParameter
+      - searchTLSMode=disabled
+    environment:
+      MONGOT_PASSWORD: ${MONGOT_PASSWORD:?run ./upgrade.sh to add it}
     volumes:
-      - mongo-data:/data/db
+      - mongo8-data:/data/db
     healthcheck:
       test:
         - CMD-SHELL
         - >-
-          mongosh --quiet --eval
-          'try { rs.status().ok } catch (e) { rs.initiate({_id:"rs0",members:[{_id:0,host:"mongo:27017"}]}).ok }'
-          | grep -q 1
+          mongosh --quiet --eval '
+          try { rs.status().ok } catch (e) { rs.initiate({_id:"rs0",members:[{_id:0,host:"mongo:27017"}]}) }
+          if (!db.hello().isWritablePrimary) quit(1);
+          const admin = db.getSiblingDB("admin");
+          if (!admin.getUser("mongotUser")) admin.createUser({user:"mongotUser",pwd:process.env.MONGOT_PASSWORD,roles:["searchCoordinator"]});
+          print("ready")' | grep -q ready
       interval: 10s
       timeout: 10s
       retries: 20
       start_period: 20s
+
+  # Builds and serves the search and vector indexes, synced from mongo over
+  # its change streams. It insists its password file be owner-only, so the
+  # file and the config are written at start rather than mounted.
+  mongot:
+    <<: [*restart, *logging]
+    image: mongodb/mongodb-community-search:1.70.4
+    entrypoint: ['bash', '-c']
+    command:
+      - |
+        set -eu
+        (umask 077 && printf '%s' "$$MONGOT_PASSWORD" > /tmp/mongot-password)
+        cat > /tmp/mongot.yml <<'YML'
+        syncSource:
+          replicaSet:
+            hostAndPort: "mongo:27017"
+            scramAuth:
+              username: "mongotUser"
+              passwordFile: "/tmp/mongot-password"
+              authSource: "admin"
+              tls:
+                enabled: false
+        storage:
+          dataPath: "/data/mongot"
+        server:
+          grpc:
+            address: "0.0.0.0:27028"
+            tls:
+              mode: "disabled"
+        metrics:
+          enabled: false
+          address: "127.0.0.1:9946"
+        healthCheck:
+          address: "0.0.0.0:8080"
+        logging:
+          verbosity: INFO
+        YML
+        exec /mongot-community/mongot --config /tmp/mongot.yml
+    environment:
+      MONGOT_PASSWORD: ${MONGOT_PASSWORD}
+    volumes:
+      - mongot-data:/data/mongot
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fs http://localhost:8080/health | grep -q SERVING']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  # One-shot. An install from before MongoDB 8.3 kept its data in mongo-data,
+  # which MongoDB 8.3 cannot open. This starts that data under MongoDB 7 and
+  # copies every database into mongo, once; the old volume is left as it was,
+  # as a backup, until you remove it. A no-op on a new install.
+  mongo-migrate:
+    <<: *logging
+    image: mongo:7
+    restart: 'no'
+    entrypoint: ['bash', '-c']
+    command:
+      - |
+        set -euo pipefail
+        target='mongodb://mongo:27017/?replicaSet=rs0&directConnection=true'
+        mark() { mongosh "$$target" --quiet --eval "db.getSiblingDB('cs_meta').migrations.updateOne({_id:'mongo7-to-8'},{\$$set:{at:new Date(),note:'$$1'}},{upsert:true})" >/dev/null; }
+        seen=$$(mongosh "$$target" --quiet --eval "db.getSiblingDB('cs_meta').migrations.countDocuments({_id:'mongo7-to-8'})")
+        if [ "$$seen" = "1" ]; then echo "mongo-migrate: already done"; exit 0; fi
+        if [ ! -f /old/WiredTiger ]; then echo "mongo-migrate: no MongoDB 7 data, nothing to copy"; mark none; exit 0; fi
+        echo "mongo-migrate: copying MongoDB 7 data into MongoDB 8.3"
+        mongod --dbpath /old --port 27018 --bind_ip 127.0.0.1 --fork --logpath /tmp/mongod7.log
+        mongodump --port 27018 --archive \
+          | mongorestore --uri "$$target" --archive --nsExclude='admin.*' --nsExclude='config.*' --nsExclude='cs_meta.*'
+        mongod --dbpath /old --shutdown
+        mark copied
+        echo "mongo-migrate: done; mongo-data is kept as a backup"
+    volumes:
+      - mongo-data:/old
+    depends_on:
+      mongo:
+        condition: service_healthy
 
   redis:
     <<: [*restart, *logging]
@@ -274,6 +387,9 @@ services:
       - minio-data:/data
 
 volumes:
+  mongo8-data:
+  mongot-data:
+  # MongoDB 7 data from an install before 8.3; read once by mongo-migrate.
   mongo-data:
   redis-data:
   minio-data:
