@@ -104,9 +104,9 @@ const TYPE_RULES: Array<[string, RegExp]> = [
   ['compliance',  /complian|regulat|insurance|confidential|data|security|privacy/],
 ]
 
-// The record's name, when its type is generic ("obligation"). Names describe
-// the duty, so a report *about* performance or delivery is a report: report
-// and audit are checked before the families their subject would match.
+// The record's name. Names describe the duty, so a report *about* performance
+// or delivery is a report: report and audit are checked before the families
+// their subject would match.
 const NAME_RULES: Array<[string, RegExp]> = [
   ['termination', /terminat/],
   ['renewal',     /renew|notice_period|expir/],
@@ -114,17 +114,29 @@ const NAME_RULES: Array<[string, RegExp]> = [
   ['audit',       /audit|inspect/],
   ['payment',     /pay|fee|invoice|price|charge|penalt|credit|rebate/],
   ['compliance',  /complian|regulat|insurance|confidential|data_protection|security|privacy/],
-  ['sla',         /sla\b|service_level|availability|uptime|latency|on_time/],
+  ['sla',         /(^|_)sla(_|$)|service_level|availability|uptime|latency|on_time/],
 ]
 
-const words = (s: string) => s.toLowerCase().replace(/[\s-]+/g, '_')
+// Types that say "this is a duty" without saying which kind. For these the
+// name decides, and the type only when the name doesn't.
+const GENERIC_TYPES = /^(obligation|performance|kpi|metric|measure|target|deliverable|commitment|requirement)?$/
+
+// Words joined by "_", whatever the dash: models write "On‑time" with U+2011.
+const words = (s: string) => s.toLowerCase().replace(/[\s\-\u2010-\u2015]+/g, '_')
+
+function firstMatch(rules: Array<[string, RegExp]>, key: string): string | null {
+  for (const [type, re] of rules) if (re.test(key)) return type
+  return null
+}
 
 export function toObligationType(kpiType?: string | null, obligationClass?: string | null, name?: string | null): string {
+  const type = words(kpiType ?? '')
   const key = words(`${kpiType ?? ''} ${obligationClass ?? ''}`)
-  for (const [type, re] of TYPE_RULES) if (re.test(key)) return type
-  const named = words(name ?? '')
-  for (const [type, re] of NAME_RULES) if (re.test(named)) return type
-  return 'other'
+  const byName = firstMatch(NAME_RULES, words(name ?? ''))
+  if (GENERIC_TYPES.test(type) && !obligationClass) {
+    return byName ?? firstMatch(TYPE_RULES, key) ?? 'other'
+  }
+  return firstMatch(TYPE_RULES, key) ?? byName ?? 'other'
 }
 
 /** The extracted fields of a row — the ones a re-run is allowed to overwrite.

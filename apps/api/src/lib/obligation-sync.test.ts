@@ -126,6 +126,13 @@ describe('vocabulary', () => {
     expect(toObligationType('obligation', null, 'Insurance Floor: Goods-in-Transit Coverage')).toBe('compliance')
     expect(toObligationType('obligation', null, 'Confidentiality Retention Period')).toBe('compliance')
     expect(toObligationType('obligation', null, 'Collect and Deliver Goods')).toBe('other')
+    // "performance" is as generic as "obligation": the name says which kind.
+    expect(toObligationType('performance', null, 'PAY-01: Invoice Payment Deadline')).toBe('payment')
+    expect(toObligationType('performance', null, 'REP-01: Monthly Performance Report Deadline')).toBe('report')
+    expect(toObligationType('performance', null, 'SLA-01: On-time Delivery Percentage')).toBe('sla')
+    expect(toObligationType('performance', null, 'Throughput')).toBe('sla')
+    expect(toObligationType('obligation', null, 'SLA-01: On\u2011time Delivery Rate')).toBe('sla')
+    expect(toObligationType('obligation', null, 'TERM-01: Renewal Notice Period')).toBe('renewal')
     // A specific type still wins over the name.
     expect(toObligationType('penalty', null, 'Band: On-time Delivery <95% Credit')).toBe('payment')
   })

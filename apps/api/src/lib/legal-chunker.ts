@@ -9,7 +9,7 @@
  *  5. Bulk index into ES `clauses` index with denormalized contract metadata
  */
 import { prisma } from './prisma.js'
-import { es } from './elasticsearch.js'
+import { es, esEnabled } from './elasticsearch.js'
 
 const MAX_CLAUSE_LEN  = 2_000   // chars — clauses over this get sliding-window sub-chunks
 const SUB_CHUNK_LEN   = 1_800   // max chars per sub-chunk
@@ -161,7 +161,7 @@ export async function legalChunkAndStore(
 ): Promise<void> {
   if (rawClauses.length === 0) return
 
-  await ensureClausesIndex()
+  if (esEnabled()) await ensureClausesIndex()
 
   // Build all final chunks (primary clauses + sub-chunks for long ones)
   type FinalChunk = {
@@ -265,7 +265,7 @@ export async function legalChunkAndStore(
     })
   }
 
-  if (body.length > 0) {
+  if (body.length > 0 && esEnabled()) {
     // @opensearch-project/opensearch wraps every response in { body, statusCode, … }
     const raw = await es.bulk({ body, refresh: false })
     const result = raw.body

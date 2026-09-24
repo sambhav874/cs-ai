@@ -15,7 +15,7 @@ import { FastifyAdapter } from '@bull-board/fastify'
 
 import { redis } from './lib/redis.js'
 import { documentQueue, agentQueue, notificationQueue, scanQueue, webhookQueue, signingQueue } from './lib/queue.js'
-import { ensureContractIndex } from './lib/elasticsearch.js'
+import { ensureContractIndex, esEnabled } from './lib/elasticsearch.js'
 import { ensureBucket } from './lib/storage.js'
 import { authRoutes } from './routes/auth.js'
 import { contractRoutes } from './routes/contracts.js'
@@ -289,9 +289,11 @@ export async function buildApp() {
   assertRouterConfigured()
 
   // Elasticsearch index bootstrap (non-blocking — ES may not be running locally)
-  ensureContractIndex().catch(err =>
-    app.log.warn({ err }, 'Elasticsearch not available — search will fall back to Postgres'),
-  )
+  if (esEnabled()) {
+    ensureContractIndex().catch(err =>
+      app.log.warn({ err }, 'Elasticsearch not available — search will fall back to Postgres'),
+    )
+  }
 
   ensureBucket().catch(err =>
     app.log.warn({ err }, 'MinIO not available — file uploads will fail until storage is running'),

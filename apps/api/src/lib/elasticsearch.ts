@@ -13,6 +13,22 @@ export const es = new Client({
 
 export const CONTRACT_INDEX = 'contracts'
 
+/**
+ * Elasticsearch is optional and being retired: the merged stack doesn't run
+ * it, and search falls back without it. Only a deployment that sets
+ * ELASTICSEARCH_URL gets writes. Before this, every write went to the
+ * localhost default, and the clause index write failed every contract that
+ * had clauses: analysis FAILED, no playbook review.
+ */
+export function esEnabled(): boolean {
+  return !!process.env.ELASTICSEARCH_URL?.trim()
+}
+
+/** Reads throw at once without ES; every caller already falls back on a throw. */
+function assertEsEnabled(): void {
+  if (!esEnabled()) throw new Error('Elasticsearch is not configured (ELASTICSEARCH_URL unset)')
+}
+
 // ─── Index mapping ────────────────────────────────────────────────────────────
 
 export async function ensureContractIndex() {
@@ -107,6 +123,7 @@ export interface ContractDoc {
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
 export async function indexContract(id: string, doc: ContractDoc) {
+  if (!esEnabled()) return
   // The index's dynamic template maps keyTerms.* / metadata.* to keyword —
   // nested objects (e.g. an SLA's serviceCreditTiers: {"<99.9%": "10%"})
   // blow up with document_parsing_exception and the contract silently
@@ -131,6 +148,7 @@ export async function indexContract(id: string, doc: ContractDoc) {
 }
 
 export async function deleteContractFromIndex(id: string) {
+  if (!esEnabled()) return
   await es.delete({ index: CONTRACT_INDEX, id }).catch(() => {})
 }
 
@@ -222,6 +240,7 @@ export function buildESQuery(orgId: string, filters: SearchFilters): any {
 // ─── Full-text search ─────────────────────────────────────────────────────────
 
 export async function searchContracts(orgId: string, query: string, size = 20) {
+  assertEsEnabled()
   const raw = await es.search({
     index: CONTRACT_INDEX,
     body: {
@@ -250,6 +269,7 @@ export async function searchContracts(orgId: string, query: string, size = 20) {
 // ─── Advanced search (filters + optional keyword) ────────────────────────────
 
 export async function advancedSearch(orgId: string, filters: SearchFilters, size = 20) {
+  assertEsEnabled()
   const raw = await es.search({
     index: CONTRACT_INDEX,
     body: {
@@ -290,6 +310,7 @@ export async function advancedSearch(orgId: string, filters: SearchFilters, size
 // ─── Facets aggregation ───────────────────────────────────────────────────────
 
 export async function getContractFacets(orgId: string, baseFilters: Omit<SearchFilters, 'q'> = {}) {
+  assertEsEnabled()
   const raw = await es.search({
     index: CONTRACT_INDEX,
     body: {
