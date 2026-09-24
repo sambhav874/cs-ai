@@ -148,7 +148,7 @@ services:
   # Creates the documents bucket; MinIO does not create one on first write.
   minio-init:
     <<: *logging
-    image: quay.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
     restart: 'no'
     entrypoint: ['sh', '-c']
     command:
@@ -379,7 +379,7 @@ services:
 
   minio:
     <<: [*restart, *logging]
-    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     command: ['server', '/data']
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY}

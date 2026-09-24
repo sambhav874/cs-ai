@@ -66,9 +66,10 @@ services:
   # on first PUT, so without this every upload fails with NoSuchBucket. It
   # starts alongside MinIO, so it retries until MinIO accepts connections.
   minio-init:
-    # MinIO left Docker Hub; quay.io is the official home now. Pinned by
-    # digest so a deploy cannot pick up a different build unannounced.
-    image: quay.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    # MinIO no longer publishes images (Docker Hub and quay.io both gone; a
+    # pull of the old digest now fails 401). pgsty builds the same upstream
+    # release, same entrypoint and data format. Pinned to a release tag.
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
     restart: 'no'
     entrypoint: ['sh', '-c']
     command:
@@ -429,7 +430,7 @@ services:
 
   minio:
     <<: *restart
-    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     command: ['server', '/data']
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in Coolify}
