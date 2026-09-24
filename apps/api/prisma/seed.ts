@@ -232,6 +232,9 @@ async function main() {
         summary: c.summary,
         keyTerms: c.keyTerms,
         tags: c.tags,
+        // Written with its summary and terms already filled in and no file to
+        // analyse; left PENDING it shows "Queued" forever.
+        analysisStatus: 'DONE',
         versions: {
           create: {
             versionNumber: 1,

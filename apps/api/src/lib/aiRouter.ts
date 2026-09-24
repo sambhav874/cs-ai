@@ -210,6 +210,41 @@ export async function resolveLlm(orgId: string, tier: Tier): Promise<ResolvedLlm
   throw new NoProviderAvailable(tier, candidates)
 }
 
+// ─── What an org's calls actually use ────────────────────────────────────────
+
+export interface EffectiveRoute { provider: string; model: string; source: Source }
+
+/**
+ * For the admin screen: the model each tier resolves to for this org, and the
+ * providers that have a key (BYOK or platform). Same walk as resolveLlm, but
+ * no key is decrypted and no cost cap is checked. Without it the screen named
+ * the first candidate ("Platform default — anthropic/claude-opus-4-7") while
+ * every call went to the only provider with a key.
+ */
+export async function effectiveRouting(orgId: string): Promise<{
+  tiers: Record<Tier, EffectiveRoute | null>
+  keyedProviders: string[]
+}> {
+  const [settings, byok] = await Promise.all([
+    prisma.orgAiSettings.findUnique({ where: { orgId } }),
+    prisma.orgAiKey.findMany({ where: { orgId, isActive: true }, select: { provider: true } }),
+  ])
+  const byokSet = new Set(byok.map(k => k.provider))
+  const providers = new Set(Object.values(PLATFORM_TIER_DEFAULTS).flat().map(c => c.provider))
+  for (const p of byokSet) providers.add(p)
+  const keyedProviders = [...providers].filter(p => byokSet.has(p) || !!platformKey(p))
+
+  const tiers = {} as Record<Tier, EffectiveRoute | null>
+  for (const tier of Object.keys(PLATFORM_TIER_DEFAULTS) as Tier[]) {
+    const raw = settings?.[TIER_FIELD[tier]] as string | null | undefined
+    const override = raw ? parseModelRef(raw) : null
+    const candidates = override ? [override] : PLATFORM_TIER_DEFAULTS[tier]
+    const pick = candidates.find(c => byokSet.has(c.provider) || platformKey(c.provider))
+    tiers[tier] = pick ? { ...pick, source: byokSet.has(pick.provider) ? 'byok' : 'platform' } : null
+  }
+  return { tiers, keyedProviders }
+}
+
 // ─── Startup configuration check ─────────────────────────────────────────────
 
 // Set at boot by assertRouterConfigured(). When false, no platform key is

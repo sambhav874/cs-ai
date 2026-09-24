@@ -27,7 +27,7 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { requirePermission } from '../middleware/permissions.js'
 import { encrypt, keyPrefix } from '../lib/encryption.js'
-import { __internal } from '../lib/aiRouter.js'
+import { __internal, effectiveRouting } from '../lib/aiRouter.js'
 import { getCostCapStatus, invalidateCapConfig } from '../lib/costCap.js'
 import { createAuditEvent } from '../lib/audit.js'
 import { AuditAction } from '@clm/types'
@@ -71,6 +71,7 @@ export async function adminAiRoutes(app: FastifyInstance) {
     for (const [tier, candidates] of Object.entries(__internal.PLATFORM_TIER_DEFAULTS)) {
       platformRouting[tier] = candidates
     }
+    const effective = await effectiveRouting(orgId)
     return reply.send({
       // Defaults so the UI never has to handle null
       reasoningModel:  settings?.reasoningModel  ?? null,
@@ -82,6 +83,9 @@ export async function adminAiRoutes(app: FastifyInstance) {
       dailyCostCapUsd: settings?.dailyCostCapUsd ? Number(settings.dailyCostCapUsd) : null,
       capPolicy:       settings?.capPolicy ?? 'block',
       platformRouting,
+      // What each tier's calls actually use today, and which providers have a key.
+      effectiveRouting: effective.tiers,
+      keyedProviders:   effective.keyedProviders,
     })
   })
 

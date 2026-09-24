@@ -44,6 +44,10 @@ interface SettingsResponse {
   dailyCostCapUsd: number | null
   capPolicy: 'block' | 'warn'
   platformRouting: Record<PlatformTier, Array<{ provider: string; model: string }>>
+  /** What each tier's calls use today (null: no provider has a key). */
+  effectiveRouting?: Record<PlatformTier, { provider: string; model: string; source: 'platform' | 'byok' } | null>
+  /** Providers with a key, the org's own or the platform's. */
+  keyedProviders?: string[]
 }
 
 const TIER_META: Array<{
@@ -197,6 +201,13 @@ export function AiConfigTab() {
             {TIER_META.map(({ key, platformKey, label, description }) => {
               const candidates = settings.platformRouting[platformKey] ?? []
               const value = draft[key] ?? '' // '' = platform default
+              const keyed = new Set(settings.keyedProviders ?? candidates.map(c => c.provider))
+              // Name the model the default actually resolves to, not the first
+              // candidate: with only a Groq key, "claude-opus" was never used.
+              const effective = value ? null : settings.effectiveRouting?.[platformKey]
+              const defaultLabel = settings.effectiveRouting
+                ? (effective ? `${effective.provider}/${effective.model}` : 'no provider has a key')
+                : (candidates[0] ? `${candidates[0].provider}/${candidates[0].model}` : '')
               return (
                 <div key={key} className="grid grid-cols-[minmax(0,140px)_1fr] gap-4 items-start px-2 py-3.5">
                   <div>
@@ -210,13 +221,13 @@ export function AiConfigTab() {
                       className="w-full h-8 text-[13px] text-fg-950 rounded-md border border-input bg-card px-[11px] focus:outline-none focus:ring-[3px] focus:ring-primary-700/15 focus:border-primary-700 transition-colors"
                     >
                       <option value="">
-                        Platform default{candidates[0] ? ` — ${candidates[0].provider}/${candidates[0].model}` : ''}
+                        Platform default{defaultLabel ? ` — ${defaultLabel}` : ''}
                       </option>
                       {candidates.map(c => {
                         const id = `${c.provider}/${c.model}`
                         return (
                           <option key={id} value={id}>
-                            {id}
+                            {id}{keyed.has(c.provider) ? '' : ' (no key)'}
                           </option>
                         )
                       })}
@@ -539,6 +550,12 @@ function ApiKeysSection() {
     queryKey: ['admin-ai-keys'],
     queryFn: () => api.get('/admin/ai/keys').then(r => r.data),
   })
+  // Shares the routing section's query: which providers the platform keys.
+  const { data: settings } = useQuery<SettingsResponse>({
+    queryKey: ['admin-ai-settings'],
+    queryFn: () => api.get('/admin/ai/settings').then(r => r.data),
+  })
+  const platformKeyed = new Set(settings?.keyedProviders ?? [])
 
   // Which row is in edit mode + its input buffer.
   const [editing, setEditing] = useState<Provider | null>(null)
@@ -659,7 +676,7 @@ function ApiKeysSection() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-body font-medium text-fg-950">{label}</span>
-                      <KeyStatusPill row={row ?? null} liveTest={liveTest} />
+                      <KeyStatusPill row={row ?? null} liveTest={liveTest} platformKey={platformKeyed.has(id)} />
                     </div>
                     <div className="text-[11px] text-fg-400 mt-0.5">
                       {row?.configured && row.keyPrefix ? (
@@ -669,7 +686,9 @@ function ApiKeysSection() {
                           {!row.lastTestedAt && liveTest && <> · untested</>}
                         </>
                       ) : (
-                        <>No key configured · falls back to {row?.configured ? 'platform' : 'platform default or skips if unavailable'}</>
+                        platformKeyed.has(id)
+                          ? <>No key of your own · uses the platform's key, within the cost cap</>
+                          : <>No key configured · falls back to {row?.configured ? 'platform' : 'platform default or skips if unavailable'}</>
                       )}
                     </div>
                   </div>
@@ -812,8 +831,8 @@ function ApiKeysSection() {
  * we could have tested but haven't is the admin's turn. Providers with no live
  * test ("Saved") stay neutral — there is nothing for the admin to do.
  */
-function KeyStatusPill({ row, liveTest }: { row: KeyRow | null; liveTest: boolean }) {
-  if (!row?.configured) return <StatusPill meaning="neutral">Not set</StatusPill>
+function KeyStatusPill({ row, liveTest, platformKey }: { row: KeyRow | null; liveTest: boolean; platformKey?: boolean }) {
+  if (!row?.configured) return <StatusPill meaning="neutral">{platformKey ? 'Platform key' : 'Not set'}</StatusPill>
   if (row.testStatus === 'success') return <StatusPill meaning="binding">Verified</StatusPill>
   if (row.testStatus === 'failed') return <StatusPill meaning="risk">Failed</StatusPill>
   return (
