@@ -46,7 +46,7 @@ from .state import AgentRunState
 # The smallest usable model per provider, for pre-processing calls where a
 # frontier model is pure waste.
 _LIGHTWEIGHT_MODELS: Dict[str, str] = {
-    "groq": "llama-3.2-1b-preview",
+    "groq": "llama-3.1-8b-instant",
     "gemini": "gemini-2.0-flash-lite",
     "claude": "claude-haiku-4-5",
     "openai": "gpt-4o-mini",

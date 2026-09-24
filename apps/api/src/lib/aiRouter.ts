@@ -48,16 +48,21 @@ const PLATFORM_TIER_DEFAULTS: Record<Tier, Candidate[]> = {
     { provider: 'openai',    model: 'gpt-5' },
     { provider: 'openai',    model: 'gpt-4.1' }, // reliable fallback if gpt-5 unavailable on the account
     { provider: 'google',    model: 'gemini-2.5-pro' },
+    { provider: 'groq',      model: 'openai/gpt-oss-120b' },
   ],
   default: [
     { provider: 'anthropic', model: 'claude-sonnet-4-6' },
     { provider: 'openai',    model: 'gpt-4.1' },
     { provider: 'google',    model: 'gemini-2.5-pro' },
+    { provider: 'groq',      model: 'openai/gpt-oss-120b' },
+    { provider: 'groq',      model: 'llama-3.3-70b-versatile' },
   ],
   fast: [
     { provider: 'anthropic', model: 'claude-haiku-4-5' },
     { provider: 'openai',    model: 'gpt-4.1-mini' },
     { provider: 'google',    model: 'gemini-2.5-flash' },
+    { provider: 'groq',      model: 'llama-3.1-8b-instant' },
+    { provider: 'groq',      model: 'openai/gpt-oss-20b' },
   ],
   embed: [
     { provider: 'voyage', model: 'voyage-law-2' },
@@ -93,6 +98,7 @@ function platformKey(provider: string): string | undefined {
     case 'voyage':    raw = process.env.VOYAGE_API_KEY;    break
     case 'cohere':    raw = process.env.COHERE_API_KEY;    break
     case 'mistral':   raw = process.env.MISTRAL_API_KEY;   break
+    case 'groq':      raw = process.env.GROQ_API_KEY;      break
     default:          return undefined
   }
   if (!raw) return undefined
@@ -131,10 +137,16 @@ async function getOrgOverride(orgId: string, tier: Tier): Promise<Candidate | nu
   if (!settings) return null
   const raw = settings[TIER_FIELD[tier]]
   if (!raw) return null
-  // Format: "provider/model"
-  const [provider, model] = raw.split('/', 2)
-  if (!provider || !model) return null
-  return { provider, model }
+  // Format: "provider/model". Split on the first slash only: some model ids
+  // carry their own ("groq/openai/gpt-oss-120b").
+  return parseModelRef(raw)
+}
+
+/** "provider/model" → { provider, model }, splitting on the first slash only. */
+export function parseModelRef(raw: string): Candidate | null {
+  const at = raw.indexOf('/')
+  if (at <= 0 || at === raw.length - 1) return null
+  return { provider: raw.slice(0, at), model: raw.slice(at + 1) }
 }
 
 async function getByokKey(orgId: string, provider: string): Promise<string | null> {
@@ -242,7 +254,8 @@ export function assertRouterConfigured(): void {
       `[aiRouter] ⚠ No platform key for critical tier(s): ${missingCritical.join(', ')}. ` +
       `The app boots and all non-AI features (auth, browse, upload, manage contracts) ` +
       `work normally, but AI features return 503 until you set one of ` +
-      `GOOGLE_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY in apps/api/.env and restart. ` +
+      `GOOGLE_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY / GROQ_API_KEY in apps/api/.env and restart, ` +
+      `or add a key in Admin → AI. ` +
       `See the README "Quickstart".`
     )
   }

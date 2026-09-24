@@ -58,6 +58,7 @@ x-api-env: &api-env
   # adds a key in Admin → AI.
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
   MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
   S3_ENDPOINT: http://minio:9000
   S3_BUCKET: ${S3_BUCKET:-clm-documents}
@@ -89,6 +90,7 @@ x-intel-env: &intel-env
   API_URL: http://api:8080
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
   MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
 
 services:

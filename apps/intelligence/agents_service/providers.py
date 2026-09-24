@@ -43,6 +43,12 @@ MODEL_REGISTRY: list[ModelOption] = [
     # ("provider/model") and is passed through verbatim to their /v1.
     ModelOption("openrouter", "google/gemini-2.5-flash", "Gemini 2.5 Flash (OpenRouter)", 1_000_000),
     ModelOption("openrouter", "openai/gpt-4.1",          "GPT-4.1 (OpenRouter)",          1_000_000),
+    # ─── Groq ───────────────────────────────────────────────────────────
+    # Groq's own model ids; some carry a slash ("openai/gpt-oss-120b").
+    ModelOption("groq", "openai/gpt-oss-120b",     "GPT-OSS 120B (Groq)",   131_072),
+    ModelOption("groq", "openai/gpt-oss-20b",      "GPT-OSS 20B (Groq)",    131_072),
+    ModelOption("groq", "llama-3.3-70b-versatile", "Llama 3.3 70B (Groq)",  131_072),
+    ModelOption("groq", "llama-3.1-8b-instant",    "Llama 3.1 8B (Groq)",   131_072),
 ]
 
 DEFAULT_PROVIDER = "anthropic"
@@ -112,6 +118,14 @@ def build_llm(
             model=model_id,
             api_key=api_key or settings.openrouter_api_key,
             base_url="https://openrouter.ai/api/v1",
+            streaming=streaming,
+        )
+
+    if provider == "groq":
+        from langchain_groq import ChatGroq
+        return ChatGroq(
+            model=model_id,
+            groq_api_key=api_key or settings.groq_api_key,
             streaming=streaming,
         )
 

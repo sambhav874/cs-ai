@@ -62,7 +62,7 @@ const TIER_META: Array<{
 
 // ─── API keys (BYOK) types + metadata ─────────────────────────────────────
 
-type Provider = 'openai' | 'anthropic' | 'google' | 'voyage' | 'cohere' | 'mistral'
+type Provider = 'openai' | 'anthropic' | 'google' | 'groq' | 'voyage' | 'cohere' | 'mistral'
 
 interface KeyRow {
   provider: Provider
@@ -82,6 +82,7 @@ const PROVIDER_META: Array<{ id: Provider; label: string; placeholder: string; l
   { id: 'openai',    label: 'OpenAI',    placeholder: 'sk-proj-…',   liveTest: true  },
   { id: 'anthropic', label: 'Anthropic', placeholder: 'sk-ant-…',    liveTest: true  },
   { id: 'google',    label: 'Google',    placeholder: 'AIza…',       liveTest: true  },
+  { id: 'groq',      label: 'Groq',      placeholder: 'gsk_…',       liveTest: true  },
   { id: 'voyage',    label: 'Voyage',    placeholder: 'pa-…',        liveTest: false },
   { id: 'cohere',    label: 'Cohere',    placeholder: 'co-…',        liveTest: false },
   { id: 'mistral',   label: 'Mistral',   placeholder: 'sk-…',        liveTest: false },

@@ -75,15 +75,20 @@ _PLATFORM_TIERS: dict[Tier, list[tuple[str, str]]] = {
                    ("openai",     "gpt-5"),
                    ("openai",     "gpt-4.1"),
                    ("google",     "gemini-2.5-pro"),
-                   ("openrouter", "openai/gpt-4.1")],
+                   ("openrouter", "openai/gpt-4.1"),
+                   ("groq",       "openai/gpt-oss-120b")],
     "default":    [("anthropic",  "claude-sonnet-4-6"),
                    ("openai",     "gpt-4.1"),
                    ("google",     "gemini-2.5-pro"),
-                   ("openrouter", "openai/gpt-4.1")],
+                   ("openrouter", "openai/gpt-4.1"),
+                   ("groq",       "openai/gpt-oss-120b"),
+                   ("groq",       "llama-3.3-70b-versatile")],
     "fast":       [("anthropic",  "claude-haiku-4-5"),
                    ("openai",     "gpt-4.1-mini"),
                    ("google",     "gemini-2.5-flash"),
-                   ("openrouter", "google/gemini-2.5-flash")],
+                   ("openrouter", "google/gemini-2.5-flash"),
+                   ("groq",       "llama-3.1-8b-instant"),
+                   ("groq",       "openai/gpt-oss-20b")],
     # embed/rerank/vision are not routed through OpenRouter — the registry has
     # no gateway entry for those model classes.
     "embed":      [("openai",     "text-embedding-3-large"),
@@ -98,6 +103,7 @@ _ENV_KEY = {
     "anthropic":  "anthropic_api_key",
     "google":     "google_api_key",
     "openrouter": "openrouter_api_key",
+    "groq":       "groq_api_key",
     # voyage/cohere/mistral added when those tiers light up
 }
 

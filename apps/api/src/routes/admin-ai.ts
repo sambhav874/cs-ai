@@ -41,7 +41,7 @@ function reqContext(req: FastifyRequest) {
   }
 }
 
-const ALLOWED_PROVIDERS = ['openai', 'anthropic', 'google', 'voyage', 'cohere', 'mistral'] as const
+const ALLOWED_PROVIDERS = ['openai', 'anthropic', 'google', 'groq', 'voyage', 'cohere', 'mistral'] as const
 type Provider = typeof ALLOWED_PROVIDERS[number]
 
 const TierKeys = z.enum(['reasoningModel', 'defaultModel', 'fastModel', 'embedModel', 'rerankModel', 'visionOcrModel'])
@@ -477,6 +477,13 @@ async function testProviderKey(provider: Provider, apiKey: string): Promise<{ ok
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`)
         if (r.ok) return { ok: true }
         return { ok: false, error: `Google ${r.status}: ${(await r.text()).slice(0, 200)}` }
+      }
+      case 'groq': {
+        const r = await fetch('https://api.groq.com/openai/v1/models', {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        })
+        if (r.ok) return { ok: true }
+        return { ok: false, error: `Groq ${r.status}: ${(await r.text()).slice(0, 200)}` }
       }
       case 'voyage':
       case 'cohere':

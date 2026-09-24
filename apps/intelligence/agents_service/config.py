@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     google_api_key: str = ""
     openrouter_api_key: str = ""
+    groq_api_key: str = ""
     redis_url: str = "redis://localhost:6379"
     database_url: str = ""
     node_env: str = "development"
@@ -37,7 +38,9 @@ def active_provider() -> str:
         return "google"
     if _is_real_key(settings.openrouter_api_key):
         return "openrouter"
-    raise RuntimeError("No LLM API key found. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, or OPENROUTER_API_KEY in .env")
+    if _is_real_key(settings.groq_api_key):
+        return "groq"
+    raise RuntimeError("No LLM API key found. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, OPENROUTER_API_KEY or GROQ_API_KEY in .env")
 
 
 # Sentinel values that Secret Manager seeds when an operator hasn't supplied a
@@ -60,6 +63,7 @@ def is_provider_configured(provider: str) -> bool:
     if provider == "anthropic":  return _is_real_key(settings.anthropic_api_key)
     if provider == "google":     return _is_real_key(settings.google_api_key)
     if provider == "openrouter": return _is_real_key(settings.openrouter_api_key)
+    if provider == "groq":       return _is_real_key(settings.groq_api_key)
     return False
 
 
@@ -98,6 +102,7 @@ def model_for(provider: str, tier: str = "smart") -> str:
         "google":     "gemini-2.5-flash",
         # OpenRouter — gemini 2.5 flash is the extraction/fast pick.
         "openrouter": "google/gemini-2.5-flash",
+        "groq":       "llama-3.1-8b-instant",
     }
     smart = {
         "openai":     "gpt-4o",
@@ -105,6 +110,7 @@ def model_for(provider: str, tier: str = "smart") -> str:
         "google":     "gemini-2.5-pro",
         # OpenRouter — gpt-4.1 is the chat/reasoning pick.
         "openrouter": "openai/gpt-4.1",
+        "groq":       "openai/gpt-oss-120b",
     }
     table = smart if tier == "smart" else fast
     return table.get(provider, smart["openai"])
@@ -118,6 +124,7 @@ def active_model() -> str:
         "anthropic":  "claude-haiku-4-5-20251001",
         "google":     "gemini-2.5-flash",
         "openrouter": "google/gemini-2.5-flash",
+        "groq":       "llama-3.1-8b-instant",
     }
     return defaults[p]
 
@@ -130,5 +137,6 @@ def smart_model() -> str:
         "anthropic":  "claude-sonnet-4-6",
         "google":     "gemini-2.5-pro",
         "openrouter": "openai/gpt-4.1",
+        "groq":       "openai/gpt-oss-120b",
     }
     return best[p]
