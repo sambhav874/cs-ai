@@ -52,6 +52,12 @@ if [ -z "$(env_get MONGOT_PASSWORD)" ]; then
   env_set MONGOT_PASSWORD "$(openssl rand -hex 32)"
   note "Added MONGOT_PASSWORD to .env (MongoDB search)."
 fi
+# Local MongoDB became a profile. An install that never pointed MONGODB_URI
+# elsewhere keeps running it.
+if [ -z "$(env_get COMPOSE_PROFILES)" ] && [ -z "$(env_get MONGODB_URI)" ]; then
+  env_set COMPOSE_PROFILES local-mongo
+  note "Added COMPOSE_PROFILES=local-mongo to .env (keeps the local MongoDB)."
+fi
 
 say "Keeping the running version ($current) as :previous"
 for img in "${images[@]}"; do

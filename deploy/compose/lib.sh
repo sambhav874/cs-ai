@@ -47,7 +47,9 @@ env_set() {
 # Wait until every long-running service with a health check reports healthy.
 wait_healthy() {
   local timeout="${1:-600}" waited=0 svc state pending
-  local services=(mongo mongot api intelligence web)
+  local services=(api intelligence web)
+  # Local MongoDB only runs under the local-mongo profile; with Atlas it is absent.
+  if [ -n "$(dc ps -q mongo 2>/dev/null)" ]; then services=(mongo mongot "${services[@]}"); fi
   while :; do
     pending=()
     for svc in "${services[@]}"; do

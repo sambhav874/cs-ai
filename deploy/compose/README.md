@@ -77,7 +77,12 @@ Atlas (routed to MongoDB's endpoint automatically). Without a key, contracts
 are indexed without embeddings and the assistant ranks passages by keyword;
 upload, extraction and review do not depend on it.
 
-**Or use MongoDB Atlas.** Set `MONGODB_URI` in `.env` to your cluster's
+**Local MongoDB is a profile.** `mongo`, `mongot` and `mongo-migrate` run only
+with `COMPOSE_PROFILES=local-mongo`, which `install.sh` writes. MongoDB 8.x
+refuses to start on Linux kernels 6.19 and newer (a tcmalloc issue its image
+checks for); on such a host, use Atlas.
+
+**Or use MongoDB Atlas.** Remove `COMPOSE_PROFILES=local-mongo` and set `MONGODB_URI` in `.env` to your cluster's
 connection string, without a database name
 (`mongodb+srv://USER:PASS@cluster0.xxxx.mongodb.net/?retryWrites=true&w=majority`).
 Every service uses it: the API opens the `csai` database on it, ContractSense

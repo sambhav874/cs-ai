@@ -142,8 +142,10 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+        required: false
       mongo-migrate:
         condition: service_completed_successfully
+        required: false
 
   # Creates the documents bucket; MinIO does not create one on first write.
   minio-init:
@@ -221,8 +223,10 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+        required: false
       mongo-migrate:
         condition: service_completed_successfully
+        required: false
       redis:
         condition: service_started
 
@@ -241,8 +245,10 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+        required: false
       mongo-migrate:
         condition: service_completed_successfully
+        required: false
       redis:
         condition: service_started
 
@@ -253,6 +259,7 @@ services:
   # creates the user mongot syncs as. Data lives in mongo8-data; mongo-data is
   # the MongoDB 7 volume of an older install, copied once by mongo-migrate.
   mongo:
+    profiles: [local-mongo]
     <<: [*restart, *logging]
     image: mongodb/mongodb-community-server:8.3-ubuntu2204
     command:
@@ -270,7 +277,7 @@ services:
       - --setParameter
       - searchTLSMode=disabled
     environment:
-      MONGOT_PASSWORD: ${MONGOT_PASSWORD:?run ./upgrade.sh to add it}
+      MONGOT_PASSWORD: ${MONGOT_PASSWORD:-}
     volumes:
       - mongo8-data:/data/db
     healthcheck:
@@ -292,12 +299,14 @@ services:
   # its change streams. It insists its password file be owner-only, so the
   # file and the config are written at start rather than mounted.
   mongot:
+    profiles: [local-mongo]
     <<: [*restart, *logging]
     image: mongodb/mongodb-community-search:1.70.4
     entrypoint: ['bash', '-c']
     command:
       - |
         set -eu
+        [ -n "$$MONGOT_PASSWORD" ] || { echo "mongot: set MONGOT_PASSWORD (local MongoDB only)" >&2; exit 1; }
         (umask 077 && printf '%s' "$$MONGOT_PASSWORD" > /tmp/mongot-password)
         cat > /tmp/mongot.yml <<'YML'
         syncSource:
@@ -344,6 +353,7 @@ services:
   # copies every database into mongo, once; the old volume is left as it was,
   # as a backup, until you remove it. A no-op on a new install.
   mongo-migrate:
+    profiles: [local-mongo]
     <<: *logging
     image: mongo:7
     restart: 'no'
