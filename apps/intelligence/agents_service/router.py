@@ -82,13 +82,13 @@ _PLATFORM_TIERS: dict[Tier, list[tuple[str, str]]] = {
                    ("google",     "gemini-2.5-pro"),
                    ("openrouter", "openai/gpt-4.1"),
                    ("groq",       "openai/gpt-oss-120b"),
-                   ("groq",       "llama-3.3-70b-versatile")],
+                   ("groq",       "qwen/qwen3.8-27b")],
     "fast":       [("anthropic",  "claude-haiku-4-5"),
                    ("openai",     "gpt-4.1-mini"),
                    ("google",     "gemini-2.5-flash"),
                    ("openrouter", "google/gemini-2.5-flash"),
-                   ("groq",       "llama-3.1-8b-instant"),
-                   ("groq",       "openai/gpt-oss-20b")],
+                   ("groq",       "openai/gpt-oss-20b"),
+                   ("groq",       "qwen/qwen3.8-27b")],
     # embed/rerank/vision are not routed through OpenRouter — the registry has
     # no gateway entry for those model classes.
     "embed":      [("openai",     "text-embedding-3-large"),

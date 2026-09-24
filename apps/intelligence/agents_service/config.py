@@ -102,7 +102,7 @@ def model_for(provider: str, tier: str = "smart") -> str:
         "google":     "gemini-2.5-flash",
         # OpenRouter — gemini 2.5 flash is the extraction/fast pick.
         "openrouter": "google/gemini-2.5-flash",
-        "groq":       "llama-3.1-8b-instant",
+        "groq":       "openai/gpt-oss-20b",
     }
     smart = {
         "openai":     "gpt-4o",
@@ -124,7 +124,7 @@ def active_model() -> str:
         "anthropic":  "claude-haiku-4-5-20251001",
         "google":     "gemini-2.5-flash",
         "openrouter": "google/gemini-2.5-flash",
-        "groq":       "llama-3.1-8b-instant",
+        "groq":       "openai/gpt-oss-20b",
     }
     return defaults[p]
 

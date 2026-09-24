@@ -55,14 +55,14 @@ const PLATFORM_TIER_DEFAULTS: Record<Tier, Candidate[]> = {
     { provider: 'openai',    model: 'gpt-4.1' },
     { provider: 'google',    model: 'gemini-2.5-pro' },
     { provider: 'groq',      model: 'openai/gpt-oss-120b' },
-    { provider: 'groq',      model: 'llama-3.3-70b-versatile' },
+    { provider: 'groq',      model: 'qwen/qwen3.8-27b' },
   ],
   fast: [
     { provider: 'anthropic', model: 'claude-haiku-4-5' },
     { provider: 'openai',    model: 'gpt-4.1-mini' },
     { provider: 'google',    model: 'gemini-2.5-flash' },
-    { provider: 'groq',      model: 'llama-3.1-8b-instant' },
     { provider: 'groq',      model: 'openai/gpt-oss-20b' },
+    { provider: 'groq',      model: 'qwen/qwen3.8-27b' },
   ],
   embed: [
     { provider: 'voyage', model: 'voyage-law-2' },

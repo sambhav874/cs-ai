@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     
     # Model Configuration
-    model_name: str = Field(default="llama-3.1-8b-instant", env="MODEL_NAME")
+    model_name: str = Field(default="openai/gpt-oss-120b", env="MODEL_NAME")
     groq_reasoning_effort: str = Field(default="medium", env="GROQ_REASONING_EFFORT")
     use_gpu: bool = Field(default=False, env="USE_GPU")
     max_tokens: int = Field(default=2048, env="MAX_TOKENS")

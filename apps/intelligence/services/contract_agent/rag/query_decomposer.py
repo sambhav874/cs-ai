@@ -5,7 +5,7 @@ LangChain chat model with a structured Pydantic output to break a compound
 question into focused sub-queries retrieved independently.
 
 Provider → lightweight model mapping:
-  groq   → llama-3.1-8b-instant
+  groq   → openai/gpt-oss-20b
   gemini → gemini-2.0-flash-lite
   claude → claude-haiku-4-5
   openai → gpt-4o-mini

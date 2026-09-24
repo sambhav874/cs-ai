@@ -46,7 +46,7 @@ from .state import AgentRunState
 # The smallest usable model per provider, for pre-processing calls where a
 # frontier model is pure waste.
 _LIGHTWEIGHT_MODELS: Dict[str, str] = {
-    "groq": "llama-3.1-8b-instant",
+    "groq": "openai/gpt-oss-20b",
     "gemini": "gemini-2.0-flash-lite",
     "claude": "claude-haiku-4-5",
     "openai": "gpt-4o-mini",
@@ -402,7 +402,7 @@ def _resolve_model_name(
         )
     if provider == "gemini":
         return getattr(settings, "gemini_model_name", None) or "gemini-2.0-flash"
-    return getattr(settings, "model_name", None) or "llama-3.3-70b-versatile"
+    return getattr(settings, "model_name", None) or "openai/gpt-oss-120b"
 
 
 def _claude_model_family(model_name: str) -> str:

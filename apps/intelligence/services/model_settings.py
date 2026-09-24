@@ -38,8 +38,8 @@ PROVIDER_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "Groq",
         "models": [
             {"id": "openai/gpt-oss-120b", "label": "GPT-OSS 120B (reasoning)"},
-            {"id": "llama-3.3-70b-versatile", "label": "Llama 3.3 70B"},
-            {"id": "llama-3.1-8b-instant", "label": "Llama 3.1 8B (fast)"},
+            {"id": "qwen/qwen3.8-27b", "label": "Qwen 3.8 27B"},
+            {"id": "openai/gpt-oss-20b", "label": "GPT-OSS 20B (fast)"},
         ],
     },
     "claude": {

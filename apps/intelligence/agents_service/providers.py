@@ -47,8 +47,7 @@ MODEL_REGISTRY: list[ModelOption] = [
     # Groq's own model ids; some carry a slash ("openai/gpt-oss-120b").
     ModelOption("groq", "openai/gpt-oss-120b",     "GPT-OSS 120B (Groq)",   131_072),
     ModelOption("groq", "openai/gpt-oss-20b",      "GPT-OSS 20B (Groq)",    131_072),
-    ModelOption("groq", "llama-3.3-70b-versatile", "Llama 3.3 70B (Groq)",  131_072),
-    ModelOption("groq", "llama-3.1-8b-instant",    "Llama 3.1 8B (Groq)",   131_072),
+    ModelOption("groq", "qwen/qwen3.8-27b",        "Qwen 3.8 27B (Groq)",   131_072),
 ]
 
 DEFAULT_PROVIDER = "anthropic"

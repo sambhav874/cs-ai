@@ -24,7 +24,7 @@ def groq_only(monkeypatch):
 @pytest.mark.parametrize("tier,model", [
     ("reasoning", "openai/gpt-oss-120b"),
     ("default", "openai/gpt-oss-120b"),
-    ("fast", "llama-3.1-8b-instant"),
+    ("fast", "openai/gpt-oss-20b"),
 ])
 def test_a_groq_only_deployment_resolves_the_chat_tiers(groq_only, tier, model):
     assert router._platform_resolve(tier) == ("groq", model, "gsk_platform")
@@ -65,4 +65,4 @@ def test_contractsense_builds_groq_with_the_platform_choice(monkeypatch):
 
 
 def test_the_light_groq_model_is_one_groq_still_serves():
-    assert model_factory._LIGHTWEIGHT_MODELS["groq"] == "llama-3.1-8b-instant"
+    assert model_factory._LIGHTWEIGHT_MODELS["groq"] == "openai/gpt-oss-20b"
