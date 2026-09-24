@@ -124,6 +124,11 @@ def to_platform_terms(kpi: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _measurement(kpi: Dict[str, Any]) -> Dict[str, Any]:
+    m = kpi.get("measurement")
+    return m if isinstance(m, dict) else {}
+
+
 def to_platform_record(kpi: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """One extracted record in the API's vocabulary, or None if unverified."""
     quote = _text(kpi.get("quote") or kpi.get("source_quote"))
@@ -137,7 +142,9 @@ def to_platform_record(kpi: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "kpiType": _text(kpi.get("kpi_type"), 64),
         "obligationClass": _text(kpi.get("obligation_class"), 64),
         "partyRole": _text(kpi.get("party_role"), 32),
-        "frequency": _text(kpi.get("frequency"), 32),
+        # The extractor often leaves `frequency` empty and records the cadence
+        # as the measurement period ("monthly", "per_invoice") instead.
+        "frequency": _text(kpi.get("frequency") or kpi.get("period_type") or _measurement(kpi).get("aggregation"), 32),
         "trigger": _text(kpi.get("trigger") or kpi.get("trigger_condition"), 1000),
         "quote": quote,
         "page": _page(kpi.get("page_start")),

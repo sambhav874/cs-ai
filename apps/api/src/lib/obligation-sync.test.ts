@@ -106,6 +106,7 @@ describe('vocabulary', () => {
     expect(frequencyToRecurrence('quarterly')).toBe('quarterly')
     expect(frequencyToRecurrence('hourly')).toBe('daily')
     expect(frequencyToRecurrence('per_actual')).toBe('on-event')
+    expect(frequencyToRecurrence('per_invoice')).toBe('on-event')
     expect(frequencyToRecurrence(undefined)).toBe('unknown')
   })
 
@@ -116,6 +117,17 @@ describe('vocabulary', () => {
     expect(toObligationType('obligation', 'termination_right')).toBe('termination')
     expect(toObligationType('reporting')).toBe('report')
     expect(toObligationType(null, null)).toBe('other')
+  })
+
+  it('reads the name when the type is generic', () => {
+    expect(toObligationType('obligation', null, 'Renewal Notice Period')).toBe('renewal')
+    expect(toObligationType('obligation', null, 'Monthly Performance Report Delivery')).toBe('report')
+    expect(toObligationType('obligation', null, 'Payment Deadline: Invoice Payment within 30 Days')).toBe('payment')
+    expect(toObligationType('obligation', null, 'Insurance Floor: Goods-in-Transit Coverage')).toBe('compliance')
+    expect(toObligationType('obligation', null, 'Confidentiality Retention Period')).toBe('compliance')
+    expect(toObligationType('obligation', null, 'Collect and Deliver Goods')).toBe('other')
+    // A specific type still wins over the name.
+    expect(toObligationType('penalty', null, 'Band: On-time Delivery <95% Credit')).toBe('payment')
   })
 })
 

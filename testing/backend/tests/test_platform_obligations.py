@@ -184,3 +184,10 @@ def test_junk_numbers_and_runaway_tiers_are_contained():
     assert terms["value"] is None and terms["valueMin"] is None and terms["valueMax"] is None
     assert len(terms["tiers"]) == MAX_TIERS
     assert to_platform_terms(kpi(recovery="liquidated_damages"))["consequence"]["mechanism"] == "liquidated_damages"
+
+
+def test_cadence_falls_back_to_the_measurement_period():
+    assert to_platform_record(kpi(frequency=None, period_type="monthly"))["frequency"] == "monthly"
+    assert to_platform_record(kpi(frequency=None, measurement={"aggregation": "quarterly"}))["frequency"] == "quarterly"
+    assert to_platform_record(kpi(frequency="weekly", period_type="monthly"))["frequency"] == "weekly"
+    assert to_platform_record(kpi(frequency=None))["frequency"] is None

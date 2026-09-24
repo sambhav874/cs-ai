@@ -50,6 +50,10 @@ MODEL_REGISTRY: list[ModelOption] = [
     ModelOption("groq", "qwen/qwen3.8-27b",        "Qwen 3.8 27B (Groq)",   131_072),
 ]
 
+# Output cap for Groq calls, reasoning included. Every Groq chat model listed
+# above accepts at least this many completion tokens.
+GROQ_MAX_OUTPUT_TOKENS = 16_384
+
 DEFAULT_PROVIDER = "anthropic"
 DEFAULT_MODEL    = "claude-sonnet-4-6"
 
@@ -121,10 +125,15 @@ def build_llm(
         )
 
     if provider == "groq":
+        # Groq's default output cap is a few thousand tokens, and gpt-oss spends
+        # part of it on hidden reasoning: a clause extraction came back cut off
+        # mid-JSON (finish_reason=length) with 1,640 of 3,072 tokens reasoning.
+        # The other providers' clients default far higher.
         from langchain_groq import ChatGroq
         return ChatGroq(
             model=model_id,
             groq_api_key=api_key or settings.groq_api_key,
+            max_tokens=GROQ_MAX_OUTPUT_TOKENS,
             streaming=streaming,
         )
 

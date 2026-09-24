@@ -52,6 +52,9 @@ _LIGHTWEIGHT_MODELS: Dict[str, str] = {
     "openai": "gpt-4o-mini",
 }
 
+# Tokens added to a gpt-oss call's max_tokens for its hidden reasoning, by effort.
+_GROQ_REASONING_HEADROOM: Dict[str, int] = {"low": 1024, "medium": 4096, "high": 8192}
+
 # max_tokens / temperature of None mean "inherit from settings".
 _PURPOSES: Dict[str, Dict[str, Any]] = {
     "chat": {"max_tokens": None, "temperature": None, "reasoning": True, "streaming": True, "lightweight": False},
@@ -314,12 +317,21 @@ def _build_groq(
         streaming=streaming,
     )
 
-    if reasoning and is_reasoning_model:
-        # reasoning_format and reasoning_effort only apply to gpt-oss variants
-        kwargs["reasoning_format"] = "parsed"
-        reasoning_effort = _groq_reasoning_effort(message, task_type=task_type, model_name=model_name)
+    if is_reasoning_model:
+        # gpt-oss always reasons, and its reasoning counts against max_tokens:
+        # a 512-token classify call could spend the budget thinking and answer
+        # nothing. Keep reasoning short where the purpose didn't ask for it, and
+        # give it room on top of the answer budget either way.
+        reasoning_effort = (
+            _groq_reasoning_effort(message, task_type=task_type, model_name=model_name)
+            if reasoning else "low"
+        )
+        if reasoning:
+            # reasoning_format and reasoning_effort only apply to gpt-oss variants
+            kwargs["reasoning_format"] = "parsed"
         if reasoning_effort:
             kwargs["reasoning_effort"] = reasoning_effort
+        kwargs["max_tokens"] = max_tokens + _GROQ_REASONING_HEADROOM.get(reasoning_effort or "medium", 4096)
 
     return ChatGroq(**kwargs)
 

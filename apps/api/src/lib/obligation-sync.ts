@@ -88,7 +88,8 @@ export function frequencyToRecurrence(freq: string | null | undefined): string {
   const f = (freq ?? '').toLowerCase()
   if (RECURRENCES.has(f)) return f
   if (f === 'hourly') return 'daily'
-  if (f === 'per_actual' || f === 'per_event' || f === 'on-event') return 'on-event'
+  // per_actual, per_event, per_invoice, per_shipment…: each time the event happens.
+  if (f.startsWith('per_') || f === 'on-event') return 'on-event'
   return 'unknown'
 }
 
@@ -103,9 +104,26 @@ const TYPE_RULES: Array<[string, RegExp]> = [
   ['compliance',  /complian|regulat|insurance|confidential|data|security|privacy/],
 ]
 
-export function toObligationType(kpiType?: string | null, obligationClass?: string | null): string {
-  const key = `${kpiType ?? ''} ${obligationClass ?? ''}`.toLowerCase().replace(/[\s-]+/g, '_')
+// The record's name, when its type is generic ("obligation"). Names describe
+// the duty, so a report *about* performance or delivery is a report: report
+// and audit are checked before the families their subject would match.
+const NAME_RULES: Array<[string, RegExp]> = [
+  ['termination', /terminat/],
+  ['renewal',     /renew|notice_period|expir/],
+  ['report',      /report|notif/],
+  ['audit',       /audit|inspect/],
+  ['payment',     /pay|fee|invoice|price|charge|penalt|credit|rebate/],
+  ['compliance',  /complian|regulat|insurance|confidential|data_protection|security|privacy/],
+  ['sla',         /sla\b|service_level|availability|uptime|latency|on_time/],
+]
+
+const words = (s: string) => s.toLowerCase().replace(/[\s-]+/g, '_')
+
+export function toObligationType(kpiType?: string | null, obligationClass?: string | null, name?: string | null): string {
+  const key = words(`${kpiType ?? ''} ${obligationClass ?? ''}`)
   for (const [type, re] of TYPE_RULES) if (re.test(key)) return type
+  const named = words(name ?? '')
+  for (const [type, re] of NAME_RULES) if (re.test(named)) return type
   return 'other'
 }
 
@@ -113,7 +131,7 @@ export function toObligationType(kpiType?: string | null, obligationClass?: stri
  *  Terms are extracted too: a re-run that reads the rule differently replaces it. */
 export function extractedFields(r: SyncRecord) {
   return {
-    type:        toObligationType(r.kpiType, r.obligationClass),
+    type:        toObligationType(r.kpiType, r.obligationClass, r.name),
     description: (r.description || r.name || r.quote).slice(0, 4000),
     owner:       partyToOwner(r.partyRole),
     recurrence:  frequencyToRecurrence(r.frequency),

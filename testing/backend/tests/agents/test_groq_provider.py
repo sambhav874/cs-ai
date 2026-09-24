@@ -66,3 +66,25 @@ def test_contractsense_builds_groq_with_the_platform_choice(monkeypatch):
 
 def test_the_light_groq_model_is_one_groq_still_serves():
     assert model_factory._LIGHTWEIGHT_MODELS["groq"] == "openai/gpt-oss-20b"
+
+
+def test_agents_groq_calls_get_room_for_reasoning_and_the_answer():
+    llm = providers.build_llm("groq", "openai/gpt-oss-120b", streaming=False, api_key="gsk_org")
+    assert llm.max_tokens == providers.GROQ_MAX_OUTPUT_TOKENS >= 16_384
+
+
+def test_a_short_gpt_oss_call_reasons_briefly_on_top_of_its_answer_budget():
+    llm = model_factory._build_groq(
+        model_name="openai/gpt-oss-20b", api_key="gsk", temperature=0.0, max_tokens=256,
+        streaming=False, reasoning=False, message="", task_type="default",
+    )
+    assert llm.reasoning_effort == "low"
+    assert llm.max_tokens == 256 + 1024
+
+
+def test_a_non_reasoning_groq_model_keeps_its_budget():
+    llm = model_factory._build_groq(
+        model_name="qwen/qwen3.8-27b", api_key="gsk", temperature=0.0, max_tokens=256,
+        streaming=False, reasoning=False, message="", task_type="default",
+    )
+    assert llm.max_tokens == 256
