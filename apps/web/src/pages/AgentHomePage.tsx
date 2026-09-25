@@ -58,7 +58,7 @@ import { ThinkingIndicator } from '@/components/agent/ThinkingIndicator'
 // had. /agent, the surface the product points people at for real work, was
 // rendering neither: a `contract_cite` result arrived as a mono pill with the
 // tool's name on it and the quotes it returned were dropped on the floor.
-import { CitationPills, type CitationBundle } from '@/components/agent/CitationPills'
+import { AnswerCitations, CitationPills, type AnswerCitation, type CitationBundle } from '@/components/agent/CitationPills'
 import { RedlinePreview, type RedlineProposal } from '@/components/agent/RedlinePreview'
 import { ToolCallChip, type RailToolCall } from '@/components/agent/SideAgentRail'
 import { cn } from '@/lib/utils'
@@ -103,6 +103,8 @@ interface ChatMessage {
    * nothing to expand into.
    */
   toolCalls?: RailToolCall[]
+  /** P3 — the answer's verified citations (the stream's citations frame). */
+  citations?: AnswerCitation[]
   // P5 — write-tool plan-then-execute. Proposals awaiting the user's
   // Apply/Cancel, rendered as ActionPreview cards (mirrors SideAgentRail).
   pendingActions?: PendingAction[]
@@ -200,6 +202,9 @@ function normalizeMessageContent(raw: unknown): string {
   if (typeof raw === 'object') {
     const obj = raw as Record<string, unknown>
     if (typeof obj.text === 'string') return obj.text
+    // The answer's citations travel as their own block; they render as
+    // sources below the message, not as text in it.
+    if (obj.type === 'citations') return ''
     // tool_use / tool_result blocks — give a compact summary so the
     // user can see the call chain without us hiding the structured data.
     if (obj.type === 'tool_use' && typeof obj.name === 'string') {
@@ -587,6 +592,10 @@ export function AgentHomePage() {
         role: m.role as 'user' | 'assistant' | 'system',
         content: normalizeMessageContent(m.content),
         toolCalls: toolsByMessage.get(m.id),
+        citations: Array.isArray(m.content)
+          ? (m.content as Array<{ type?: string; citations?: AnswerCitation[] }>)
+              .flatMap(b => b?.type === 'citations' && Array.isArray(b.citations) ? b.citations : [])
+          : undefined,
         provenance: m.model ? { model: m.model } : undefined,
       })))
       setActiveThread({ id: data.id, title: data.title ?? 'New conversation' })
@@ -707,6 +716,13 @@ export function AgentHomePage() {
               setMessages(prev => prev.map(m =>
                 m.id === assistantMsgId ? { ...m, content: assembled } : m,
               ))
+            } else if (evt.type === 'citations' && Array.isArray(evt.citations)) {
+              const citations = evt.citations as AnswerCitation[]
+              setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, citations } : m))
+            } else if (evt.type === 'final' && typeof evt.answer === 'string') {
+              // Validated answer: markers renumbered to the sources that survived.
+              assembled = evt.answer
+              setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: assembled } : m))
             } else if (evt.type === 'tool_call_start' && evt.name) {
               // Every frame the orchestrator emits carries a per-call `id`.
               // This page keyed on `name` instead, so a turn that called the
@@ -1664,6 +1680,9 @@ function MessageBubble({
               this the response was rendered with whitespace-pre-wrap
               so users saw literal `**`, `*`, etc. */}
           {cleanProse && <MarkdownProse text={cleanProse} />}
+          {!message.streaming && message.citations && message.citations.length > 0 && (
+            <AnswerCitations citations={message.citations} />
+          )}
           {message.streaming && !message.content && (
             // Phase is READ OFF the frames received so far, never guessed: no
             // tool yet means the model is still choosing one; a running tool

@@ -965,6 +965,156 @@
       ],
       "repeat": 1,
       "public_notes": "Baseline for retiring the coverage branch of the regex tool repair (F-07)."
+    },
+    {
+      "case_id": "public_full_nhs_five_part_question",
+      "name": "Five-part question: every part answered or marked not found",
+      "suite": "full",
+      "visibility": "public",
+      "category": "contract_qa_multi_part",
+      "prompt": "Under this contract: 1) what is the notice period for termination? 2) who bears liability for data breaches? 3) what is the waiting time standard for urgent response? 4) how are breaches of that standard penalised? 5) which court has exclusive jurisdiction?",
+      "target": {
+        "route": "core_project",
+        "displayed_document_id": "nhs-community-services"
+      },
+      "documents": [
+        {
+          "document_id": "nhs-community-services",
+          "filename": "Community Services Contract (NHS-style, synthetic).md",
+          "kind": "contract",
+          "trust_level": "trusted",
+          "sections": [
+            {
+              "ref": "nhs-community-services#termination",
+              "title": "Termination on Notice",
+              "text": "Either Party may terminate this Contract by giving the other Party not less than 6 months' written notice, such notice to expire no earlier than the first anniversary of the Service Commencement Date."
+            },
+            {
+              "ref": "nhs-community-services#data-breach",
+              "title": "Data Protection Liability",
+              "text": "The Provider is liable for any Data Loss Event caused by its breach of Data Protection Legislation and must notify the Commissioner without undue delay and in any event within 24 hours of becoming aware of it."
+            },
+            {
+              "ref": "nhs-community-services#waiting-times",
+              "title": "Operational Standards - Waiting Times",
+              "text": "The Provider must ensure that 95% of Service Users referred to the Urgent Response Service are assessed within 2 hours of referral, measured monthly."
+            },
+            {
+              "ref": "nhs-community-services#service-credits",
+              "title": "Consequences of Breach",
+              "text": "For each month in which the waiting time standard is not met, the Commissioner may withhold 2% of the Actual Monthly Value for that month, and the Provider must deliver a Remedial Action Plan within 10 Operational Days."
+            }
+          ]
+        }
+      ],
+      "expectations": {
+        "expected_outcome": "OUTCOME_OK",
+        "required_facts": [
+          "6 months",
+          "24 hours",
+          "95%",
+          "2 hours",
+          "2%",
+          "Not found"
+        ],
+        "required_citation_refs": [
+          "nhs-community-services#termination",
+          "nhs-community-services#waiting-times"
+        ],
+        "allowed_citation_refs": [
+          "nhs-community-services#data-breach",
+          "nhs-community-services#service-credits"
+        ],
+        "requires_citations": true
+      },
+      "hard_gates": [
+        "required_facts"
+      ],
+      "standards": [
+        {
+          "framework": "HELM",
+          "control": "completeness",
+          "description": "A multi-part question is answered in full; a part the documents do not address is said to be not found."
+        }
+      ],
+      "tags": [
+        "qa",
+        "multi-part",
+        "citation",
+        "nhs"
+      ],
+      "repeat": 1,
+      "public_notes": "Regression case for the NHS evaluation, where a five-part question was answered in two parts. Synthetic contract text written for this fixture; part 5 is deliberately not addressed by the document."
+    },
+    {
+      "case_id": "public_full_multi_part_payment_terms",
+      "name": "Three-part question over one agreement",
+      "suite": "full",
+      "visibility": "public",
+      "category": "contract_qa_multi_part",
+      "prompt": "(a) When must invoices be paid? (b) What remedy applies if the hot meal response target is missed? (c) How long does the provider have to submit a cure plan?",
+      "target": {
+        "route": "core_project",
+        "displayed_document_id": "airport-food-master"
+      },
+      "documents": [
+        {
+          "document_id": "airport-food-master",
+          "filename": "Airport Food Services Agreement.md",
+          "kind": "contract",
+          "trust_level": "trusted",
+          "sections": [
+            {
+              "ref": "airport-food-master#sla-hot-meals",
+              "title": "Service Level - Hot Meal Response",
+              "text": "Global Air Caterers must deliver approved hot meal requests to the assigned gate within 15 minutes after dispatch acknowledgement for at least 98% of measured requests in each calendar month."
+            },
+            {
+              "ref": "airport-food-master#service-credit",
+              "title": "Service Credit",
+              "text": "If monthly hot meal response performance falls below 98%, Terminal Authority may apply a service credit equal to 2% of the affected monthly invoice and require a written cure plan within 5 business days."
+            },
+            {
+              "ref": "airport-food-master#payment",
+              "title": "Payment",
+              "text": "Terminal Authority shall pay each undisputed invoice within 45 days of receipt."
+            }
+          ]
+        }
+      ],
+      "expectations": {
+        "expected_outcome": "OUTCOME_OK",
+        "required_facts": [
+          "45 days",
+          "2%",
+          "5 business days"
+        ],
+        "required_citation_refs": [
+          "airport-food-master#payment",
+          "airport-food-master#service-credit"
+        ],
+        "allowed_citation_refs": [
+          "airport-food-master#sla-hot-meals"
+        ],
+        "requires_citations": true
+      },
+      "hard_gates": [
+        "required_facts"
+      ],
+      "standards": [
+        {
+          "framework": "HELM",
+          "control": "completeness",
+          "description": "Every part of a lettered question is answered."
+        }
+      ],
+      "tags": [
+        "qa",
+        "multi-part",
+        "citation"
+      ],
+      "repeat": 1,
+      "public_notes": "Lettered parts, one document."
     }
   ]
 }

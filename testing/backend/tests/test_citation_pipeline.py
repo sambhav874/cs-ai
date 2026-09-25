@@ -172,13 +172,12 @@ def test_a_duplicate_citation_is_dropped_and_the_rest_renumber():
     assert "30 days" in by_ref[int(termination.group(1))]["quote"]
 
 
-def test_an_unsupported_citation_is_kept_but_flagged_not_silently_deleted():
-    """Deliberate: a fabricated quote stays, marked `verified: false`.
+def test_an_unsupported_citation_is_dropped_but_reported():
+    """A fabricated quote is not shown to the reader (plan P3).
 
-    Deleting it would hide from the reader that the agent asserted something it
-    could not back up, and Phase 4.4 surfaces this flag in the UI. It is also
-    what the eval's citation-support metric counts, so the flag has to be set
-    rather than the row removed.
+    It used to stay, flagged `verified: false`. It is now removed from the
+    answer — and listed in the guard report's `dropped`, which the eval counts
+    as an unsupported citation, so dropping it cannot flatter the metric.
     """
     state = make_state(
         "Payment is due within 45 days [1]. The penalty is enormous [2].",
@@ -187,11 +186,12 @@ def test_an_unsupported_citation_is_kept_but_flagged_not_silently_deleted():
 
     ActiveMiddlewareEngine().answer_guard(state)
 
-    by_ref = {item["ref"]: item for item in state.citation_annotations}
-    assert sorted(by_ref) == [1, 2]
-    assert by_ref[1]["verified"] is True
-    assert by_ref[2]["verified"] is False
+    assert [item["ref"] for item in state.citation_annotations] == [1]
+    assert state.citation_annotations[0]["verified"] is True
+    assert "[2]" not in state.answer
     assert "invalid_or_unsupported_citation" in state.verifier_issues
+    dropped = state.citation_details["citation_guard"]["dropped"]
+    assert [d["quote"] for d in dropped] == [FABRICATED]
 
 
 def test_all_citations_supported_leaves_numbering_untouched():
@@ -213,10 +213,55 @@ def test_verified_flag_reflects_the_support_check():
     state = make_state("Payment is due within 45 days [1].", [annotation(1, SUPPORTED_A)])
     ActiveMiddlewareEngine().answer_guard(state)
     assert state.citation_annotations[0]["verified"] is True
+    assert state.citation_annotations[0]["exact"] is False  # no source text in this test
 
     state = make_state("The penalty is enormous [1].", [annotation(1, FABRICATED)])
     ActiveMiddlewareEngine().answer_guard(state)
-    assert state.citation_annotations[0]["verified"] is False
+    assert state.citation_annotations == []
+
+
+# ── Exact spans against the source (plan P3) ──────────────────────────────────
+
+SOURCE = (
+    "--- Page 1 ---\n\n## 4. Payment\n\nTerminal Authority shall pay each **undisputed** invoice within 45 days of "
+    "receipt.\n\n--- Page 2 ---\n\n## 9. Termination\n\nEither party may terminate for cause on 30 days written notice."
+)
+
+
+@pytest.fixture()
+def source():
+    previous = citations.set_source_loader(lambda doc: SOURCE if doc == "doc-1" else None)
+    yield
+    citations.set_source_loader(previous)
+
+
+def test_a_quote_in_the_source_is_exact_with_its_page(source):
+    state = make_state("Termination needs 30 days notice [1].", [annotation(1, SUPPORTED_B, page=1)])
+    ActiveMiddlewareEngine().answer_guard(state)
+    cite = state.citation_annotations[0]
+    assert cite["exact"] is True and cite["verified"] is True
+    assert cite["page"] == 2                       # from the source, not the model's page 1
+    assert SOURCE[cite["span_start"]:cite["span_end"]].endswith("30 days written notice.")
+
+
+def test_a_paraphrased_quote_is_replaced_by_the_sentence_it_came_from(source):
+    paraphrase = "Terminal Authority pays each undisputed invoice within forty-five days of receipt"
+    state = make_state("Payment is due within 45 days [1].", [annotation(1, paraphrase)])
+    ActiveMiddlewareEngine().answer_guard(state)
+    cite = state.citation_annotations[0]
+    assert cite["requoted"] is True and cite["exact"] is True
+    assert cite["quote"] == "Terminal Authority shall pay each undisputed invoice within 45 days of receipt."
+    assert "citation_requoted_from_source" in state.verifier_issues
+
+
+def test_a_quote_the_tools_returned_but_the_source_lacks_is_dropped(source):
+    # Evidence that "supports" it exists, but the document says no such thing.
+    invented = "Either party may terminate for convenience on 5 days notice."
+    state = make_state("Anyone can walk away on 5 days notice [1].", [annotation(1, invented)],
+                       matches=[{"quote": invented, "context": invented, "document_id": "doc-1"}])
+    ActiveMiddlewareEngine().answer_guard(state)
+    assert state.citation_annotations == []
+    assert "unverifiable_citation_dropped" in state.verifier_issues
 
 
 def test_source_ref_preserves_what_the_model_originally_wrote():

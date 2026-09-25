@@ -38,6 +38,7 @@ const TURN = [
     args: { contractId: 'cmabc', action: 'add_tag', payload: { tag: 'urgent' } }, preview: { summary: "Add tag 'urgent'" }, reversible: true },
   { type: 'token', delta: 'Found the Acme MSA. ' },
   { type: 'token', delta: 'Click Apply to tag it.' },
+  { type: 'citations', citations: [{ ref: 1, contractId: 'cmabc', quote: 'Acme shall pay.', page: 3, sectionRef: '4', verified: true }] },
   { type: 'done', provider: 'anthropic', model: 'claude-x', tier: 'default', source: 'byok',
     usage: { inputTokens: 1000, outputTokens: 100, modelCalls: 2 } },
 ]
@@ -86,7 +87,10 @@ describe('POST /api/v1/agent/chat', () => {
     expect(thread).toMatchObject({ orgId: org, userId: user, scopeType: 'contract', scopeId: contractId, title: 'Tag the Acme MSA urgent' })
     expect(thread.messages.map(m => [m.role, m.content])).toEqual([
       ['user', [{ type: 'text', text: 'Tag the Acme MSA urgent' }]],
-      ['assistant', [{ type: 'text', text: 'Found the Acme MSA. Click Apply to tag it.' }]],
+      ['assistant', [
+        { type: 'text', text: 'Found the Acme MSA. Click Apply to tag it.' },
+        { type: 'citations', citations: [{ ref: 1, contractId: 'cmabc', quote: 'Acme shall pay.', page: 3, sectionRef: '4', verified: true }] },
+      ]],
     ])
     expect(thread.messages[1]).toMatchObject({ provider: 'anthropic', model: 'claude-x', inputTokens: 1000, isByok: true })
     expect(thread.toolCalls.map(t => [t.toolName, t.status, t.reversible])).toEqual([

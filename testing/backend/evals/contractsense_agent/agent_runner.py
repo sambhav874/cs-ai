@@ -54,6 +54,19 @@ _STOP = {
 }
 
 
+def _parts_report(prompt: str, answer: str) -> Dict[str, Any]:
+    from services.contract_agent import citations as citation_pipeline
+    from services.contract_agent.question_plan import missing_parts, split_parts
+
+    parts = split_parts(prompt)
+    if not parts:
+        return {}
+    return {
+        "question_parts": len(parts),
+        "missing_parts": missing_parts(parts, citation_pipeline.strip_citation_block(answer)),
+    }
+
+
 class FixtureRetriever:
     """Deterministic lexical retrieval over the sections of one eval case.
 
@@ -312,6 +325,17 @@ class AgentContractSenseRunner:
 
             context = self._context(case, AgentContext, AgentSurface)
             executor = build_fixture_tool_executor(case)
+            # The citation guard checks every quote against the cited
+            # document's text; here that text is the fixture's sections.
+            from services.contract_agent import citations as citation_pipeline
+
+            sources = {
+                document.document_id: "\n\n".join(
+                    "\n".join(part for part in (section.title, section.text) if part) for section in document.sections
+                )
+                for document in case.documents
+            }
+            previous_loader = citation_pipeline.set_source_loader(sources.get)
             transcript: List[Tuple[str, str]] = []
 
             model_calls = 0
@@ -344,10 +368,12 @@ class AgentContractSenseRunner:
                 transcript.append(("user", prompt))
                 transcript.append(("assistant", response.answer or ""))
 
+            citation_pipeline.set_source_loader(previous_loader)
             if response is None:
                 raise RuntimeError("case declared no prompts")
 
             annotations = list(response.citation_annotations or [])
+            dropped = list(((response.citation_details or {}).get("citation_guard") or {}).get("dropped") or [])
             answer = response.answer or ""
             latency_ms = int((time.time() - started) * 1000)
 
@@ -383,9 +409,12 @@ class AgentContractSenseRunner:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 verified_citations=sum(1 for item in annotations if item.get("verified")),
-                emitted_citations=len(annotations),
+                emitted_citations=len(annotations) + len(dropped),
+                exact_citations=sum(1 for item in annotations if item.get("exact")),
                 unsupported=_is_unsupported_answer(answer),
                 metadata={
+                    # Multi-part completeness, judged the way the runtime does.
+                    **_parts_report(prompts[-1], answer),
                     "provider": self.ai_provider,
                     "expected_outcome": case.expectations.expected_outcome,
                     "verifier_issues": list(
@@ -400,6 +429,8 @@ class AgentContractSenseRunner:
                 },
             )
         except Exception as exc:
+            if "previous_loader" in locals():
+                citation_pipeline.set_source_loader(previous_loader)
             return AgentEvalObservation(
                 case_id=case.case_id,
                 runner="agent",

@@ -40,7 +40,7 @@ import { useAuthStore } from '@/store/auth'
 import { useAgentStore } from '@/store/agent'
 import { ActionPreview, type PendingAction } from './ActionPreview'
 import { RedlinePreview, type RedlineProposal } from './RedlinePreview'
-import { CitationPills, type CitationBundle } from './CitationPills'
+import { AnswerCitations, CitationPills, type AnswerCitation, type CitationBundle } from './CitationPills'
 import { parseActionChips } from './action-chips'
 import { ChipRow } from './ChipButton'
 import { ThinkingIndicator } from './ThinkingIndicator'
@@ -110,6 +110,8 @@ interface RailMessage {
   stopped?: boolean
   // Tool invocations attached to this assistant turn (D.1.4a+).
   toolCalls?: RailToolCall[]
+  // P3 — the answer's verified citations, from the stream's citations frame.
+  citations?: AnswerCitation[]
   // D.3.1 — write-tool proposals awaiting user confirmation. Separate from
   // toolCalls because their lifecycle is interactive: user sees card →
   // clicks Apply/Edit/Cancel → then we either dispatch the real tool call
@@ -581,6 +583,14 @@ export function SideAgentRail() {
                 setMessages(prev =>
                   prev.map(m => m.id === assistantId ? { ...m, content: assembled } : m)
                 )
+              } else if (kind === 'citations' && Array.isArray(parsed.citations)) {
+                const citations = parsed.citations as AnswerCitation[]
+                setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, citations } : m))
+              } else if (kind === 'final' && typeof parsed.answer === 'string') {
+                // The answer after citation validation: markers renumbered to
+                // the sources that survived. Replaces what streamed.
+                assembled = parsed.answer
+                setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: assembled } : m))
               } else if (kind === 'tool_call_start') {
                 const tc: RailToolCall = {
                   id:     String(parsed.id ?? `tc_${Date.now()}`),
@@ -1040,6 +1050,9 @@ export function SideAgentRail() {
         role: m.role,
         content: (m.content ?? []).map((b) => (b as { text?: string }).text ?? '').join(''),
         toolCalls: toolByMsg.get(m.id),
+        citations: (m.content ?? []).flatMap(b =>
+          b.type === 'citations' && Array.isArray((b as { citations?: unknown }).citations)
+            ? (b as unknown as { citations: AnswerCitation[] }).citations : []),
       }))
       threadIdRef.current = t.id
       sessionIdRef.current = ''  // local orchestrator session reset; fresh context on next turn
@@ -2056,6 +2069,11 @@ function MessageBubble({
           <span className="inline-block w-1.5 h-3 bg-fg-400 ml-0.5 animate-pulse align-middle" aria-hidden />
         )}
       </div>
+      {!isUser && !msg.streaming && msg.citations && msg.citations.length > 0 && (
+        <div className="max-w-[88%] w-full">
+          <AnswerCitations citations={msg.citations} />
+        </div>
+      )}
       {/* CONTROL — an interrupted turn says so. Without this the transcript
           shows a truncated answer that reads as finished, which is the one
           way a stop button can do harm. */}

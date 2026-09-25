@@ -61,6 +61,12 @@ class DeepContractAgentRunner:
         state.add_trace("input_guard", message_length=len(state.message))
         state = self.middleware.input_guard(state)
         if state.status != AgentStatus.COMPLETED:
+            if not state.question_parts:
+                from services.contract_agent.question_plan import split_parts
+
+                state.question_parts = split_parts(state.message)
+                if state.question_parts:
+                    state.add_trace("question_plan", parts=len(state.question_parts))
             self._add_context_trace(state)
             state = self.middleware.model_guard(state)
             runtime = ContractReActRuntime(

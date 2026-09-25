@@ -209,6 +209,9 @@ def test_a_scoped_turn_keeps_the_evidence_tools():
     keep = tool_filter(AssistantRequest(message="m", session_id="s", org_id="o", user_id="u",
                                         skill_allowed_tools=["contract_get"]), scoped=scope.scoped)
     assert keep("search_evidence") and keep("contract_get") and not keep("contract_search")
+    # In scope, citations come from search_evidence(exact=); contract_cite is out.
+    assert not tool_filter(AssistantRequest(message="m", session_id="s", org_id="o", user_id="u"), scoped=True)("contract_cite")
+    assert tool_filter(AssistantRequest(message="m", session_id="s", org_id="o", user_id="u"), scoped=False)("contract_cite")
 
 
 def test_the_page_and_mentions_reach_the_model():

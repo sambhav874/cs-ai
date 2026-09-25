@@ -106,6 +106,12 @@ def resolve_scope(req: AssistantRequest) -> Scope:
                                                                    session_id=req.session_id), scoped=False)
     page = req.page_context or {}
     kind, page_id = page.get("type"), page.get("id")
+    if not page_id:
+        # No page, but the user @-mentioned a contract: scope to it, so its
+        # evidence is read with verified citations rather than searched for.
+        mentioned = next((m for m in (req.mentions or []) if m.get("kind") in {"contract", "space"} and m.get("id")), None)
+        if mentioned:
+            kind, page_id = mentioned["kind"], mentioned["id"]
     if not kind or not page_id or not user.teamIds:
         return unscoped
     try:
@@ -267,6 +273,10 @@ def tool_filter(req: AssistantRequest, *, scoped: bool) -> Callable[[str], bool]
         if name in deny:
             return False
         if not scoped and name in SCOPED_TOOLS:
+            return False
+        # In scope, citations come from search_evidence(exact=), checked
+        # against the document; contract_cite is the unscoped fallback.
+        if scoped and name == "contract_cite":
             return False
         # An allowlist names lifecycle tools; the evidence tools stay, since a
         # skill about a contract still needs to read it.

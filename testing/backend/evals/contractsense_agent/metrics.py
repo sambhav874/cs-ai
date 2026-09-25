@@ -28,10 +28,16 @@ COST_TOLERANCE_RATIO = 0.25
 # Falling below this fails the build outright, independent of any baseline —
 # so a first run with no baseline still has a floor.
 CITATION_SUPPORT_FLOOR = 0.90
+# P3 raised the bar from "supported by retrieved evidence" to "found in the
+# source document": the share of emitted citations whose quote is an exact
+# (whitespace-normalised) span of the contract.
+EXACT_CITATION_FLOOR = 0.90
 
 # Higher is better; a drop beyond QUALITY_TOLERANCE is a regression.
 QUALITY_METRICS = (
     "citation_support_rate",
+    "exact_citation_rate",
+    "multi_part_completeness_rate",
     "multi_turn_resolution_rate",
     "overall_score",
     "pass_rate",
@@ -53,7 +59,10 @@ COST_METRICS = (
 # Only this one fails the build on a baseline regression. The rest are reported
 # so a human can see the trade, because "fewer model calls, same citations" is
 # the whole point of 1.2 and a gate that fails on any movement would block it.
-BLOCKING_METRICS = ("citation_support_rate",)
+BLOCKING_METRICS = ("citation_support_rate", "exact_citation_rate", "multi_part_completeness_rate")
+
+# Every part of a multi-part question answered, or said to be not found.
+MULTI_PART_COMPLETENESS_FLOOR = 1.0
 
 
 def percentile(values: Sequence[float], fraction: float) -> Optional[float]:
@@ -119,6 +128,7 @@ def compute_metrics(results: Sequence[EvalCaseResult]) -> Dict[str, Any]:
     #    the support logic here.
     verified = sum(observation.verified_citations or 0 for observation in observations)
     emitted = sum(observation.emitted_citations or 0 for observation in observations)
+    exact = sum(observation.exact_citations or 0 for observation in observations)
 
     # 6. Unsupported-answer rate — only counted over cases that were *supposed*
     #    to be answerable. A case expecting OUTCOME_NONE_UNSUPPORTED is correct
@@ -134,6 +144,11 @@ def compute_metrics(results: Sequence[EvalCaseResult]) -> Dict[str, Any]:
     #    turn's answer is scored against required_facts, so a pronoun the agent
     #    failed to resolve shows up as a factuality miss on that check.
     multi_turn = [result for result in results if (result.observation.turns or 1) > 1]
+
+    # 8. Multi-part completeness (P3) — over cases whose prompt enumerates parts:
+    #    the final answer addresses every part, or says it was not found.
+    multi_part = [result for result in results if result.observation.metadata.get("question_parts")]
+    complete = sum(1 for result in multi_part if not result.observation.metadata.get("missing_parts"))
     resolved = sum(1 for result in multi_turn if _facts_check_passed(result))
 
     return {
@@ -149,10 +164,13 @@ def compute_metrics(results: Sequence[EvalCaseResult]) -> Dict[str, Any]:
         "tool_calls_per_turn": _per_turn(observations, "tool_calls"),
         # 5. citation support
         "citation_support_rate": _rate(verified, emitted),
+        "exact_citation_rate": _rate(exact, emitted),
         # 6. unsupported answers
         "unsupported_answer_rate": _rate(unsupported, len(answerable)),
         # 7. multi-turn reference resolution
         "multi_turn_resolution_rate": _rate(resolved, len(multi_turn)),
+        # 8. multi-part completeness
+        "multi_part_completeness_rate": _rate(complete, len(multi_part)),
         # Case-level scores, so a metrics-only report is still self-contained.
         "overall_score": round(sum(result.score for result in results) / max(total, 1), 3),
         "pass_rate": _rate(sum(1 for result in results if result.passed), total),
@@ -163,6 +181,7 @@ def compute_metrics(results: Sequence[EvalCaseResult]) -> Dict[str, Any]:
             "answerable_cases": len(answerable),
             "citations_emitted": emitted,
             "citations_verified": verified,
+            "citations_exact": exact,
             "unsupported_answers": unsupported,
         },
     }
@@ -228,6 +247,18 @@ def compare_metrics(
             f"citation_support_rate {support} is below the {CITATION_SUPPORT_FLOOR} floor"
         )
 
+    exact_rate = current.get("exact_citation_rate")
+    if exact_rate is not None and exact_rate < EXACT_CITATION_FLOOR:
+        floor_failures.append(
+            f"exact_citation_rate {exact_rate} is below the {EXACT_CITATION_FLOOR} floor"
+        )
+
+    completeness = current.get("multi_part_completeness_rate")
+    if completeness is not None and completeness < MULTI_PART_COMPLETENESS_FLOOR:
+        floor_failures.append(
+            f"multi_part_completeness_rate {completeness} is below the {MULTI_PART_COMPLETENESS_FLOOR} floor"
+        )
+
     return {
         "passed": not regressions and not floor_failures,
         "has_baseline": baseline is not None,
@@ -237,6 +268,7 @@ def compare_metrics(
         "comparisons": comparisons,
         "blocking_metrics": list(BLOCKING_METRICS),
         "citation_support_floor": CITATION_SUPPORT_FLOOR,
+        "exact_citation_floor": EXACT_CITATION_FLOOR,
     }
 
 

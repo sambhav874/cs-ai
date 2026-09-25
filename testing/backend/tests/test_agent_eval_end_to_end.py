@@ -255,3 +255,97 @@ def test_forbidden_tool_selection_is_refused_by_the_guard_layer():
     normalized = observation.answer.lower()
     assert "cannot" in normalized
     assert "sent the rate card" not in normalized
+
+
+# ── P3: multi-part completeness and exact citations ───────────────────────────
+
+
+def _nhs_answer_first_two(case):
+    termination = case.documents[0].sections[0].text
+    return AIMessage(content=(
+        "**1.** Either party may end the contract on not less than 6 months' written notice [1].\n"
+        "**2.** The Provider is liable for data loss it causes, and must notify within 24 hours [2].\n"
+        "<CITATIONS>\n"
+        '[{"ref": 1, "doc_id": "nhs-community-services", "quote": "' + termination + '"}, '
+        '{"ref": 2, "doc_id": "nhs-community-services", "quote": "must notify the Commissioner without undue delay and in any event within 24 hours"}]\n'
+        "</CITATIONS>"
+    ))
+
+
+def _nhs_answer_rest(case):
+    standard = case.documents[0].sections[2].text
+    return AIMessage(content=(
+        "**3.** 95% of urgent referrals must be assessed within 2 hours [3].\n"
+        "**4.** The Commissioner may withhold 2% of the Actual Monthly Value for the month.\n"
+        "**5.** Not found in the documents searched.\n"
+        "<CITATIONS>\n"
+        '[{"ref": 3, "doc_id": "nhs-community-services", "quote": "' + standard + '"}]\n'
+        "</CITATIONS>"
+    ))
+
+
+def test_nhs_five_part_question_is_answered_in_full():
+    """The NHS failure: five parts asked, two answered, nothing said about the
+    rest. The runtime asks once for the skipped parts; every part ends up
+    answered or said not found, and every citation is an exact source span."""
+    case = load_case("public_full_nhs_five_part_question")
+    model = ScriptedModel([
+        tool_call("search_evidence", {"query": "termination notice"}),
+        _nhs_answer_first_two(case),
+        _nhs_answer_rest(case),
+    ])
+
+    observation = AgentContractSenseRunner(model=model).run_case(case)
+
+    assert observation.error is None, observation.error
+    assert observation.metadata["question_parts"] == 5
+    assert observation.metadata["missing_parts"] == []
+    assert "**5.** Not found" in observation.answer
+    assert observation.emitted_citations == 3 and observation.exact_citations == 3
+    result = score_observation(case, observation)
+    assert result.passed, [c.name for c in result.checks if not c.passed]
+    metrics = compute_metrics([result])
+    assert metrics["multi_part_completeness_rate"] == 1.0
+    assert metrics["exact_citation_rate"] == 1.0
+
+
+def test_completeness_gate_fails_when_the_runtime_skips_parts(monkeypatch):
+    """Recorded failing (gate 7): with the runtime's completeness pass switched
+    off, the same scripted model leaves parts 3-5 unanswered and the gate
+    fails on its floor. This is the assertion watched failing."""
+    import services.contract_agent.question_plan as plan
+    from evals.contractsense_agent.metrics import compare_metrics
+
+    monkeypatch.setattr(plan, "split_parts", lambda _q: [])      # runtime sees no parts
+    case = load_case("public_full_nhs_five_part_question")
+    model = ScriptedModel([tool_call("search_evidence", {"query": "notice"}), _nhs_answer_first_two(case)])
+    observation = AgentContractSenseRunner(model=model).run_case(case)
+    monkeypatch.undo()
+
+    # The eval judges with the real planner.
+    from evals.contractsense_agent.agent_runner import _parts_report
+    observation.metadata.update(_parts_report(case.prompt, observation.answer))
+    assert observation.metadata["missing_parts"] == [3, 4, 5]
+    metrics = compute_metrics([score_observation(case, observation)])
+    assert metrics["multi_part_completeness_rate"] == 0.0
+    gate = compare_metrics(None, metrics)
+    assert not gate["passed"]
+    assert any("multi_part_completeness_rate" in f for f in gate["floor_failures"])
+
+
+def test_a_paraphrased_quote_does_not_count_as_exact():
+    """exact_citation_rate counts spans found word for word in the source."""
+    case = load_case("public_smoke_sla_service_credit")
+    model = ScriptedModel([
+        tool_call("search_evidence", {"query": "service credit"}),
+        AIMessage(content=(
+            "A 2% service credit applies [1].\n<CITATIONS>\n"
+            '[{"ref": 1, "doc_id": "airport-food-master", '
+            '"quote": "Terminal Authority can take a two percent credit on the monthly invoice"}]\n</CITATIONS>'
+        )),
+    ])
+    observation = AgentContractSenseRunner(model=model).run_case(case)
+    metrics = compute_metrics([score_observation(case, observation)])
+    # Re-quoted from the source sentence it paraphrased — exact, and marked so.
+    assert observation.exact_citations == observation.emitted_citations == 1
+    assert metrics["exact_citation_rate"] == 1.0

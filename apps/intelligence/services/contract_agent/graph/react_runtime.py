@@ -107,6 +107,12 @@ RESULT_PREVIEW_CHARS = 20_000
 _TRANSIENT_MARKERS = ("rate limit", "rate_limit", "429", "timeout", "timed out", "overloaded", "503", "502", "500", "connection")
 
 
+def _missing_parts(parts: List[str], answer: str) -> List[int]:
+    from services.contract_agent.question_plan import missing_parts
+
+    return missing_parts(parts, citations.strip_citation_block(answer))
+
+
 def _is_transient_model_error(exc: Exception) -> bool:
     text = f"{type(exc).__name__} {exc}".lower()
     return any(marker in text for marker in _TRANSIENT_MARKERS)
@@ -204,6 +210,9 @@ class ContractReActRuntime:
         self.approvals = ApprovalManager()
         # Characters of the current turn's answer already sent to the client.
         self._streamed_answer_chars = 0
+        # A multi-part answer held while the skipped parts are asked for.
+        self._partial_answer = ""
+        self._parts_followed_up = False
 
     # ── Public entry point ─────────────────────────────────────────────────
 
@@ -430,6 +439,36 @@ class ContractReActRuntime:
                 # duplicate the whole answer on screen.
                 if on_event and not getattr(self, "_streamed_answer_chars", 0):
                     on_event("delta", {"text": answer, "iteration": iteration})
+                if self._partial_answer:
+                    answer = citations.merge_answers(self._partial_answer, answer)
+                # Every part of a multi-part question answered, or said to be
+                # not found: one follow-up turn for what was skipped, then a
+                # plain statement of what is still missing.
+                parts = state.question_parts
+                missing = _missing_parts(parts, answer) if parts else []
+                if missing and not self._parts_followed_up and iteration < self.max_iterations:
+                    from services.contract_agent.question_plan import follow_up
+
+                    self._parts_followed_up = True
+                    self._partial_answer = answer
+                    messages.append(response)
+                    messages.append(HumanMessage(content=follow_up(parts, missing, next_ref=citations.max_ref(answer) + 1)))
+                    state.add_trace("completeness_check", missing=missing, action="follow_up")
+                    if on_event:
+                        on_event("delta", {"text": "\n\n", "iteration": iteration})
+                        on_event("status", {"message": "Answering the remaining parts…", "iteration": iteration})
+                    continue
+                if missing:
+                    from services.contract_agent.question_plan import not_found_note
+
+                    note = not_found_note(parts, missing)
+                    answer = citations.strip_citation_block(answer).rstrip() + note + (
+                        "\n\n<CITATIONS>\n" + json.dumps(citations.parse_citation_block(answer)) + "\n</CITATIONS>"
+                        if citations.parse_citation_block(answer) else ""
+                    )
+                    state.add_trace("completeness_check", missing=missing, action="marked_not_found")
+                    if on_event:
+                        on_event("delta", {"text": note, "iteration": iteration})
                 state.add_trace(
                     "model_step",
                     iteration=iteration,
@@ -486,8 +525,14 @@ class ContractReActRuntime:
         ]
         doc_inventory = "\n".join(doc_lines) if doc_lines else "No documents attached."
 
+        plan = ""
+        if state.question_parts:
+            from services.contract_agent.question_plan import plan_block
+
+            plan = plan_block(state.question_parts) + "\n\n"
         return (
             f"User request:\n{state.message}\n\n"
+            f"{plan}"
             f"Conversation memory:\n{memory}\n\n"
             f"Documents in scope ({len(attached)}):\n{doc_inventory}\n\n"
             f"Authorized scope:\n"

@@ -176,6 +176,10 @@ class AgentEvalObservation(BaseModel):
     # middleware._validate_citations), versus how many it emitted.
     verified_citations: Optional[int] = None
     emitted_citations: Optional[int] = None
+    # Citations whose quote was found exactly in the source document (P3).
+    # Emitted counts the ones the guard dropped as unfindable too, so dropping
+    # a fabrication lowers both rates instead of disappearing from them.
+    exact_citations: Optional[int] = None
     # Answers where the agent said it had no supporting evidence.
     unsupported: bool = False
 

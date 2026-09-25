@@ -23,19 +23,29 @@ Pure apart from `emit`; tested without a model.
 from __future__ import annotations
 
 import re
-from typing import Any, Callable, Dict, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 Emit = Callable[[Dict[str, Any]], None]
 
 _OPEN_TAG = "<citations"
+_CLOSE_TAG = "</citations>"
+
+
+def _held_suffix(lowered: str, tag: str) -> int:
+    """Length of a trailing fragment that could be the start of `tag`."""
+    for keep in range(min(len(tag) - 1, len(lowered)), 0, -1):
+        if tag.startswith(lowered[-keep:]):
+            return keep
+    return 0
 
 
 class CitationBlockFilter:
-    """Hold back the model's trailing <CITATIONS> JSON from the streamed text.
+    """Hold back the model's <CITATIONS> JSON from the streamed text.
 
     The block is for the citation pipeline, not the reader; it used to reach
-    the screen and be stripped client-side. A tag split across chunks is
-    held until it can be told apart from ordinary text.
+    the screen and be stripped client-side. A tag split across chunks is held
+    until it can be told apart from ordinary text. Text after a closing tag
+    streams again — a multi-part answer's follow-up turn writes its own block.
     """
 
     def __init__(self) -> None:
@@ -43,21 +53,30 @@ class CitationBlockFilter:
         self._inside = False
 
     def feed(self, text: str) -> str:
-        if self._inside:
-            return ""
         buffer = self._pending + text
         self._pending = ""
-        lowered = buffer.lower()
-        at = lowered.find(_OPEN_TAG)
-        if at >= 0:
-            self._inside = True
-            return buffer[:at]
-        # A suffix that could be the start of the tag waits for the next chunk.
-        for keep in range(min(len(_OPEN_TAG) - 1, len(buffer)), 0, -1):
-            if _OPEN_TAG.startswith(lowered[-keep:]):
+        out: List[str] = []
+        while buffer:
+            lowered = buffer.lower()
+            tag = _CLOSE_TAG if self._inside else _OPEN_TAG
+            at = lowered.find(tag)
+            if at >= 0:
+                if not self._inside:
+                    out.append(buffer[:at])
+                    self._inside = True
+                    buffer = buffer[at + len(tag):]
+                else:
+                    self._inside = False
+                    buffer = buffer[at + len(tag):]
+                continue
+            keep = _held_suffix(lowered, tag)
+            if keep:
                 self._pending = buffer[-keep:]
-                return buffer[:-keep]
-        return buffer
+                buffer = buffer[:-keep]
+            if not self._inside:
+                out.append(buffer)
+            break
+        return "".join(out)
 
     def flush(self) -> str:
         out, self._pending = ("" if self._inside else self._pending), ""

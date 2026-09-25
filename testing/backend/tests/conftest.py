@@ -56,3 +56,16 @@ def pytest_collection_modifyitems(config, items):
                 strict=True,
                 reason="stale upstream (ContractSense 38c3835 repaired 8 of 20); asserts a superseded agent shape",
             ))
+
+
+# The citation guard reads each cited document's text to check quotes exactly.
+# Tests have no database: default the reader to "no source", so a test that
+# wants the exact check injects its own text (citations.set_source_loader)
+# and nothing waits on a Mongo that is not there.
+@pytest.fixture(autouse=True)
+def _no_citation_source_by_default():
+    from services.contract_agent import citations
+
+    previous = citations.set_source_loader(lambda _doc: None)
+    yield
+    citations.set_source_loader(previous)

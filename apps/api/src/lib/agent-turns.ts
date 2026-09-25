@@ -36,6 +36,8 @@ export interface CollectedToolCall {
 
 export interface CollectedTurn {
   text: string
+  /** The answer's verified citations (the citations frame). */
+  citations: unknown[]
   toolCalls: CollectedToolCall[]
   error: string | null
   done: {
@@ -51,6 +53,7 @@ export class TurnCollector {
   private calls = new Map<string, CollectedToolCall>()
   private text = ''
   private final: string | null = null
+  private citations: unknown[] = []
   private error: string | null = null
   private done: CollectedTurn['done'] = null
 
@@ -80,6 +83,9 @@ export class TurnCollector {
     switch (f.type) {
       case 'token':
         if (typeof f.delta === 'string') this.text += f.delta
+        break
+      case 'citations':
+        if (Array.isArray(f.citations)) this.citations = f.citations
         break
       case 'final':
         if (typeof f.answer === 'string') this.final = f.answer
@@ -118,6 +124,7 @@ export class TurnCollector {
     return {
       // The validated answer when the citation pipeline rewrote it.
       text: this.final ?? this.text,
+      citations: this.citations,
       toolCalls: [...this.calls.values()],
       error: this.error,
       done: this.done,
@@ -206,7 +213,9 @@ export async function persistTurn(threadId: string, userMessage: string, turn: C
     const assistant = await tx.agentMessage.create({
       data: {
         threadId, role: 'assistant',
-        content: [{ type: 'text', text }],
+        // Citations ride as their own block: the chat renders them as sources,
+        // and history replay reads text blocks only.
+        content: [{ type: 'text', text }, ...(turn.citations.length ? [{ type: 'citations', citations: turn.citations }] : [])] as never,
         provider:     turn.done?.provider,
         model:        turn.done?.model,
         tier:         turn.done?.tier,

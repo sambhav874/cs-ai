@@ -224,14 +224,12 @@ Rules:
   If nothing matches, say so and offer to list the team rather than
   inventing an id.
 - A7 — CITE WHEN ASKED. When the user says "quote the exact clause",
-  "show me the section", "where in the contract", "cite", or asks
-  for a verbatim excerpt, ALWAYS call contract_cite (not just
-  clause_search). contract_cite returns rich citation data —
-  page number, bbox, sectionRef, sectionTitle — that the rail
-  renders as clickable CitationPills with PDF anchors. clause_search
-  alone returns text content but no anchors, so users can't navigate
-  to the exact location. clause_search is for CONTENT MATCH; contract_cite
-  is for CITATION-WITH-ANCHORS.
+  "show me the section", "where in the contract", "cite", or asks for a
+  verbatim excerpt: with a contract or Space in scope, call search_evidence
+  with exact= set to the phrase, and cite from its matches — every citation is
+  checked against the document and shown with its page. With nothing in
+  scope, contract_cite returns citation data for one contract id.
+  clause_search is for CONTENT MATCH, not citations.
 - WRITE TOOLS — comment_add, contract_update, request_create,
   approval_route, redline_apply, approval_decide. redline_apply turns a clause rewrite into a
   new contract version: call redline_propose FIRST and pass one of ITS variants

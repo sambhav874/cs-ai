@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 
 # ── The only citation regexes in the codebase ─────────────────────────────────
@@ -66,6 +66,37 @@ _STOP_WORDS = {
     "of", "on", "or", "shall", "such", "than", "that", "the",
     "their", "this", "to", "was", "were", "which", "will", "with",
 }
+
+
+# ── The source text a quote is checked against ──────────────────────────────
+
+#: document id -> the document's full text (index.content), or None when it
+#: cannot be read. Replaceable: the eval harness serves fixture documents.
+SourceLoader = Callable[[str], Optional[str]]
+
+
+def _mongo_source(document_id: str) -> Optional[str]:
+    try:
+        from bson import ObjectId
+
+        from core.database import collection
+
+        if not ObjectId.is_valid(document_id):
+            return None
+        doc = collection.find_one({"_id": ObjectId(document_id)}, {"index.content": 1}) or {}
+        return (doc.get("index") or {}).get("content") or None
+    except Exception:  # an unreadable source falls back to the evidence check
+        return None
+
+
+SOURCE_TEXT_LOADER: SourceLoader = _mongo_source
+
+
+def set_source_loader(loader: SourceLoader) -> SourceLoader:
+    """Swap how source text is read; returns the previous loader."""
+    global SOURCE_TEXT_LOADER
+    previous, SOURCE_TEXT_LOADER = SOURCE_TEXT_LOADER, loader
+    return previous
 
 
 # ── Text helpers ──────────────────────────────────────────────────────────────
@@ -166,6 +197,25 @@ def parse_page_range(
         value = int(single.group(0))
         return value, value, value
     return None, None, None
+
+
+def max_ref(answer: str) -> int:
+    """The highest citation number an answer uses, in prose or its block."""
+    refs = [int(m) for m in MARKER_RE.findall(strip_citation_block(answer or ""))]
+    refs += [int(item.get("ref") or 0) for item in parse_citation_block(answer or "") if str(item.get("ref") or "").isdigit()]
+    return max(refs, default=0)
+
+
+def merge_answers(first: str, second: str) -> str:
+    """Two answers written in two model turns, as one: prose joined, the two
+    <CITATIONS> blocks combined into one at the end. The second turn is asked
+    to continue the first's numbering (question_plan.follow_up), so refs do
+    not collide."""
+    cites = parse_citation_block(first) + parse_citation_block(second)
+    prose = (strip_citation_block(first).rstrip() + "\n\n" + strip_citation_block(second).strip()).strip()
+    if not cites:
+        return prose
+    return prose + "\n\n<CITATIONS>\n" + json.dumps(cites) + "\n</CITATIONS>"
 
 
 # ── Step 1: parse the model's block ───────────────────────────────────────────
@@ -618,27 +668,81 @@ def page_from_text_markers(full_text: str, quote: str) -> Optional[int]:
 # ── Step 3: validate against what the tools returned ─────────────────────────
 
 
+def _sentences(text: str) -> List[str]:
+    parts = re.split(r"(?<=[.;:!?])\s+|\n+", text or "")
+    return [p.strip() for p in parts if len(p.strip()) >= 12]
+
+
+def _research(quote_tokens: Set[str], document_id: str, state: Any, source: Any) -> Optional[Any]:
+    """The exact source sentence that best supports a quote the model got wrong.
+
+    Candidates come only from evidence the tools returned for this document,
+    so a re-searched citation still points at something the agent read.
+    Returns (span, text) or None.
+    """
+    best: Optional[Tuple[float, Any]] = None
+    for match in _observation_matches(state):
+        doc = str(match.get("document_id") or match.get("doc_id") or "")
+        if doc and doc != document_id:
+            continue
+        for key in ("context", "quote", "snippet", "text"):
+            for sentence in _sentences(str(match.get(key) or "")):
+                ratio = _overlap_ratio(quote_tokens, sentence)
+                if ratio < SUPPORT_OVERLAP_RATIO or (best and ratio <= best[0]):
+                    continue
+                span = source.locate(sentence)
+                if span is not None:
+                    best = (ratio, span)
+    return best[1] if best else None
+
+
 def validate_citations(
     annotations: Sequence[Dict[str, Any]],
     state: Any,
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """Keep the citations that real evidence supports; stamp `verified` on each.
+    """(kept, issues) — see check_citations."""
+    kept, issues, _dropped = check_citations(annotations, state)
+    return kept, issues
 
-    Returns (kept, issues). A citation is dropped only when it is structurally
-    unusable (no document, no quote) or a duplicate — an unsupported quote is
-    KEPT but marked `verified: false`, so the UI can show the reader that the
-    agent could not back it up. That flag is what the eval's citation-support
-    metric counts, so it must reflect the check honestly.
+
+def check_citations(
+    annotations: Sequence[Dict[str, Any]],
+    state: Any,
+) -> Tuple[List[Dict[str, Any]], List[str], List[Dict[str, Any]]]:
+    """Keep the citations the source document supports; drop the rest.
+
+    Returns (kept, issues, dropped). Each quote is looked for in the document's own
+    text, exactly apart from whitespace, case, markdown and dash/quote style
+    (services/quote_locator.py):
+
+      • found → kept, `verified` and `exact`, with the page and span it is on;
+      • not found → re-searched: the sentence from this document's retrieved
+        evidence that supports it best, if that sentence is itself in the
+        source, replaces the quote (`requoted`);
+      • neither → dropped. A quote nobody can find in the contract is not
+        shown to the reader. It is not hidden from measurement either: every
+        drop is listed in the guard report (`dropped`), and the eval counts
+        it as an unsupported citation.
+
+    When the source text cannot be read, the older evidence-overlap check
+    decides, and the citation is marked `exact: false`.
     """
+    from services.quote_locator import SourceText
+
     evidence = observed_evidence(state)
     answer_tokens = set(content_tokens(state.answer))
     issues: List[str] = []
     kept: List[Dict[str, Any]] = []
+    dropped: List[Dict[str, Any]] = []
     seen: Set[Tuple[str, str]] = set()
+    sources: Dict[str, Any] = {}
 
-    # No tool observations at all means the model answered from its prompt
-    # context. There is nothing to check against, so citations pass through
-    # flagged rather than being discarded.
+    def source_for(document_id: str) -> Any:
+        if document_id not in sources:
+            text = SOURCE_TEXT_LOADER(document_id)
+            sources[document_id] = SourceText(text) if text else None
+        return sources[document_id]
+
     no_evidence = not evidence
 
     for annotation in annotations:
@@ -653,32 +757,52 @@ def validate_citations(
 
         normalized = normalize_text(quote)
         tokens = set(content_tokens(normalized))
+        cleaned = dict(annotation)
+        # Preserve the pre-renumbering ref so a consumer can trace a displayed
+        # citation back to what the model originally wrote.
+        cleaned["source_ref"] = annotation.get("ref")
 
-        if no_evidence:
-            supported = True
-            issues.append("citation_no_evidence_passthrough")
-        elif not tokens:
-            supported = False
+        source = source_for(document_id)
+        if source is not None:
+            span = source.locate(quote)
+            if span is None and tokens:
+                span = _research(tokens, document_id, state, source)
+                if span is not None:
+                    cleaned["requoted"] = True
+                    issues.append("citation_requoted_from_source")
+            if span is None:
+                issues.append("unverifiable_citation_dropped")
+                dropped.append({"ref": annotation.get("ref"), "document_id": document_id, "quote": quote[:300]})
+                continue
+            cleaned["quote"] = source.display(span)
+            page, page_end = source.pages(span)
+            if page is not None:
+                cleaned["page"] = page
+                cleaned["page_end"] = page_end
+            cleaned["span_start"], cleaned["span_end"] = span.start, span.end
+            cleaned["verified"] = True
+            cleaned["exact"] = True
         else:
-            supported = any(_supports(normalized, tokens, item) for item in evidence)
+            if no_evidence:
+                supported = True
+                issues.append("citation_no_evidence_passthrough")
+            else:
+                supported = bool(tokens) and any(_supports(normalized, tokens, item) for item in evidence)
+            if not supported:
+                issues.append("invalid_or_unsupported_citation")
+                dropped.append({"ref": annotation.get("ref"), "document_id": document_id, "quote": quote[:300]})
+                continue
+            cleaned["verified"] = True
+            cleaned["exact"] = False
 
-        if not supported:
-            issues.append("invalid_or_unsupported_citation")
-
-        dedupe_key = (document_id, normalized[:180])
+        dedupe_key = (document_id, normalize_text(cleaned["quote"])[:180])
         if dedupe_key in seen:
             issues.append("duplicate_citation_removed")
             continue
         seen.add(dedupe_key)
 
-        cleaned = dict(annotation)
-        cleaned["verified"] = supported
-        # Preserve the pre-renumbering ref so a consumer can trace a displayed
-        # citation back to what the model originally wrote.
-        cleaned["source_ref"] = annotation.get("ref")
-
-        if len(quote) > MAX_QUOTE_CHARS:
-            cleaned["quote"] = quote[:MAX_QUOTE_CHARS].rsplit(" ", 1)[0].rstrip() + " ..."
+        if len(cleaned["quote"]) > MAX_QUOTE_CHARS:
+            cleaned["quote"] = cleaned["quote"][:MAX_QUOTE_CHARS].rsplit(" ", 1)[0].rstrip() + " ..."
             issues.append("broad_citation_trimmed")
 
         quote_tokens = set(content_tokens(cleaned.get("quote") or ""))
@@ -687,7 +811,7 @@ def validate_citations(
 
         kept.append(cleaned)
 
-    return kept, list(dict.fromkeys(issues))
+    return kept, list(dict.fromkeys(issues)), dropped
 
 
 # ── Step 4: renumber, producing the map step 5 needs ─────────────────────────
@@ -1032,7 +1156,7 @@ def validate_and_finalize(state: Any) -> Dict[str, Any]:
             )
             annotations = drop_unused_annotations(state.answer, annotations)
 
-    kept, issues = validate_citations(annotations, state)
+    kept, issues, dropped = check_citations(annotations, state)
     kept, ref_map = renumber(kept)
 
     # Markers last.
@@ -1058,7 +1182,7 @@ def validate_and_finalize(state: Any) -> Dict[str, Any]:
     else:
         details = {"annotations": [], "cited_segments": [], "citation_style": style}
 
-    report = {"annotations": kept, "issues": issues}
+    report = {"annotations": kept, "issues": issues, "dropped": dropped}
     details["citation_guard"] = report
     state.citation_details = {**(state.citation_details or {}), **details}
     return report

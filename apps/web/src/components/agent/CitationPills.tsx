@@ -158,3 +158,89 @@ export function CitationPills({ bundle }: { bundle: CitationBundle }) {
     </div>
   )
 }
+
+/**
+ * The answer's own citations (plan P3): every quote the assistant cited,
+ * after the citation guard found it in the contract. Numbered like the
+ * markers in the prose; each opens the contract at the page the quote is on.
+ * Unverified citations never arrive here — the guard drops them — so the
+ * badge distinguishes an exact quote from one confirmed against retrieved
+ * evidence only.
+ */
+export interface AnswerCitation {
+  ref:        number | string
+  contractId: string | null
+  quote:      string
+  page:       number | null
+  sectionRef: string | null
+  filename?:  string | null
+  verified:   boolean
+  exact?:     boolean
+}
+
+export function citationHref(c: AnswerCitation): string | null {
+  if (!c.contractId) return null
+  const params = new URLSearchParams()
+  if (c.page != null) params.set('page', String(c.page))
+  else if (c.sectionRef) params.set('section', c.sectionRef)
+  const q = params.toString()
+  return `/contracts/${c.contractId}${q ? `?${q}` : ''}`
+}
+
+export function AnswerCitations({ citations }: { citations: AnswerCitation[] }) {
+  const [open, setOpen] = useState<number | null>(null)
+  if (!citations.length) return null
+  return (
+    <div data-testid="answer-citations" className="mt-2 rounded-card border border-surface-200 bg-card text-[12px] overflow-hidden">
+      <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-surface-200">
+        <Quote className="size-3.5 text-fg-400 flex-shrink-0" />
+        <span className="font-semibold text-fg-950 text-[11.5px]">Sources</span>
+        <span className="ml-auto text-[10px] text-fg-400 tabular-nums">{citations.length}</span>
+      </div>
+      <ul className="divide-y divide-surface-100">
+        {citations.map((c, i) => {
+          const href = citationHref(c)
+          const label = c.filename || c.sectionRef || c.quote.slice(0, 60)
+          return (
+            <li key={i} data-testid={`answer-citation-${i}`} data-page={c.page ?? undefined} className="px-3 py-1.5">
+              <div className="flex items-start gap-2">
+                <span className="font-mono text-[10.5px] text-fg-500 flex-shrink-0">[{String(c.ref)}]</span>
+                {href ? (
+                  <a href={href} className="flex items-baseline gap-1.5 min-w-0 flex-1 group" title="Open the contract at this passage">
+                    <span className="truncate text-[11.5px] text-fg-950 group-hover:text-primary-700">{label}</span>
+                    {c.sectionRef && c.filename && <span className="font-mono text-[10px] text-fg-500 flex-shrink-0">§{c.sectionRef}</span>}
+                    {c.page != null && <span className="font-mono text-[9.5px] text-fg-400 flex-shrink-0 tabular-nums">p.{c.page}</span>}
+                    <ExternalLink className="size-2.5 text-fg-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                  </a>
+                ) : (
+                  <span className="truncate text-[11.5px] text-fg-950 flex-1">{label}</span>
+                )}
+                {c.verified && (
+                  <span
+                    className="text-[9px] uppercase tracking-wider font-medium text-success-700 bg-success-50 border border-success-200 rounded-chip px-1 flex-shrink-0"
+                    title={c.exact === false ? 'Confirmed against the retrieved passage' : 'Found word for word in the contract'}
+                  >
+                    {c.exact === false ? 'checked' : 'verified'}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setOpen(open === i ? null : i)}
+                  className="text-[10px] text-fg-700 hover:text-fg-950 hover:underline flex-shrink-0"
+                  aria-expanded={open === i}
+                >
+                  {open === i ? 'hide' : 'quote'}
+                </button>
+              </div>
+              {open === i && (
+                <div className="mt-1 text-[11px] text-fg-700 bg-surface-50 border border-surface-200 rounded-chip px-2 py-1 italic">
+                  “{c.quote}”
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}

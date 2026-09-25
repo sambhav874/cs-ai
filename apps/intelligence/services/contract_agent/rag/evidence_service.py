@@ -322,6 +322,38 @@ CLAUSE_ALIASES = {
 }
 
 
+
+
+def apply_document_quota(ranked: Sequence["EvidenceHit"], limit: int, document_ids: Sequence[str]) -> List["EvidenceHit"]:
+    """The top `limit` hits, with every scoped document that had a hit in them.
+
+    A comparison across documents used to come back with all its evidence from
+    whichever document scored highest, and the answer then compared one
+    document with nothing. With more than one document in scope, each gets up
+    to an equal share (at least one) of the slots before the rest go by rank.
+    Order within the result stays by rank. PURE.
+    """
+    scoped = [d for d in dict.fromkeys(str(d) for d in document_ids) if d]
+    if len(scoped) < 2:
+        return list(ranked[:limit])
+    share = max(1, limit // len(scoped))
+    chosen: List[int] = []
+    taken: Dict[str, int] = {}
+    for doc in scoped:
+        for index, hit in enumerate(ranked):
+            if (hit.document_id or "") == doc and index not in chosen and taken.get(doc, 0) < share:
+                chosen.append(index)
+                taken[doc] = taken.get(doc, 0) + 1
+            if taken.get(doc, 0) >= share or len(chosen) >= limit:
+                break
+    for index in range(len(ranked)):
+        if len(chosen) >= limit:
+            break
+        if index not in chosen:
+            chosen.append(index)
+    return [ranked[i] for i in sorted(chosen)]
+
+
 @dataclass
 class EvidenceHit:
     """Normalized internal evidence hit.
@@ -510,6 +542,7 @@ class EvidenceRetrievalService:
             intent=resolved_intent,
             must_contain=normalized_must,
             section_ref=normalized_section,
+            document_ids=[str(d.get("_id")) for d in documents if d.get("_id") is not None],
         )
         backend_parts = [
             name
@@ -991,6 +1024,7 @@ class EvidenceRetrievalService:
         intent: str,
         must_contain: Sequence[str],
         section_ref: Optional[str],
+        document_ids: Sequence[str] = (),
     ) -> List[EvidenceHit]:
         scores: Dict[Tuple[str, str], float] = {}
         hits_by_key: Dict[Tuple[str, str], EvidenceHit] = {}
@@ -1029,7 +1063,7 @@ class EvidenceRetrievalService:
             remainder = [hit for hit in ranked if hit.evidence_id not in reranked_ids]
             ranked = reranked + remainder
 
-        return ranked[: max(1, min(top_k, 20))]
+        return apply_document_quota(ranked, max(1, min(top_k, 20)), document_ids)
 
     def _rerank_hits(
         self,

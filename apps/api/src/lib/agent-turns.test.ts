@@ -37,8 +37,10 @@ describe('TurnCollector', () => {
   })
 
   it('prefers the validated answer, and keeps the error of a failed turn', () => {
-    const turn = collect(frame({ type: 'token', delta: 'Cap is £1m [2].' }) + frame({ type: 'final', answer: 'Cap is £1m [1].' }))
+    const turn = collect(frame({ type: 'token', delta: 'Cap is £1m [2].' }) + frame({ type: 'final', answer: 'Cap is £1m [1].' })
+      + frame({ type: 'citations', citations: [{ ref: 1, quote: 'Liability is capped at £1m.', page: 7, verified: true }] }))
     expect(turn.text).toBe('Cap is £1m [1].')
+    expect(turn.citations).toEqual([{ ref: 1, quote: 'Liability is capped at £1m.', page: 7, verified: true }])
     expect(collect(frame({ type: 'error', error: 'no provider' })).error).toBe('no provider')
   })
 

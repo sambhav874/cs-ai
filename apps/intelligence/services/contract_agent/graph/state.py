@@ -166,6 +166,8 @@ class AgentRunState(BaseModel):
     context: AgentContext = Field(default_factory=AgentContext)
     ai_provider: Optional[str] = None
     memory_context: str = ""
+    # The parts of a multi-part question (services/contract_agent/question_plan).
+    question_parts: List[str] = Field(default_factory=list)
     status: AgentStatus = AgentStatus.STARTED
     workflow: AgentWorkflow = AgentWorkflow.QA
     answer: str = ""

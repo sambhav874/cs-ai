@@ -344,6 +344,12 @@ export function ContractDetailPage() {
   // the TipTap view to that heading + flash the matching TOC entry.
   const [searchParams] = useSearchParams()
   const highlightSection = searchParams.get('section') ?? null
+  // P3 — a verified citation links here with ?page=N: open the original PDF
+  // at that page, where the quoted text is.
+  const citedPage = (() => {
+    const n = Number(searchParams.get('page'))
+    return Number.isInteger(n) && n > 0 ? n : null
+  })()
   // B.1 — default to 'document' so the contract itself is the first thing
   // a user sees, instead of a wall of AI-generated analysis panels.
   const [tab, setTab] = useState<Tab>('document')
@@ -384,6 +390,7 @@ export function ContractDetailPage() {
   // B.5.2 — Styled | Original document view.
   const [docView, setDocView] = useState<'styled' | 'original'>(() => {
     if (typeof window === 'undefined') return 'styled'
+    if (citedPage) return 'original'
     const saved = window.localStorage.getItem('clm.doc-view')
     return saved === 'original' ? 'original' : 'styled'
   })
@@ -2701,7 +2708,8 @@ export function ContractDetailPage() {
                       rendered — and a firewalled self-host could not reach the
                       CDN anyway. The link is same-origin (/api/v1/files). */}
                   <iframe
-                    src={pdfUrl}
+                    // #page= is the browser viewer's own page anchor.
+                    src={citedPage ? `${pdfUrl}#page=${citedPage}` : pdfUrl}
                     title="Original document"
                     className="w-full h-full border-0"
                     data-testid="original-pdf-frame"
