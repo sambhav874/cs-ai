@@ -67,6 +67,18 @@ class ContractRAGSystem:
 
     def __init__(self, ai_provider: Optional[str] = None):
         self.ai_provider = (ai_provider or getattr(settings, "ai_provider", None) or "groq").lower()
+
+    def _run_provider(self) -> Optional[str]:
+        """The provider a run pins, or None to let the platform org decide.
+
+        With a platform org in scope (use_platform_org — a linked contract's
+        ingestion), the org's Admin → AI choice must win; pinning this tier's
+        default here is what made project-memory overviews run on groq
+        whatever the team had chosen.
+        """
+        from services.platform_models import active_platform_org
+
+        return None if active_platform_org() else self.ai_provider
         self.document_segments = {}
         self.last_agent_trace = None
         self._active_agent_task = None
@@ -273,7 +285,7 @@ class ContractRAGSystem:
             user_id=user_id or "system",
             message=question,
             context=context,
-            ai_provider=self.ai_provider,
+            ai_provider=self._run_provider(),
             memory_context=memory_context,
         )
         documents = [
@@ -338,7 +350,7 @@ class ContractRAGSystem:
             user_id=user_id or "system",
             message=question,
             context=context,
-            ai_provider=self.ai_provider,
+            ai_provider=self._run_provider(),
             memory_context=memory_context,
         )
         documents = [

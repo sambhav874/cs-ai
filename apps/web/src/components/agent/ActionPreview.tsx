@@ -27,6 +27,7 @@ import { useEffect, useState } from 'react'
 import { Loader2, Check, Pencil, X, AlertTriangle, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AssistMark } from '@/components/ui/assist'
+import { sanitizeHtml } from '@/lib/sanitize'
 
 export interface PendingAction {
   /** Unique id — ties the card back to a specific tool_call_awaiting_confirmation event. */
@@ -47,6 +48,10 @@ export interface PendingAction {
   }[]
   /** True if the action is reversible; surfaces an "Undo within 15m" note. */
   reversible?: boolean
+  /** A draft the action would create (contract_create_from_template), shown before Apply. */
+  previewHtml?: string
+  /** Fields the draft could not fill from the request. */
+  missingFields?: string[]
   /** Life-cycle: set by the rail as it walks the user through confirmation. */
   status: 'awaiting_confirmation' | 'running' | 'applied' | 'undone' | 'cancelled' | 'error'
   /** On success, the tool result preview (passes through to the trace chip). */
@@ -177,6 +182,24 @@ export function ActionPreview({ action, onApply, onCancel, onUndo }: ActionPrevi
       <div className="px-3 py-2.5 space-y-2">
         {/* Plain-English summary — always first, always visible */}
         <div className="text-fg-950 leading-relaxed">{action.summary}</div>
+
+        {/* A draft is reviewed before it exists: the rendered template, and
+            what it could not fill. The HTML carries model-filled values, so
+            it is sanitised like any other untrusted markup. */}
+        {action.previewHtml && (
+          <details className="rounded-chip border border-surface-200 bg-card">
+            <summary className="px-2 py-1 text-[10.5px] font-medium text-fg-700 cursor-pointer">Preview draft</summary>
+            <div
+              className="px-3 py-2 max-h-80 overflow-auto text-[11.5px] leading-relaxed contract-paper"
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(action.previewHtml) }}
+            />
+          </details>
+        )}
+        {action.missingFields && action.missingFields.length > 0 && (
+          <div className="text-[10.5px] text-attention-700">
+            <span className="font-medium">Still to fill:</span> {action.missingFields.join(', ')}
+          </div>
+        )}
 
         {/* Target + diff */}
         {action.target && (

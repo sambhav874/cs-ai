@@ -20,6 +20,7 @@ from typing import Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..router import resolve_llm
+from agents_service.untrusted import wrap_untrusted_document
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +158,8 @@ async def run_assist(
 
     action_prompt = _ACTION_PROMPTS.get(action, _ACTION_PROMPTS["rewrite"])
     user_content = action_prompt.format(
-        selected_text=selected_text,
+        # Selected contract text may be counterparty-authored.
+        selected_text=wrap_untrusted_document(selected_text, source="selected contract text"),
         contract_type=contract_type,
         governing_law=governing_law,
     )

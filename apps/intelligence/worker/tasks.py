@@ -855,17 +855,23 @@ def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_s
             # pipeline already built above, not a raw full-text LLM dump, so cost
             # stays bounded even on very large contracts. Never fails ingestion.
             try:
+                from services.platform_models import use_platform_org
                 from services.project_memory import ProjectMemoryManager
-                ProjectMemoryManager(db).generate_document_overview(
-                    contract_id=contract_id,
-                    project_id=project_id_str,
-                    contract_name=sanitized_filename,
-                    contract_text=index_content,
-                    ai_provider="groq",
-                    user_id=user_id,
-                    rag_system=rag_system,
-                    uploaded_at=contract_uploaded_at,
-                )
+
+                # A linked contract's overview runs on its org's Admin → AI
+                # model and key, like its obligation extraction.
+                linked_platform_id = (collection.find_one({"_id": contract_oid}, {"platformContractId": 1}) or {}).get("platformContractId")
+                with use_platform_org(_platform_org_for(linked_platform_id)):
+                    ProjectMemoryManager(db).generate_document_overview(
+                        contract_id=contract_id,
+                        project_id=project_id_str,
+                        contract_name=sanitized_filename,
+                        contract_text=index_content,
+                        ai_provider="groq",
+                        user_id=user_id,
+                        rag_system=rag_system,
+                        uploaded_at=contract_uploaded_at,
+                    )
             except Exception as memory_exc:
                 log_exception(logger, f"Project memory overview failed for contract {contract_id}", memory_exc)
 

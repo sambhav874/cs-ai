@@ -17,6 +17,8 @@ from agents_service.agents.assist_agent import run_assist, AssistAction
 from agents_service.router import resolve_llm
 from agents_service.untrusted import wrap_untrusted_document
 from langchain_core.messages import HumanMessage, SystemMessage
+from agents_service.quotes import verified_changes, verify_field
+from services.quote_locator import SourceText
 
 router = APIRouter()
 INTERNAL_SECRET = os.getenv("INTERNAL_SERVICE_SECRET", "")
@@ -345,7 +347,7 @@ async def compare_to_playbook(req: CompareRequest, x_internal_secret: str = Head
     ]
 
     user_content = f"""Submitted clause:
-{req.clauseText[:2000]}
+{wrap_untrusted_document(req.clauseText[:2000], source="submitted contract clause")}
 
 Playbook positions (from most to least preferred):
 {json.dumps(positions_summary, indent=2)}
@@ -397,6 +399,31 @@ OK.
  • Be conservative — if unsure, passed=null."""
 
 
+def verify_judgement(result: dict, clause_text: str) -> dict:
+    """Hold the judge's evidence to the clause it was given.
+
+    Each rule's evidence is checked against the clause text. Evidence that is
+    not there is removed; a rule the judge PASSED only on that evidence
+    becomes undecided (passed=None), and so does a must-not rule the judge
+    FAILED on it: the playbook check treats undecided as "a person should
+    look", not as satisfied or breached.
+    """
+    if not isinstance(result, dict):
+        return result
+    source = SourceText(clause_text or "")
+    for key in ("mustHave", "mustNot"):
+        for item in result.get(key) or []:
+            if not isinstance(item, dict) or not item.get("evidence"):
+                continue
+            if not verify_field(item, "evidence", source, flag="evidenceVerified"):
+                item["evidence"] = ""
+                # Satisfied (must-have) or violated (must-not) on evidence
+                # that is not in the clause: neither is established.
+                if (key == "mustHave" and item.get("passed") is True) or (key == "mustNot" and item.get("passed") is False):
+                    item["passed"] = None
+    return result
+
+
 @router.post("/playbook_judge")
 async def playbook_judge(req: PlaybookJudgeRequest, x_internal_secret: str = Header(default="")):
     if INTERNAL_SECRET and x_internal_secret != INTERNAL_SECRET:
@@ -425,9 +452,7 @@ async def playbook_judge(req: PlaybookJudgeRequest, x_internal_secret: str = Hea
         "bounds":    req.rules.get("bounds", {}),
     }
     user_content = f"""Clause (position: {req.positionType or "unknown"}):
-\"\"\"
-{req.clauseText[:2000]}
-\"\"\"
+{wrap_untrusted_document(req.clauseText[:2000], source="contract clause under review")}
 
 Playbook rules to evaluate:
 {json.dumps(rules_payload, indent=2)}
@@ -447,7 +472,7 @@ Judge this clause against the rules and return the JSON now."""
             if content.startswith("json"):
                 content = content[4:]
         result = loads_lenient(content)
-        return result
+        return verify_judgement(result, req.clauseText)
     except (json.JSONDecodeError, Exception) as e:  # noqa: BLE001
         return {
             "bestMatchPositionType": "none",
@@ -600,7 +625,7 @@ Produce the three-variant redline now."""
                     "aggression": aggression,
                     "proposedText": v.get("proposedText", "").strip(),
                     "rationale":    v.get("rationale", "").strip(),
-                    "changes":      v.get("changes", []),
+                    "changes":      verified_changes(v.get("changes", []), req.clauseText),
                 })
             else:
                 filled.append({
@@ -892,7 +917,7 @@ Produce the rewrite now. JSON only."""
                 "clauseType":   item.clauseType,
                 "proposedText": proposed,
                 "rationale":    str(parsed.get("rationale") or "").strip(),
-                "changes":      parsed.get("changes") or [],
+                "changes":      verified_changes(parsed.get("changes") or [], item.clauseText),
                 "aggression":   req.aggression,
             }
         except Exception as e:  # noqa: BLE001

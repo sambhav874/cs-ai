@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from ..jsonish import loads_lenient
 from ..router import resolve_llm
+from agents_service.untrusted import wrap_untrusted_document
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -155,7 +156,7 @@ async def intake_classify(req: IntakeClassifyRequest) -> IntakeClassifyResponse:
 
 
 async def _call_llm(text: str, org_id: Optional[str]) -> str:
-    prompt = _PROMPT + text
+    prompt = _PROMPT + wrap_untrusted_document(text, source="intake request text")
 
     # Routed through resolve_llm so per-org BYOK keys, tier overrides and
     # Langfuse tracing apply. resolve_llm hands back a ready LangChain

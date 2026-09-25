@@ -45,12 +45,10 @@ LIFECYCLE_READ_TOOLS = frozenset({
     "counterparty_memory", "contract_validate", "approval_list", "counterparty_get",
     "counterparty_list", "request_list", "custom_field_list", "org_memory", "obligations_list",
     "renewal_advice", "space_list", "compliance_get", "user_search", "template_list",
-    # Drafts inline today; moves to a previewed proposal (plan P5).
-    "contract_create_from_template",
 })
 LIFECYCLE_WRITE_TOOLS = frozenset({
     "comment_add", "contract_update", "request_create", "approval_route", "redline_apply",
-    "approval_decide",
+    "approval_decide", "contract_create_from_template",
 })
 LIFECYCLE_TOOLS = LIFECYCLE_READ_TOOLS | LIFECYCLE_WRITE_TOOLS
 

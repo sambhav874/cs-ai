@@ -13,6 +13,7 @@ import { queueClassifyDocument } from '../lib/queue.js'
 import { indexContract } from '../lib/elasticsearch.js'
 import { assertCostCapNotExceeded, recordCost, estimateCostUsd, CostCapExceededError, recordUsage } from '../lib/costCap.js'
 import { randomUUID } from 'node:crypto'
+import { capBody, meter, meteredAgentCall, meteredJson } from '../lib/metered-agent.js'
 import { TurnCollector, ensureThread, loadHistory, persistTurn } from '../lib/agent-turns.js'
 
 const AGENTS_URL = process.env.AGENTS_URL ?? 'http://localhost:8000/agents'
@@ -70,6 +71,9 @@ export async function agentRoutes(app: FastifyInstance) {
       throw e
     }
 
+    // Tools this caller may not use. Drafting is a proposal now, and Apply
+    // checks create:contract, but a caller who can never create one should
+    // not be offered a draft they cannot keep.
     const callerPermissions = req.user.apiPermissions ?? await getPermissionsForRoles(orgId, req.user.roles)
     const deniedTools: string[] = []
     if (!evaluatePermission(callerPermissions, 'create', 'contract').granted) {
@@ -298,29 +302,15 @@ export async function agentRoutes(app: FastifyInstance) {
     const ctx: Record<string, unknown> = { ...(body.context ?? {}) }
     if (body.templateId) ctx.template_id = body.templateId
 
-    const upstream = await fetch(`${AGENTS_URL}/draft`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-internal-secret': INTERNAL_SECRET,
-      },
-      body: JSON.stringify({
-        user_message: body.userMessage,
-        org_id: orgId,
-        user_id: userId,
-        context: ctx,
-      }),
-    }).catch(err => {
-      app.log.error({ err }, 'Draft agent unreachable')
-      return null
-    })
-
-    if (!upstream?.ok) {
-      const err = upstream ? await upstream.text() : 'Agent service unavailable'
-      return reply.status(502).send({ detail: err })
-    }
-
-    const result = await upstream.json() as any
+    const drafted = await meteredJson<any>('/draft', {
+      user_message: body.userMessage,
+      org_id: orgId,
+      user_id: userId,
+      context: ctx,
+    }, { orgId, toolName: 'draft' })
+    if (drafted.status === 'capped') return reply.status(429).send(capBody(drafted.usedUsd, drafted.capUsd))
+    if (drafted.status === 'failed') return reply.status(502).send({ detail: 'Agent service unavailable' })
+    const result = drafted.data
 
     // A.1 — if the agent returned a typed error (e.g. NO_TEMPLATE_MATCH),
     // reject the request instead of saving garbage. See
@@ -442,20 +432,16 @@ export async function agentRoutes(app: FastifyInstance) {
     if (typeof body.selectedText !== 'string' || body.selectedText.trim().length === 0) {
       return reply.status(400).send({ detail: 'selectedText is required' })
     }
-    const upstream = await fetch(`${AGENTS_URL}/assist_stream`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-internal-secret': INTERNAL_SECRET,
-      },
-      body: JSON.stringify({
-        selected_text: body.selectedText,
-        action:        body.action ?? 'rewrite',
-        contract_type: body.contractType ?? 'general commercial',
-        governing_law: body.governingLaw ?? 'Delaware',
-        orgId:         req.user.orgId,   // per-org BYOK key + Langfuse tracing
-      }),
-    }).catch(() => null)
+    const meta = { orgId: req.user.orgId, toolName: 'assist_stream' }
+    const call = await meteredAgentCall('/assist_stream', {
+      selected_text: body.selectedText,
+      action:        body.action ?? 'rewrite',
+      contract_type: body.contractType ?? 'general commercial',
+      governing_law: body.governingLaw ?? 'Delaware',
+      orgId:         req.user.orgId,   // per-org BYOK key + Langfuse tracing
+    }, meta)
+    if (call.kind === 'capped') return reply.status(429).send(capBody(call.usedUsd, call.capUsd))
+    const upstream = call.kind === 'response' ? call.response : null
     if (!upstream || !upstream.ok || !upstream.body) {
       return reply.status(502).send({ detail: 'Agent service unavailable' })
     }
@@ -464,14 +450,16 @@ export async function agentRoutes(app: FastifyInstance) {
     reply.raw.setHeader('Cache-Control', 'no-cache')
     reply.raw.setHeader('X-Accel-Buffering', 'no')  // nginx: disable buffering
     const reader = upstream.body.getReader()
-    const decoder = new TextDecoder()
+    let streamed = 0
     // eslint-disable-next-line no-constant-condition
     while (true) {
       const { value, done } = await reader.read()
       if (done) break
-      if (value) reply.raw.write(Buffer.from(decoder.decode(value, { stream: true })))
+      // Bytes forwarded undecoded, so a character split across chunks survives.
+      if (value) { streamed += value.byteLength; reply.raw.write(Buffer.from(value)) }
     }
     reply.raw.end()
+    meter(meta, call.kind === 'response' ? call.requestChars : 0, streamed)
     return reply
   })
 
@@ -487,23 +475,18 @@ export async function agentRoutes(app: FastifyInstance) {
     if (typeof body.clauseText !== 'string' || body.clauseText.trim().length < 30) {
       return reply.send({ category: 'skip', position: 'skip', reasoning: '' })
     }
-    const upstream = await fetch(`${AGENTS_URL}/classify_clause`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-internal-secret': INTERNAL_SECRET,
-      },
-      body: JSON.stringify({
-        clauseText:   body.clauseText.slice(0, 2400),
-        contractType: body.contractType ?? 'general commercial',
-        sectionHint:  body.sectionHint ?? null,
-        orgId:        req.user.orgId, // team model settings + own key
-      }),
-    }).catch(() => null)
-    if (!upstream?.ok) {
-      return reply.send({ category: 'skip', position: 'skip', reasoning: '', error: 'upstream_unavailable' })
+    const labelled = await meteredJson('/classify_clause', {
+      clauseText:   body.clauseText.slice(0, 2400),
+      contractType: body.contractType ?? 'general commercial',
+      sectionHint:  body.sectionHint ?? null,
+      orgId:        req.user.orgId, // team model settings + own key
+    }, { orgId: req.user.orgId, toolName: 'classify_clause' })
+    // Margin labels are background work: over the cap, the editor just
+    // shows none, rather than an error on every paragraph.
+    if (labelled.status !== 'ok') {
+      return reply.send({ category: 'skip', position: 'skip', reasoning: '', error: labelled.status === 'capped' ? 'cost_cap_exceeded' : 'upstream_unavailable' })
     }
-    return reply.send(await upstream.json())
+    return reply.send(labelled.data)
   })
 
   // POST /api/v1/agent/complete — P6.1 ghost-text completion.
@@ -521,52 +504,35 @@ export async function agentRoutes(app: FastifyInstance) {
     if (typeof body.contextBefore !== 'string' || body.contextBefore.length < 10) {
       return reply.send({ completion: '', reason: 'too_short' })
     }
-    const upstream = await fetch(`${AGENTS_URL}/complete`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-internal-secret': INTERNAL_SECRET,
-      },
-      body: JSON.stringify({
-        contextBefore: body.contextBefore.slice(-1400),
-        contextAfter:  (body.contextAfter ?? '').slice(0, 400),
-        contractType:  body.contractType ?? 'general commercial',
-        maxChars:      Math.max(40, Math.min(body.maxChars ?? 160, 320)),
-        orgId:         req.user.orgId, // team model settings + own key
-      }),
-    }).catch(() => null)
-    if (!upstream?.ok) {
-      return reply.send({ completion: '', error: 'upstream_unavailable' })
+    const completed = await meteredJson('/complete', {
+      contextBefore: body.contextBefore.slice(-1400),
+      contextAfter:  (body.contextAfter ?? '').slice(0, 400),
+      contractType:  body.contractType ?? 'general commercial',
+      maxChars:      Math.max(40, Math.min(body.maxChars ?? 160, 320)),
+      orgId:         req.user.orgId, // team model settings + own key
+    }, { orgId: req.user.orgId, toolName: 'autocomplete' })
+    if (completed.status !== 'ok') {
+      return reply.send({ completion: '', error: completed.status === 'capped' ? 'cost_cap_exceeded' : 'upstream_unavailable' })
     }
-    return reply.send(await upstream.json())
+    return reply.send(completed.data)
   })
 
   // POST /api/v1/agent/assist — inline AI text improvement for editor
   app.post('/assist', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
     const body = AssistSchema.parse(req.body)
 
-    const upstream = await fetch(`${AGENTS_URL}/assist`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-internal-secret': INTERNAL_SECRET,
-      },
-      body: JSON.stringify({
-        selected_text: body.selectedText,
-        action: body.action,
-        contract_type: body.contractType,
-        governing_law: body.governingLaw,
-        provider: body.provider,
-        model_id: body.modelId,
-        orgId: req.user.orgId,   // per-org BYOK key + Langfuse tracing
-      }),
-    }).catch(() => null)
-
-    if (!upstream?.ok) {
-      return reply.status(502).send({ detail: 'Agent service unavailable' })
-    }
-
-    return reply.send(await upstream.json())
+    const assisted = await meteredJson('/assist', {
+      selected_text: body.selectedText,
+      action: body.action,
+      contract_type: body.contractType,
+      governing_law: body.governingLaw,
+      provider: body.provider,
+      model_id: body.modelId,
+      orgId: req.user.orgId,   // per-org BYOK key + Langfuse tracing
+    }, { orgId: req.user.orgId, toolName: 'assist' })
+    if (assisted.status === 'capped') return reply.status(429).send(capBody(assisted.usedUsd, assisted.capUsd))
+    if (assisted.status === 'failed') return reply.status(502).send({ detail: 'Agent service unavailable' })
+    return reply.send(assisted.data)
   })
 
   // POST /api/v1/agent/compare — compare clause text to playbook positions
@@ -601,21 +567,11 @@ export async function agentRoutes(app: FastifyInstance) {
       return reply.status(404).send({ detail: 'No playbook positions found for this category' })
     }
 
-    const upstream = await fetch(`${AGENTS_URL}/compare`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-internal-secret': INTERNAL_SECRET,
-      },
-      // orgId selects the team's model settings and its own key (BYOK);
-      // without it the call ran on the platform default and key.
-      body: JSON.stringify({ clauseText, positions, orgId: req.user.orgId }),
-    }).catch(() => null)
-
-    if (!upstream?.ok) {
-      return reply.status(502).send({ detail: 'Agent service unavailable' })
-    }
-
-    return reply.send(await upstream.json())
+    // orgId selects the team's model settings and its own key (BYOK).
+    const compared = await meteredJson('/compare', { clauseText, positions, orgId: req.user.orgId },
+      { orgId, toolName: 'playbook_compare' })
+    if (compared.status === 'capped') return reply.status(429).send(capBody(compared.usedUsd, compared.capUsd))
+    if (compared.status === 'failed') return reply.status(502).send({ detail: 'Agent service unavailable' })
+    return reply.send(compared.data)
   })
 }

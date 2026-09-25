@@ -786,6 +786,8 @@ export function AgentHomePage() {
                 target,
                 diff,
                 reversible: Boolean(evt.reversible),
+                previewHtml: typeof preview?.html === 'string' ? preview.html : undefined,
+                missingFields: Array.isArray(preview?.missingFields) ? (preview.missingFields as unknown[]).map(String) : undefined,
               }
               // The proposal also closes out the running chip for this tool.
               // 'awaiting' rather than 'ok': no result frame ever arrives for

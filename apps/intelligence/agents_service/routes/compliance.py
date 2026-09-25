@@ -25,6 +25,9 @@ from pydantic import BaseModel
 
 from agents_service.router import resolve_llm
 from langchain_core.messages import HumanMessage, SystemMessage
+from agents_service.untrusted import wrap_untrusted_document
+from agents_service.quotes import verify_field
+from services.quote_locator import SourceText
 
 logger = logging.getLogger("compliance")
 router = APIRouter()
@@ -170,9 +173,7 @@ async def check_compliance(req: CheckComplianceRequest):
 Frameworks to assess: {", ".join(requested)}
 
 Contract text (truncated if very long):
-\"\"\"
-{text[:60000]}
-\"\"\"
+{wrap_untrusted_document(text[:60000], source="counterparty contract body")}
 
 Run the compliance checks now. JSON only."""
 
@@ -192,6 +193,18 @@ Run the compliance checks now. JSON only."""
                 content = content[4:]
         parsed = loads_lenient(content)
         frameworks = _normalise_frameworks(parsed.get("frameworks") or [], requested)
+        # Every finding's quote is checked against the contract text: kept in
+        # the contract's own words, or removed and the finding flagged for
+        # review. A "present" finding whose evidence cannot be found is not
+        # evidence of compliance.
+        source = SourceText(text)
+        unverified = 0
+        for fw in frameworks:
+            for c in fw["checks"]:
+                had_quote = bool(c.get("quote"))
+                if not verify_field(c, "quote", source) and had_quote:
+                    unverified += 1
+                    c["needsReview"] = True
         overall = parsed.get("overall") or {}
         critical = sum(
             1
@@ -206,6 +219,7 @@ Run the compliance checks now. JSON only."""
                 "summary":       str(overall.get("summary") or ""),
                 "criticalCount": critical,
             },
+            "unverifiedQuotes": unverified,
             "model":    model,
             "provider": provider,
         }

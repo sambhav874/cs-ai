@@ -19,6 +19,7 @@ from langgraph.graph import StateGraph, END
 from typing_extensions import TypedDict
 
 from ..router import resolve_llm
+from agents_service.untrusted import wrap_untrusted_document
 
 logger = logging.getLogger(__name__)
 
@@ -151,8 +152,8 @@ async def step_summarize(state: ApprovalState) -> dict:
             counterparty=state['counterparty_name'] or 'Unknown',
             contract_type=state['contract_type'],
             value=value_str,
-            key_terms_json=json.dumps(state['key_terms'], indent=2)[:2000],
-            text_excerpt=state['contract_plain_text'][:8000],
+            key_terms_json=wrap_untrusted_document(json.dumps(state['key_terms'], indent=2)[:2000], source="extracted key terms with quotes"),
+            text_excerpt=wrap_untrusted_document(state['contract_plain_text'][:8000], source="counterparty contract body"),
         )
         response = await resolved.llm.ainvoke(
             [SystemMessage(content="You are a legal analyst."), HumanMessage(content=prompt)],
@@ -183,7 +184,7 @@ async def step_flag_risks(state: ApprovalState) -> dict:
             contract_type=state['contract_type'],
             risk_score=state['risk_score'] or 0,
             risk_factors_json=json.dumps(state['risk_factors'][:10]),
-            clauses_json=json.dumps(all_clauses[:10], indent=2)[:4000],
+            clauses_json=wrap_untrusted_document(json.dumps(all_clauses[:10], indent=2)[:4000], source="contract clause text"),
         )
         response = await resolved.llm.ainvoke(
             [SystemMessage(content="You are a contract risk analyst."), HumanMessage(content=prompt)],

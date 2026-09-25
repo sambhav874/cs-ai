@@ -41,6 +41,7 @@ from pydantic import BaseModel
 
 from agents_service.router import resolve_llm
 from langchain_core.messages import HumanMessage, SystemMessage
+from agents_service.untrusted import wrap_untrusted_document
 
 logger = logging.getLogger("renewals")
 router = APIRouter()
@@ -151,9 +152,7 @@ async def renewal_advice(
 {ob_blob}
 
 Contract text (truncated if very long):
-\"\"\"
-{text[:14000]}
-\"\"\"
+{wrap_untrusted_document(text[:14000], source="counterparty contract body")}
 
 Produce the renewal recommendation now. JSON only."""
 

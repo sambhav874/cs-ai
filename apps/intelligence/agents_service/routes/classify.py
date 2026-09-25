@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from ..jsonish import loads_lenient
 from ..router import resolve_llm
+from agents_service.untrusted import wrap_untrusted_document
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -93,7 +94,8 @@ async def classify_document(req: ClassifyRequest) -> ClassifyResponse:
 
 
 async def _call_llm(text: str, org_id: Optional[str]) -> str:
-    prompt = _PROMPT + text
+    # The document is counterparty-authored: framed as data, never instructions.
+    prompt = _PROMPT + wrap_untrusted_document(text, source="contract text to classify")
 
     # Routed through resolve_llm so per-org BYOK keys, tier overrides and
     # Langfuse tracing apply. resolve_llm hands back a ready LangChain

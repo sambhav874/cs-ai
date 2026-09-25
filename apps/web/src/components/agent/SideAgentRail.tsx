@@ -654,6 +654,8 @@ export function SideAgentRail() {
                   target,
                   diff,
                   reversible:   Boolean(parsed.reversible),
+                  previewHtml:  typeof preview?.html === 'string' ? preview.html : undefined,
+                  missingFields: Array.isArray(preview?.missingFields) ? (preview.missingFields as unknown[]).map(String) : undefined,
                 }
                 setMessages(prev => prev.map(m =>
                   m.id === assistantId
