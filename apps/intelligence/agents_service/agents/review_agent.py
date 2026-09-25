@@ -256,6 +256,10 @@ class ReviewState(TypedDict):
     error: str | None
 
 
+# rawFields keys the missing-field recovery pass looks for (see _extract).
+RECOVERY_FIELDS = ("parties", "effectiveDate", "expiryDate", "governingLaw", "value")
+
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _parse_json(content: str) -> dict:
@@ -658,9 +662,13 @@ async def _extract(state: ReviewState) -> ReviewState:
     # call focused ONLY on those fields, with the explicit instruction
     # to look harder. Cheap (only fires when needed), bounded (only
     # rerolls the missing keys), additive (never overwrites a hit).
-    REQUIRED = {"parties", "term_length", "governing_law", "total_value"}
+    # The keys are the rawFields schema's own (camelCase). They used to be
+    # snake_case names the schema never produces, so the pass fired on nearly
+    # every contract and stored what it found under keys nothing reads.
+    # Both dates: the renewals page needs the expiry, and "term length" is
+    # the expiry once the start date is known.
     missing = []
-    for k in REQUIRED:
+    for k in RECOVERY_FIELDS:
         v = merged_fields.get(k)
         is_empty = (
             v is None or v == "" or

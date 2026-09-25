@@ -335,7 +335,7 @@ async function handleExtractAi(data: ExtractAiJob): Promise<void> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET ?? '' },
     body: JSON.stringify(body),
-  }, { orgId, toolName: 'redline_analysis' })
+  }, { orgId, toolName: 'contract_analysis' }) // was mislabelled 'redline_analysis'
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')

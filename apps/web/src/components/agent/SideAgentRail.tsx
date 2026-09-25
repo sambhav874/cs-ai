@@ -509,8 +509,9 @@ export function SideAgentRail() {
           // thread. AgentThread persistence lands in D.1.6; this keeps the
           // existing chat memory in Redis working in the meantime.
           sessionId: sessionIdRef.current || threadIdRef.current || undefined,
-          provider: 'openai',
-          modelId: 'gpt-4.1-mini',
+          // No provider/model pin: the team's AI settings choose the model.
+          // This used to pin openai/gpt-4.1-mini, which forced the fast tier
+          // and overrode Admin → AI on every turn.
           // D.1.4a — opt into tool-binding + typed event stream.
           agentMode: true,
           // D.1.4a — let the agent know what page the user is on so
@@ -538,6 +539,8 @@ export function SideAgentRail() {
       const decoder = new TextDecoder()
       let buffer = ''
       let assembled = ''
+      // What actually answered, from the stream's terminal `done` frame.
+      let answeredBy: { provider?: string; model?: string; tier?: string } = {}
 
       while (true) {
         const { done, value } = await reader.read()
@@ -575,6 +578,9 @@ export function SideAgentRail() {
               // "tool_call_result" → flip status + attach preview
               // "done" → noop (the stream close handles finalization)
               const kind = parsed.type ?? (typeof parsed.delta === 'string' ? 'token' : null)
+              if (kind === 'done') {
+                answeredBy = { provider: parsed.provider, model: parsed.model, tier: parsed.tier }
+              }
               if (kind === 'token' && typeof parsed.delta === 'string') {
                 assembled += parsed.delta
                 setMessages(prev =>
@@ -770,9 +776,9 @@ export function SideAgentRail() {
               userMessage: clean,
               assistant: {
                 content: finalText,
-                provider: 'openai',
-                model: 'gpt-4.1-mini',
-                tier: 'default',
+                provider: answeredBy.provider ?? 'unknown',
+                model: answeredBy.model ?? 'unknown',
+                tier: answeredBy.tier ?? 'default',
               },
               toolCalls,
             }),

@@ -187,8 +187,11 @@ export async function skillsRoutes(app: FastifyInstance) {
   })
 
   // ── PATCH /api/v1/skills/:id ────────────────────────────────────────────────
-  // Admins can edit any skill (built-in system prompts included). If any
-  // versioned field changes, bump version + log the edit.
+  // Admins edit their own org's skills. Built-ins are shared by every
+  // organisation, so they are read-only here: letting any org's admin edit
+  // one rewrote the system prompt of every other org's assistant. They are
+  // maintained by scripts/seed-skills.ts. If any versioned field changes,
+  // bump version + log the edit.
   app.patch('/:id', { preHandler: requirePermission('configure', 'organization') }, async (req, reply) => {
     const { orgId, roles } = req.user
     const { id } = req.params as { id: string }
@@ -201,12 +204,17 @@ export async function skillsRoutes(app: FastifyInstance) {
         id,
         deletedAt: null,
         OR: [
-          { orgId: null, ownerType: 'built_in' }, // admins of any org can edit built-ins
+          { orgId: null, ownerType: 'built_in' },
           { orgId, ownerType: 'org' },
         ],
       },
     })
     if (!skill) return reply.status(404).send({ detail: 'Skill not found' })
+    if (skill.ownerType === 'built_in') {
+      return reply.status(403).send({
+        detail: 'Built-in skills are shared by every organisation and cannot be edited. Create an org skill instead.',
+      })
+    }
 
     let patch
     try { patch = UpdateSkillSchema.parse(req.body) }

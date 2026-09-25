@@ -180,16 +180,21 @@ export function AdminSkillsPage() {
                 <span>Tools: <span className="font-mono">{s.allowedTools.join(', ') || '—'}</span></span>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setEditing(s.id)}
-              data-testid={`admin-skill-edit-${s.slug.slice(1)}`}
-              className="gap-1"
-            >
-              <Pencil className="size-3" />
-              Edit
-            </Button>
+            {/* Built-ins are shared by every organisation; the API refuses edits. */}
+            {s.ownerType === 'built_in' ? (
+              <span className="text-[10.5px] text-muted-foreground" title="Shared by every organisation">Read-only</span>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditing(s.id)}
+                data-testid={`admin-skill-edit-${s.slug.slice(1)}`}
+                className="gap-1"
+              >
+                <Pencil className="size-3" />
+                Edit
+              </Button>
+            )}
           </div>
         ))}
         {filtered.length === 0 && !listQ.isLoading && (

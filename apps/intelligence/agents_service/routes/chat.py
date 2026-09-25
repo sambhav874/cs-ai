@@ -23,7 +23,11 @@ class ChatRequest(BaseModel):
     contract_id: str | None = None
     user_id: str = "anonymous"
     org_id: str = "default"
-    provider: str = DEFAULT_PROVIDER
+    # None means no pin, like model_id below: the org's AI settings choose.
+    # It defaulted to DEFAULT_PROVIDER (anthropic), which the block below then
+    # swapped for whichever provider had a key and passed down as an explicit
+    # provider_override — outranking Admin → AI on every unpinned turn.
+    provider: str | None = None
     # None means "no pin — let org AI settings decide". It used to default to
     # DEFAULT_MODEL (claude-sonnet-4-6), which made every unpinned request look
     # like an explicit Anthropic pin. On a deployment without an Anthropic key
@@ -74,8 +78,12 @@ async def chat(req: ChatRequest):
     # docs/37 E12 — under replay there is no provider and no key; validating
     # one would reinstate the key requirement this seam exists to remove.
     from agents_service.replay import mode as _replay_mode
-    resolved_provider = req.provider if _replay_mode() == "replay" else resolve_provider(req.provider)
-    if _replay_mode() != "replay" and resolved_provider != req.provider:
+    # An unpinned request stays unpinned: nothing below applies to it.
+    if req.provider is None:
+        resolved_provider = None
+    else:
+        resolved_provider = req.provider if _replay_mode() == "replay" else resolve_provider(req.provider)
+    if req.provider is not None and _replay_mode() != "replay" and resolved_provider != req.provider:
         # Caller requested an unconfigured provider — pick a sensible
         # model id for the actual provider rather than passing through
         # the (now wrong) one (e.g. claude-sonnet-4-6 → openai breaks).
@@ -101,7 +109,7 @@ async def chat(req: ChatRequest):
 
     # Validate provider + model before starting the stream. Skipped under
     # replay: the recorded response is served without a provider at all.
-    if _replay_mode() != "replay" and req.model_id is not None:
+    if _replay_mode() != "replay" and req.model_id is not None and req.provider is not None:
         try:
             get_model_option(req.provider, req.model_id)
         except ValueError as e:

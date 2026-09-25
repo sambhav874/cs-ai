@@ -683,8 +683,8 @@ async def run_agent_chat_stream(
     org_id: str,
     user_id: str,
     message: str,
-    provider: str,
-    model_id: str,
+    provider: str | None,
+    model_id: str | None,
     page_context: dict | None = None,
     # D.4.1 — optional skill overrides. When skill_system_prompt is set,
     # it replaces AGENT_SYSTEM_PROMPT. When skill_allowed_tools is set, it

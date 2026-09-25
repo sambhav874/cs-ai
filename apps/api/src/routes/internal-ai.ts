@@ -1385,7 +1385,7 @@ export async function internalAiRoutes(app: FastifyInstance) {
     // API key, embeddings not yet run) doesn't kill lexical results.
     type DenseHit = {
       contractId: string; versionId: string; clauseId: string
-      clauseType: string; content: string; similarity: number
+      clauseType: string; content: string; similarity: number; page?: number | null
     }
     let dense: DenseHit[] = []
     try {
@@ -1495,6 +1495,11 @@ export async function internalAiRoutes(app: FastifyInstance) {
         })
       : []
     const clauseById = new Map(clauses.map(cl => [cl.id, cl]))
+    // Dense hits come from ContractSense's retrieval: their clauseId is a
+    // passage id, not a contract_clauses row, so the lookup above misses and
+    // the passage's own text, section and page must carry the hit. Before
+    // this, every dense hit came back with a null excerpt, section and page.
+    const passageById = new Map(dense.map(d => [d.clauseId, d]))
 
     // Fetch structure metadata for the versions covered, to get
     // {page, bbox} for each clause's sectionRef.
@@ -1515,6 +1520,7 @@ export async function internalAiRoutes(app: FastifyInstance) {
     const hits = ranked.map(r => {
       const c = contractById.get(r.contractId)
       const clause = r.clauseId ? clauseById.get(r.clauseId) : undefined
+      const passage = !clause && r.clauseId ? passageById.get(r.clauseId) : undefined
       const nav = clause ? (navByVersion.get(clause.versionId) ?? []) : []
       const navHit = clause?.sectionRef
         ? nav.find(n => clause.sectionRef?.includes(n.ref) || n.ref === clause.sectionRef)
@@ -1528,10 +1534,10 @@ export async function internalAiRoutes(app: FastifyInstance) {
         value:         c?.value != null ? Number(c.value) : null,
         currency:      c?.currency ?? null,
         clauseId:      r.clauseId ?? null,
-        clauseType:    clause?.clauseType ?? null,
-        sectionRef:    clause?.sectionRef ?? null,
-        excerpt:       clause ? clause.content.slice(0, 500) : null,
-        page:          navHit?.page ?? null,
+        clauseType:    clause?.clauseType ?? passage?.clauseType ?? null,
+        sectionRef:    clause?.sectionRef ?? (passage && passage.clauseType !== 'passage' ? passage.clauseType : null),
+        excerpt:       clause ? clause.content.slice(0, 500) : passage ? passage.content.slice(0, 500) : null,
+        page:          navHit?.page ?? passage?.page ?? null,
         bbox:          navHit?.bbox ?? null,
         fusedScore:    Number(r.score.toFixed(4)),
         denseRank:     r.denseRank ?? null,

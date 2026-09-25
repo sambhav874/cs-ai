@@ -658,14 +658,9 @@ export function AgentHomePage() {
           message: clean,
           sessionId: threadId ?? undefined,
           agentMode: true,
-          // Pin the same provider+model as the side rail (SideAgentRail) so
-          // both surfaces give identical answers to identical questions.
-          // Without this, the Assistant page silently used the org's default
-          // model (often gpt-4o) which has known tool-call quirks — e.g.
-          // passing query="*" to contract_search expecting a wildcard,
-          // which returns zero hits. See "Assistant vs Ask" bug fix.
-          provider: 'openai',
-          modelId:  'gpt-4.1-mini',
+          // No provider/model pin, same as the side rail: both surfaces use
+          // the team's AI settings, so they answer identically. (They used to
+          // pin openai/gpt-4.1-mini, which overrode Admin → AI.)
           ...(pickedSkill ? { skillSlug: pickedSkill } : {}),
         }),
         signal: abortRef.current.signal,

@@ -250,7 +250,8 @@ export async function playbookRoutes(app: FastifyInstance) {
           'Content-Type': 'application/json',
           'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET ?? '',
         },
-        body: JSON.stringify({ clauseText, positions }),
+        // orgId: the team's model settings and own key (BYOK), not the platform's.
+        body: JSON.stringify({ clauseText, positions, orgId: req.user.orgId }),
       })
 
       if (!agentRes.ok) {

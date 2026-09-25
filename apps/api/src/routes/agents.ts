@@ -506,6 +506,7 @@ export async function agentRoutes(app: FastifyInstance) {
         clauseText:   body.clauseText.slice(0, 2400),
         contractType: body.contractType ?? 'general commercial',
         sectionHint:  body.sectionHint ?? null,
+        orgId:        req.user.orgId, // team model settings + own key
       }),
     }).catch(() => null)
     if (!upstream?.ok) {
@@ -540,6 +541,7 @@ export async function agentRoutes(app: FastifyInstance) {
         contextAfter:  (body.contextAfter ?? '').slice(0, 400),
         contractType:  body.contractType ?? 'general commercial',
         maxChars:      Math.max(40, Math.min(body.maxChars ?? 160, 320)),
+        orgId:         req.user.orgId, // team model settings + own key
       }),
     }).catch(() => null)
     if (!upstream?.ok) {
@@ -614,7 +616,9 @@ export async function agentRoutes(app: FastifyInstance) {
         'Content-Type': 'application/json',
         'x-internal-secret': INTERNAL_SECRET,
       },
-      body: JSON.stringify({ clauseText, positions }),
+      // orgId selects the team's model settings and its own key (BYOK);
+      // without it the call ran on the platform default and key.
+      body: JSON.stringify({ clauseText, positions, orgId: req.user.orgId }),
     }).catch(() => null)
 
     if (!upstream?.ok) {
