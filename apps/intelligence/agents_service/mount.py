@@ -4,19 +4,17 @@ TODO(licence): this package is draftLegal code (AGPL-3.0, see LICENSE and
 NOTICE beside this file). It moved here from apps/agents with `git mv`, so
 `git log --follow` still shows where each line came from.
 
-TODO(merge): the routes below are draftLegal's original HTTP contract, kept
-so the lifecycle API's callers did not have to change in the same commit.
-Each one that ContractSense's pipeline already covers (extraction,
-obligations, Q&A with citations) is being pointed at that pipeline; when the
-last caller has moved, the duplicate route goes. /extract_obligations has
-gone: obligations come from ContractSense's extraction and reach the API
-through /api/internal/obligations/sync. /review has gone too: key terms,
-clauses, risk and summary come from services/key_terms.py and reach the API
-through /api/internal/contracts/{id}/analysis/sync. /agent/chat runs on
-ContractSense's runtime (services/assistant); /agent/ask and
-/agent/portfolio-query went with the orchestrator — cited Q&A is the
-assistant's search_evidence, and natural-language portfolio filters are its
-contract_filter tool.
+The routes below keep draftLegal's original HTTP contract, so the lifecycle
+API's callers did not change. The ones ContractSense's pipeline duplicated are
+gone (agent merge P1-P2): /review (key terms: services/key_terms.py, synced
+through /api/internal/contracts/{id}/analysis/sync), /extract_obligations
+(obligations: /api/internal/obligations/sync), /agent/ask and
+/agent/portfolio-query (the assistant's search_evidence and contract_filter).
+/agent/chat runs on ContractSense's runtime (services/assistant). What remains
+are draftLegal capabilities with no ContractSense counterpart: binder
+detection, classification, intake, drafting, editor assist, structure
+extraction, redlines, playbook review, approval summaries, renewal advice and
+compliance checks.
 
 Every route requires the shared INTERNAL_SERVICE_SECRET, exactly as the old
 service's middleware did, and fails closed when it is not configured.

@@ -9,3 +9,6 @@ it unmarked.
 
 Our licence position, the obligation trigger and the three exits are
 recorded in /docs/LICENSING.md. Do not remove this file.
+
+TODO(licence): this whole directory is draftLegal (AGPL-3.0) code or derived from
+it. Resolve with the pre-launch licence decision in /docs/LICENSING.md.

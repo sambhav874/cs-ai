@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { requirePermission } from '../middleware/permissions.js'
 import { searchContracts, advancedSearch, getContractFacets } from '../lib/elasticsearch.js'
-import { searchClauses, rerankClauses } from '../lib/embeddings.js'
+import { searchClauses } from '../lib/embeddings.js'
 import { fuseRRF } from '../lib/rrf.js'
 
 const SearchSchema = z.object({

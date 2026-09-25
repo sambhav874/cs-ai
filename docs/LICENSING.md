@@ -45,3 +45,21 @@ Separate from the licence, on the same pre-launch list: the e-signature audit
 trail needs legal review for ESIGN and eIDAS validity. The cryptography is real
 (PAdES X.509 seal, SHA-256 hash), but a valid seal and a legally sufficient
 audit trail are different questions.
+
+## TODO(licence) inventory
+
+Every AGPL directory carries a `TODO(licence)` line in its NOTICE:
+`apps/api`, `apps/web`, `packages/types`, `apps/intelligence/agents_service`.
+
+Bridge and reuse sites outside those directories — ContractSense code that runs,
+imports or derives from draftLegal code — are marked in the file:
+
+| File | What crosses |
+|---|---|
+| `apps/intelligence/services/assistant/engine.py` | the platform assistant runs draftLegal's tools, prompt rules and eval replay seam on ContractSense's runtime |
+| `apps/intelligence/services/assistant/lifecycle.py` | draftLegal's agent tools, wrapped for the runtime |
+| `apps/intelligence/services/assistant/frames.py` | draftLegal's chat stream protocol |
+| `apps/intelligence/services/assistant/prompt.py` | draftLegal's orchestrator routing rules, moved verbatim |
+| `apps/intelligence/services/key_terms.py`, `key_terms_schema.py` | the review agent's field model, clause taxonomy and classification text |
+
+List them with `grep -rn "TODO(licence)" apps packages docs`.

@@ -20,6 +20,8 @@ every analysed contract. The conversation's earlier turns come from the API,
 which persists them (routes/agents.ts), and are replayed with tool output
 framed as untrusted again.
 """
+# TODO(licence): bridges ContractSense's runtime and draftLegal's tools, prompt and replay seam (AGPL-3.0).
+
 from __future__ import annotations
 
 import asyncio

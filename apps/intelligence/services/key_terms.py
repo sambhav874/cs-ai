@@ -23,6 +23,8 @@ What changed from the review agent, and why:
 pipeline — verification, normalisation, merging, the ledger — is tested
 without a model.
 """
+# TODO(licence): the field model and prompts derive from draftLegal's review agent (AGPL-3.0); see key_terms_schema.py.
+
 from __future__ import annotations
 
 import json

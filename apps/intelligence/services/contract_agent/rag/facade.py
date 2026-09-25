@@ -4,23 +4,17 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 
 from langchain_core.documents import Document
 
 from core.config import settings
 from models.contract_types import QuestionAnswer
-from utils.secure_logger import log_exception
-from utils.text_cleanup import clean_text_encoding, get_formatted_citations
 
 
-from .agent import ContractEvidenceLoop, EvidenceLoopResult
 from .llm_client import ProviderLLMClient
-from .prompts import ContractPromptBuilder, ContractTaskType, detect_task_type
-from .retrieval import PromptContextSelector
 from .schemas import CitationInfo, Reference, TextSegment
 from .segmentation import DocumentSegmenter
-from .verifier import ContractAnswerVerifier
 from .vector_store import VectorStoreManager
 
 logger = logging.getLogger(__name__)
@@ -384,119 +378,6 @@ class ContractRAGSystem:
             reason=response.reason,
             citation_details=response.citation_details,
         )
-
-    def stream_agent_question(self, **kwargs: Any) -> Iterator[Dict[str, Any]]:
-        yield {"type": "status", "message": "planning"}
-        yield {"type": "status", "message": "retrieving"}
-
-        contract_id = kwargs.get("contract_id")
-        contract_name = kwargs.get("contract_name")
-        question = kwargs.get("question")
-        user_id = kwargs.get("user_id")
-
-        qa = self.answer_agent_question(
-            contract_text="",
-            contract_name=contract_name or "",
-            contract_id=contract_id or "",
-            question=question or "",
-            project_id=kwargs.get("project_id"),
-            user_id=user_id,
-            vector_namespace=kwargs.get("vector_namespace"),
-            vector_backend=kwargs.get("vector_backend"),
-            memory_context=kwargs.get("memory_context") or "",
-        )
-
-        yield {
-            "type": "final",
-            "answer": qa.answer,
-            "question": qa.question,
-            "confidence": qa.confidence,
-            "citation": qa.citation,
-            "reason": qa.reason,
-            "citation_details": qa.citation_details,
-            "citation_annotations": get_formatted_citations(qa.citation_details),
-            "agent_trace": getattr(qa, "agent_trace", None) or getattr(self, "last_agent_trace", None),
-            "vector_namespace": getattr(self.vector_manager, "current_namespace", None),
-            "vector_backend": getattr(self.vector_manager, "current_vector_backend", None),
-        }
-
-    def stream_project_question(self, **kwargs: Any) -> Iterator[Dict[str, Any]]:
-        yield {"type": "status", "message": "planning"}
-        yield {"type": "status", "message": "retrieving"}
-
-        project_documents = kwargs.get("project_documents") or []
-        project_id = kwargs.get("project_id")
-        question = kwargs.get("question")
-        user_id = kwargs.get("user_id")
-
-        qa = self.answer_project_question(
-            project_documents=project_documents,
-            project_id=project_id or "",
-            question=question or "",
-            user_id=user_id,
-            displayed_document=kwargs.get("displayed_document"),
-            attached_documents=kwargs.get("attached_documents") or [],
-            memory_context=kwargs.get("memory_context") or "",
-        )
-
-        yield {
-            "type": "final",
-            "answer": qa.answer,
-            "question": qa.question,
-            "confidence": qa.confidence,
-            "citation": qa.citation,
-            "reason": qa.reason,
-            "citation_details": qa.citation_details,
-            "citation_annotations": get_formatted_citations(qa.citation_details),
-            "agent_trace": getattr(qa, "agent_trace", None) or getattr(self, "last_agent_trace", None),
-            "vector_namespace": getattr(self.vector_manager, "current_namespace", None),
-            "vector_backend": getattr(self.vector_manager, "current_vector_backend", None),
-        }
-
-    def _run_evidence_loop(
-        self,
-        *,
-        question: str,
-        task_type: ContractTaskType,
-        all_segments: List[TextSegment],
-        initial_segments: List[TextSegment],
-        memory_context: str,
-        max_segments: int,
-    ):
-        if not all_segments or not initial_segments:
-            return EvidenceLoopResult(
-                segments=initial_segments,
-                observations=[],
-                iterations=0,
-                tools_used=[],
-                fallback_reason="no evidence segments available",
-            )
-        max_steps = getattr(settings, "contract_agent_max_tool_steps", 3)
-        return ContractEvidenceLoop(self, max_steps=max_steps).run(
-            question=question,
-            task_type=task_type,
-            all_segments=all_segments,
-            initial_segments=initial_segments,
-            memory_context=memory_context,
-            max_segments=max_segments,
-        )
-
-    def _prompt_ready_segments(
-        self,
-        segments: List[TextSegment],
-        *,
-        question: str,
-        segment_excerpt_chars: Optional[int],
-    ) -> List[TextSegment]:
-        selector = PromptContextSelector(self)
-        ready_segments: List[TextSegment] = []
-        for segment in segments:
-            excerpt = selector.excerpt_for_prompt(segment, question, segment_excerpt_chars)
-            try:
-                ready_segments.append(segment.model_copy(update={"text": excerpt}))
-            except AttributeError:
-                ready_segments.append(segment.copy(update={"text": excerpt}))
-        return ready_segments
 
 
 __all__ = [

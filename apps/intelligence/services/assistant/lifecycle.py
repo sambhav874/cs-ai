@@ -20,6 +20,8 @@ ContractSense runtime loses none of it:
 Each wrapped call is recorded on the run state like any evidence tool, so the
 shared budget, the trace and answer-from-observations see it.
 """
+# TODO(licence): draftLegal's agent tools (agents_service/tools, AGPL-3.0) run inside ContractSense's runtime here.
+
 from __future__ import annotations
 
 import json

@@ -20,6 +20,8 @@ and ContractSense's run adds what that stream never had:
 
 Pure apart from `emit`; tested without a model.
 """
+# TODO(licence): the stream contract kept here is draftLegal's (AGPL-3.0) chat frame protocol.
+
 from __future__ import annotations
 
 import re
