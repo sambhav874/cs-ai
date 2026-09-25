@@ -141,7 +141,32 @@ const ApplyActionSchema = z.object({
   messageId: z.string().optional(),
   // Optional — echo back to the client so it can match response → card.
   actionId:  z.string().optional(),
+  // The saved proposal this Apply confirms (a card restored on reload knows
+  // it). A card from the live stream does not; its proposal is the thread's
+  // latest one for the same tool.
+  proposalId: z.string().optional(),
 })
+
+/**
+ * Mark the proposal an Apply confirmed, so a reloaded thread shows the card as
+ * applied (and, after Undo, undone) instead of offering the same write again.
+ * Proposals are saved with the turn as `awaiting_confirmation` rows
+ * (lib/agent-turns.ts); before this they stayed that way forever, and the
+ * page could not show a pending card at all after a reload.
+ */
+export async function resolveProposal(threadId: string, toolName: string, proposalId: string | undefined, appliedToolCallId: string) {
+  const proposal = await prisma.toolCall.findFirst({
+    where: { threadId, toolName, status: 'awaiting_confirmation', ...(proposalId ? { id: proposalId } : {}) },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, output: true },
+  })
+  if (!proposal) return
+  const output = (proposal.output && typeof proposal.output === 'object') ? proposal.output as Record<string, unknown> : {}
+  await prisma.toolCall.update({
+    where: { id: proposal.id },
+    data: { status: 'applied', output: { ...output, appliedToolCallId } as never },
+  })
+}
 
 const AppendTurnSchema = z.object({
   userMessage: z.string().min(1).max(10_000),
@@ -219,6 +244,7 @@ async function applyIntelligenceWrite(
     userAgent: (req.headers['user-agent'] as string | undefined)?.slice(0, 500),
   })
   if (!ok) return reply.status(status === 502 ? 502 : status).send({ ok: false, toolCallId: toolCall.id, error: parsed })
+  await resolveProposal(threadId, body.toolName, body.proposalId, toolCall.id)
   return reply.send({ ok: true, toolCallId: toolCall.id, actionId: body.actionId, result: parsed })
 }
 
@@ -540,6 +566,7 @@ export async function agentThreadRoutes(app: FastifyInstance) {
           error: typeof parsed === 'object' ? parsed : { detail: String(text).slice(0, 500) },
         })
       }
+      await resolveProposal(threadId, body.toolName, body.proposalId, toolCall.id)
       return reply.send({
         ok: true,
         toolCallId: toolCall.id,

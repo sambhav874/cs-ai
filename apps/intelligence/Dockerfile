@@ -38,8 +38,13 @@ RUN find /opt/venv -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/n
     rm -rf /opt/venv/lib/python3.11/site-packages/poetry /root/.cache
 
 FROM python:3.11-slim AS runtime
+# PYTHONPATH: the Celery worker has /app on sys.path only while it loads the
+# app (celery.utils.imports.cwd_in_path removes it again), so a module imported
+# later inside a task — agents_service, from key-term analysis — was not found
+# and every upload's analysis failed. The API is unaffected; uvicorn keeps it.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
     ENVIRONMENT=prod \
     API_PORT=8000 \
     PATH="/opt/venv/bin:$PATH"

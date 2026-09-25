@@ -50,6 +50,7 @@ import { AssistMark } from '@/components/ui/assist'
 import { ArtifactPane, type Artifact } from '@/components/agent/ArtifactPane'
 import { artifactFromToolResult } from '@/components/agent/artifact-from-tool'
 import { ActionPreview, type PendingAction } from '@/components/agent/ActionPreview'
+import { actionFromProposal, restoredActions, type SavedToolCall } from '@/components/agent/restore-actions'
 import { parseActionChips } from '@/components/agent/action-chips'
 import { ChipRow } from '@/components/agent/ChipButton'
 import { MarkdownProse } from '@/components/agent/MarkdownProse'
@@ -587,11 +588,13 @@ export function AgentHomePage() {
         })
         toolsByMessage.set(tc.messageId, list)
       }
+      const actionsByMessage = restoredActions((data.toolCalls ?? []) as SavedToolCall[])
       setMessages(data.messages.map(m => ({
         id: m.id,
         role: m.role as 'user' | 'assistant' | 'system',
         content: normalizeMessageContent(m.content),
         toolCalls: toolsByMessage.get(m.id),
+        pendingActions: actionsByMessage.get(m.id),
         citations: Array.isArray(m.content)
           ? (m.content as Array<{ type?: string; citations?: AnswerCitation[] }>)
               .flatMap(b => b?.type === 'citations' && Array.isArray(b.citations) ? b.citations : [])
@@ -767,28 +770,13 @@ export function AgentHomePage() {
               // Apply POSTs /agent/threads/:id/actions/apply.
               const tcId = String(evt.id ?? `tc_${Date.now()}`)
               const toolName = String(evt.name)
-              const args = (evt.args && typeof evt.args === 'object') ? evt.args as Record<string, unknown> : {}
-              const preview = (evt.preview && typeof evt.preview === 'object') ? evt.preview as Record<string, unknown> : null
-              const summary = String(preview?.summary ?? `Apply ${toolName}`)
-              const target = preview?.target ? String(preview.target)
-                : preview?.title      ? String(preview.title)
-                : preview?.contractId ? `Contract ${String(preview.contractId).slice(0, 12)}…`
-                : undefined
-              const diff = Array.isArray(preview?.diff)
-                ? preview.diff as Array<{ field: string; before: string | number | null; after: string | number | null }>
-                : undefined
-              const action: PendingAction = {
+              const action = actionFromProposal({
                 id: tcId,
                 toolName,
-                status: 'awaiting_confirmation',
-                summary,
-                args,
-                target,
-                diff,
+                args: (evt.args && typeof evt.args === 'object') ? evt.args as Record<string, unknown> : {},
+                preview: (evt.preview && typeof evt.preview === 'object') ? evt.preview as Record<string, unknown> : null,
                 reversible: Boolean(evt.reversible),
-                previewHtml: typeof preview?.html === 'string' ? preview.html : undefined,
-                missingFields: Array.isArray(preview?.missingFields) ? (preview.missingFields as unknown[]).map(String) : undefined,
-              }
+              })
               // The proposal also closes out the running chip for this tool.
               // 'awaiting' rather than 'ok': no result frame ever arrives for
               // a write proposal, and a green tick beside a card that is
@@ -1036,6 +1024,7 @@ export function AgentHomePage() {
     // rail) — `messages` from the render closure can be stale if state
     // moved between render and click.
     let toolName = ''
+    let proposalId: string | undefined
     setMessages(prev => prev.map(m => {
       if (m.id !== msgId) return m
       return {
@@ -1043,6 +1032,7 @@ export function AgentHomePage() {
         pendingActions: (m.pendingActions ?? []).map(a => {
           if (a.id !== actionId) return a
           toolName = a.toolName
+          proposalId = a.proposalId
           return { ...a, status: 'running' as const, args: editedArgs }
         }),
       }
@@ -1062,7 +1052,7 @@ export function AgentHomePage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${accessToken ?? ''}`,
         },
-        body: JSON.stringify({ toolName, args: editedArgs, messageId: msgId, actionId }),
+        body: JSON.stringify({ toolName, args: editedArgs, messageId: msgId, actionId, proposalId }),
       })
       const body = await r.json().catch(() => ({ ok: false, error: { detail: 'Non-JSON response' } }))
       if (r.ok && body.ok) {

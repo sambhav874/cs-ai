@@ -60,6 +60,8 @@ export interface PendingAction {
   errorMessage?: string
   /** D.3.5 — server-side tool-call id (set after Apply) so Undo can target it. */
   toolCallId?: string
+  /** The saved proposal row, for a card restored from a saved thread (restore-actions.ts). */
+  proposalId?: string
   /** D.3.5 — when the action was Applied. Used to gate the 15-min undo window. */
   appliedAt?: number
 }

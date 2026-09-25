@@ -39,6 +39,7 @@ import { useAgentContext } from '@/hooks/useAgentContext'
 import { useAuthStore } from '@/store/auth'
 import { useAgentStore } from '@/store/agent'
 import { ActionPreview, type PendingAction } from './ActionPreview'
+import { actionFromProposal, restoredActions, type SavedToolCall } from './restore-actions'
 import { RedlinePreview, type RedlineProposal } from './RedlinePreview'
 import { AnswerCitations, CitationPills, type AnswerCitation, type CitationBundle } from './CitationPills'
 import { MEMORY_CHANGED_EVENT } from '@/features/intelligence/memoryEvents'
@@ -630,33 +631,13 @@ export function SideAgentRail() {
                 // mutation.
                 const tcId = String(parsed.id ?? `tc_${Date.now()}`)
                 const toolName = String(parsed.name ?? 'unknown')
-                const args = (parsed.args && typeof parsed.args === 'object') ? parsed.args as Record<string, unknown> : {}
-                const preview = (parsed.preview && typeof parsed.preview === 'object') ? parsed.preview as Record<string, unknown> : null
-                const summary = String(preview?.summary ?? `Apply ${toolName}`)
-                // Target label — contract title, request subject, etc. The
-                // tool's preview can pass an explicit `target`, or we
-                // derive from common fields.
-                const target = preview?.target ? String(preview.target)
-                  : preview?.title    ? String(preview.title)
-                  : preview?.contractId ? `Contract ${String(preview.contractId).slice(0, 12)}…`
-                  : undefined
-                // Structured diff for *_update tools — the tool can pass
-                // an explicit `diff` array, otherwise nothing renders.
-                const diff = Array.isArray(preview?.diff)
-                  ? preview.diff as Array<{ field: string; before: string | number | null; after: string | number | null }>
-                  : undefined
-                const action: PendingAction = {
-                  id:           tcId,
+                const action = actionFromProposal({
+                  id: tcId,
                   toolName,
-                  status:       'awaiting_confirmation',
-                  summary,
-                  args,
-                  target,
-                  diff,
-                  reversible:   Boolean(parsed.reversible),
-                  previewHtml:  typeof preview?.html === 'string' ? preview.html : undefined,
-                  missingFields: Array.isArray(preview?.missingFields) ? (preview.missingFields as unknown[]).map(String) : undefined,
-                }
+                  args: (parsed.args && typeof parsed.args === 'object') ? parsed.args as Record<string, unknown> : {},
+                  preview: (parsed.preview && typeof parsed.preview === 'object') ? parsed.preview as Record<string, unknown> : null,
+                  reversible: Boolean(parsed.reversible),
+                })
                 setMessages(prev => prev.map(m =>
                   m.id === assistantId
                     ? {
@@ -829,11 +810,13 @@ export function SideAgentRail() {
   async function applyAction(msgId: string, actionId: string, editedArgs: Record<string, unknown>) {
     // Flip to running first so the user sees immediate feedback.
     let toolName = ''
+    let proposalId: string | undefined
     setMessages(prev => prev.map(m => {
       if (m.id !== msgId) return m
       const pending = (m.pendingActions ?? []).map(a => {
         if (a.id !== actionId) return a
         toolName = a.toolName
+        proposalId = a.proposalId
         return { ...a, status: 'running' as const, args: editedArgs }
       })
       return { ...m, pendingActions: pending }
@@ -870,6 +853,7 @@ export function SideAgentRail() {
           args: editedArgs,
           messageId: msgId,
           actionId,
+          proposalId,
         }),
       })
       const body = await r.json().catch(() => ({ ok: false, error: { detail: 'Non-JSON response' } }))
@@ -1053,6 +1037,7 @@ export function SideAgentRail() {
         })
         toolByMsg.set(tc.messageId, arr)
       }
+      const actionsByMsg = restoredActions((t.toolCalls ?? []) as SavedToolCall[])
       const hydrated: RailMessage[] = (t.messages ?? []).map((m: {
         id: string; role: 'user' | 'assistant'; content: Array<{ type: string; text?: string }>
       }) => ({
@@ -1060,6 +1045,7 @@ export function SideAgentRail() {
         role: m.role,
         content: (m.content ?? []).map((b) => (b as { text?: string }).text ?? '').join(''),
         toolCalls: toolByMsg.get(m.id),
+        pendingActions: actionsByMsg.get(m.id),
         citations: (m.content ?? []).flatMap(b =>
           b.type === 'citations' && Array.isArray((b as { citations?: unknown }).citations)
             ? (b as unknown as { citations: AnswerCitation[] }).citations : []),

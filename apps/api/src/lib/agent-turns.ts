@@ -179,7 +179,7 @@ export async function loadHistory(threadId: string, turns = HISTORY_TURNS): Prom
   const ids = messages.filter(m => m.role === 'assistant').map(m => m.id)
   const calls = ids.length
     ? await prisma.toolCall.findMany({
-        where: { threadId, messageId: { in: ids }, status: { in: ['success', 'error', 'awaiting_confirmation'] } },
+        where: { threadId, messageId: { in: ids }, status: { in: ['success', 'error', 'awaiting_confirmation', 'applied'] } },
         orderBy: { createdAt: 'asc' },
         select: { id: true, messageId: true, toolName: true, input: true, output: true, status: true },
       })
@@ -192,8 +192,14 @@ export async function loadHistory(threadId: string, turns = HISTORY_TURNS): Prom
       id: c.id,
       name: c.toolName,
       args: (c.input && typeof c.input === 'object' ? c.input : {}) as Record<string, unknown>,
-      result: c.status === 'awaiting_confirmation'
-        ? JSON.stringify({ status: 'awaiting_user_confirmation', summary: (output.preview as { summary?: string } | undefined)?.summary ?? '' })
+      // A proposal replays as what became of it: still waiting, or applied by
+      // the user (routes/agent-threads.ts resolveProposal), so the model does
+      // not offer the same change again or claim it is still pending.
+      result: c.status === 'awaiting_confirmation' || c.status === 'applied'
+        ? JSON.stringify({
+            status: c.status === 'applied' ? 'applied_by_user' : 'awaiting_user_confirmation',
+            summary: (output.preview as { summary?: string } | undefined)?.summary ?? '',
+          })
         : typeof output.preview === 'string' ? output.preview : JSON.stringify(output.preview ?? ''),
     })
     byMessage.set(c.messageId, list)

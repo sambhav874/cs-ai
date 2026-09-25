@@ -57,6 +57,10 @@ beforeAll(async () => {
       upstream.requests.push({ url, body: JSON.parse(String(init?.body)) })
       return sse(upstream.frames)
     }
+    if (url.includes('/api/internal/ai/tools/')) {
+      upstream.requests.push({ url, body: JSON.parse(String(init?.body)) })
+      return new Response(JSON.stringify({ ok: true, contractId, tags: ['urgent'] }), { status: 200 })
+    }
     if (url.includes('/internal/agent/workflows/')) {
       upstream.requests.push({ url, body: JSON.parse(String(init?.body)) })
       return new Response(JSON.stringify({ workflowId: 'x', status: 'completed', answer: 'Recorded.' }), { status: upstream.decide })
@@ -156,6 +160,33 @@ describe('Apply on an intelligence-tier approval', () => {
     await chat({ message: 'x', sessionId: 'thread-apply-2' })
     expect((await apply('thread-apply-2', { toolName: 'remember_fact', args: { workflowId: '../../admin' } })).statusCode).toBe(400)
     expect((await apply('thread-apply-2', { toolName: 'remember_fact', args: { workflowId: 'workflow-' + 'b'.repeat(32) } }, ['VIEWER'])).statusCode).toBe(403)
+  })
+})
+
+describe('Apply on a lifecycle proposal', () => {
+  const apply = (threadId: string, payload: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: `/api/v1/agent/threads/${threadId}/actions/apply`, headers: auth(org, ['ADMIN'], user), payload })
+
+  it('runs the tool on this API, not the public URL, and marks the proposal applied', async () => {
+    await chat({ message: 'Tag the Acme MSA urgent', sessionId: 'thread-apply-lc' })
+    const proposal = await prisma.toolCall.findFirstOrThrow({ where: { threadId: 'thread-apply-lc', status: 'awaiting_confirmation' } })
+    const res = await apply('thread-apply-lc', {
+      toolName: 'contract_update', args: { contractId, action: 'add_tag', tag: 'urgent' }, actionId: 'w1',
+    })
+    expect(res.statusCode).toBe(200)
+    // cs2: API_URL was the public origin, whose edge 404s /api/internal.
+    const call = upstream.requests.find(r => r.url.includes('/api/internal/ai/tools/contract_update'))!
+    expect(call.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/api\/internal\/ai\/tools\/contract_update$/)
+    expect(call.body).toMatchObject({ contractId, orgId: org, userId: user })
+
+    const resolved = await prisma.toolCall.findUniqueOrThrow({ where: { id: proposal.id } })
+    expect(resolved.status).toBe('applied')
+    expect((resolved.output as { appliedToolCallId?: string }).appliedToolCallId).toBe(res.json().toolCallId)
+
+    // The next turn tells the model the change was made, not still pending.
+    const history = await import('../lib/agent-turns.js').then(m => m.loadHistory('thread-apply-lc'))
+    const replayed = history.flatMap(t => t.toolCalls).find(c => c.id === proposal.id)
+    expect(JSON.parse(replayed?.result ?? '{}')).toMatchObject({ status: 'applied_by_user' })
   })
 })
 

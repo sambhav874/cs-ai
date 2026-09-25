@@ -1,6 +1,15 @@
 import os
 import ssl
+import sys
 import logging
+
+# Celery adds the working directory to sys.path only while it loads this app,
+# then removes it (celery.utils.imports.cwd_in_path). Tasks import some
+# modules lazily — key-term analysis imports agents_service inside the task —
+# and those failed with "No module named 'agents_service'". Keep this app's
+# own directory on the path for the worker's lifetime: appended even when the
+# loader's entry is present, since that one is about to be removed.
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from celery import Celery
 from celery.signals import worker_process_init, after_setup_logger, after_setup_task_logger
 from kombu import Queue, Exchange
