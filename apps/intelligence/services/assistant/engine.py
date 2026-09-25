@@ -28,6 +28,7 @@ import asyncio
 import json
 import logging
 import queue
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -42,6 +43,7 @@ from services.contract_agent.graph.state import AgentContext, AgentRunState, Age
 from services.contract_agent.graph.tools.registry import (
     APPROVAL_REQUIRED_TOOLS,
     LIFECYCLE_TOOLS,
+    LIFECYCLE_WRITE_TOOLS,
     READ_ONLY_TOOLS,
 )
 
@@ -264,15 +266,48 @@ def _hints(req: AssistantRequest) -> str:
     return ("\n".join(lines) + "\n\n") if lines else ""
 
 
-def tool_filter(req: AssistantRequest, *, scoped: bool) -> Callable[[str], bool]:
+# Words that ask for a change. Deliberately broad: a false positive only costs
+# the write tools' tokens; a miss leaves the assistant unable to act, so any
+# doubt — and any conversation that already proposed a change — counts.
+_CHANGE_WORDS = re.compile(
+    r"\b(tag|untag|label|assign|reassign|owner|approve|reject|decline|delegate|route|submit|send|mark|set|"
+    r"change|update|edit|modify|rename|retype|re-?analy[sz]e|comment|note|flag|annotate|request|draft|create|"
+    r"prepare|generate|redline|rewrite|amend|apply|accept|sign|execute|remember|save|record|correct|fix|undo|"
+    r"revert|remove|delete|add|renew|terminate|cancel|yes|yeah|yep|ok|okay|go ahead|do it|proceed|confirm|sure)\b",
+    re.IGNORECASE,
+)
+
+
+def wants_writes(req: AssistantRequest) -> bool:
+    """Whether this turn is offered the write tools and their rules.
+
+    A lookup ("which contracts expire this year?") is most turns, and each of
+    its model calls carried ~2.5k tokens of write tools and rules it could not
+    use. They stay for a message that asks for a change, a skill that names a
+    write tool, and any conversation that has already proposed one (so "yes,
+    do it" works and replayed calls always name a bound tool).
+    """
+    if set(req.skill_allowed_tools or []) & LIFECYCLE_WRITE_TOOLS:
+        return True
+    for turn in req.history or []:
+        for call in turn.get("toolCalls") or []:
+            if isinstance(call, dict) and call.get("name") in LIFECYCLE_WRITE_TOOLS:
+                return True
+    return bool(_CHANGE_WORDS.search(req.message or ""))
+
+
+def tool_filter(req: AssistantRequest, *, scoped: bool, writes: bool = True) -> Callable[[str], bool]:
     """A skill's allowlist, then the caller's denials; unscoped turns drop the
-    document tools. Denials apply last, so a skill cannot re-admit a tool the
-    caller may not use."""
+    document tools, and a turn that asks for no change drops the write tools.
+    Denials apply last, so a skill cannot re-admit a tool the caller may not
+    use."""
     allow = set(req.skill_allowed_tools or [])
     deny = set(req.denied_tools or [])
 
     def keep(name: str) -> bool:
         if name in deny:
+            return False
+        if not writes and name in LIFECYCLE_WRITE_TOOLS:
             return False
         if not scoped and name in SCOPED_TOOLS:
             return False
@@ -358,16 +393,17 @@ def run_assistant(
 
         store = _agent_run_store()
 
+    writes = wants_writes(req)
     runner = DeepContractAgentRunner(
         store=store,
         tool_executor=tool_executor,
         model=model.llm,
         extra_tools=tools,
         extra_system_prompt=assistant_prompt(
-            scoped=scope.scoped, skill_slug=req.skill_slug, skill_prompt=req.skill_system_prompt,
+            scoped=scope.scoped, skill_slug=req.skill_slug, skill_prompt=req.skill_system_prompt, writes=writes,
         ),
         history_messages=history_messages(req.history),
-        tool_filter=tool_filter(req, scoped=scope.scoped),
+        tool_filter=tool_filter(req, scoped=scope.scoped, writes=writes),
     )
     response = runner.run(state, on_event=translator, cancel_check=cancel_check)
     translator.flush()

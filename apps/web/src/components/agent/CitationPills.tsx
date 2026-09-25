@@ -11,7 +11,7 @@
  *   - Claude.ai citations — hover shows quote, click jumps to source
  *   - Harvey citation badges — per-claim backing
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Quote, ExternalLink } from 'lucide-react'
 
 export interface Citation {
@@ -181,17 +181,57 @@ export interface AnswerCitation {
   exact?:     boolean
 }
 
+/** Longest quote carried in a link; the viewer matches it word for word. */
+const LINK_QUOTE_CHARS = 300
+
 export function citationHref(c: AnswerCitation): string | null {
   if (!c.contractId) return null
   const params = new URLSearchParams()
   if (c.page != null) params.set('page', String(c.page))
   else if (c.sectionRef) params.set('section', c.sectionRef)
+  // The contract page highlights this passage in the PDF (PdfQuoteViewer).
+  // A fact's text is the Space's words, not the contract's, so it has none.
+  if (c.kind !== 'fact' && c.quote) params.set('quote', c.quote.slice(0, LINK_QUOTE_CHARS))
   const q = params.toString()
   return `/contracts/${c.contractId}${q ? `?${q}` : ''}`
 }
 
-export function AnswerCitations({ citations }: { citations: AnswerCitation[] }) {
+/** Fired by an answer's [n] marker (MarkdownProse) to bring its source forward. */
+export const CITATION_FOCUS_EVENT = 'answer-citation-focus'
+export function focusCitation(group: string, ref: number | string) {
+  window.dispatchEvent(new CustomEvent(CITATION_FOCUS_EVENT, { detail: { group, ref: String(ref) } }))
+}
+
+/**
+ * An answer's sources, each with the words it quotes on show.
+ *
+ * The quote used to sit behind a small "quote" toggle, so a reader saw a
+ * list of VERIFIED badges and never the text that was verified. It now shows
+ * under each source (two lines, click for all of it); the source opens the
+ * contract with that passage highlighted. `group` ties the list to its
+ * answer's [n] markers, which scroll here and flash the source.
+ */
+export function AnswerCitations({ citations, group }: { citations: AnswerCitation[]; group?: string }) {
   const [open, setOpen] = useState<number | null>(null)
+  const [flash, setFlash] = useState<number | null>(null)
+  const rows = useRef<Array<HTMLLIElement | null>>([])
+
+  useEffect(() => {
+    if (!group) return
+    const onFocus = (e: Event) => {
+      const detail = (e as CustomEvent<{ group: string; ref: string }>).detail
+      if (detail?.group !== group) return
+      const i = citations.findIndex(c => String(c.ref) === detail.ref)
+      if (i < 0) return
+      setOpen(i)
+      setFlash(i)
+      rows.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      window.setTimeout(() => setFlash(f => (f === i ? null : f)), 1600)
+    }
+    window.addEventListener(CITATION_FOCUS_EVENT, onFocus)
+    return () => window.removeEventListener(CITATION_FOCUS_EVENT, onFocus)
+  }, [group, citations])
+
   if (!citations.length) return null
   return (
     <div data-testid="answer-citations" className="mt-2 rounded-card border border-surface-200 bg-card text-[12px] overflow-hidden">
@@ -205,11 +245,17 @@ export function AnswerCitations({ citations }: { citations: AnswerCitation[] }) 
           const href = citationHref(c)
           const label = c.filename || c.sectionRef || c.quote.slice(0, 60)
           return (
-            <li key={i} data-testid={`answer-citation-${i}`} data-page={c.page ?? undefined} className="px-3 py-1.5">
+            <li
+              key={i}
+              ref={el => { rows.current[i] = el }}
+              data-testid={`answer-citation-${i}`}
+              data-page={c.page ?? undefined}
+              className={`px-3 py-1.5 transition-colors ${flash === i ? 'bg-attention-50' : ''}`}
+            >
               <div className="flex items-start gap-2">
                 <span className="font-mono text-[10.5px] text-fg-500 flex-shrink-0">[{String(c.ref)}]</span>
                 {href ? (
-                  <a href={href} className="flex items-baseline gap-1.5 min-w-0 flex-1 group" title="Open the contract at this passage">
+                  <a href={href} className="flex items-baseline gap-1.5 min-w-0 flex-1 group" title="Open the contract with this passage highlighted">
                     <span className="truncate text-[11.5px] text-fg-950 group-hover:text-primary-700">{label}</span>
                     {c.sectionRef && c.filename && <span className="font-mono text-[10px] text-fg-500 flex-shrink-0">§{c.sectionRef}</span>}
                     {c.page != null && <span className="font-mono text-[9.5px] text-fg-400 flex-shrink-0 tabular-nums">p.{c.page}</span>}
@@ -231,19 +277,18 @@ export function AnswerCitations({ citations }: { citations: AnswerCitation[] }) 
                     {c.exact === false ? 'checked' : 'verified'}
                   </span>
                 )}
+              </div>
+              {c.quote && (
                 <button
                   type="button"
                   onClick={() => setOpen(open === i ? null : i)}
-                  className="text-[10px] text-fg-700 hover:text-fg-950 hover:underline flex-shrink-0"
                   aria-expanded={open === i}
+                  title={open === i ? 'Show less' : 'Show the whole quote'}
+                  data-testid={`answer-citation-quote-${i}`}
+                  className={`mt-1 ml-6 w-[calc(100%-1.5rem)] text-left text-[11px] leading-snug text-fg-700 italic border-l-2 border-surface-300 pl-2 hover:text-fg-950 ${open === i ? 'block' : 'line-clamp-2'}`}
                 >
-                  {open === i ? 'hide' : 'quote'}
-                </button>
-              </div>
-              {open === i && (
-                <div className="mt-1 text-[11px] text-fg-700 bg-surface-50 border border-surface-200 rounded-chip px-2 py-1 italic">
                   “{c.quote}”
-                </div>
+                </button>
               )}
             </li>
           )

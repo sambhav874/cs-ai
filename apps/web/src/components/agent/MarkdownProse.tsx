@@ -13,14 +13,34 @@
  */
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { focusCitation, type AnswerCitation } from './CitationPills'
 
 type Props = {
   text: string
   /** Tighter padding/margin for the cramped side-agent rail. */
   compact?: boolean
+  /** The answer's verified sources: its [n] markers become buttons that bring source n forward. */
+  citations?: AnswerCitation[]
+  /** Ties the markers to their AnswerCitations list (the message id). */
+  citeGroup?: string
 }
 
-export function MarkdownProse({ text, compact = false }: Props) {
+const CITE_HREF = '#cite-'
+
+/**
+ * Turn `[n]` into a link the renderer below draws as a citation marker, for
+ * the refs that have a source. They used to reach the reader as plain
+ * bracket text, disconnected from the source list under the answer. A marker
+ * whose citation was dropped is left as text (the pipeline removes those).
+ */
+export function linkCitationMarkers(text: string, refs: Set<string>): string {
+  if (!refs.size) return text
+  return text.replace(/\[(\d{1,3})\](?!\()/g, (m, n: string) => (refs.has(n) ? `[${n}](${CITE_HREF}${n})` : m))
+}
+
+export function MarkdownProse({ text, compact = false, citations, citeGroup }: Props) {
+  const byRef = new Map((citations ?? []).map(c => [String(c.ref), c]))
+  const body = citeGroup ? linkCitationMarkers(text, new Set(byRef.keys())) : text
   return (
     <div
       className={[
@@ -54,14 +74,31 @@ export function MarkdownProse({ text, compact = false }: Props) {
         components={{
           // External links open in a new tab so users don't navigate
           // away mid-conversation.
-          a: ({ href, children, ...rest }) => (
-            <a href={href} target={href?.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer" {...rest}>
-              {children}
-            </a>
-          ),
+          a: ({ href, children, ...rest }) => {
+            if (href?.startsWith(CITE_HREF) && citeGroup) {
+              const ref = href.slice(CITE_HREF.length)
+              const c = byRef.get(ref)
+              return (
+                <button
+                  type="button"
+                  data-testid={`cite-marker-${ref}`}
+                  onClick={() => focusCitation(citeGroup, ref)}
+                  title={c ? `“${c.quote.slice(0, 240)}${c.quote.length > 240 ? '…' : ''}”${c.page != null ? ` — p.${c.page}` : ''}` : undefined}
+                  className="mx-0.5 inline-flex items-center justify-center align-super min-w-[1.25em] h-[1.35em] px-1 rounded-chip border border-primary-200 bg-primary-50 text-[0.68em] font-mono font-medium leading-none text-primary-700 no-underline hover:bg-primary-100 hover:border-primary-500"
+                >
+                  {ref}
+                </button>
+              )
+            }
+            return (
+              <a href={href} target={href?.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer" {...rest}>
+                {children}
+              </a>
+            )
+          },
         }}
       >
-        {text}
+        {body}
       </ReactMarkdown>
     </div>
   )

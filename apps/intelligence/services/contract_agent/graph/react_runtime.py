@@ -20,6 +20,7 @@ import re
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from langchain_core.messages import (
+    AIMessage,
     BaseMessage,
     HumanMessage,
     SystemMessage,
@@ -295,12 +296,12 @@ class ContractReActRuntime:
     ) -> AgentRunState:
         self._on_event = on_event  # stored so finish helpers can emit events
         tools_by_name: Dict[str, BaseTool] = {t.name: t for t in tools}
-        tool_model = model.bind_tools(tools) if hasattr(model, "bind_tools") else model
+        tool_model = _bind_tools(model, tools)
 
         # Build initial conversation messages
         user_message = self._build_user_message(state)
         messages: List[BaseMessage] = [
-            SystemMessage(content=system_prompt),
+            _system_message(system_prompt, self._provider_name(state)),
             *self.history_messages,
             HumanMessage(content=user_message),
         ]
@@ -329,6 +330,7 @@ class ContractReActRuntime:
                 messages_count=len(messages),
             )
 
+            _trim_stale_listings(messages)
             response = self._invoke_tool_call(
                 tool_model, messages, state, on_event=on_event, iteration=iteration
             )
@@ -1473,3 +1475,74 @@ def _log_final_answer(workflow_id: str, answer: str, citations: Sequence[Any]) -
             answer,
             json.dumps(citation_list, default=str, indent=2),
         )
+
+
+def _bind_tools(model: Any, tools: Sequence[BaseTool]) -> Any:
+    """Bind `tools` to a chat model with compact schemas (tools/compact_schema.py).
+
+    A real chat model gets the schemas as dicts; anything else (a scripted
+    test model) gets the tools themselves, as before.
+    """
+    if not hasattr(model, "bind_tools"):
+        return model
+    from langchain_core.language_models import BaseChatModel
+
+    if isinstance(model, BaseChatModel):
+        from services.contract_agent.graph.tools.compact_schema import compact_tool_schema
+
+        return model.bind_tools([compact_tool_schema(tool) for tool in tools])
+    return model.bind_tools(tools)
+
+
+def _system_message(system_prompt: str, provider: str) -> SystemMessage:
+    """The system prompt, marked for Anthropic's prompt cache.
+
+    Every step of a turn resends the same tools and system prompt. OpenAI and
+    Groq cache a repeated prefix on their own; Anthropic caches only up to a
+    marked block, so the mark makes steps after the first bill that prefix
+    (tools + system) at the cache rate.
+    """
+    if provider in {"anthropic", "claude"}:
+        return SystemMessage(content=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}])
+    return SystemMessage(content=system_prompt)
+
+
+#: Tools whose result is a listing: once the loop has moved on, the model
+#: needs the ids and titles it already used, not every row again.
+LISTING_TOOLS = frozenset({
+    "contract_search", "contract_filter", "counterparty_list", "request_list", "approval_list",
+    "space_list", "obligations_list", "template_list", "custom_field_list", "user_search",
+})
+STALE_LISTING_CHARS = 2_500
+
+
+def _trim_stale_listings(messages: List[BaseMessage]) -> None:
+    """Shorten listing results two or more tool rounds old, in place.
+
+    Each step resends every earlier tool result. A 50-row contract_search is
+    ~8k characters that every later step paid for again. Results from the
+    latest round are untouched, and so is any tool that returns contract text
+    (contract_get, clause_search, search_evidence...): the answer may still
+    quote it, and citations are checked against it.
+    """
+    names: Dict[str, str] = {}
+    rounds: List[int] = []
+    for index, message in enumerate(messages):
+        if isinstance(message, AIMessage) and getattr(message, "tool_calls", None):
+            rounds.append(index)
+            for call in message.tool_calls:
+                names[str(call.get("id"))] = str(call.get("name"))
+    if len(rounds) < 2:
+        return
+    cutoff = rounds[-1]
+    for index, message in enumerate(messages[:cutoff]):
+        if not isinstance(message, ToolMessage) or names.get(str(message.tool_call_id)) not in LISTING_TOOLS:
+            continue
+        content = message.content if isinstance(message.content, str) else str(message.content)
+        if len(content) > STALE_LISTING_CHARS:
+            messages[index] = ToolMessage(
+                content=content[:STALE_LISTING_CHARS]
+                + f"\n… [{len(content) - STALE_LISTING_CHARS} more characters of this earlier listing omitted; "
+                "call the tool again if you need rows not shown]",
+                tool_call_id=message.tool_call_id,
+            )

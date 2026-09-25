@@ -2048,7 +2048,9 @@ function MessageBubble({
         {cleanProse
           ? (isUser || msg.error
               ? cleanProse
-              : <MarkdownProse text={cleanProse} compact />)
+              : <MarkdownProse text={cleanProse} compact
+                  citations={msg.streaming ? undefined : msg.citations}
+                  citeGroup={msg.streaming ? undefined : `rail-${msg.id}`} />)
           : (msg.streaming
               // Was a bare pulsing diamond with no words at all — the rail said
               // even less than the studio did. Phase comes off the frames.
@@ -2067,7 +2069,7 @@ function MessageBubble({
       </div>
       {!isUser && !msg.streaming && msg.citations && msg.citations.length > 0 && (
         <div className="max-w-[88%] w-full">
-          <AnswerCitations citations={msg.citations} />
+          <AnswerCitations citations={msg.citations} group={`rail-${msg.id}`} />
         </div>
       )}
       {/* CONTROL — an interrupted turn says so. Without this the transcript

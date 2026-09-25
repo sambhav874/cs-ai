@@ -96,11 +96,11 @@ def model_info(llm):
     return engine._Model(llm, "anthropic", "claude-x", "default", "byok")
 
 
-def turn(script, *, req=None, scope=None, results=None):
+def turn(script, *, req=None, scope=None, results=None, message="Which contracts are with Acme?"):
     frames: List[Dict[str, Any]] = []
     llm = ScriptedModel(script)
     last = run_assistant(
-        req or AssistantRequest(message="Which contracts are with Acme?", session_id="s1", org_id="o1", user_id="p1"),
+        req or AssistantRequest(message=message, session_id="s1", org_id="o1", user_id="p1"),
         frames.append, lambda: False,
         scope=scope or unscoped(), model=model_info(llm),
         tool_executor=lambda tool, state: {"summary": "no evidence"},
@@ -145,7 +145,7 @@ def test_a_write_becomes_an_apply_card_and_nothing_is_written():
     frames, last, llm = turn([
         call("contract_update", {"contract_id": "cmabc", "action": "set_status"}, "w1"),
         AIMessage(content="I've prepared that. Click Apply to confirm."),
-    ])
+    ], message="Mark the Acme MSA executed")
     card = of(frames, "tool_call_awaiting_confirmation")[0]
     assert card["id"] == "w1" and card["name"] == "contract_update" and card["reversible"] is True
     assert card["args"] == {"contractId": "cmabc", "action": "set_status"} and card["source"] == "lifecycle"
@@ -429,3 +429,64 @@ def test_only_contract_words_are_evidence():
     hits = lifecycle.lifecycle_evidence("clause_search", json.dumps({"contractId": "c", "title": "T", "matches": [
         {"beforeContext": "shall pay ", "match": "invoice", "afterContext": " in 30 days"}]}))
     assert hits[0]["context"] == "shall pay invoice in 30 days"
+
+
+# ── tokens per model call (found live: 33k-149k input tokens a turn) ─────────
+
+def test_a_lookup_is_not_offered_the_write_tools_or_their_rules():
+    from services.assistant.engine import wants_writes
+    from services.assistant.prompt import WRITE_RULES
+
+    _, _, llm = turn([AIMessage(content="Two contracts.")])
+    assert "contract_update" not in llm.bound and "contract_search" in llm.bound
+    system = llm.calls[0][0].content
+    assert WRITE_RULES not in system
+
+    ask = lambda m, **kw: AssistantRequest(message=m, session_id="s", org_id="o", user_id="u", **kw)
+    assert not wants_writes(ask("Which contracts expire in the next 12 months?"))
+    assert not wants_writes(ask("What is the liability cap in the Acme MSA?"))
+    assert wants_writes(ask("Tag the Globex NDA as qa-test"))
+    assert wants_writes(ask("yes, do it"))
+    assert wants_writes(ask("draft a mutual NDA with Initech"))
+    # A conversation that proposed a change keeps the tools, so "go on" works
+    # and replayed calls always name a bound tool.
+    assert wants_writes(ask("and the other one", history=[
+        {"role": "assistant", "content": "Prepared.", "toolCalls": [{"id": "w1", "name": "contract_update"}]}]))
+    assert wants_writes(ask("hi", skill_allowed_tools=["comment_add"]))
+
+
+def test_tool_schemas_are_bound_without_boilerplate():
+    import json as _json
+
+    from langchain_core.utils.function_calling import convert_to_openai_tool
+
+    from agents_service.tools import get_read_tools
+    from services.contract_agent.graph.tools.compact_schema import compact_tool_schema
+
+    tools = get_read_tools("o", "u")
+    full = sum(len(_json.dumps(convert_to_openai_tool(t))) for t in tools)
+    compact = [compact_tool_schema(t) for t in tools]
+    assert sum(len(_json.dumps(c)) for c in compact) < 0.75 * full
+    flt = next(c for c in compact if c["function"]["name"] == "contract_filter")["function"]
+    assert flt["parameters"]["properties"]["status"] == {
+        "type": "string", "description": "Lifecycle status, e.g. EXECUTED, DRAFT, EXPIRED."}
+    assert "anyOf" not in _json.dumps(flt) and "title" not in flt["parameters"]["properties"]["status"]
+
+
+def test_old_listings_are_shortened_but_contract_text_is_kept():
+    from langchain_core.messages import AIMessage as AI, ToolMessage as TM
+
+    from services.contract_agent.graph.react_runtime import STALE_LISTING_CHARS, _trim_stale_listings
+
+    big = "x" * 9000
+    msgs = [
+        AI(content="", tool_calls=[{"id": "a", "name": "contract_search", "args": {}},
+                                   {"id": "b", "name": "contract_get", "args": {}}]),
+        TM(content=big, tool_call_id="a"), TM(content=big, tool_call_id="b"),
+        AI(content="", tool_calls=[{"id": "c", "name": "contract_filter", "args": {}}]),
+        TM(content=big, tool_call_id="c"),
+    ]
+    _trim_stale_listings(msgs)
+    assert len(msgs[1].content) < STALE_LISTING_CHARS + 200 and "omitted" in msgs[1].content
+    assert msgs[2].content == big            # contract text: the answer may quote it
+    assert msgs[4].content == big            # the latest round is untouched

@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { PdfQuoteViewer } from '@/components/contract/PdfQuoteViewer'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 // B.5.2 — PDF viewer re-enabled as the "Original" view via the
@@ -350,6 +351,11 @@ export function ContractDetailPage() {
     const n = Number(searchParams.get('page'))
     return Number.isInteger(n) && n > 0 ? n : null
   })()
+  // …and with &quote=, the passage itself is highlighted (PdfQuoteViewer).
+  // If pdf.js cannot open the file, the browser viewer takes over at the page.
+  const citedQuote = searchParams.get('quote')?.trim() || null
+  const [quoteViewerFailed, setQuoteViewerFailed] = useState(false)
+  const onQuoteViewerFail = useCallback(() => setQuoteViewerFailed(true), [])
   // B.1 — default to 'document' so the contract itself is the first thing
   // a user sees, instead of a wall of AI-generated analysis panels.
   const [tab, setTab] = useState<Tab>('document')
@@ -2701,6 +2707,9 @@ export function ContractDetailPage() {
               // in the system allowed a drop shadow.
               <div className="h-full overflow-hidden bg-surface-50 p-4">
                 <div className="bg-card rounded-paper shadow-page h-full overflow-hidden">
+                  {citedQuote && !quoteViewerFailed ? (
+                    <PdfQuoteViewer url={pdfUrl} page={citedPage} quote={citedQuote} onFail={onQuoteViewerFail} />
+                  ) : (<>
                   {/* The browser's own PDF viewer: pixel-exact, with search and
                       zoom, and nothing to keep in step. The previous viewer
                       loaded pdf.js 3.11's worker from a public CDN against the
@@ -2714,6 +2723,7 @@ export function ContractDetailPage() {
                     className="w-full h-full border-0"
                     data-testid="original-pdf-frame"
                   />
+                  </>)}
                 </div>
               </div>
             )

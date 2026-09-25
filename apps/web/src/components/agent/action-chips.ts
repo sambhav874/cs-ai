@@ -41,7 +41,12 @@ export function parseActionChips(content: string): ParsedChips {
     if (m && m[1].trim()) {
       if (chips.length < MAX_CHIPS) {
         // Strip residual markdown emphasis + trailing punctuation noise.
-        const label = m[1].replace(/^(?:\*\*|__|\*|_)|(?:\*\*|__|\*|_)$/g, '').trim()
+        // A bracket with no opener is the model closing a list it wrote as
+        // "[chip]: …]" (seen live: "List any indemnification provisions]").
+        const stripped = m[1].replace(/^(?:\*\*|__|\*|_)|(?:\*\*|__|\*|_)$/g, '').trim()
+        const opens = (stripped.match(/\[/g) ?? []).length
+        const closes = (stripped.match(/\]/g) ?? []).length
+        const label = (closes > opens ? stripped.replace(/\]+\s*$/, '') : stripped).trim()
         if (label) chips.push({ id: `chip_${chips.length}`, label })
       }
       continue // drop the marker line from prose either way

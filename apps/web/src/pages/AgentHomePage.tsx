@@ -1671,9 +1671,15 @@ function MessageBubble({
               Claude both return Markdown in assistant prose. Prior to
               this the response was rendered with whitespace-pre-wrap
               so users saw literal `**`, `*`, etc. */}
-          {cleanProse && <MarkdownProse text={cleanProse} />}
+          {cleanProse && (
+            <MarkdownProse
+              text={cleanProse}
+              citations={message.streaming ? undefined : message.citations}
+              citeGroup={message.streaming ? undefined : message.id}
+            />
+          )}
           {!message.streaming && message.citations && message.citations.length > 0 && (
-            <AnswerCitations citations={message.citations} />
+            <AnswerCitations citations={message.citations} group={message.id} />
           )}
           {message.streaming && !message.content && (
             // Phase is READ OFF the frames received so far, never guessed: no
