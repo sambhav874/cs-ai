@@ -67,5 +67,7 @@ def _no_citation_source_by_default():
     from services.contract_agent import citations
 
     previous = citations.set_source_loader(lambda _doc: None)
+    previous_facts = citations.set_fact_loader(lambda _project, _fact: None)
     yield
     citations.set_source_loader(previous)
+    citations.set_fact_loader(previous_facts)

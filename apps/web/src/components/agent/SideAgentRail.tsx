@@ -41,6 +41,10 @@ import { useAgentStore } from '@/store/agent'
 import { ActionPreview, type PendingAction } from './ActionPreview'
 import { RedlinePreview, type RedlineProposal } from './RedlinePreview'
 import { AnswerCitations, CitationPills, type AnswerCitation, type CitationBundle } from './CitationPills'
+import { MEMORY_CHANGED_EVENT } from '@/features/intelligence/memoryEvents'
+
+// Applies that change a Space's project memory.
+const MEMORY_WRITES = new Set(['remember_fact', 'correct_fact'])
 import { parseActionChips } from './action-chips'
 import { ChipRow } from './ChipButton'
 import { ThinkingIndicator } from './ThinkingIndicator'
@@ -867,6 +871,10 @@ export function SideAgentRail() {
         }),
       })
       const body = await r.json().catch(() => ({ ok: false, error: { detail: 'Non-JSON response' } }))
+      if (r.ok && body.ok && MEMORY_WRITES.has(toolName)) {
+        // A fact saved from the chat: the Space's memory panel re-reads.
+        window.dispatchEvent(new CustomEvent(MEMORY_CHANGED_EVENT))
+      }
       setMessages(prev => prev.map(m => {
         if (m.id !== msgId) return m
         const pending = (m.pendingActions ?? []).map(a => {

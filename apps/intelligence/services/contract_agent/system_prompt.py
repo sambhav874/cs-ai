@@ -100,6 +100,8 @@ Rules:
 - Only cite text that appears verbatim in the tool results (the actual matches returned by search_evidence or read_document).
 - NEVER hallucinate, guess, or reconstruct quotes. If you do not have the exact verbatim text in the tool output, you MUST NOT cite it.
 - Use the exact chat-local doc_id (doc-0, doc-1, etc.) — never filenames or UUIDs.
+- To cite a project fact from memory rather than a document, use its fact_id:
+  {{"ref": 2, "fact_id": "<fact_id>", "quote": "the fact as recorded"}}.
 - Keep quotes under 25 words where possible.
 - "page" is the sequential [Page N] marker (1-indexed). Ignore in-document page numbers.
 - Put <CITATIONS> at the very end. Omit if no citations.

@@ -169,6 +169,9 @@ export function CitationPills({ bundle }: { bundle: CitationBundle }) {
  */
 export interface AnswerCitation {
   ref:        number | string
+  /** "fact": from the Space's project memory; "passage": contract text. */
+  kind?:      'fact' | 'passage'
+  factId?:    string | null
   contractId: string | null
   quote:      string
   page:       number | null
@@ -214,6 +217,11 @@ export function AnswerCitations({ citations }: { citations: AnswerCitation[] }) 
                   </a>
                 ) : (
                   <span className="truncate text-[11.5px] text-fg-950 flex-1">{label}</span>
+                )}
+                {c.kind === 'fact' && (
+                  <span className="text-[9px] uppercase tracking-wider font-medium text-fg-700 bg-surface-100 border border-surface-200 rounded-chip px-1 flex-shrink-0" title="A fact recorded in this Space's memory">
+                    fact
+                  </span>
                 )}
                 {c.verified && (
                   <span

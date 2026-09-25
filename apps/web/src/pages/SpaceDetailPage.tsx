@@ -19,7 +19,7 @@
  *   • Contract rows showed value and risk but not expiry or counterparty, so
  *     you could not tell two identically-named NDAs apart.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { normalizeRisk, riskBand, RISK_BAND_CLASS, MEANING_CLASS, statusMeaning, statusMeta } from '@/lib/status'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -35,6 +35,7 @@ import {
 import { IntelligenceProviders } from '@/features/intelligence/IntelligenceProviders'
 import { useSpaceProject } from '@/features/intelligence/useSpaceProject'
 import { ProjectMemoryPanel } from '@/features/intelligence/components/projects/ProjectMemoryPanel'
+import { MEMORY_CHANGED_EVENT } from '@/features/intelligence/memoryEvents'
 import { ProjectTimeline } from '@/features/intelligence/components/projects/ProjectTimeline'
 import { SpaceKpiSummary } from '@/features/intelligence/SpaceKpiSummary'
 
@@ -404,6 +405,13 @@ function cn(...c: Array<string | null | undefined | false>): string {
  */
 function SpaceIntelligenceTab({ spaceId, view }: { spaceId: string; view: 'memory' | 'timeline' | 'kpis' }) {
   const { data: project, isLoading, error } = useSpaceProject(spaceId)
+  // A fact saved from the assistant shows up without a reload.
+  const [memoryVersion, setMemoryVersion] = useState(0)
+  useEffect(() => {
+    const bump = () => setMemoryVersion(v => v + 1)
+    window.addEventListener(MEMORY_CHANGED_EVENT, bump)
+    return () => window.removeEventListener(MEMORY_CHANGED_EVENT, bump)
+  }, [])
 
   if (isLoading) {
     return <div className="h-64 rounded-card border border-border bg-card animate-pulse" aria-busy="true" aria-label="Loading" />
@@ -415,7 +423,7 @@ function SpaceIntelligenceTab({ spaceId, view }: { spaceId: string; view: 'memor
       </div>
     )
   }
-  if (view === 'memory') return <ProjectMemoryPanel projectId={project._id} />
+  if (view === 'memory') return <ProjectMemoryPanel projectId={project._id} refreshSignal={memoryVersion} />
   if (view === 'kpis') return <SpaceKpiSummary projectId={project._id} />
   return <ProjectTimeline projectId={project._id} />
 }

@@ -91,6 +91,30 @@ def _mongo_source(document_id: str) -> Optional[str]:
 
 SOURCE_TEXT_LOADER: SourceLoader = _mongo_source
 
+#: (project id, fact id) -> the live fact, or None. Replaceable like the source.
+FactLoader = Callable[[Optional[str], str], Optional[Dict[str, Any]]]
+
+
+def _mongo_fact(project_id: Optional[str], fact_id: str) -> Optional[Dict[str, Any]]:
+    if not project_id:
+        return None
+    try:
+        from core.database import db
+        from services.project_memory import ProjectMemoryManager
+
+        return next((f for f in ProjectMemoryManager(db).list_facts(project_id) if f.get("fact_id") == fact_id), None)
+    except Exception:
+        return None
+
+
+FACT_LOADER: FactLoader = _mongo_fact
+
+
+def set_fact_loader(loader: FactLoader) -> FactLoader:
+    global FACT_LOADER
+    previous, FACT_LOADER = FACT_LOADER, loader
+    return previous
+
 
 def set_source_loader(loader: SourceLoader) -> SourceLoader:
     """Swap how source text is read; returns the previous loader."""
@@ -336,6 +360,18 @@ def resolve_citations(
         except (ValueError, TypeError):
             continue
         if ref <= 0:
+            continue
+
+        fact_id = str(item.get("fact_id") or "").strip()
+        if fact_id:
+            # A project fact, not a passage: checked against the project's
+            # memory in step 3 (check_citations), not a document.
+            quote = str(item.get("quote") or "").strip()
+            resolved.append({
+                "type": "citation_data", "kind": "fact", "ref": ref, "fact_id": fact_id,
+                "project_id": getattr(context, "project_id", None),
+                "quote": quote, "text": quote, "preview": quote, "filename": "Project memory",
+            })
             continue
 
         raw_doc_id = str(item.get("doc_id") or "").strip()
@@ -705,6 +741,30 @@ def validate_citations(
     return kept, issues
 
 
+def _check_fact(annotation: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """A fact citation, if the fact is live in this project and says what the
+    quote says. The quote becomes the fact's own text: the fact is the source.
+    A superseded fact is not a source any more."""
+    fact = FACT_LOADER(annotation.get("project_id"), str(annotation.get("fact_id") or ""))
+    if not fact or fact.get("superseded_by"):
+        return None
+    text = str(fact.get("text") or "").strip()
+    quote = normalize_text(str(annotation.get("quote") or ""))
+    if not text or (quote and quote not in normalize_text(text) and
+                    _overlap_ratio(set(content_tokens(quote)), text) < SUPPORT_OVERLAP_RATIO):
+        return None
+    sources = fact.get("sources") or []
+    return {
+        **annotation,
+        "quote": text, "text": text, "preview": text,
+        "verified": True, "exact": True, "needs_review": bool(fact.get("needs_review")),
+        # A fact taken from a contract links back to the passage it came from.
+        "document_id": (sources[0] or {}).get("contract_id") if sources else None,
+        "source_quote": (sources[0] or {}).get("quote") if sources else None,
+        "source_ref": annotation.get("ref"),
+    }
+
+
 def check_citations(
     annotations: Sequence[Dict[str, Any]],
     state: Any,
@@ -746,6 +806,21 @@ def check_citations(
     no_evidence = not evidence
 
     for annotation in annotations:
+        if annotation.get("kind") == "fact":
+            fact = _check_fact(annotation)
+            if fact is None:
+                issues.append("unverifiable_fact_citation_dropped")
+                dropped.append({"ref": annotation.get("ref"), "fact_id": annotation.get("fact_id"),
+                                "quote": str(annotation.get("quote") or "")[:300]})
+                continue
+            key = ("fact", str(annotation.get("fact_id")))
+            if key in seen:
+                issues.append("duplicate_citation_removed")
+                continue
+            seen.add(key)
+            kept.append(fact)
+            continue
+
         quote = str(annotation.get("quote") or "").strip()
         document_id = str(annotation.get("doc_id") or annotation.get("document_id") or "").strip()
         if not document_id:

@@ -157,6 +157,9 @@ def citation_frame(annotations: list, *, platform_ids: Dict[str, str]) -> Option
         ref = ann.get("ref") or ann.get("number") or ann.get("index") or i + 1
         out.append({
             "ref": ref,
+            # "fact": a project fact from the Space's memory; "passage": contract text.
+            "kind": "fact" if ann.get("kind") == "fact" else "passage",
+            "factId": ann.get("fact_id"),
             "contractId": platform_ids.get(doc),
             "quote": quote,
             "page": ann.get("page") or ann.get("page_number"),

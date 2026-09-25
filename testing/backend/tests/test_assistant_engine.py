@@ -265,7 +265,7 @@ def test_translator_leaves_lifecycle_results_to_the_tool_and_reports_evidence_to
 def test_citations_carry_the_platform_contract_id():
     frame = citation_frame([{"ref": 1, "document_id": "csdoc", "quote": "Cap is £1m.", "page": 4, "verified": True},
                             {"ref": 2, "document_id": "other", "quote": ""}], platform_ids={"csdoc": "cmplat"})
-    assert frame["citations"] == [{"ref": 1, "contractId": "cmplat", "quote": "Cap is £1m.", "page": 4,
+    assert frame["citations"] == [{"ref": 1, "kind": "passage", "factId": None, "contractId": "cmplat", "quote": "Cap is £1m.", "page": 4,
                                    "sectionRef": None, "filename": None, "verified": True}]
 
 
@@ -324,3 +324,49 @@ def test_a_crashed_run_ends_the_stream_with_an_error_frame():
 
     chunks = asyncio.run(collect())
     assert json.loads(chunks[0][6:])["type"] == "error" and "no provider" in chunks[0]
+
+
+# ── P4: an answer on a Space cites a project fact ───────────────────────────
+
+def test_an_answer_on_a_space_cites_a_project_fact():
+    """Runbook step 4's gate. The fact comes from the Space's memory; the
+    citation guard checks it against the live fact, and the chat receives it
+    as a verified source that links back to the contract it was taken from."""
+    from services.contract_agent import citations
+
+    fact = {"fact_id": "fact_7", "text": "Renewals are approved by the CFO, not the COO.", "origin": "user",
+            "sources": [{"contract_id": "csdoc", "quote": "approved by the Chief Financial Officer"}]}
+    prev = citations.set_fact_loader(lambda project, fid: fact if (project, fid) == ("proj1", "fact_7") else None)
+    try:
+        scope = Scope(cs_user_id="u-cs", scoped=True, platform_ids={"csdoc": "cmplat"},
+                      memory_context="Facts recorded for this project:\n## Renewals are approved by the CFO, not the COO.\n- fact_id: fact_7",
+                      context=AgentContext(surface=AgentSurface.PROJECT, project_id="proj1",
+                                           selected_document_ids=["csdoc"],
+                                           attached_documents=[{"document_id": "csdoc", "filename": "MSA.pdf"}]))
+        req = AssistantRequest(message="Who approves renewals?", session_id="s1", org_id="o1", user_id="p1",
+                               page_context={"type": "space", "id": "sp1", "label": "Acme"})
+        answer = ('The CFO approves renewals [1].\n<CITATIONS>[{"ref": 1, "fact_id": "fact_7", '
+                  '"quote": "Renewals are approved by the CFO"}]</CITATIONS>')
+        frames, last, llm = turn([AIMessage(content=answer)], req=req, scope=scope)
+        human = [m for m in llm.calls[0] if isinstance(m, HumanMessage)][-1].content
+        assert "fact_id: fact_7" in human                     # the fact reached the model
+        cited = of(frames, "citations")[0]["citations"]
+        assert cited == [{"ref": 1, "kind": "fact", "factId": "fact_7", "contractId": "cmplat",
+                          "quote": "Renewals are approved by the CFO, not the COO.", "page": None,
+                          "sectionRef": None, "filename": "Project memory", "verified": True}]
+        assert last["type"] == "done"
+    finally:
+        citations.set_fact_loader(prev)
+
+
+def test_a_superseded_or_unknown_fact_is_not_a_source():
+    from services.contract_agent import citations
+
+    prev = citations.set_fact_loader(lambda project, fid: {"fact_id": fid, "text": "Old rule.", "superseded_by": "f2"})
+    try:
+        scope = Scope(cs_user_id="u", scoped=True, context=AgentContext(surface=AgentSurface.PROJECT, project_id="p"))
+        answer = 'Old rule [1].\n<CITATIONS>[{"ref": 1, "fact_id": "f1", "quote": "Old rule."}]</CITATIONS>'
+        frames, _, _ = turn([AIMessage(content=answer)], scope=scope)
+        assert not of(frames, "citations")
+    finally:
+        citations.set_fact_loader(prev)
