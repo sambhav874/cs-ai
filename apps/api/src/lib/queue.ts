@@ -124,10 +124,13 @@ export function queueLinkIntelligence(payload: import('./intelligence-link.js').
   }).catch(err => console.warn('[queue] failed to enqueue link-contract:', err.message))
 }
 
-/** Service 2 — AI extraction: custom fields + open-ended + validate + score. */
+/**
+ * Service 2 — key-term analysis. The job only asks the intelligence tier to
+ * start it, so retries cover that tier restarting, not a slow model.
+ */
 export function queueExtractAi(payload: ExtractAiJob): void {
   agentQueue.add('extract-ai', payload, {
-    attempts: 2,
+    attempts: 5,
     backoff: { type: 'exponential', delay: 15000 },
   }).catch(err => console.warn('[queue] failed to enqueue extract-ai:', err.message))
 }

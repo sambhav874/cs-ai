@@ -10,7 +10,9 @@ Each one that ContractSense's pipeline already covers (extraction,
 obligations, Q&A with citations) is being pointed at that pipeline; when the
 last caller has moved, the duplicate route goes. /extract_obligations has
 gone: obligations come from ContractSense's extraction and reach the API
-through /api/internal/obligations/sync.
+through /api/internal/obligations/sync. /review has gone too: key terms,
+clauses, risk and summary come from services/key_terms.py and reach the API
+through /api/internal/contracts/{id}/analysis/sync.
 
 Every route requires the shared INTERNAL_SERVICE_SECRET, exactly as the old
 service's middleware did, and fails closed when it is not configured.
@@ -36,14 +38,13 @@ from agents_service.routes import (
     playbook_review,
     redline,
     renewals,
-    review,
 )
 
 # Same mount order and prefixes as apps/agents/main.py had, so every path the
 # API calls is unchanged apart from the /agents prefix.
 agents_router = APIRouter(prefix="/agents", dependencies=[Depends(require_internal_secret)])
 agents_router.include_router(chat.router, prefix="/agent")
-for module in (review, agent, detect_binder, classify, intake, draft, assist, extract,
+for module in (agent, detect_binder, classify, intake, draft, assist, extract,
                redline, playbook_review, approval, renewals, compliance):
     agents_router.include_router(module.router)
 

@@ -1015,6 +1015,7 @@ export function ContractDetailPage() {
   }
 
   const keyTerms = contract.keyTerms ?? {}
+  const k2label = (k: string) => k.replace(/([A-Z])/g, ' $1').trim()
   const fieldConfidence: Record<string, any> = contract.fieldConfidence ?? {}
   const riskFactors: string[] = contract.riskFactors ?? []
   const clauseFlags: Record<string, boolean> = contract.versions?.[0]?.clauseFlags ?? {}
@@ -1042,7 +1043,15 @@ export function ContractDetailPage() {
   const ocrApplied = extractionMeta.ocrApplied === true
   const timeline = timelineData?.data ?? []
   const presentFlags = Object.entries(CLAUSE_FLAG_LABELS).filter(([k]) => clauseFlags[k] === true)
-  const keyTermEntries = Object.entries(keyTerms).filter(([, v]) => v != null && v !== '' && v !== false)
+  // A verified `false` is a finding ("does not auto-renew", with its quote);
+  // an unverified one is just an empty answer.
+  const keyTermEntries = Object.entries(keyTerms).filter(([k, v]) =>
+    v != null && v !== '' && (v !== false || fieldConfidence[k]?.verified === true))
+  // Terms the analysis looked for and could not support with a quote. Shown,
+  // not hidden: "not in the contract" is an answer a reviewer can act on.
+  const absentTerms = Object.entries(fieldConfidence)
+    .filter(([k, fc]) => fc?.absent && keyTerms[k] == null)
+    .map(([k, fc]) => ({ key: k, reason: String(fc.absent) }))
   const hasAnalysis = !!(contract.summary || keyTermEntries.length > 0)
 
   // Custom fields + AI findings from contract.metadata
@@ -2213,13 +2222,35 @@ export function ContractDetailPage() {
                               <div className="hidden group-hover:block absolute z-20 bottom-full left-0 mb-1.5 w-72 bg-inverse text-inverse-fg text-dense rounded-card p-3 shadow-e2">
                                 <p className="text-fg-400 text-[10px] uppercase tracking-[0.08em] font-semibold mb-1.5">Source</p>
                                 <p className="italic text-surface-100">&ldquo;{conf.quote}&rdquo;</p>
-                                {conf.section && <p className="text-fg-400 mt-1.5 text-[10px] font-mono">{conf.section}</p>}
+                                {(conf.section || conf.page) && (
+                                  <p className="text-fg-400 mt-1.5 text-[10px] font-mono">
+                                    {[conf.section, conf.page ? `p. ${conf.page}` : null].filter(Boolean).join(' · ')}
+                                  </p>
+                                )}
                               </div>
                             )}
                           </div>
                         )
                       })}
                     </div>
+                    {absentTerms.length > 0 && (
+                      <p className="text-dense text-fg-500 mt-3">
+                        <span className="font-semibold text-fg-700">Not found in the contract: </span>
+                        {absentTerms.map((t, i) => (
+                          <span
+                            key={t.key}
+                            title={t.reason === 'quote_not_found'
+                              ? 'A value was proposed, but its quote is not in the document, so it was not stored.'
+                              : t.reason === 'no_quote'
+                                ? 'A value was proposed without a quote to check it against, so it was not stored.'
+                                : 'The contract does not state this.'}
+                            className="capitalize"
+                          >
+                            {k2label(t.key)}{i < absentTerms.length - 1 ? ', ' : ''}
+                          </span>
+                        ))}
+                      </p>
+                    )}
                   </div>
                 ) : hasAnalysis ? null : null}
 

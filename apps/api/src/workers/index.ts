@@ -17,20 +17,31 @@ export { intelligenceWorker } from './intelligence.worker.js'
 
 import { prisma } from '../lib/prisma.js'
 
-const IN_PROGRESS_STATUSES = ['PARSING', 'SPLITTING', 'CLASSIFYING', 'EXTRACTING', 'INDEXING', 'ANALYZING']
+const IN_PROGRESS_STATUSES = ['PARSING', 'SPLITTING', 'CLASSIFYING', 'INDEXING', 'ANALYZING']
 const STUCK_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
+// EXTRACTING is the key-term analysis on the intelligence tier. It waits up to
+// 25 minutes for the document's analysis copy to be indexed, then runs the
+// extraction, and always reports back — success, skip or error. This is only
+// the backstop for that tier dying mid-run, so it must outlast both.
+const EXTRACTING_THRESHOLD_MS = 45 * 60 * 1000
+
+const TIMED_OUT = { analysisStatus: 'FAILED', analysisError: 'Processing timed out — the job may have crashed mid-flight. Click Re-analyze to retry.' }
 
 async function recoverStuckContracts(): Promise<void> {
-  const cutoff = new Date(Date.now() - STUCK_THRESHOLD_MS)
-  const result = await prisma.contract.updateMany({
-    where: {
-      analysisStatus: { in: IN_PROGRESS_STATUSES },
-      updatedAt: { lt: cutoff },
-    },
-    data: { analysisStatus: 'FAILED', analysisError: 'Processing timed out — the job may have crashed mid-flight. Click Re-analyze to retry.' },
-  })
-  if (result.count > 0) {
-    console.warn(`[recovery] reset ${result.count} stuck contract(s) to FAILED`)
+  const now = Date.now()
+  const [quick, extracting] = await Promise.all([
+    prisma.contract.updateMany({
+      where: { analysisStatus: { in: IN_PROGRESS_STATUSES }, updatedAt: { lt: new Date(now - STUCK_THRESHOLD_MS) } },
+      data:  TIMED_OUT,
+    }),
+    prisma.contract.updateMany({
+      where: { analysisStatus: 'EXTRACTING', updatedAt: { lt: new Date(now - EXTRACTING_THRESHOLD_MS) } },
+      data:  TIMED_OUT,
+    }),
+  ])
+  const count = quick.count + extracting.count
+  if (count > 0) {
+    console.warn(`[recovery] reset ${count} stuck contract(s) to FAILED`)
   }
 }
 

@@ -212,11 +212,15 @@ export async function legalChunkAndStore(
   // Upsert DB rows
   for (const chunk of finalChunks) {
     if (chunk.dbId) {
-      // Update existing row (primary / sub-chunk 0)
+      // Update existing row (primary / sub-chunk 0). Its content is NOT
+      // replaced by the window: the primary row is the clause every consumer
+      // reads (playbook review, redline, clause apply — all filter
+      // isSubChunk: false), and cutting it to the first 1,800 characters
+      // silently truncated every long clause. The window text goes to the
+      // search index only.
       await prisma.contractClause.update({
         where: { id: chunk.dbId },
         data: {
-          content:     chunk.content,
           isSubChunk:  chunk.isSubChunk,
           windowIndex: chunk.windowIndex,
           charStart:   chunk.charStart,

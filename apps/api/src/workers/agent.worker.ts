@@ -2,7 +2,7 @@
  * Agent Worker — handles agentQueue jobs:
  *   detect-binder    : LLM binder detection (Haiku, first 10K chars) → BINDER_DETECTED or classify-document
  *   classify-document: LLM contract type classification (Haiku, first 5K chars) → extract-ai
- *   extract-ai       : fetch custom field defs + call agents /review with full payload
+ *   extract-ai       : fetch custom field defs + ask the intelligence tier for the key-term analysis
  *   classify-request : LLM intake classification (Haiku, 3K chars) → stores in request.metadata
  *   approval-summary : Phase 06 — AI executive summary for approvers (LangGraph 3-step pipeline)
  */
@@ -15,6 +15,8 @@ import { proposeClauseBatch } from '../lib/clause-propose-batch.js'
 import { createAuditEvent } from '../lib/audit.js'
 import { AuditAction } from '@clm/types'
 import { assertCostCapNotExceeded, estimateCostUsd, recordUsage } from '../lib/costCap.js'
+import { randomUUID } from 'node:crypto'
+import { AnalysisRequestError, defaultAnalyseDeps, expectsAnalysisCopy, requestAnalysis } from '../lib/intelligence-analyse.js'
 
 const AGENTS_URL = process.env.AGENTS_URL ?? 'http://localhost:8000/agents'
 
@@ -270,79 +272,83 @@ async function handleClassifyDocument(data: ClassifyDocumentJob): Promise<void> 
 }
 
 // ─── extract-ai ───────────────────────────────────────────────────────────────
+// Key terms, summary, risk and clauses come from ContractSense's extractor on
+// the intelligence tier (every term with a verified quote, or reported absent).
+// This job only starts it; the result arrives at
+// POST /api/internal/contracts/:id/analysis/sync, which finishes the pipeline.
+// It replaced draftLegal's /agents/review, so each upload is analysed once.
 
 async function handleExtractAi(data: ExtractAiJob): Promise<void> {
   const { contractId, versionId, orgId, contractType, triggeredBy } = data
 
   console.info('[agent-worker] extract-ai start contractId=%s triggeredBy=%s', contractId, triggeredBy)
 
-  // Fetch full plain text from DB (written by parse worker)
   const version = await prisma.contractVersion.findUnique({
     where: { id: versionId },
-    select: { plainText: true },
+    select: { plainText: true, s3Key: true, mimeType: true },
   })
-
   if (!version?.plainText) {
     throw new Error(`No plainText for versionId=${versionId} — parse worker may not have finished`)
   }
 
-  // Fetch org custom field definitions (global + type-scoped) + org name.
-  // orgName is passed to the agents service so the counterparty picker can
-  // filter out parties whose name matches the user's own org — without this
-  // the extractor picks "us" as counterparty in ~40% of contracts because
-  // both parties have a name and the model has no context for which one is
-  // the user. (Wave E.3)
-  const [customFields, org] = await Promise.all([
-    prisma.contractFieldDefinition.findMany({
-      where: {
-        orgId,
-        deletedAt: null,
-        OR: [
-          { contractType: contractType ?? null },
-          { contractType: null },   // global fields apply to all types
-        ],
-      },
-      orderBy: { sortOrder: 'asc' },
-      select: { fieldKey: true, fieldLabel: true, fieldType: true, options: true, helpText: true },
-    }),
-    prisma.organization.findUnique({
-      where: { id: orgId },
-      select: { name: true },
-    }),
-  ])
+  // Org custom field definitions (global + type-scoped).
+  const customFields = await prisma.contractFieldDefinition.findMany({
+    where: {
+      orgId,
+      deletedAt: null,
+      OR: [
+        { contractType: contractType ?? null },
+        { contractType: null },   // global fields apply to all types
+      ],
+    },
+    orderBy: { sortOrder: 'asc' },
+    select: { fieldKey: true, fieldLabel: true, fieldType: true, options: true, helpText: true },
+  })
 
-  console.info('[agent-worker] found %d custom fields for orgId=%s contractType=%s',
-    customFields.length, orgId, contractType ?? 'any')
+  // The run is named here and recorded before the request goes out, so the
+  // sync can tell this run's result from a superseded one's.
+  const runId = randomUUID().replace(/-/g, '')
+  const fresh = await prisma.contract.findUnique({ where: { id: contractId }, select: { metadata: true } })
+  if (!fresh) return
+  await prisma.contract.update({
+    where: { id: contractId },
+    data: {
+      analysisStatus: 'EXTRACTING',
+      metadata: {
+        ...((fresh.metadata ?? {}) as Record<string, unknown>),
+        keyTermAnalysis: { runId, status: 'running', triggeredBy, requestedAt: new Date().toISOString() },
+      } as never,
+    },
+  })
 
-  // Call agents service
-  const body = {
-    contractId,
-    versionId,
-    orgId,
-    orgName:       org?.name,
-    contractType:  contractType ?? undefined,
-    customFields:  customFields.map(f => ({
-      fieldKey:   f.fieldKey,
-      fieldLabel: f.fieldLabel,
-      fieldType:  f.fieldType,
-      options:    (f.options as string[]) ?? [],
-      helpText:   f.helpText ?? undefined,
-    })),
-    plainText: version.plainText,
+  try {
+    await requestAnalysis({
+      contractId, orgId, versionId, runId,
+      plainText:    version.plainText,
+      contractType: contractType ?? null,
+      customFields: customFields.map(f => ({
+        fieldKey:   f.fieldKey,
+        fieldLabel: f.fieldLabel,
+        fieldType:  f.fieldType,
+        options:    (f.options as string[]) ?? [],
+        helpText:   f.helpText ?? undefined,
+      })),
+      expectLinked: expectsAnalysisCopy(version),
+    }, defaultAnalyseDeps())
+  } catch (err) {
+    if (err instanceof AnalysisRequestError && !err.retryable) {
+      // Retrying repeats the same answer; say why now instead of after the
+      // attempts run out.
+      await prisma.contract.update({
+        where: { id: contractId },
+        data:  { analysisStatus: 'FAILED', analysisError: err.message.slice(0, 500) },
+      })
+      return
+    }
+    throw err
   }
 
-  const res = await callAgents('/review', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET ?? '' },
-    body: JSON.stringify(body),
-  }, { orgId, toolName: 'contract_analysis' }) // was mislabelled 'redline_analysis'
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`Agents /review returned ${res.status}: ${text.slice(0, 200)}`)
-  }
-
-  console.info('[agent-worker] extract-ai queued in agents service contractId=%s', contractId)
+  console.info('[agent-worker] extract-ai requested contractId=%s runId=%s', contractId, runId)
 }
 
 // ─── classify-request ────────────────────────────────────────────────────────

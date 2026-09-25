@@ -530,6 +530,100 @@ def _sync_obligations_to_platform(
     )
 
 
+@celery_app.task(bind=True, name="analyse_platform_contract_task", max_retries=None)
+def analyse_platform_contract_task(self, platform_contract_id: str, run_id: str):
+    """Key terms, clauses and summary for a platform contract, synced back.
+
+    See services/platform_analysis.py. Retries are how this task waits: for
+    the analysis copy to finish indexing (bounded by choose_source), and for
+    the API to accept a finished result (bounded by MAX_DELIVERY_ATTEMPTS).
+    A result is stored before it is sent, so a failed delivery never re-runs
+    the model calls.
+    """
+    from services.key_terms import KeyTermExtractionFailed, NoProviderConfigured, extract_key_terms
+    from services.platform_analysis import (
+        POLL_SECONDS, REQUESTS_COLLECTION, WAIT, UsageMeter, build_payload, choose_source, model_invoke, push,
+    )
+    from services.platform_models import PlatformCostCapExceeded, resolve_platform_model
+
+    requests_coll = db[REQUESTS_COLLECTION]
+    current = {"_id": platform_contract_id, "run_id": run_id}
+    request = requests_coll.find_one(current)
+    if not request:
+        return {"status": "superseded"}
+
+    def deliver(payload: Dict[str, Any]) -> Dict[str, Any]:
+        outcome = push(payload)
+        attempts = int(request.get("delivery_attempts") or 0) + 1
+        requests_coll.update_one(current, {"$set": {
+            "platform_sync": {**outcome, "at": datetime.utcnow()},
+            "delivery_attempts": attempts,
+            **({"pending_payload": None} if outcome.get("status") != "failed" else {}),
+        }})
+        if outcome.get("status") == "failed" and attempts < MAX_DELIVERY_ATTEMPTS:
+            raise self.retry(countdown=60)
+        return outcome
+
+    if request.get("pending_payload"):
+        outcome = deliver(request["pending_payload"])
+        return {"status": request.get("status"), "sync": outcome.get("status")}
+
+    linked = collection.find_one(
+        {"platformContractId": platform_contract_id},
+        {"status": 1, "index.status": 1, "index.content": 1},
+    )
+    source, text = choose_source(request, linked, datetime.utcnow())
+    if source == WAIT:
+        requests_coll.update_one(current, {"$set": {"status": "waiting"}})
+        raise self.retry(countdown=POLL_SECONDS)
+
+    requests_coll.update_one(current, {"$set": {"status": "running", "source": source, "started_at": datetime.utcnow()}})
+    meter = UsageMeter()
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    try:
+        if not text.strip():
+            raise KeyTermExtractionFailed("The contract has no text to analyse.")
+        # The org's Admin → AI choice: model per tier, its own key, its cap.
+        platform_model = resolve_platform_model(request.get("org_id"), "default")
+        result = extract_key_terms(
+            text,
+            invoke=model_invoke(meter, platform_model=platform_model),
+            contract_type=request.get("contract_type"),
+            custom_fields=request.get("custom_fields") or [],
+        )
+        status = "success"
+    except NoProviderConfigured:
+        status = "skipped"
+        error = "AI review is off: no model provider is configured. Add a model key in Admin → AI, then retry."
+    except PlatformCostCapExceeded:
+        status = "error"
+        error = "The organisation's daily AI spend cap was reached. Retry tomorrow or raise the cap in Admin → AI."
+    except Exception as exc:
+        log_exception(logger, f"Key-term analysis failed for platform contract {platform_contract_id}", exc)
+        status = "error"
+        error = f"Key-term analysis failed: {str(exc)[:300]}"
+
+    payload = build_payload(
+        platform_contract_id,
+        run_id=run_id, version_id=request.get("version_id") or "", status=status,
+        source=source, result=result, error=error, usage=meter.snapshot(),
+    )
+    # Stored before sending: a failed delivery is retried from here, not by
+    # paying for the model calls again. The request's text is no longer needed.
+    if requests_coll.update_one(current, {"$set": {
+        "status": status, "error": error, "finished_at": datetime.utcnow(),
+        "usage": meter.snapshot(), "ledger": (result or {}).get("ledger"),
+        "pending_payload": payload, "plain_text": "",
+    }}).matched_count == 0:
+        return {"status": "superseded"}
+    outcome = deliver(payload)
+    return {"status": status, "sync": outcome.get("status")}
+
+
+MAX_DELIVERY_ATTEMPTS = 10
+
+
 @celery_app.task(bind=True, name='index_contract_task')
 def index_contract_task(self, contract_id: str, contract_oid_str: str, file_id_str: str,
                        file_name: str, user_id: str, **_legacy_kwargs):

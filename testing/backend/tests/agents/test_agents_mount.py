@@ -16,7 +16,7 @@ CALLED_BY_THE_API = {
     "/agent/ask", "/agent/portfolio-query", "/agent/models", "/agent/chat",
     "/redline_propose", "/redline_propose_batch", "/playbook_judge",
     "/extract", "/check_compliance", "/classify",
-    "/detect-binder", "/intake-classify", "/draft", "/review", "/redline",
+    "/detect-binder", "/intake-classify", "/draft", "/redline",
     "/playbook-review", "/approval-summary", "/renewal_advice", "/assist",
     "/assist_stream", "/complete", "/compare", "/classify_clause",
 }

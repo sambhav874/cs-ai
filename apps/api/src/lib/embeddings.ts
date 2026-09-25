@@ -244,6 +244,11 @@ export interface ClauseSegment {
   interpretation?: string
   riskRating?: string
   sectionRef?: string
+  /** Location in the source document, when the analysis had pages. */
+  page?: number | null
+  pageEnd?: number | null
+  spanStart?: number | null
+  spanEnd?: number | null
 }
 
 export async function storeClauseSegments(
@@ -265,6 +270,10 @@ export async function storeClauseSegments(
         interpretation: s.interpretation ?? null,
         riskRating: s.riskRating ?? null,
         sectionRef: s.sectionRef ?? null,
+        page: s.page ?? null,
+        pageEnd: s.pageEnd ?? null,
+        spanStart: s.spanStart ?? null,
+        spanEnd: s.spanEnd ?? null,
       })),
     }),
   ])

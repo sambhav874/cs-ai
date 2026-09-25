@@ -205,8 +205,13 @@ def push_to_platform(
     post: Optional[Callable[..., Any]] = None,
     api_url: Optional[str] = None,
     secret: Optional[str] = None,
+    path: str = SYNC_PATH,
 ) -> Dict[str, Any]:
-    """POST the payload; return a small status dict for the contract doc."""
+    """POST the payload; return a small status dict for the contract doc.
+
+    `path` lets the analysis sync (services/platform_analysis.py) share the
+    same delivery and failure rules.
+    """
     api_url = (api_url if api_url is not None else os.getenv("API_URL", "")).rstrip("/")
     secret = secret if secret is not None else os.getenv("INTERNAL_SERVICE_SECRET", "")
     if not api_url or not secret:
@@ -217,16 +222,16 @@ def push_to_platform(
         post = requests.post
     try:
         response = post(
-            f"{api_url}{SYNC_PATH}",
+            f"{api_url}{path}",
             json=payload,
             headers={"x-internal-secret": secret},
             timeout=30,
         )
     except Exception as exc:  # network: the next run re-delivers everything
-        logger.warning("Obligation sync to the platform failed: %s", exc)
+        logger.warning("Sync to the platform (%s) failed: %s", path, exc)
         return {"status": "failed", "error": str(exc)[:300]}
     if getattr(response, "status_code", 500) >= 300:
         detail = str(getattr(response, "text", ""))[:300]
-        logger.warning("Platform refused obligation sync (%s): %s", response.status_code, detail)
+        logger.warning("Platform refused sync to %s (%s): %s", path, response.status_code, detail)
         return {"status": "failed", "http_status": response.status_code, "error": detail}
     return {"status": "delivered"}

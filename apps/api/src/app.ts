@@ -42,6 +42,7 @@ import { healthRoutes } from './routes/health.js'
 import { fileRoutes } from './routes/files.js'
 import { internalAiRoutes } from './routes/internal-ai.js'
 import { internalObligationRoutes } from './routes/internal-obligations.js'
+import { internalAnalysisRoutes } from './routes/internal-analysis.js'
 import { adminAiRoutes } from './routes/admin-ai.js'
 import { adminPackRoutes } from './routes/admin-packs.js'
 import { agentThreadRoutes } from './routes/agent-threads.js'
@@ -251,6 +252,7 @@ export async function buildApp() {
   await app.register(organizationRoutes,   { prefix: '/api/v1/organization' })
   await app.register(internalAiRoutes,     { prefix: '/api/internal/ai' })
   await app.register(internalObligationRoutes, { prefix: '/api/internal/obligations' })
+  await app.register(internalAnalysisRoutes,   { prefix: '/api/internal/contracts' })
   await app.register(adminAiRoutes,        { prefix: '/api/v1/admin/ai' })
   await app.register(adminPackRoutes,      { prefix: '/api/v1/admin/packs' })
   await app.register(agentThreadRoutes,    { prefix: '/api/v1/agent/threads' })

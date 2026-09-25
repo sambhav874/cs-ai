@@ -122,6 +122,10 @@ export async function cleanupAll(): Promise<void> {
     await del(() => prisma.obligationEvent.deleteMany({ where: { orgId } }))
     await del(() => prisma.obligation.deleteMany({ where: { orgId } }))
     await del(() => prisma.contractRequest.deleteMany({ where: { orgId } }))
+    const versions = cids.length
+      ? await prisma.contractVersion.findMany({ where: { contractId: { in: cids } }, select: { id: true } }).catch(() => [])
+      : []
+    await del(() => prisma.contractClause.deleteMany({ where: { versionId: { in: versions.map(v => v.id) } } }))
     await del(() => prisma.contractVersion.deleteMany({ where: { contractId: { in: cids } } }))
     await del(() => prisma.notification.deleteMany({ where: { orgId } }))
     await del(() => prisma.auditEvent.deleteMany({ where: { orgId } }))

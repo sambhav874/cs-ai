@@ -181,3 +181,55 @@ def extract_platform_obligations(platform_contract_id: str, body: ExtractObligat
         )
         raise HTTPException(status_code=503, detail="Extraction queue is unavailable.")
     return {"status": "queued", "contract_id": str(contract["_id"])}
+
+
+class AnalyseRequest(BaseModel):
+    org_id: str = Field(..., min_length=1)
+    version_id: str = Field(..., min_length=1)
+    # The platform's own text: used when there is no analysis copy to read.
+    plain_text: str = Field("", max_length=2_000_000)
+    contract_type: Optional[str] = Field(None, max_length=40)
+    custom_fields: List[Dict[str, Any]] = Field(default_factory=list, max_length=200)
+    # False for a contract with no PDF or DOCX: it will never be linked, so
+    # there is nothing to wait for.
+    expect_linked: bool = True
+    run_id: Optional[str] = Field(None, min_length=1, max_length=120)
+
+
+@internal_router.post(
+    "/contracts/{platform_contract_id}/analyse",
+    dependencies=[Depends(require_internal_secret)],
+)
+def analyse_platform_contract(platform_contract_id: str, body: AnalyseRequest) -> Dict[str, Any]:
+    """Start key-term analysis for a platform contract (replaces /agents/review).
+
+    Answers at once; the result reaches the API through
+    POST /api/internal/contracts/{id}/analysis/sync. A new request replaces any
+    earlier one for the same contract, which then stops without syncing.
+    """
+    from core.database import db
+    from services.platform_analysis import REQUESTS_COLLECTION, new_request
+    from worker.tasks import analyse_platform_contract_task
+
+    owner = _platform_db()["contracts"].find_one({"_id": platform_contract_id}, {"orgId": 1}) or {}
+    if str(owner.get("orgId") or "") != body.org_id:
+        # Unknown here, or another org's contract: the same answer for both.
+        raise HTTPException(status_code=404, detail="Contract not found.")
+
+    request = new_request(
+        platform_contract_id,
+        org_id=body.org_id,
+        version_id=body.version_id,
+        plain_text=body.plain_text,
+        contract_type=body.contract_type,
+        custom_fields=body.custom_fields,
+        expect_linked=body.expect_linked,
+        run_id=body.run_id,
+    )
+    db[REQUESTS_COLLECTION].replace_one({"_id": platform_contract_id}, request, upsert=True)
+    try:
+        analyse_platform_contract_task.delay(platform_contract_id=platform_contract_id, run_id=request["run_id"])
+    except Exception as exc:
+        logger.warning("Could not queue analysis for %s: %s", platform_contract_id, exc)
+        raise HTTPException(status_code=503, detail="Analysis queue is unavailable.")
+    return {"status": "queued", "run_id": request["run_id"]}

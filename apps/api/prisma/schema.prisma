@@ -294,6 +294,13 @@ model ContractClause {
   windowIndex    Int? // sub-chunk index within parent clause (null for primary)
   charStart      Int? // char offset from start of clause content
   charEnd        Int? // char offset end
+  // Where the clause is in the source document, when the analysis had pages
+  // (ContractSense's key-term extractor, P1). spanStart/spanEnd are offsets
+  // into the text that was analysed; page/pageEnd are 1-based PDF pages.
+  page           Int?
+  pageEnd        Int?
+  spanStart      Int?
+  spanEnd        Int?
   embedding      Unsupported("vector(1536)")? // null until embed job runs
   embeddedAt     DateTime?
   createdAt      DateTime                     @default(now())

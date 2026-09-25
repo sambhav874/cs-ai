@@ -45,11 +45,9 @@ def test_the_two_that_crashed_now_format():
     assert "2026-09-25" in portfolio_agent._PARSE_PROMPT.format(today="2026-09-25")
 
 
-def test_review_recovery_pass_looks_for_keys_the_schema_produces():
-    import re
+def test_key_term_recovery_pass_looks_for_fields_the_schema_declares():
+    # The review agent's recovery pass once looked for keys its own schema
+    # never produced; the key-term extractor that replaced it keeps the check.
+    from services import key_terms
 
-    from agents_service.agents import review_agent
-
-    schema = review_agent._EXTRACT_PROMPT.split('"rawFields"', 1)[1].split('"clauseFlags"', 1)[0]
-    keys = set(re.findall(r'^\s*"([A-Za-z]+)":', schema, flags=re.M))
-    assert set(review_agent.RECOVERY_FIELDS) <= keys, set(review_agent.RECOVERY_FIELDS) - keys
+    assert set(key_terms.RECOVERY_FIELDS) <= set(key_terms.FIELD_BY_NAME)
