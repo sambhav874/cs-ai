@@ -17,7 +17,8 @@ import { createAuditEvent } from '../lib/audit.js'
 import { requireInternalSecret } from '../lib/internal-auth.js'
 import { storeClauseSegments } from '../lib/embeddings.js'
 import { queueChunkAndIndex } from '../lib/queue.js'
-import { estimateCostUsd, recordUsage } from '../lib/costCap.js'
+import { recordUsage } from '../lib/costCap.js'
+import { costForTokens } from '../lib/model-pricing.js'
 import { AnalysisSyncSchema, planAnalysisUpdate, type AnalysisRun } from '../lib/analysis-sync.js'
 
 export async function internalAnalysisRoutes(app: FastifyInstance) {
@@ -101,8 +102,7 @@ export async function internalAnalysisRoutes(app: FastifyInstance) {
     // from request size.
     const usage = sync.usage
     if (usage && usage.calls > 0) {
-      const chars = (usage.inputTokens + usage.outputTokens) * 4
-      recordUsage(contract.orgId, estimateCostUsd(chars, 1), {
+      recordUsage(contract.orgId, costForTokens(usage.model, usage.inputTokens, usage.outputTokens), {
         provider:    usage.provider ?? 'contractsense',
         model:       usage.model ?? 'key-term-extraction',
         tier:        'default',

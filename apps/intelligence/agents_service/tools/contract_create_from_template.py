@@ -54,7 +54,14 @@ def draft_proposal(result: Dict[str, Any], *, title: Optional[str], counterparty
     computed_title = (title or "").strip() or (
         f"{counterparty_name} — {contract_type}" if counterparty_name else f"Draft — {result.get('usedTemplateName')}"
     )
-    missing = [str(m) for m in (result.get("missingFields") or result.get("unfilledVariables") or [])][:20]
+    # The template's placeholders still empty are what the user must fill.
+    # The reviewer's own list (missingFields) is commentary — it named
+    # "governing law" on a draft whose governing law was filled — so it
+    # goes in the review notes, not the to-fill list.
+    missing = [str(m) for m in (result.get("unfilledVariables") or [])][:20]
+    review_notes = " ".join(str(x) for x in [result.get("reviewNotes"), *(
+        [f"Reviewer flagged: {', '.join(str(m) for m in result.get('missingFields') or [])}."]
+        if result.get("missingFields") else [])] if x) or None
     summary = f"Create draft “{computed_title}” from the {result.get('usedTemplateName')} template"
     if missing:
         summary += f" ({len(missing)} field{'s' if len(missing) != 1 else ''} still to fill)"
@@ -74,7 +81,7 @@ def draft_proposal(result: Dict[str, Any], *, title: Optional[str], counterparty
             "html": str(result.get("html") or "")[:PREVIEW_HTML_CHARS],
             "completeness": result.get("completenessScore"),
             "missingFields": missing,
-            "reviewNotes": result.get("reviewNotes"),
+            "reviewNotes": review_notes,
         },
         "reversible": True,
     }

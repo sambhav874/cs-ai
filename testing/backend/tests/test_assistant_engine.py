@@ -73,7 +73,7 @@ def fake_lifecycle(results: Dict[str, Any] = None):
                     "reversible": True}
 
         def get(contract_id: str):
-            return {"id": contract_id, "title": "Acme MSA"}
+            return results.get("contract_get", {"id": contract_id, "title": "Acme MSA"})
 
         return [
             StructuredTool.from_function(func=search, name="contract_search", description="search", args_schema=SearchArgs),
@@ -370,3 +370,62 @@ def test_a_superseded_or_unknown_fact_is_not_a_source():
         assert not of(frames, "citations")
     finally:
         citations.set_fact_loader(prev)
+
+
+# ── citations of contracts the lifecycle tools read (found live on cs2) ──────
+
+ACME_TEXT = ("1. Fees. Customer shall pay each undisputed invoice within thirty (30) days of receipt.\n"
+             "2. Liability. Customer's total liability shall not exceed the charges paid in the twelve (12) "
+             "months preceding the claim.")
+ACME_GET = {"id": "cmacme", "title": "Acme Corp — Master Services Agreement", "type": "MSA",
+            "expiryDate": "2027-01-14", "value": 250000, "plainText": ACME_TEXT}
+
+
+def _cited_turn(citations_json: str):
+    answer = f"Payment is due in 30 days [1].\n<CITATIONS>{citations_json}</CITATIONS>"
+    frames, last, _ = turn([call("contract_get", {"contract_id": "cmacme"}, "c1"), AIMessage(content=answer)],
+                           results={"contract_get": ACME_GET})
+    cites = of(frames, "citations")
+    return (cites[0]["citations"] if cites else []), frames, last
+
+
+def test_a_quote_of_the_contract_text_is_verified_and_opens_that_contract():
+    cited, _, last = _cited_turn('[{"ref": 1, "doc_id": "cmacme", '
+                                 '"quote": "pay each undisputed invoice within thirty (30) days of receipt"}]')
+    assert cited == [{"ref": 1, "kind": "passage", "factId": None, "contractId": "cmacme",
+                      "quote": "pay each undisputed invoice within thirty (30) days of receipt", "page": None,
+                      "sectionRef": None, "filename": "Acme Corp — Master Services Agreement", "verified": True}]
+    assert last["type"] == "done"
+
+
+def test_an_invented_quote_is_not_shown_even_with_no_evidence_tool_in_the_turn():
+    """The live defect: with only lifecycle tools in the turn, every citation
+    passed through marked VERIFIED — an invented clause got a green badge."""
+    cited, frames, _ = _cited_turn('[{"ref": 1, "doc_id": "cmacme", '
+                                   '"quote": "Either party may terminate for convenience on ninety (90) days notice."}]')
+    assert cited == []
+    assert "[1]" not in "".join(f.get("answer", "") for f in of(frames, "final"))
+
+
+def test_metadata_and_json_are_not_citations():
+    """Seen live: `"expiryDate":"2027-01-14" … "value":250000` shown as a
+    VERIFIED source labelled doc-0."""
+    cited, _, _ = _cited_turn('[{"ref": 1, "doc_id": "doc-0", '
+                              '"quote": "\\"expiryDate\\":\\"2027-01-14\\" \\"value\\":250000"}]')
+    assert cited == []
+
+
+def test_a_quote_cited_by_a_label_binds_to_the_contract_that_holds_it():
+    cited, _, _ = _cited_turn('[{"ref": 1, "doc_id": "doc-0", '
+                              '"quote": "total liability shall not exceed the charges paid"}]')
+    assert [(c["contractId"], c["filename"], c["verified"]) for c in cited] == [
+        ("cmacme", "Acme Corp — Master Services Agreement", True)]
+
+
+def test_only_contract_words_are_evidence():
+    ev = lifecycle.lifecycle_evidence("contract_get", json.dumps({**ACME_GET, "summary": "AI summary"}))
+    assert [e["context"] for e in ev] == [ACME_TEXT]
+    assert lifecycle.lifecycle_evidence("contract_filter", json.dumps({"results": [{"id": "x"}]})) == []
+    hits = lifecycle.lifecycle_evidence("clause_search", json.dumps({"contractId": "c", "title": "T", "matches": [
+        {"beforeContext": "shall pay ", "match": "invoice", "afterContext": " in 30 days"}]}))
+    assert hits[0]["context"] == "shall pay invoice in 30 days"

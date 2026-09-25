@@ -81,9 +81,12 @@ def _mongo_source(document_id: str) -> Optional[str]:
 
         from core.database import collection
 
-        if not ObjectId.is_valid(document_id):
-            return None
-        doc = collection.find_one({"_id": ObjectId(document_id)}, {"index.content": 1}) or {}
+        if ObjectId.is_valid(document_id):
+            doc = collection.find_one({"_id": ObjectId(document_id)}, {"index.content": 1}) or {}
+        else:
+            # A platform contract id (the lifecycle tools' ids): the linked
+            # ContractSense document holds the same contract's text.
+            doc = collection.find_one({"platformContractId": document_id}, {"index.content": 1}) or {}
         return (doc.get("index") or {}).get("content") or None
     except Exception:  # an unreadable source falls back to the evidence check
         return None
@@ -325,7 +328,46 @@ def build_document_index(state: Any) -> Dict[str, Dict[str, Any]]:
         }
         index[label] = info
         index[document_id] = info
+
+    # Platform contracts the lifecycle tools read (contract_get, clause_search,
+    # ...): cited by their platform id, or by title when the model writes that.
+    for match in _platform_matches(state):
+        contract_id = match["document_id"]
+        if contract_id in index:
+            continue
+        info = {"document_id": contract_id, "filename": match.get("filename") or contract_id,
+                "version_id": None, "version_number": None, "platform": True}
+        index[contract_id] = info
+        if match.get("filename"):
+            index.setdefault(str(match["filename"]), info)
     return index
+
+
+def _platform_matches(state: Any) -> List[Dict[str, Any]]:
+    """Evidence entries the lifecycle tools recorded (services/assistant/lifecycle.py)."""
+    out: List[Dict[str, Any]] = []
+    for tool in getattr(state, "tools", None) or []:
+        observation = getattr(tool, "observation", None)
+        if isinstance(observation, dict) and observation.get("lifecycle"):
+            out.extend(m for m in observation.get("matches") or [] if isinstance(m, dict) and m.get("document_id"))
+    return out
+
+
+def platform_source(state: Any, document_id: str) -> Optional[str]:
+    """The text of a platform contract as the lifecycle tools returned it.
+
+    A quote of a contract that has no ContractSense document (one created in
+    the platform, or not yet linked) is checked against exactly what the
+    agent read of it: contract_get's text, clause_search's windows, cited
+    passages. Joined as separate paragraphs so no quote spans two of them.
+    """
+    texts: List[str] = []
+    for match in _platform_matches(state):
+        if match["document_id"] == document_id:
+            text = str(match.get("context") or "")
+            if text and text not in texts:
+                texts.append(text)
+    return "\n\n".join(texts) or None
 
 
 def _filename_from_observations(state: Any, document_id: str) -> Optional[str]:
@@ -390,7 +432,8 @@ def resolve_citations(
 
         # The model may have written a label rather than a real id. Fall back to
         # the scope so the citation still points at a document the reader can open.
-        if not ObjectId.is_valid(document_id):
+        # A platform contract id is a real id: it stays.
+        if not (info or {}).get("platform") and not ObjectId.is_valid(document_id):
             fallback = _fallback_document_id(context)
             if fallback:
                 document_id = fallback
@@ -408,6 +451,7 @@ def resolve_citations(
                 "ref": ref,
                 "doc_id": document_id,
                 "document_id": document_id,
+                "platform_contract_id": document_id if (info or {}).get("platform") else None,
                 "version_id": (info or {}).get("version_id"),
                 "version_number": (info or {}).get("version_number"),
                 "filename": filename,
@@ -797,13 +841,14 @@ def check_citations(
     seen: Set[Tuple[str, str]] = set()
     sources: Dict[str, Any] = {}
 
-    def source_for(document_id: str) -> Any:
+    def source_for(document_id: str) -> List[Any]:
+        """The document's own text, then what the lifecycle tools returned of
+        it (their text can differ: it is PII-redacted). A quote found in
+        either is in the contract."""
         if document_id not in sources:
-            text = SOURCE_TEXT_LOADER(document_id)
-            sources[document_id] = SourceText(text) if text else None
+            texts = [SOURCE_TEXT_LOADER(document_id), platform_source(state, document_id)]
+            sources[document_id] = [SourceText(t) for t in texts if t]
         return sources[document_id]
-
-    no_evidence = not evidence
 
     for annotation in annotations:
         if annotation.get("kind") == "fact":
@@ -837,14 +882,35 @@ def check_citations(
         # citation back to what the model originally wrote.
         cleaned["source_ref"] = annotation.get("ref")
 
-        source = source_for(document_id)
-        if source is not None:
-            span = source.locate(quote)
-            if span is None and tokens:
-                span = _research(tokens, document_id, state, source)
+        candidates = source_for(document_id)
+        if not candidates:
+            # A label that names nothing (`doc-0` with no document attached):
+            # the one platform contract the agent read whose text holds the
+            # quote is the one it meant.
+            owners = {m["document_id"] for m in _platform_matches(state)}
+            found = [d for d in owners if any(c.locate(quote) is not None for c in source_for(d))]
+            if len(found) == 1:
+                document_id = found[0]
+                owner = next(m for m in _platform_matches(state) if m["document_id"] == document_id)
+                cleaned.update(doc_id=document_id, document_id=document_id, platform_contract_id=document_id,
+                               filename=owner.get("filename") or cleaned.get("filename"))
+                candidates = source_for(document_id)
+        source = candidates[0] if candidates else None
+        if candidates:
+            span = None
+            for candidate in candidates:
+                span = candidate.locate(quote)
                 if span is not None:
-                    cleaned["requoted"] = True
-                    issues.append("citation_requoted_from_source")
+                    source = candidate
+                    break
+            if span is None and tokens:
+                for candidate in candidates:
+                    span = _research(tokens, document_id, state, candidate)
+                    if span is not None:
+                        source = candidate
+                        cleaned["requoted"] = True
+                        issues.append("citation_requoted_from_source")
+                        break
             if span is None:
                 issues.append("unverifiable_citation_dropped")
                 dropped.append({"ref": annotation.get("ref"), "document_id": document_id, "quote": quote[:300]})
@@ -858,11 +924,11 @@ def check_citations(
             cleaned["verified"] = True
             cleaned["exact"] = True
         else:
-            if no_evidence:
-                supported = True
-                issues.append("citation_no_evidence_passthrough")
-            else:
-                supported = bool(tokens) and any(_supports(normalized, tokens, item) for item in evidence)
+            # No text to find the quote in. The tools' evidence is the only
+            # check left; with none, nothing supports the quote, so it is not
+            # shown. (It used to pass through marked verified, which put a
+            # VERIFIED badge on whatever the model wrote.)
+            supported = bool(tokens) and any(_supports(normalized, tokens, item) for item in evidence)
             if not supported:
                 issues.append("invalid_or_unsupported_citation")
                 dropped.append({"ref": annotation.get("ref"), "document_id": document_id, "quote": quote[:300]})

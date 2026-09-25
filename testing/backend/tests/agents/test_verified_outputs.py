@@ -19,14 +19,18 @@ def test_a_chat_draft_is_a_proposal_with_its_preview():
         "html": "<h1>Mutual NDA</h1><p>Between Acme and Globex.</p>", "usedTemplateId": "tpl_1",
         "usedTemplateName": "Mutual NDA", "contractType": "NDA",
         "variableValues": {"counterparty_name": "Globex", "term": "2 years"},
-        "missingFields": ["governing_law"], "completenessScore": 0.8,
+        "unfilledVariables": ["effectiveDate"], "completenessScore": 0.8,
+        # The reviewer's commentary, which on cs2 listed "governing law" for a
+        # draft whose governing law was filled: notes, not the to-fill list.
+        "missingFields": ["governing law / jurisdiction"], "reviewNotes": "Looks complete.",
     }, title=None, counterparty_name="Globex")
     assert card["awaitingConfirmation"] is True and card["reversible"] is True
     assert card["args"] == {"templateId": "tpl_1", "variables": {"counterparty_name": "Globex", "term": "2 years"},
                             "title": "Globex — NDA", "counterpartyName": "Globex"}
     assert card["preview"]["html"].startswith("<h1>Mutual NDA")
-    assert card["preview"]["missingFields"] == ["governing_law"]
+    assert card["preview"]["missingFields"] == ["effectiveDate"]
     assert "1 field still to fill" in card["preview"]["summary"]
+    assert card["preview"]["reviewNotes"] == "Looks complete. Reviewer flagged: governing law / jurisdiction."
 
 
 def test_no_template_is_an_error_not_an_empty_draft():

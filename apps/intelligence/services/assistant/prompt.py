@@ -230,6 +230,23 @@ Rules:
   checked against the document and shown with its page. With nothing in
   scope, contract_cite returns citation data for one contract id.
   clause_search is for CONTENT MATCH, not citations.
+  Citing a contract the platform tools read: in the <CITATIONS> block set
+  "doc_id" to the contract's id from the tool result (e.g. "cmu2hf…"), and
+  quote words copied from its contract text — contract_get's plainText,
+  clause_search's matched window, contract_cite's or portfolio_search's
+  passages. Metadata is NOT contract text: titles, dates, values, status,
+  keyTerms, riskFactors, the AI summary and any JSON are database fields, so
+  state them without a citation marker. Every quote is checked against the
+  contract; one that is not in it is removed before the user sees it.
+- CONFIRM THE CONTRACT. When the user names a contract ("the Acme MSA", "our
+  NDA with Globex"), check the result you use matches the name — counterparty
+  and type — before answering from it. contract_search with
+  searchMode "semantic-fallback" did NOT find that name: its results only
+  mention related words in their text. Never answer about one of them as if it
+  were the named contract; say you could not find it by that name and list
+  the closest candidates (title, counterparty, status) for the user to pick.
+  Prefer counterparty_name= over a free-text query when the user names the
+  other party.
 - WRITE TOOLS — comment_add, contract_update, request_create,
   approval_route, redline_apply, approval_decide. redline_apply turns a clause rewrite into a
   new contract version: call redline_propose FIRST and pass one of ITS variants

@@ -13,7 +13,8 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { requireInternalSecret } from '../lib/internal-auth.js'
-import { estimateCostUsd, recordUsage } from '../lib/costCap.js'
+import { recordUsage } from '../lib/costCap.js'
+import { costForTokens } from '../lib/model-pricing.js'
 
 export const UsageReportSchema = z.object({
   platformContractId: z.string().trim().min(1).max(64),
@@ -36,7 +37,7 @@ export async function internalUsageRoutes(app: FastifyInstance) {
     const contract = await prisma.contract.findFirst({ where: { id: u.platformContractId }, select: { orgId: true } })
     if (!contract) return reply.status(404).send({ detail: 'Contract not found' })
     if (u.calls === 0) return reply.send({ ok: true, recorded: false })
-    await recordUsage(contract.orgId, estimateCostUsd((u.inputTokens + u.outputTokens) * 4, 1), {
+    await recordUsage(contract.orgId, costForTokens(u.model, u.inputTokens, u.outputTokens), {
       provider: u.provider, model: u.model, tier: 'default', toolName: u.toolName, isByok: u.byok,
       inputChars: u.inputTokens * 4, outputChars: u.outputTokens * 4,
     })

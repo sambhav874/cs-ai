@@ -11,7 +11,8 @@ import { ChatMessageSchema, AuditAction } from '@clm/types'
 import { prisma } from '../lib/prisma.js'
 import { queueClassifyDocument } from '../lib/queue.js'
 import { indexContract } from '../lib/elasticsearch.js'
-import { assertCostCapNotExceeded, recordCost, estimateCostUsd, CostCapExceededError, recordUsage } from '../lib/costCap.js'
+import { assertCostCapNotExceeded, recordCost, CostCapExceededError, recordUsage } from '../lib/costCap.js'
+import { costForTokens } from '../lib/model-pricing.js'
 import { randomUUID } from 'node:crypto'
 import { capBody, meter, meteredAgentCall, meteredJson } from '../lib/metered-agent.js'
 import { TurnCollector, ensureThread, loadHistory, persistTurn } from '../lib/agent-turns.js'
@@ -230,7 +231,7 @@ export async function agentRoutes(app: FastifyInstance) {
     const usage = turn.done?.usage
     const inputTokens = usage?.inputTokens ?? Math.ceil(body.message.length / 4)
     const outputTokens = usage?.outputTokens ?? Math.ceil(turn.text.length / 4)
-    recordUsage(orgId, estimateCostUsd((inputTokens + outputTokens) * 4, 1), {
+    recordUsage(orgId, costForTokens(turn.done?.model, inputTokens, outputTokens), {
       provider: turn.done?.provider ?? 'unknown',
       model:    turn.done?.model ?? 'unknown',
       tier:     turn.done?.tier ?? 'default',

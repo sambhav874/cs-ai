@@ -73,6 +73,52 @@ class LifecycleTurn:
     proposals: List[Dict[str, Any]] = field(default_factory=list)
 
 
+def lifecycle_evidence(name: str, text: str) -> List[Dict[str, Any]]:
+    """The contract words a lifecycle tool returned, as citable evidence.
+
+    Only verbatim document text counts: contract_get's plainText, the windows
+    clause_search matched, contract_cite's passages, portfolio_search's
+    excerpts, contract_summarize's opening snippet. Metadata (dates, values,
+    key terms) and the AI-written summary are the database's words, not the
+    contract's, so a quote of them is never a citation. Each entry names the
+    platform contract it came from, so a citation opens that contract.
+    """
+    try:
+        data = json.loads(text)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    out: List[Dict[str, Any]] = []
+
+    def add(contract_id: Any, title: Any, passage: Any, **extra: Any) -> None:
+        passage = str(passage or "").strip()
+        if contract_id and passage:
+            out.append({"document_id": str(contract_id), "filename": str(title or "") or None,
+                        "context": passage, "platform": True, **extra})
+
+    if name == "contract_get":
+        add(data.get("id"), data.get("title"), data.get("plainText"), full_text=True)
+    elif name == "contract_summarize":
+        add(data.get("id"), data.get("title"), data.get("plainTextSnippet"))
+    elif name == "clause_search":
+        for m in data.get("matches") or []:
+            if isinstance(m, dict):
+                add(data.get("contractId"), data.get("title"),
+                    f"{m.get('beforeContext') or ''}{m.get('match') or ''}{m.get('afterContext') or ''}")
+    elif name == "contract_cite":
+        for c in data.get("citations") or []:
+            if isinstance(c, dict):
+                add(data.get("contractId"), data.get("title"), c.get("quote"),
+                    page=c.get("page"), section=c.get("sectionRef"))
+    elif name == "portfolio_search":
+        for h in data.get("hits") or []:
+            if isinstance(h, dict):
+                add(h.get("contractId"), h.get("contractTitle"), h.get("excerpt"),
+                    page=h.get("page"), section=h.get("sectionRef"))
+    return out
+
+
 def _budget_message(name: str, used: int, cap: int) -> str:
     return (
         f"BUDGET_EXCEEDED: {name} called {used} times this turn (cap = {cap}). Stop invoking {name}; "
@@ -113,10 +159,14 @@ def wrap_lifecycle_tool(tool: BaseTool, *, turn: LifecycleTurn, state: AgentRunS
 
         def finish(content: str, *, status: str, summary: str, preview: Optional[str], ok: bool, **extra: Any) -> str:
             record.status = status  # type: ignore[assignment]
-            record.observation = {"summary": summary[:1500], "model_content": content, "lifecycle": True, **extra}
+            # Contract text the tool returned is evidence a citation can be
+            # checked against (citations.check_citations); nothing else is.
+            evidence = lifecycle_evidence(name, summary) if status == "done" else []
+            record.observation = {"summary": summary[:1500], "model_content": content, "lifecycle": True,
+                                  **({"matches": evidence} if evidence else {}), **extra}
             state.react_scratchpad.append({
                 "iteration": record.iteration, "tool": name, "status": status,
-                "observation": {"summary": summary[:1500]},
+                "observation": {"summary": summary[:1500], **({"matches": evidence} if evidence else {})},
             })
             if preview is not None:
                 limit = FULL_PREVIEW_CHARS if name in FULL_PREVIEW_TOOLS else SHORT_PREVIEW_CHARS

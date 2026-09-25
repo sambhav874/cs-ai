@@ -162,7 +162,8 @@ def citation_frame(annotations: list, *, platform_ids: Dict[str, str]) -> Option
             # "fact": a project fact from the Space's memory; "passage": contract text.
             "kind": "fact" if ann.get("kind") == "fact" else "passage",
             "factId": ann.get("fact_id"),
-            "contractId": platform_ids.get(doc),
+            # A passage the lifecycle tools read is already on a platform contract.
+            "contractId": platform_ids.get(doc) or ann.get("platform_contract_id"),
             "quote": quote,
             "page": ann.get("page") or ann.get("page_number"),
             "sectionRef": ann.get("section") or ann.get("section_path"),

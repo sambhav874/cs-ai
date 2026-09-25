@@ -44,6 +44,8 @@ x-api-env: &api-env
   AGENTS_URL: http://intelligence:8000/agents
   FRONTEND_URL: ${CS_PUBLIC_URL:?run ./install.sh first}
   API_URL: ${CS_PUBLIC_URL}
+  # The API's internal tool routes, reached from the job runner.
+  API_INTERNAL_URL: http://api:8080
   WEB_BASE_URL: ${CS_PUBLIC_URL}
   GIT_COMMIT_SHA: ${CS_VERSION:-local}
   # Self-host: the first person to sign up becomes the admin; everyone else

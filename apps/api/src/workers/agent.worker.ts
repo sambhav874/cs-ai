@@ -65,9 +65,11 @@ async function callAgents(
   return res
 }
 
-// playbook_check lives on THIS service's internal-ai plugin, not on the Python
-// agents service. Same self-call shape agent-threads.ts uses.
-const API_INTERNAL_URL = process.env.API_URL ?? 'http://localhost:3001'
+// playbook_check lives on the API's internal-ai plugin, not on the Python
+// agents service. This runs in the jobs container, which serves no API of its
+// own, and API_URL is the public origin, where /api/internal is not served.
+// Compose sets API_INTERNAL_URL to http://api:8080.
+const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://localhost:3001'
 const INTERNAL_SECRET  = process.env.INTERNAL_SERVICE_SECRET ?? ''
 
 // ─── detect-binder ────────────────────────────────────────────────────────────

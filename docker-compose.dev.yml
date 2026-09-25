@@ -172,6 +172,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Coolify}
       PORTAL_JWT_SECRET: ${PORTAL_JWT_SECRET:?set PORTAL_JWT_SECRET in Coolify}
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:?set INTERNAL_SERVICE_SECRET in Coolify}
+      # The API's internal tool routes (playbook review after analysis).
+      API_INTERNAL_URL: http://api:8080
       AI_KEY_ENCRYPTION_KEY: ${AI_KEY_ENCRYPTION_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

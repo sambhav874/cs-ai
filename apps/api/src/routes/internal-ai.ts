@@ -734,20 +734,44 @@ export async function internalAiRoutes(app: FastifyInstance) {
     // (`totalMatching`). The agent was treating `total === results.length`
     // as the org's contract count, which made "how many MSAs do I
     // have" answers wrong (50 = page size ≠ 154 = real total).
-    const [contracts, totalMatching] = await Promise.all([
+    const cardSelect = {
+      id: true, title: true, type: true, status: true,
+      counterpartyName: true, riskScore: true,
+      effectiveDate: true, expiryDate: true,
+      value: true, currency: true, updatedAt: true,
+    } as const
+    let [contracts, totalMatching] = await Promise.all([
       prisma.contract.findMany({
         where: where as never,
-        select: {
-          id: true, title: true, type: true, status: true,
-          counterpartyName: true, riskScore: true,
-          effectiveDate: true, expiryDate: true,
-          value: true, currency: true, updatedAt: true,
-        },
+        select: cardSelect,
         orderBy: orderBy as never,
         take: body.limit,
       }),
       prisma.contract.count({ where: where as never }),
     ])
+
+    // A name is rarely typed the way it is stored: "Acme Corporation Master
+    // Services Agreement" is the title "Acme Corp — Master Services Agreement"
+    // plus the counterparty "Acme Corporation". The whole phrase matches
+    // neither field, so before searching by content, match by words: every
+    // word of the query in the title, counterparty or summary. Without this
+    // the content search answered a named contract with a different one.
+    if (contracts.length === 0 && rawQuery && !isWildcard) {
+      const words = nameWords(rawQuery)
+      if (words.length > 1) {
+        const byWords: Record<string, unknown> = { ...where }
+        delete byWords.OR
+        byWords.AND = words.map(w => ({ OR: [
+          { title:            { contains: w, mode: 'insensitive' } },
+          { counterpartyName: { contains: w, mode: 'insensitive' } },
+          { summary:          { contains: w, mode: 'insensitive' } },
+        ] }))
+        ;[contracts, totalMatching] = await Promise.all([
+          prisma.contract.findMany({ where: byWords as never, select: cardSelect, orderBy: orderBy as never, take: body.limit }),
+          prisma.contract.count({ where: byWords as never }),
+        ])
+      }
+    }
 
     // A1 — semantic fallback. If a query was provided AND keyword search
     // returned 0 hits, try pgvector clause-similarity to surface contracts
@@ -783,12 +807,7 @@ export async function internalAiRoutes(app: FastifyInstance) {
           if (body.counterpartyName) semanticWhere.counterpartyName = { contains: body.counterpartyName, mode: 'insensitive' }
           const fallbackHits = await prisma.contract.findMany({
             where: semanticWhere as never,
-            select: {
-              id: true, title: true, type: true, status: true,
-              counterpartyName: true, riskScore: true,
-              effectiveDate: true, expiryDate: true,
-              value: true, currency: true, updatedAt: true,
-            },
+            select: cardSelect,
           })
           // Preserve semantic-rank order
           const byId = new Map(fallbackHits.map(c => [c.id, c]))
@@ -826,7 +845,11 @@ export async function internalAiRoutes(app: FastifyInstance) {
       })),
       // Surface the fallback to the agent so it can mention "I broadened the
       // search" in its prose synthesis if it wants to be transparent.
-      ...(usedFallback ? { searchMode: 'semantic-fallback', note: 'No keyword matches; expanded to clause-content semantic search.' } : {}),
+      ...(usedFallback ? {
+        searchMode: 'semantic-fallback',
+        note: 'NO contract matched this name. These contracts only mention related words in their text; none is the contract '
+          + 'the query names. Do not answer about one as if it were: tell the user the name was not found and offer these as candidates.',
+      } : {}),
     })
   })
 
@@ -4176,4 +4199,14 @@ function htmlToPlainText(html: string): string {
     .replace(/&gt;/g, '>')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+}
+
+const NAME_STOP_WORDS = new Set([
+  'the', 'a', 'an', 'and', 'of', 'for', 'with', 'to', 'in', 'on', 'our', 'my', 'contract', 'contracts', 'agreement', 'agreements',
+])
+
+/** The words of a contract name worth matching on: no stop words, no punctuation. */
+export function nameWords(query: string): string[] {
+  const words = query.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 1 && !NAME_STOP_WORDS.has(w))
+  return [...new Set(words)].slice(0, 8)
 }

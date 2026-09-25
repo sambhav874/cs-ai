@@ -128,8 +128,12 @@ Rules:
 - For numbers, use numeric values (no currency symbols)
 - For text, be specific and professional
 - If a party name was mentioned in the request, use it
-- For governing_law, default to "Delaware" if not specified
-- Infer reasonable values from context where possible"""
+- Fill ONLY what the request or the context states. Use null for anything
+  else — entity type ("a Delaware corporation"), addresses, dates, venue,
+  signatories. A guessed party detail goes into a contract as if it were true;
+  null leaves a visible placeholder for the user to fill.
+- Keep dependent values consistent: a venue or court must sit in the governing
+  law's jurisdiction, or be null."""
 
 _REVIEW_PROMPT = """You are a contract quality reviewer. Assess this draft contract for completeness and obvious issues.
 

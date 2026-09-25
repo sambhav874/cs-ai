@@ -28,13 +28,12 @@ import { createAuditEvent } from '../lib/audit.js'
 import { AuditAction } from '@clm/types'
 
 // The API calling ITSELF, so localhost plus its own port is the correct value
-// and needs no deploy config. It used to read API_URL ?? AGENTS_API_URL ??
-// localhost:3001. Neither name is set on the API container — AGENTS_API_URL is
-// set nowhere at all, and the API_URL in deploy.yml belongs to the smoke-test
-// runner, not the service — so production fell through to :3001 while the
-// container listens on PORT=8080 (Dockerfile:44). That broke write-tool
-// execution (:387) and every undo URL below.
-const AGENTS_INTERNAL_URL = process.env.API_URL ?? `http://localhost:${process.env.PORT ?? 3001}`
+// and needs no deploy config. Not API_URL: the compose files set that to the
+// PUBLIC origin (https://cs2…), whose edge does not serve /api/internal, so
+// every Apply and Undo came back as the web server's 404 page. It once fell
+// through to :3001 while the container listens on PORT=8080 (Dockerfile:44),
+// which broke them the same way.
+const AGENTS_INTERNAL_URL = `http://127.0.0.1:${process.env.PORT ?? 3001}`
 const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET ?? ''
 
 // D.3.2 — registry of write tools the ActionPreview can execute. Each entry
