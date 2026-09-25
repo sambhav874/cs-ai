@@ -12,7 +12,11 @@ last caller has moved, the duplicate route goes. /extract_obligations has
 gone: obligations come from ContractSense's extraction and reach the API
 through /api/internal/obligations/sync. /review has gone too: key terms,
 clauses, risk and summary come from services/key_terms.py and reach the API
-through /api/internal/contracts/{id}/analysis/sync.
+through /api/internal/contracts/{id}/analysis/sync. /agent/chat runs on
+ContractSense's runtime (services/assistant); /agent/ask and
+/agent/portfolio-query went with the orchestrator — cited Q&A is the
+assistant's search_evidence, and natural-language portfolio filters are its
+contract_filter tool.
 
 Every route requires the shared INTERNAL_SERVICE_SECRET, exactly as the old
 service's middleware did, and fails closed when it is not configured.
@@ -25,7 +29,6 @@ from api.routes.internal import require_internal_secret
 
 from agents_service import tracing
 from agents_service.routes import (
-    agent,
     approval,
     assist,
     chat,
@@ -44,7 +47,7 @@ from agents_service.routes import (
 # API calls is unchanged apart from the /agents prefix.
 agents_router = APIRouter(prefix="/agents", dependencies=[Depends(require_internal_secret)])
 agents_router.include_router(chat.router, prefix="/agent")
-for module in (agent, detect_binder, classify, intake, draft, assist, extract,
+for module in (detect_binder, classify, intake, draft, assist, extract,
                redline, playbook_review, approval, renewals, compliance):
     agents_router.include_router(module.router)
 

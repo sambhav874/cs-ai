@@ -306,6 +306,20 @@ def approve_workflow(
     request_data: WorkflowApprovalRequest,
     current_user: UserInDB = Depends(get_current_active_user),
 ) -> AgentResponse:
+    return decide_workflow(workflow_id, request_data, current_user)
+
+
+def decide_workflow(
+    workflow_id: str,
+    request_data: WorkflowApprovalRequest,
+    current_user: UserInDB,
+) -> AgentResponse:
+    """Carry out, or decline, a workflow waiting on a person.
+
+    Shared by this route and the internal one the platform chat's Apply card
+    reaches (api/routes/internal.py), so an approval behaves the same from
+    either surface.
+    """
     state = _require_owned_workflow(workflow_id, current_user)
     if not state.approval_request:
         raise HTTPException(status_code=400, detail="Workflow is not waiting for approval.")

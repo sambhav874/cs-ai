@@ -39,12 +39,16 @@ class DeepContractAgentRunner:
         checkpointer: Optional[Any] = None,
         model: Optional[Any] = None,
         max_iterations: Optional[int] = None,
+        **runtime_options: Any,
     ) -> None:
+        """`runtime_options` pass through to ContractReActRuntime (extra_tools,
+        extra_system_prompt, history_messages, tool_filter)."""
         self.store = store
         self.tool_executor = tool_executor
         self.checkpointer = checkpointer if checkpointer is not None else _SHARED_MEMORY_CHECKPOINTER
         self.model = model
         self.max_iterations = max_iterations
+        self.runtime_options = runtime_options
         self.middleware = ActiveMiddlewareEngine()
 
     def run(
@@ -64,6 +68,7 @@ class DeepContractAgentRunner:
                 checkpointer=self.checkpointer,
                 model=self.model,
                 max_iterations=self.max_iterations,
+                **self.runtime_options,
             )
             state = runtime.run(
                 state, checkpoint_config=self.checkpoint_config(state),

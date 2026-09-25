@@ -13,7 +13,7 @@ from agents_service.mount import agents_health_router, agents_router
 
 # Every path apps/api calls (AGENTS_URL + path), from a grep of apps/api/src.
 CALLED_BY_THE_API = {
-    "/agent/ask", "/agent/portfolio-query", "/agent/models", "/agent/chat",
+    "/agent/models", "/agent/chat",
     "/redline_propose", "/redline_propose_batch", "/playbook_judge",
     "/extract", "/check_compliance", "/classify",
     "/detect-binder", "/intake-classify", "/draft", "/redline",

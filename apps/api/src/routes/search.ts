@@ -201,73 +201,7 @@ export async function searchRoutes(app: FastifyInstance) {
       })
     }
   })
-
-  // ── POST /api/v1/search/ask  — portfolio-wide RAG Q&A ────────────────────
-  app.post('/ask', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
-    const { question, contractId, limit } = AskSchema.parse(req.body)
-    const { orgId } = req.user
-
-    // Retrieve relevant clause chunks via pgvector. We over-fetch here
-    // (4×) so the reranker has more material to choose from.
-    const overfetch = Math.min(limit * 4, 60)
-    const dense = await searchClauses(question, orgId, overfetch, contractId)
-
-    if (!dense.length) {
-      return reply.send({ answer: null, sources: [], message: 'No relevant clauses found' })
-    }
-
-    // P7.7.1 — voyage-rerank-2.5 over the dense candidates. Falls back
-    // to identity ordering when no Voyage key is set.
-    const reranked = await rerankClauses(
-      question,
-      dense.map(d => ({ ref: d, text: d.content })),
-      limit,
-    )
-    const clauseMatches = reranked.map((r, i) => ({
-      ...(r.ref as typeof dense[number]),
-      // Replace the cosine similarity with the reranker's relevance score
-      // so the UI shows the more meaningful number.
-      similarity: r.score,
-      rerankRank: i + 1,
-    }))
-
-    // Forward to agents for LLM answer generation
-    const agentRes = await fetch(
-      `${process.env.AGENTS_URL ?? 'http://localhost:8000/agents'}/agent/ask`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET ?? '' },
-        body: JSON.stringify({ question, orgId, clauseMatches }),
-      },
-    ).catch(() => null)
-
-    if (!agentRes?.ok) {
-      // Return raw clause matches as fallback (client can render them)
-      return reply.send({ answer: null, sources: clauseMatches, message: 'Agent unavailable — showing relevant clauses' })
-    }
-
-    const agentData = await agentRes.json()
-    return reply.send({ ...agentData, sources: clauseMatches })
-  })
-
-  // ── POST /api/v1/search/portfolio-query  — NL portfolio query via agents ──
-  app.post('/portfolio-query', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
-    const { query } = PortfolioQuerySchema.parse(req.body)
-    const { orgId, sub: userId } = req.user
-
-    const agentRes = await fetch(
-      `${process.env.AGENTS_URL ?? 'http://localhost:8000/agents'}/agent/portfolio-query`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET ?? '' },
-        body: JSON.stringify({ query, orgId, userId }),
-      },
-    ).catch(() => null)
-
-    if (!agentRes?.ok) {
-      return reply.status(503).send({ detail: 'Agent service unavailable' })
-    }
-
-    return reply.send(await agentRes.json())
-  })
+  // /ask and /portfolio-query were removed with the agents they proxied (P2):
+  // cited Q&A is the assistant (POST /api/v1/agent/chat) and natural-language
+  // portfolio filters are its contract_filter tool. No screen called either.
 }

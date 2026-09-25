@@ -33,6 +33,7 @@ from langchain_core.tools import StructuredTool
 
 from .contract_get       import build_contract_get
 from .contract_search    import build_contract_search
+from .contract_filter    import build_contract_filter
 from .contract_summarize import build_contract_summarize
 from .clause_search      import build_clause_search
 from .playbook_check     import build_playbook_check
@@ -83,6 +84,7 @@ def get_read_tools(org_id: str, user_id: str | None = None) -> list[StructuredTo
     return [
         build_contract_get(org_id),
         build_contract_search(org_id),
+        build_contract_filter(org_id),
         build_contract_summarize(org_id),
         build_clause_search(org_id),
         build_playbook_check(org_id),

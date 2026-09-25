@@ -2918,6 +2918,11 @@ class ContractKPIManager:
             "record_role_counts": role_counts,
             "summary": self.summarize_kpis(contract_kpis),
             "kpis": contract_kpis,
+            # What the run cost, for the platform's usage metering.
+            **self._meter_snapshot(),
+            "llm_provider": getattr(self._platform_model, "provider", None) or provider,
+            "llm_model": getattr(self._platform_model, "model", None),
+            "llm_byok": getattr(self._platform_model, "source", None) == "byok",
         }
 
     def extract_for_project(

@@ -97,6 +97,21 @@ def _synthesis_turn_enabled(provider: str) -> bool:
 
 
 
+# ModelCallLimitMiddleware and ModelRetryMiddleware, enforced here rather than
+# advertised: middleware.py's descriptors named them and nothing applied them.
+MODEL_CALL_LIMIT = 12
+MODEL_RETRIES = 2
+# How much of a tool's output rides on its tool_result event.
+RESULT_PREVIEW_CHARS = 20_000
+
+_TRANSIENT_MARKERS = ("rate limit", "rate_limit", "429", "timeout", "timed out", "overloaded", "503", "502", "500", "connection")
+
+
+def _is_transient_model_error(exc: Exception) -> bool:
+    text = f"{type(exc).__name__} {exc}".lower()
+    return any(marker in text for marker in _TRANSIENT_MARKERS)
+
+
 # What each tool is doing, in the words someone waiting would use. Keyed on the
 # tool and, where one tool does several different jobs, on the view it was asked
 # for — "checking the rate schedules against the contract" and "reading a rate
@@ -162,11 +177,25 @@ class ContractReActRuntime:
         checkpointer: Optional[Any] = None,
         model: Optional[Any] = None,
         max_iterations: Optional[int] = None,
+        extra_tools: Sequence[BaseTool] = (),
+        extra_system_prompt: str = "",
+        history_messages: Sequence[BaseMessage] = (),
+        tool_filter: Optional[Callable[[str], bool]] = None,
     ) -> None:
+        """`extra_tools`, `extra_system_prompt`, `history_messages` and
+        `tool_filter` are how the platform assistant (services/assistant) runs
+        on this loop: the lifecycle tools join the evidence tools, their routing
+        rules join the prompt, the thread's earlier turns are replayed, and a
+        skill's allowlist or a caller's denied tools narrow the catalog.
+        """
         self.tool_executor = tool_executor
         self.fallback_executor = fallback_executor
         self.checkpointer = checkpointer
         self.model = model
+        self.extra_tools = list(extra_tools)
+        self.extra_system_prompt = extra_system_prompt or ""
+        self.history_messages = list(history_messages)
+        self.tool_filter = tool_filter
         self._config_max_iterations = max(
             1,
             int(max_iterations or getattr(settings, "contract_agent_max_react_iterations", 10) or 10),
@@ -198,7 +227,9 @@ class ContractReActRuntime:
             state=state,
             tool_executor=self.tool_executor,
             fallback_executor=self.fallback_executor,
-        )
+        ) + self.extra_tools
+        if self.tool_filter is not None:
+            tools = [tool for tool in tools if self.tool_filter(tool.name)]
         self.max_iterations = self._config_max_iterations
 
         system_prompt = build_adaptive_system_prompt(
@@ -207,6 +238,8 @@ class ContractReActRuntime:
             document_count=len(state.context.selected_document_ids or []),
             attached_documents=state.context.attached_documents or None,
         )
+        if self.extra_system_prompt:
+            system_prompt = f"{system_prompt}\n\n{self.extra_system_prompt}"
 
         state.add_trace(
             "agent_start",
@@ -259,6 +292,7 @@ class ContractReActRuntime:
         user_message = self._build_user_message(state)
         messages: List[BaseMessage] = [
             SystemMessage(content=system_prompt),
+            *self.history_messages,
             HumanMessage(content=user_message),
         ]
 
@@ -267,6 +301,12 @@ class ContractReActRuntime:
             if cancel_check and cancel_check():
                 cancelled = True
                 state.add_trace("run_cancelled", iteration=iteration)
+                break
+
+            if state.model_calls >= MODEL_CALL_LIMIT:
+                # ModelCallLimitMiddleware, enforced: the descriptor advertised
+                # 12 and nothing counted. Answer from what was observed.
+                state.add_trace("middleware:ModelCallLimitMiddleware", limit=MODEL_CALL_LIMIT, decision="stop")
                 break
 
             if on_event:
@@ -491,7 +531,16 @@ class ContractReActRuntime:
         streamed = self._stream_tool_call(tool_model, messages, state, on_event, iteration)
         if streamed is not None:
             return streamed
-        response = tool_model.invoke(messages)
+        # ModelRetryMiddleware: a transient provider failure (rate limit,
+        # timeout, 5xx) is retried before the run gives up on the turn.
+        for attempt in range(MODEL_RETRIES + 1):
+            try:
+                response = tool_model.invoke(messages)
+                break
+            except Exception as exc:
+                if attempt >= MODEL_RETRIES or not _is_transient_model_error(exc):
+                    raise
+                state.add_trace("middleware:ModelRetryMiddleware", attempt=attempt + 1, error=str(exc)[:200])
         self._add_token_usage_from_message(state, response)
         return response
 
@@ -651,7 +700,7 @@ class ContractReActRuntime:
             )
 
             if on_event:
-                on_event("tool_call", {"name": name, "args": args, "iteration": iteration})
+                on_event("tool_call", {"id": call_id, "name": name, "args": args, "iteration": iteration})
                 # A named progress line, not a spinner. A user watching
                 # "Thinking…" for eight seconds cannot tell a working run from
                 # a stuck one; "Reading rate schedules…" is the same wait and a
@@ -666,6 +715,7 @@ class ContractReActRuntime:
                 self._record_rejected_tool_call(state, name=name or "unknown", args=args, iteration=iteration)
                 if on_event:
                     on_event("tool_result", {
+                        "id": call_id,
                         "name": name or "unknown",
                         "summary": "Tool rejected.",
                         "status": "rejected",
@@ -695,7 +745,12 @@ class ContractReActRuntime:
                             summary = str(obs.get("summary") or "Done.")
                             if obs.get("status") == "approval_required":
                                 summary = str(obs.get("message") or "Approval required.")
-                            if "search_results" in obs:
+                            if "model_content" in obs:
+                                # A tool that already framed what the model
+                                # should read (the lifecycle tools wrap
+                                # document-derived output as untrusted data).
+                                content = str(obs["model_content"])
+                            elif "search_results" in obs:
                                 content = obs["search_results"]
                             elif "snippet" in obs:
                                 content = obs["snippet"]
@@ -724,10 +779,13 @@ class ContractReActRuntime:
 
                 if on_event:
                     on_event("tool_result", {
+                        "id": call_id,
                         "name": name,
                         "summary": summary,
                         "status": status,
                         "iteration": iteration,
+                        # What the tool returned, for clients that render it.
+                        "result": (content or "")[:RESULT_PREVIEW_CHARS],
                     })
 
                 state.add_trace(
@@ -752,6 +810,7 @@ class ContractReActRuntime:
                 content = json.dumps(exc.payload, default=str)
                 if on_event:
                     on_event("tool_result", {
+                        "id": call_id,
                         "name": name,
                         "summary": "Approval required.",
                         "status": "approval_required",
@@ -778,6 +837,7 @@ class ContractReActRuntime:
                 )
                 if on_event:
                     on_event("tool_result", {
+                        "id": call_id,
                         "name": name,
                         "summary": error_text,
                         "status": "error",

@@ -42,3 +42,15 @@ export async function auditIdsForContract(orgId: string, contractId: string, act
     options: { projection: { _id: 1 } },
   }))
 }
+
+/**
+ * Ids of versions whose clause flags match every given value, among the
+ * current versions of this org's contracts. Clause flags live on the version
+ * (contract_versions.clauseFlags), which Prisma cannot filter by JSON path on
+ * MongoDB.
+ */
+export async function versionIdsWithClauseFlags(versionIds: string[], flags: Record<string, boolean>): Promise<string[]> {
+  const filter: Record<string, string | boolean | { $in: string[] }> = { _id: { $in: versionIds } }
+  for (const [flag, value] of Object.entries(flags)) filter[`clauseFlags.${flag}`] = value
+  return ids(await prisma.contractVersion.findRaw({ filter, options: { projection: { _id: 1 } } }))
+}

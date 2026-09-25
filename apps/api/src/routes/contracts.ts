@@ -1299,39 +1299,8 @@ export async function contractRoutes(app: FastifyInstance) {
     return reply.status(202).send({ status: 'queued' })
   })
 
-  // ── Contract Q&A (RAG) ───────────────────────────────────────────────────
-  app.post('/:id/ask', { preHandler: requireContractPermission('view') }, async (req, reply) => {
-    const { id } = req.params as { id: string }
-    const { orgId } = req.user
-    const { question, limit = 8 } = req.body as { question: string; limit?: number }
-
-    if (!question?.trim()) return reply.status(400).send({ detail: 'question is required' })
-
-    const contract = await prisma.contract.findFirst({ where: { id, orgId, deletedAt: null } })
-    if (!contract) return reply.status(404).send({ detail: 'Contract not found' })
-
-    const clauseMatches = await searchClauses(question, orgId, limit, id)
-
-    if (!clauseMatches.length) {
-      return reply.send({ answer: null, sources: [], message: 'No relevant clauses found — try re-uploading to extract text' })
-    }
-
-    const agentRes = await fetch(
-      `${process.env.AGENTS_URL ?? 'http://localhost:8000/agents'}/agent/ask`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET ?? '' },
-        body: JSON.stringify({ question, orgId, contractId: id, clauseMatches }),
-      },
-    ).catch(() => null)
-
-    if (!agentRes?.ok) {
-      return reply.send({ answer: null, sources: clauseMatches, message: 'Agent unavailable — showing relevant clauses' })
-    }
-
-    const agentData = await agentRes.json()
-    return reply.send({ ...agentData, sources: clauseMatches })
-  })
+  // POST /:id/ask was removed with the ask agent (P2): contract Q&A is the
+  // assistant scoped to the contract page, with verified citations.
 
   // ── Precedent contracts (B.5.11) ─────────────────────────────────────────
   //

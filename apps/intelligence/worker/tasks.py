@@ -482,6 +482,13 @@ def extract_obligations_task(
         status="degraded" if result.get("extraction_method") == "deterministic_fallback" else "success",
         result=result,
     )
+    if platform_contract_id:
+        try:
+            from services.platform_usage import report_usage, usage_payload
+
+            report_usage(usage_payload(platform_contract_id, "obligation_extraction", result))
+        except Exception as exc:  # metering never fails an extraction
+            logger.warning("Usage report for contract %s failed: %s", contract_id, exc)
     return {"status": "success", "contract_id": contract_id, "kpi_count": result.get("kpi_count")}
 
 

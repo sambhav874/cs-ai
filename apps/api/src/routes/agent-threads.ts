@@ -54,7 +54,23 @@ const WRITE_TOOLS = new Map<string, [action: string, resource: string]>([
   ['contract_create_from_template', ['create', 'contract']], // contracts.ts:306
   ['redline_apply',                 ['edit',   'contract']], // contracts.ts:625
   ['approval_decide',               ['approve', 'workflow']], // approvals.ts:277
+  // The intelligence tier's approval-gated writes (P2). Apply carries out the
+  // paused workflow there (INTELLIGENCE_WRITES below) instead of calling an
+  // internal tool here; the permission gate is the same.
+  ['remember_fact',                 ['edit',   'contract']],
+  ['correct_fact',                  ['edit',   'contract']],
+  ['extract_kpis',                  ['edit',   'contract']],
+  ['create_tabular_review',         ['edit',   'contract']],
+  ['create_editable_copy',          ['edit',   'contract']],
+  ['duplicate_document_copy',       ['edit',   'contract']],
+  ['replicate_document',            ['edit',   'contract']],
 ])
+
+const INTELLIGENCE_WRITES = new Set([
+  'remember_fact', 'correct_fact', 'extract_kpis', 'create_tabular_review',
+  'create_editable_copy', 'duplicate_document_copy', 'replicate_document',
+])
+const INTELLIGENCE_URL = (process.env.INTELLIGENCE_URL ?? 'http://localhost:8000').replace(/\/+$/, '')
 
 /**
  * Evaluate the permission a write tool requires for the calling user.
@@ -150,6 +166,62 @@ const AppendTurnSchema = z.object({
     latencyMs: z.number().int().optional(),
   })).default([]),
 })
+
+
+/**
+ * Apply for an approval the intelligence tier paused on: carry out its
+ * workflow (api/routes/internal.py `decide`). The workflow belongs to the
+ * caller's shadow user there, so one user cannot apply another's.
+ */
+async function applyIntelligenceWrite(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  { threadId, orgId, userId, body }: { threadId: string; orgId: string; userId: string; body: z.infer<typeof ApplyActionSchema> },
+) {
+  const workflowId = typeof body.args.workflowId === 'string' ? body.args.workflowId : ''
+  if (!/^workflow-[a-f0-9]{8,64}$/.test(workflowId)) {
+    return reply.status(400).send({ detail: 'This action needs the workflowId the assistant proposed.' })
+  }
+  const startedAt = Date.now()
+  let status = 502
+  let parsed: unknown
+  try {
+    const res = await fetch(`${INTELLIGENCE_URL}/internal/agent/workflows/${workflowId}/decide`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'X-Internal-Secret': INTERNAL_SECRET },
+      body: JSON.stringify({ org_id: orgId, user_id: userId, decision: 'approve' }),
+    })
+    status = res.status
+    const text = await res.text()
+    try { parsed = JSON.parse(text) } catch { parsed = { detail: text.slice(0, 500) } }
+  } catch (e) {
+    parsed = { detail: (e as Error).message }
+  }
+  const ok = status >= 200 && status < 300
+  const toolCall = await prisma.toolCall.create({
+    data: {
+      threadId,
+      messageId: body.messageId ?? threadId,
+      toolName:  body.toolName,
+      input:     { workflowId } as never,
+      status:    ok ? 'success' : 'error',
+      output:    ok ? parsed as never : undefined,
+      error:     ok ? null : JSON.stringify(parsed).slice(0, 500),
+      latencyMs: Date.now() - startedAt,
+    },
+  })
+  await createAuditEvent({
+    orgId, userId,
+    action: AuditAction.AGENT_TOOL_APPLIED,
+    resourceType: 'agent_tool_call',
+    resourceId: toolCall.id,
+    metadata: { threadId, toolName: body.toolName, status: ok ? 'success' : 'error', workflowId, via: 'intelligence' },
+    ipAddress: req.ip,
+    userAgent: (req.headers['user-agent'] as string | undefined)?.slice(0, 500),
+  })
+  if (!ok) return reply.status(status === 502 ? 502 : status).send({ ok: false, toolCallId: toolCall.id, error: parsed })
+  return reply.send({ ok: true, toolCallId: toolCall.id, actionId: body.actionId, result: parsed })
+}
 
 // Keep the title derived from the first user message — trimmed to a sane length.
 function defaultTitle(firstMessage: string): string {
@@ -364,6 +436,10 @@ export async function agentThreadRoutes(app: FastifyInstance) {
       select: { id: true },
     })
     if (!thread) return reply.status(404).send({ detail: 'Thread not found' })
+
+    if (INTELLIGENCE_WRITES.has(body.toolName)) {
+      return applyIntelligenceWrite(req, reply, { threadId, orgId, userId, body })
+    }
 
     // Inject invariants — orgId + the caller-identity field come from the
     // JWT, never the client. Each write tool names the user field

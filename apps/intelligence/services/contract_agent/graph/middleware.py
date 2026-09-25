@@ -9,7 +9,7 @@ from services.contract_agent import citations
 
 from .state import AgentRunState, AgentStatus, AgentWorkflow
 from .tools import errors as tool_errors
-from .tools.registry import APPROVAL_REQUIRED_TOOLS, FORBIDDEN_TOOL_NAMES, READ_ONLY_TOOLS, tool_specs
+from .tools.registry import APPROVAL_REQUIRED_TOOLS, FORBIDDEN_TOOL_NAMES, LIFECYCLE_TOOLS, READ_ONLY_TOOLS, tool_specs
 
 
 class UnauthorizedAccessError(Exception):
@@ -122,7 +122,7 @@ class ActiveMiddlewareEngine:
 
     def tool_guard(self, state: AgentRunState) -> AgentRunState:
         known_tools = tool_specs()
-        allowed_names = READ_ONLY_TOOLS | APPROVAL_REQUIRED_TOOLS | set(FORBIDDEN_TOOL_NAMES)
+        allowed_names = READ_ONLY_TOOLS | APPROVAL_REQUIRED_TOOLS | LIFECYCLE_TOOLS | set(FORBIDDEN_TOOL_NAMES)
         already_rejected = [tool for tool in state.tools if tool.status == "rejected"]
         forbidden = [
             tool for tool in state.tools

@@ -35,6 +35,8 @@ import {
   evaluatePlaybookRules, pickWorstSeverity, ruleCountOf, type PlaybookRules,
 } from '../lib/playbook-rules.js'
 import { requireInternalSecret } from '../lib/internal-auth.js'
+import { versionIdsWithClauseFlags } from '../lib/json-field-filter.js'
+import { normalizeRiskScore } from '@clm/types'
 
 const TIERS: Tier[] = ['reasoning', 'default', 'fast', 'embed', 'rerank', 'vision_ocr']
 
@@ -128,6 +130,23 @@ const ContractSearchSchema = z.object({
   // failure mode: the LLM just reads the first N rows the DB returned.
   sortBy:    z.enum(['updatedAt', 'value', 'effectiveDate', 'expiryDate', 'createdAt', 'riskScore']).default('updatedAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
+})
+
+const DateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
+const ContractFilterSchema = z.object({
+  orgId:            z.string().min(1),
+  type:             z.string().max(40).optional(),
+  status:           z.string().max(40).optional(),
+  counterpartyName: z.string().max(200).optional(),
+  jurisdiction:     z.string().max(120).optional(),
+  riskMin:          z.number().min(0).max(1).optional(),
+  riskMax:          z.number().min(0).max(1).optional(),
+  expiryFrom:       DateOnly.optional(),
+  expiryTo:         DateOnly.optional(),
+  effectiveFrom:    DateOnly.optional(),
+  effectiveTo:      DateOnly.optional(),
+  clauseFlags:      z.record(z.boolean()).optional(),
+  limit:            z.number().int().min(1).max(50).default(25),
 })
 
 const ContractSummarizeSchema = z.object({
@@ -1583,6 +1602,61 @@ export async function internalAiRoutes(app: FastifyInstance) {
   // agent uses this when the user asks for a high-level overview and doesn't
   // need the full body (which contract_get provides). Smaller context,
   // faster + cheaper than contract_get for summary-style questions.
+  // ── contract_filter — the portfolio filters contract_search lacks ─────────
+  // Governing law, risk range, clause flags and date ranges: what the retired
+  // portfolio agent parsed out of natural language, now arguments the
+  // assistant fills in. totalMatching is the real count, not the page size.
+  app.post('/tools/contract_filter', async (req, reply) => {
+    const parsed = ContractFilterSchema.safeParse(req.body)
+    if (!parsed.success) return reply.status(400).send({ detail: 'Invalid request', issues: parsed.error.issues })
+    const b = parsed.data
+    const day = (d: string, end = false) => new Date(`${d}T${end ? '23:59:59.999' : '00:00:00.000'}Z`)
+    const range = (from?: string, to?: string) =>
+      from || to ? { ...(from ? { gte: day(from) } : {}), ...(to ? { lte: day(to, true) } : {}) } : undefined
+
+    const where: Record<string, unknown> = { orgId: b.orgId, deletedAt: null }
+    if (b.type)             where.type             = b.type
+    if (b.status)           where.status           = b.status
+    if (b.counterpartyName) where.counterpartyName = { contains: b.counterpartyName, mode: 'insensitive' }
+    if (b.jurisdiction)     where.jurisdiction     = { contains: b.jurisdiction, mode: 'insensitive' }
+    if (b.riskMin !== undefined || b.riskMax !== undefined) {
+      where.riskScore = { ...(b.riskMin !== undefined ? { gte: b.riskMin } : {}), ...(b.riskMax !== undefined ? { lte: b.riskMax } : {}) }
+    }
+    const expiry = range(b.expiryFrom, b.expiryTo)
+    const effective = range(b.effectiveFrom, b.effectiveTo)
+    if (expiry)    where.expiryDate    = expiry
+    if (effective) where.effectiveDate = effective
+
+    if (b.clauseFlags && Object.keys(b.clauseFlags).length) {
+      const candidates = await prisma.contract.findMany({
+        where: { ...where, currentVersionId: { not: null } } as never,
+        select: { currentVersionId: true },
+      })
+      const versionIds = candidates.map(c => c.currentVersionId!).filter(Boolean)
+      const matching = versionIds.length ? await versionIdsWithClauseFlags(versionIds, b.clauseFlags) : []
+      where.currentVersionId = { in: matching }
+    }
+
+    const [contracts, totalMatching] = await Promise.all([
+      prisma.contract.findMany({
+        where: where as never,
+        select: {
+          id: true, title: true, type: true, status: true, counterpartyName: true, jurisdiction: true,
+          riskScore: true, effectiveDate: true, expiryDate: true, value: true, currency: true,
+        },
+        orderBy: expiry ? { expiryDate: 'asc' } : { updatedAt: 'desc' },
+        take: b.limit,
+      }),
+      prisma.contract.count({ where: where as never }),
+    ])
+    return reply.send({
+      totalMatching,
+      pageSize: contracts.length,
+      filters: Object.fromEntries(Object.entries(b).filter(([k]) => k !== 'orgId' && k !== 'limit')),
+      results: contracts.map(c => ({ ...c, riskScore: normalizeRiskScore(c.riskScore) })),
+    })
+  })
+
   app.post('/tools/contract_summarize', async (req, reply) => {
     let body
     try { body = ContractSummarizeSchema.parse(req.body) }

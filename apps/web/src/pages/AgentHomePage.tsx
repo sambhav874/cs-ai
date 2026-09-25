@@ -933,50 +933,10 @@ export function AgentHomePage() {
         ))
       }
 
-      // ── Persist this turn server-side so the conversation survives a
-      // refresh. The agents service is stateless; the chat endpoint just
-      // streams. Frontend captures the session_id from the stream and
-      // (a) upserts an AgentThread row with id=session_id, (b) appends
-      // the user msg + assistant msg + tool calls in one transaction.
-      // Failures here are non-fatal — the in-memory conversation still
-      // works, the user just loses persistence on this turn.
-      // A run that fails before the agents service emits `session_id` — an
-      // unconfigured key, a provider 400 — leaves nothing to persist against,
-      // so the whole turn used to vanish on reload and the user could not show
-      // anyone what happened. Mint an id for that case; the threads endpoint
-      // upserts on it, so a client-minted id is a real thread from then on.
+      // The server persists the turn as it streams (P2) — including a turn
+      // that failed — under the session id the stream carries, so nothing
+      // is posted back from here.
       const sidToPersist = newSessionId ?? threadId
-        ?? (streamError ? (globalThis.crypto?.randomUUID?.() ?? `err-${Date.now()}`) : null)
-      if (sidToPersist && assembled.trim().length > 0) {
-        try {
-          // Upsert thread (idempotent on id) — first turn creates, later turns no-op.
-          await api.post('/agent/threads', {
-            id: sidToPersist,
-            title: clean.length > 60 ? clean.slice(0, 57) + '…' : clean,
-          })
-          // Append the turn (user msg + assistant msg + tool_calls)
-          await api.post(`/agent/threads/${sidToPersist}/turns`, {
-            userMessage: clean,
-            assistant: {
-              content: assembled,
-            },
-            toolCalls: localToolCalls
-              .filter(tc => tc.status === 'ok' || tc.status === 'error')
-              .map(tc => ({
-                toolName: tc.name,
-                args: (tc.args && typeof tc.args === 'object') ? tc.args as Record<string, unknown> : {},
-                status: tc.status === 'ok' ? 'success' : 'error',
-                result: tc.result ?? '',
-              })),
-          })
-        } catch (e) {
-          // Persistence failure is non-fatal — the user can still see + use
-          // the in-memory conversation. Refresh would lose it; that's the
-          // worst case, and far better than blanking the page.
-          console.warn('[agent] failed to persist thread/turn:', e)
-        }
-      }
-
       // Mark the just-streamed id so the load-effect doesn't refetch (which
       // could 404 if persistence is still in flight). Set whenever this turn
       // was persisted, not only when a NEW session id appeared: on an existing

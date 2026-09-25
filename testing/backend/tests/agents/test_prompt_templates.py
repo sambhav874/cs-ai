@@ -28,7 +28,6 @@ def _formatted_prompts():
 def test_formatted_prompts_have_only_identifier_placeholders():
     seen = set(_formatted_prompts())
     assert ("agents_service.agents.redline_agent", "_EXTRACT_PROMPT") in seen
-    assert ("agents_service.agents.portfolio_agent", "_PARSE_PROMPT") in seen
     for mod, name in seen:
         template = getattr(importlib.import_module(mod), name, None)
         if not isinstance(template, str):
@@ -38,11 +37,12 @@ def test_formatted_prompts_have_only_identifier_placeholders():
         assert not odd, f"{mod}.{name} has brace text read as placeholders: {odd[:2]}"
 
 
-def test_the_two_that_crashed_now_format():
-    from agents_service.agents import portfolio_agent, redline_agent
+def test_the_one_that_crashed_now_formats():
+    # portfolio_agent crashed the same way; it was retired in P2, its filters
+    # now the assistant's contract_filter tool.
+    from agents_service.agents import redline_agent
 
     assert "<ins>x</ins>" in redline_agent._EXTRACT_PROMPT.format(diff_html="<ins>x</ins>")
-    assert "2026-09-25" in portfolio_agent._PARSE_PROMPT.format(today="2026-09-25")
 
 
 def test_key_term_recovery_pass_looks_for_fields_the_schema_declares():

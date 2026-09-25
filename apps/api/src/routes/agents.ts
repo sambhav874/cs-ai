@@ -12,6 +12,8 @@ import { prisma } from '../lib/prisma.js'
 import { queueClassifyDocument } from '../lib/queue.js'
 import { indexContract } from '../lib/elasticsearch.js'
 import { assertCostCapNotExceeded, recordCost, estimateCostUsd, CostCapExceededError, recordUsage } from '../lib/costCap.js'
+import { randomUUID } from 'node:crypto'
+import { TurnCollector, ensureThread, loadHistory, persistTurn } from '../lib/agent-turns.js'
 
 const AGENTS_URL = process.env.AGENTS_URL ?? 'http://localhost:8000/agents'
 const INTERNAL_SECRET = process.env.INTERNAL_SERVICE_SECRET ?? ''
@@ -37,7 +39,13 @@ export async function agentRoutes(app: FastifyInstance) {
     return reply.send(await upstream.json())
   })
 
-  // POST /api/v1/agent/chat — proxy to Python agent service with SSE streaming
+  // POST /api/v1/agent/chat — the assistant, streamed.
+  //
+  // The assistant runs on the intelligence tier (services/assistant). This
+  // route decides who may ask what, hands over the thread's earlier turns,
+  // forwards the stream byte for byte, and persists the turn when the stream
+  // ends — whether or not the browser is still there. The thread is the one
+  // record of the conversation (lib/agent-turns.ts).
   app.post('/chat', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
     const body = ChatMessageSchema.parse(req.body)
     const { sub: userId, orgId } = req.user
@@ -62,21 +70,6 @@ export async function agentRoutes(app: FastifyInstance) {
       throw e
     }
 
-    // D.4.1 — if a skillSlug is set, resolve the Skill row, snapshot
-    // `{systemPrompt, allowedTools, version}`, and record a SkillInvocation
-    // row. The forwarded payload carries the snapshot so the Python side
-    // never has to query Postgres for the skill definition (keeps the
-    // agents service ignorant of our DB schema).
-    //
-    // Lookup priority: org's own skill first, then built-in (orgId=null).
-    // This lets an admin override a built-in slug (e.g. customise
-    // `@review-nda`) without us having to fork the record.
-    // Permission-derived tool denials, evaluated once per turn.
-    // `contract_create_from_template` executes inline rather than proposing an
-    // ActionPreview, so it never reaches checkToolPermission — the layer
-    // agent-threads.ts documents as the only one that can see the caller's
-    // role. Deny it up front for anyone who could not create a contract
-    // through the REST route.
     const callerPermissions = req.user.apiPermissions ?? await getPermissionsForRoles(orgId, req.user.roles)
     const deniedTools: string[] = []
     if (!evaluatePermission(callerPermissions, 'create', 'contract').granted) {
@@ -108,7 +101,7 @@ export async function agentRoutes(app: FastifyInstance) {
           data: {
             skillId: skill.id,
             skillVersion: skill.version,
-            threadId: body.sessionId ?? 'anonymous', // rail uses sessionId == threadId
+            threadId: body.sessionId ?? 'new-thread', // rail uses sessionId == threadId
             userId,
             orgId,
             contextType: body.pageContext?.type,
@@ -124,42 +117,58 @@ export async function agentRoutes(app: FastifyInstance) {
       }
     }
 
-    const upstream = await fetch(`${AGENTS_URL}/agent/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET ?? '' },
-      body: JSON.stringify({
-        message: body.message,
-        session_id: body.sessionId,
-        contract_id: body.contractId,
-        provider: body.provider,
-        model_id: body.modelId,
-        user_id: userId,
-        org_id: orgId,
-        // D.1.4a — forward agent-mode + page-context for tool-binding path.
-        // Absence/false falls through to the legacy fake-streamed behavior.
-        agent_mode: body.agentMode ?? false,
-        page_context: body.pageContext ?? null,
-        // D.4.1 — skill overrides. Python uses these when present; otherwise
-        // falls back to the default system prompt + full read-tool catalog.
-        skill_system_prompt: skillPromptOverride ?? null,
-        skill_allowed_tools: skillAllowedTools ?? null,
-        // Tools this caller may not use. The agent's write tools normally stop
-        // at an ActionPreview, where checkToolPermission evaluates the caller's
-        // role — but contract drafting executes inline, so that layer never
-        // runs and a VIEWER could create contracts by asking, which
-        // POST /api/v1/contracts refuses outright. Withholding the tool is the
-        // honest fix: a tool the model was never given is one it cannot call
-        // and cannot claim to have called.
-        denied_tools: deniedTools.length ? deniedTools : null,
-        skill_slug: body.skillSlug ?? null,
-        // P4.3 — structured entity mentions flow through to the
-        // orchestrator; it prepends them as a hint to the user turn
-        // so the LLM sees "the user mentioned @contract:X (id=cmod…)"
-        // before the actual message.
-        mentions: body.mentions ?? null,
-      }),
-    })
+    // The page scopes the assistant to a contract's or a Space's documents,
+    // so it is checked here, where the caller's access is known: another
+    // org's contract, or one outside an own-scoped role, is not in scope.
+    let pageContext = body.pageContext ?? null
+    if (pageContext?.id && pageContext.type === 'contract') {
+      const c = await prisma.contract.findFirst({
+        where: { id: pageContext.id, orgId, deletedAt: null }, select: { ownerId: true },
+      })
+      if (!c || (req.permissionScope === 'own' && c.ownerId !== userId)) pageContext = null
+    } else if (pageContext?.id && pageContext.type === 'space') {
+      const sp = await prisma.space.findFirst({ where: { id: pageContext.id, orgId }, select: { id: true } })
+      if (!sp) pageContext = null
+    }
 
+    // The client's session id is the thread id. One that belongs to someone
+    // else gets a fresh thread rather than their history.
+    let threadId = body.sessionId ?? randomUUID()
+    let persist = await ensureThread(threadId, { orgId, userId }, {
+      title: body.message.trim().replace(/\s+/g, ' '),
+      scopeType: pageContext?.id && (pageContext.type === 'contract' || pageContext.type === 'space') ? pageContext.type : undefined,
+      scopeId: pageContext?.id,
+    }).catch(() => false)
+    if (!persist) {
+      threadId = randomUUID()
+      persist = await ensureThread(threadId, { orgId, userId }, { title: body.message.trim() }).catch(() => false)
+    }
+    const history = persist ? await loadHistory(threadId).catch(() => []) : []
+
+    let upstream: Response
+    try {
+      upstream = await fetch(`${AGENTS_URL}/agent/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-internal-secret': process.env.INTERNAL_SERVICE_SECRET ?? '' },
+        body: JSON.stringify({
+          message: body.message,
+          session_id: threadId,
+          user_id: userId,
+          org_id: orgId,
+          page_context: pageContext,
+          skill_system_prompt: skillPromptOverride ?? null,
+          skill_allowed_tools: skillAllowedTools ?? null,
+          // An authorization boundary: tools this caller may not use.
+          denied_tools: deniedTools.length ? deniedTools : null,
+          skill_slug: body.skillSlug ?? null,
+          mentions: body.mentions ?? null,
+          history,
+        }),
+      })
+    } catch (err) {
+      app.log.warn({ err }, 'agent-chat: intelligence tier unreachable')
+      return reply.status(502).send({ detail: 'Agent service unavailable' })
+    }
     if (!upstream.ok) {
       const err = await upstream.text()
       return reply.status(upstream.status === 400 ? 400 : 502).send({ detail: err || 'Agent service unavailable' })
@@ -169,81 +178,63 @@ export async function agentRoutes(app: FastifyInstance) {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
-      // L10 — Python sets this and the proxy used to drop it. Behind nginx or
-      // an ALB the whole SSE response can otherwise be buffered into a single
-      // write, at which point the tool chips and the answer land together and
-      // real token streaming is invisible to the user.
+      // Behind nginx the whole stream could otherwise be buffered into one
+      // write, and token streaming would be invisible.
       'X-Accel-Buffering': 'no',
     })
-    // Stop Fastify from also sending its own response — the SSE stream
-    // is being driven through reply.raw directly.
     reply.hijack()
 
     const reader = upstream.body?.getReader()
     if (!reader) { try { reply.raw.end() } catch { /* */ } return }
 
-    // P-runtime audit (2026-05-02). The previous loop crashed the
-    // entire API process with ERR_HTTP_HEADERS_SENT when the client
-    // closed the stream early (Body Timeout, browser unload, probe
-    // process exit). Both the writer call and the upstream cancel
-    // need to be safe against a closed socket.
+    // Stop and a closed tab look the same from here. Either way the run is
+    // cancelled (reading stops, the intelligence tier sees the disconnect)
+    // and what the turn produced so far is still persisted and metered below.
     let clientGone = false
-    // Wave 3.6 — track response size so we can record spend against the daily
-    // cap. Includes SSE/JSON framing, so this biases the estimate slightly HIGH
-    // — the safe direction for a budget guard.
-    //
-    // L10 — counted in BYTES now that the hop forwards bytes. For multi-byte
-    // text this reads slightly higher than the old char count, which is the
-    // same direction the framing already biases, and the estimate is
-    // deliberately high-biased for exactly this kind of slack.
-    let streamedChars = 0
     reply.raw.on('close', () => {
       clientGone = true
       try { reader.cancel() } catch { /* */ }
     })
+    const collector = new TurnCollector()
     try {
       while (true) {
-        if (clientGone) break
         const { done, value } = await reader.read()
         if (done) break
-        // L10 — forward the raw bytes. This used to be
-        // `decoder.decode(value)` with no { stream: true }, which decodes each
-        // chunk in isolation: any multi-byte sequence straddling a chunk
-        // boundary became U+FFFD. With 20 000-char tool payloads, frames
-        // routinely span TCP segments, and contract text is dense with
-        // em-dashes, curly quotes, ellipses, bullets and currency symbols.
-        // The result looked like a model quality problem rather than a proxy
-        // bug because it was load-dependent. This hop only forwards bytes, so
-        // not decoding at all is both correct and cheaper than decoding
-        // correctly.
-        streamedChars += value.byteLength
-        if (!reply.raw.writableEnded) {
-          try { reply.raw.write(Buffer.from(value)) } catch { break }
+        collector.feed(value)
+        if (!clientGone && !reply.raw.writableEnded) {
+          // Bytes are forwarded undecoded: decoding per chunk broke characters
+          // that straddle a chunk boundary.
+          try { reply.raw.write(Buffer.from(value)) } catch { clientGone = true }
         }
       }
     } catch (err) {
       app.log.warn({ err }, 'agent-chat upstream read failed')
-    } finally {
-      if (!reply.raw.writableEnded) {
-        try { reply.raw.end() } catch { /* */ }
-      }
-      // Record chat spend to the same counter the 429 gate reads, and to the
-      // table the admin usage panel aggregates. Estimate on input + output
-      // size, mirroring the compliance/obligation/renewal paths.
-      // Fire-and-forget — a failure must not affect the already-sent reply.
-      recordUsage(orgId, estimateCostUsd(body.message.length + streamedChars), {
-        // What the caller asked for. The router may resolve to a different
-        // model for the tier, and the SSE stream doesn't echo the resolved
-        // pair back, so treat this as the requested model rather than a
-        // billing record — same caveat as the cost estimate itself.
-        provider: body.provider ?? 'requested-default',
-        model:    body.modelId  ?? 'requested-default',
-        tier:     'default',
-        toolName: 'agent_chat',
-        inputChars:  body.message.length,
-        outputChars: streamedChars,
-      }).catch(e => app.log.warn({ err: e }, '[costCap] recordUsage(agent_chat) failed'))
     }
+
+    // Persisted before the stream closes, so a client that reloads the thread
+    // the moment the answer ends finds it, and the next turn cannot race it.
+    const turn = collector.turn()
+    if (persist) {
+      await persistTurn(threadId, body.message, turn)
+        .catch(err => app.log.warn({ err, threadId }, 'agent-chat: turn not persisted'))
+    }
+    if (!reply.raw.writableEnded) {
+      try { reply.raw.end() } catch { /* */ }
+    }
+    // Metered from the tokens the provider reported for this turn; before,
+    // it was estimated from the stream's size and labelled "requested-default".
+    const usage = turn.done?.usage
+    const inputTokens = usage?.inputTokens ?? Math.ceil(body.message.length / 4)
+    const outputTokens = usage?.outputTokens ?? Math.ceil(turn.text.length / 4)
+    recordUsage(orgId, estimateCostUsd((inputTokens + outputTokens) * 4, 1), {
+      provider: turn.done?.provider ?? 'unknown',
+      model:    turn.done?.model ?? 'unknown',
+      tier:     turn.done?.tier ?? 'default',
+      toolName: 'agent_chat',
+      isByok:   turn.done?.source === 'byok',
+      inputChars:  inputTokens * 4,
+      outputChars: outputTokens * 4,
+    }).catch(e => app.log.warn({ err: e }, '[costCap] recordUsage(agent_chat) failed'))
   })
 
   // POST /api/v1/agent/draft — AI draft generation → saves as ContractVersion

@@ -233,3 +233,42 @@ def analyse_platform_contract(platform_contract_id: str, body: AnalyseRequest) -
         logger.warning("Could not queue analysis for %s: %s", platform_contract_id, exc)
         raise HTTPException(status_code=503, detail="Analysis queue is unavailable.")
     return {"status": "queued", "run_id": request["run_id"]}
+
+
+class WorkflowDecisionRequest(BaseModel):
+    org_id: str = Field(..., min_length=1)
+    user_id: str = Field(..., min_length=1)
+    decision: str = Field("approve", pattern="^(approve|reject)$")
+    feedback: Optional[str] = Field(None, max_length=2000)
+
+
+@internal_router.post(
+    "/agent/workflows/{workflow_id}/decide",
+    dependencies=[Depends(require_internal_secret)],
+)
+def decide_agent_workflow(workflow_id: str, body: WorkflowDecisionRequest) -> Dict[str, Any]:
+    """Apply (or decline) a ContractSense approval from the platform chat.
+
+    The assistant's approval-gated writes — remember or correct a fact,
+    extract KPIs, a tabular review — surface as the chat's Apply card; the
+    lifecycle API routes Apply here after checking the caller's permission.
+    The workflow must belong to the caller's shadow user, exactly as on the
+    signed-in route.
+    """
+    from api.routes.agent import WorkflowApprovalRequest, decide_workflow
+    from services.contract_agent.graph.state import ApprovalDecision
+
+    try:
+        roles = platform_roles(body.user_id)
+        shadow = resolve_platform_user({"sub": body.user_id, "orgId": body.org_id, "type": "access", "roles": roles})
+    except PlatformIdentityError as e:
+        raise HTTPException(status_code=422, detail=f"Unknown platform user: {e}")
+    user = UserInDB.model_validate(shadow)
+    decision = ApprovalDecision.REJECT if body.decision == "reject" else ApprovalDecision.APPROVE
+    response = decide_workflow(workflow_id, WorkflowApprovalRequest(decision=decision, feedback=body.feedback), user)
+    return {
+        "workflowId": workflow_id,
+        "status": getattr(response.workflow_status, "value", str(response.workflow_status)),
+        "answer": response.answer,
+        "artifacts": response.artifacts,
+    }

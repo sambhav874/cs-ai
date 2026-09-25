@@ -539,8 +539,6 @@ export function SideAgentRail() {
       const decoder = new TextDecoder()
       let buffer = ''
       let assembled = ''
-      // What actually answered, from the stream's terminal `done` frame.
-      let answeredBy: { provider?: string; model?: string; tier?: string } = {}
 
       while (true) {
         const { done, value } = await reader.read()
@@ -578,9 +576,6 @@ export function SideAgentRail() {
               // "tool_call_result" → flip status + attach preview
               // "done" → noop (the stream close handles finalization)
               const kind = parsed.type ?? (typeof parsed.delta === 'string' ? 'token' : null)
-              if (kind === 'done') {
-                answeredBy = { provider: parsed.provider, model: parsed.model, tier: parsed.tier }
-              }
               if (kind === 'token' && typeof parsed.delta === 'string') {
                 assembled += parsed.delta
                 setMessages(prev =>
@@ -749,46 +744,10 @@ export function SideAgentRail() {
       // Mark assistant message complete so the cursor stops blinking.
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, streaming: false } : m))
 
-      // D.1.6a — persist the turn to AgentThread. We snapshot the current
-      // assistant message + its tool calls from state. Non-fatal if this
-      // write fails; the rail UI is already correct and the next refresh
-      // would just not see this turn in the picker.
-      if (threadIdRef.current) {
-        const finalMsg = (await new Promise<RailMessage | null>(r => setMessages(prev => {
-          r(prev.find(m => m.id === assistantId) ?? null); return prev
-        })))
-        const finalText  = finalMsg?.content ?? ''
-        const toolCalls  = (finalMsg?.toolCalls ?? []).map(tc => ({
-          id:       tc.id,
-          toolName: tc.name,
-          args:     tc.args,
-          status:   tc.status === 'ok' ? 'success' as const : tc.status === 'error' ? 'error' as const : 'success' as const,
-          result:   tc.resultPreview,
-        }))
-        try {
-          await fetch(`/api/v1/agent/threads/${threadIdRef.current}/turns`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken ?? ''}`,
-            },
-            body: JSON.stringify({
-              userMessage: clean,
-              assistant: {
-                content: finalText,
-                provider: answeredBy.provider ?? 'unknown',
-                model: answeredBy.model ?? 'unknown',
-                tier: answeredBy.tier ?? 'default',
-              },
-              toolCalls,
-            }),
-          })
-          // D.1.6b — title gets backfilled server-side from the first user
-          // message; reflect that in the header so the dropdown label updates.
-          if (activeThread?.title === 'New chat') {
-            setActiveThread({ id: activeThread.id, title: defaultHeaderTitle(clean) })
-          }
-        } catch { /* non-fatal */ }
+      // The turn is persisted by the server as it streams (P2), so a closed
+      // tab no longer loses it. Only the header title follows here.
+      if (threadIdRef.current && activeThread?.title === 'New chat') {
+        setActiveThread({ id: activeThread.id, title: defaultHeaderTitle(clean) })
       }
     } catch (e: any) {
       if (e?.name === 'AbortError') {
