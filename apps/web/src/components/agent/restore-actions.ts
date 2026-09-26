@@ -47,6 +47,7 @@ export interface SavedToolCall {
   output?: unknown
   reversible?: boolean
   rolledBackAt?: string | null
+  createdAt?: string
 }
 
 /** The Apply cards of a saved thread, by the assistant message that proposed them. */
@@ -67,8 +68,12 @@ export function restoredActions(toolCalls: SavedToolCall[]): Map<string, Pending
     action.proposalId = tc.id
     if (tc.status === 'applied') {
       const appliedId = typeof output.appliedToolCallId === 'string' ? output.appliedToolCallId : undefined
+      const run = appliedId ? byId.get(appliedId) : undefined
       action.toolCallId = appliedId
-      action.status = appliedId && byId.get(appliedId)?.rolledBackAt ? 'undone' : 'applied'
+      action.status = run?.rolledBackAt ? 'undone' : 'applied'
+      // When it was applied: the card offers Undo for the rest of the 15 minutes.
+      const at = run?.createdAt ? Date.parse(run.createdAt) : NaN
+      if (!Number.isNaN(at)) action.appliedAt = at
     }
     out.set(tc.messageId, [...(out.get(tc.messageId) ?? []), action])
   }

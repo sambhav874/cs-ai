@@ -248,7 +248,11 @@ export function planAnalysisUpdate(
     if (cp) contract.counterpartyName = cp
   }
   const title = a.suggestedTitle?.trim()
-  if (title && run?.triggeredBy === 'upload' && !isPlaceholderTitle(title)) contract.title = title
+  // Only a title taken from the filename is replaced; one the user typed at
+  // upload stays (seen on cs2: "…(v2 test)" became the document's own title).
+  // Contracts uploaded before the flag existed keep the old behaviour.
+  const userTitled = state.metadata.titleFromFile === false
+  if (title && run?.triggeredBy === 'upload' && !userTitled && !isPlaceholderTitle(title)) contract.title = title
 
   const metadata: Record<string, unknown> = { ...state.metadata, keyTermAnalysis: runRecord }
   const typeFields = Object.fromEntries(Object.entries(a.typeFields).map(([k, t]) => [k, {

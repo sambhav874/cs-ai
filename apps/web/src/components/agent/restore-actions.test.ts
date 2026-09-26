@@ -21,7 +21,9 @@ describe('restoredActions', () => {
   it('shows an applied proposal as applied, and as undone once rolled back', () => {
     const applied = proposal({ status: 'applied', output: { preview: { summary: 'Add tag' }, appliedToolCallId: 'run1' } })
     const run = { id: 'run1', messageId: 'm1', toolName: 'contract_update', status: 'success' }
-    expect(restoredActions([applied, run]).get('m1')?.[0]).toMatchObject({ status: 'applied', toolCallId: 'run1' })
+    expect(restoredActions([applied, { ...run, createdAt: '2026-09-25T20:00:00Z' }]).get('m1')?.[0]).toMatchObject({
+      status: 'applied', toolCallId: 'run1', appliedAt: Date.parse('2026-09-25T20:00:00Z'),   // gates the 15-min Undo
+    })
     expect(restoredActions([applied, { ...run, rolledBackAt: '2026-09-25T20:00:00Z' }]).get('m1')?.[0].status).toBe('undone')
   })
 

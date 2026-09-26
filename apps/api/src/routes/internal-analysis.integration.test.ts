@@ -155,6 +155,15 @@ describe('POST /api/internal/contracts/:id/analysis/sync', () => {
     expect((await prisma.contract.findUniqueOrThrow({ where: { id } })).title).toBe('upload-2025-03.pdf')
   })
 
+  it('keeps a title the user typed at upload', async () => {
+    const { id, versionId } = await contractWithVersion({ metadata: { titleFromFile: false } })
+    await sync(id, payload(id, versionId))
+    expect((await prisma.contract.findUniqueOrThrow({ where: { id } })).title).toBe('upload-2025-03.pdf')
+    const fromFile = await contractWithVersion({ metadata: { titleFromFile: true } })
+    await sync(fromFile.id, payload(fromFile.id, fromFile.versionId))
+    expect((await prisma.contract.findUniqueOrThrow({ where: { id: fromFile.id } })).title).toBe('Acme – Northwind Services Agreement')
+  })
+
   it('ignores a run a newer request superseded', async () => {
     const { id, versionId } = await contractWithVersion({ metadata: { keyTermAnalysis: { runId: 'run-2', status: 'running' } } })
     const res = await sync(id, payload(id, versionId))

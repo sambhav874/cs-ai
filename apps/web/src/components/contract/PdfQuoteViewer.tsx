@@ -28,7 +28,10 @@ function loadPdfJs(): Promise<PdfJs> {
 
 /** Lower-case, one space, straight quotes, plain hyphens — per character, so offsets map back. */
 function normChar(c: string): string {
-  if (/\s/.test(c)) return ' '
+  // Table cells reach a quote joined by "|" and emphasis as "*" or "#"
+  // (the extracted text is markdown); the PDF's text has neither.
+  if (/\s/.test(c) || c === '|') return ' '
+  if (c === '*' || c === '#' || c === '`') return ''
   if ('‘’‚‛′'.includes(c)) return "'"
   if ('“”„‟″'.includes(c)) return '"'
   if ('‐‑‒–—―−'.includes(c)) return '-'
@@ -57,7 +60,7 @@ export function locateInItems(items: TextItem[], quote: string): { start: [numbe
     const chars = Array.from(item.str)
     chars.forEach((c, j) => {
       const n = normChar(c)
-      if (n === ' ' && text.endsWith(' ')) return
+      if (!n || (n === ' ' && text.endsWith(' '))) return
       text += n
       map.push([i, j])
     })

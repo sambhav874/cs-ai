@@ -476,11 +476,17 @@ export async function contractRoutes(app: FastifyInstance) {
 
     // Create contract + version in DB — respond immediately to FE
     // plainText/htmlContent will be populated by the parse-document worker
+    // A title that is just the filename (the upload form prefills it) may be
+    // replaced by the one analysis finds in the document; one the user typed
+    // is theirs (lib/analysis-sync.ts).
+    const bare = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const titleFromFile = !title.trim() || [cleanFilename, filename.replace(/\.[^.]+$/, '')].some(f => bare(f) === bare(title))
     const contract = await prisma.contract.create({
       data: {
         orgId,
         ownerId: userId,
         title: title || cleanFilename || filename.replace(/\.[^.]+$/, ''),
+        metadata: { titleFromFile },
         type,
         status: 'DRAFT',
         analysisStatus: 'PENDING',  // parse worker sets ANALYZING when it starts

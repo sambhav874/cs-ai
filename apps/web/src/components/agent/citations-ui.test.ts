@@ -50,4 +50,9 @@ describe('finding a quote in a PDF page', () => {
     expect(locateInItems(items, 'annual fee')).toBeNull()
     expect(normalizeQuote('“Hello”  —  World')).toBe('"hello" - world')
   })
+
+  it('matches a table row quoted with the extracted text\'s cell pipes (seen on cs2)', () => {
+    const row = [item('On-Demand GPU Bursting Rate'), item('Per GPU Hour'), item('$3.85'), item('Billed monthly in arrears')]
+    expect(locateInItems(row, 'On-Demand GPU Bursting Rate | Per GPU Hour | $3.85 | Billed monthly in arrears')?.end[0]).toBe(3)
+  })
 })
