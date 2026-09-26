@@ -10,7 +10,6 @@ import { queueClassifyRequest, queueParseDocument, queueDraftContract, queueLink
 import { generateDocument } from '../lib/template-engine.js'
 import { requestTemplateVariables } from '../lib/request-template.js'
 import { z } from 'zod'
-import { indexContract } from '../lib/elasticsearch.js'
 
 const ALLOWED_MIME = new Set(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'])
 
@@ -378,19 +377,6 @@ export async function requestRoutes(app: FastifyInstance) {
       await prisma.contractRequest.updateMany({ where: { id, status: 'ACCEPTED' }, data: { status: request.status } })
       throw err
     }
-
-    // Index into ES so the new contract is searchable immediately.
-    // Fire-and-forget — never block the response.
-    indexContract(contractId, {
-      orgId,
-      title:            request.title,
-      type:             request.type,
-      status:           'DRAFT',
-      counterpartyName: request.counterpartyName ?? undefined,
-      plainText:        '',
-      tags:             [],
-      createdAt:        new Date().toISOString(),
-    }).catch(err => req.log.warn({ err }, 'ES index on request-convert failed'))
 
     await createAuditEvent({
       orgId, userId,

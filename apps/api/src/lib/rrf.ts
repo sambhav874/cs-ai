@@ -1,8 +1,8 @@
 /**
  * Reciprocal Rank Fusion (RRF).
  *
- * Hybrid retrieval merges results from independent rankers — pgvector
- * (dense) and Elasticsearch (BM25) — whose raw scores live on
+ * Hybrid retrieval merges results from independent rankers — vector
+ * (dense) and keyword search — whose raw scores live on
  * incomparable scales. RRF sidesteps score normalisation entirely: each
  * ranker contributes `1 / (k + rank)` per item and we sum the
  * contributions. An item that ranks decently across several rankers

@@ -24,7 +24,6 @@
  */
 import { PrismaClient } from '@prisma/client'
 import { queueExtractAi } from '../src/lib/queue.js'
-import { indexContract } from '../src/lib/elasticsearch.js'
 
 const prisma = new PrismaClient()
 

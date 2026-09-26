@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { requirePermission } from '../middleware/permissions.js'
-import { searchContracts, advancedSearch, getContractFacets } from '../lib/elasticsearch.js'
+import { searchContracts, contractFacets } from '../lib/contract-search.js'
 import { searchClauses } from '../lib/embeddings.js'
 import { fuseRRF } from '../lib/rrf.js'
 
@@ -42,65 +42,30 @@ const FacetsSchema = z.object({
   jurisdiction: z.string().optional(),
 })
 
-const AskSchema = z.object({
-  question: z.string().min(1).max(1000),
-  contractId: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(20).default(8),
-})
-
-const PortfolioQuerySchema = z.object({
-  query: z.string().min(1).max(1000),
-})
+/** Contracts by id, in the order given, scoped to the org. */
+async function loadContracts(orgId: string, ids: string[]) {
+  if (!ids.length) return []
+  const contracts = await prisma.contract.findMany({
+    where: { id: { in: ids }, orgId, deletedAt: null },
+    include: { counterparty: { select: { id: true, name: true } } },
+  })
+  const byId = new Map(contracts.map(c => [c.id, c]))
+  return ids.map(id => byId.get(id)).filter((c): c is NonNullable<typeof c> => !!c)
+}
 
 export async function searchRoutes(app: FastifyInstance) {
-  // ── POST /api/v1/search  — full-text via Elasticsearch ────────────────────
+  // ── POST /api/v1/search  — keyword search over the org's contracts ────────
   app.post('/', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
     const body = SearchSchema.parse(req.body)
     const { orgId } = req.user
-
-    let esResults: Awaited<ReturnType<typeof searchContracts>> = []
-
-    try {
-      esResults = await searchContracts(orgId, body.q, body.limit)
-    } catch {
-      app.log.warn('Elasticsearch unavailable, falling back to DB search')
-    }
-
-    if (esResults.length > 0) {
-      const ids = esResults.map(r => r.id!)
-      const contracts = await prisma.contract.findMany({
-        where: { id: { in: ids }, orgId, deletedAt: null },
-        include: { counterparty: { select: { id: true, name: true } } },
-      })
-      const byId = Object.fromEntries(contracts.map(c => [c.id, c]))
-      const ordered = ids.map(id => byId[id]).filter(Boolean)
-      return reply.send({
-        data: ordered,
-        highlights: Object.fromEntries(esResults.map(r => [r.id, r.highlights])),
-        total: ordered.length,
-        source: 'elasticsearch',
-      })
-    }
-
-    // Postgres fallback
-    const contracts = await prisma.contract.findMany({
-      where: {
-        orgId,
-        deletedAt: null,
-        OR: [
-          { title: { contains: body.q, mode: 'insensitive' } },
-          { counterpartyName: { contains: body.q, mode: 'insensitive' } },
-          { summary: { contains: body.q, mode: 'insensitive' } },
-        ],
-        ...(body.status && { status: body.status }),
-        ...(body.type && { type: body.type }),
-      },
-      include: { counterparty: { select: { id: true, name: true } } },
-      take: body.limit,
-      orderBy: { updatedAt: 'desc' },
+    const { hits } = await searchContracts(orgId, { q: body.q, type: body.type, status: body.status }, body.limit)
+    const data = await loadContracts(orgId, hits.map(h => h.id))
+    return reply.send({
+      data,
+      highlights: Object.fromEntries(hits.map(h => [h.id, h.highlights ?? {}])),
+      total: data.length,
+      source: 'mongo',
     })
-
-    return reply.send({ data: contracts, highlights: {}, total: contracts.length, source: 'postgres' })
   })
 
   // ── POST /api/v1/search/advanced  — structured filters + optional keyword ─
@@ -118,46 +83,26 @@ export async function searchRoutes(app: FastifyInstance) {
 
         if (mode === 'semantic') {
           const contractIds = [...new Set(clauseMatches.map(m => m.contractId))]
-          const contracts = await prisma.contract.findMany({
-            where: { id: { in: contractIds }, orgId, deletedAt: null },
-            include: { counterparty: { select: { id: true, name: true } } },
-          })
-          const byId = Object.fromEntries(contracts.map(c => [c.id, c]))
           return reply.send({
-            data: contractIds.map(id => byId[id]).filter(Boolean),
+            data: await loadContracts(orgId, contractIds),
             clauseMatches,
             total: contractIds.length,
-            source: 'pgvector',
+            source: 'vector',
           })
         }
 
-        // Hybrid: RRF merge of ES + pgvector results
-        let esHits: { id?: string; score?: number | null }[] = []
-        try {
-          const esResult = await advancedSearch(orgId, { q, ...filters }, limit * 2)
-          esHits = esResult.hits
-        } catch { /* ES down — fall back to semantic only */ }
-
-        // Fuse the two ranked lists (ES title/metadata hits + pgvector
-        // clause matches). fuseRRF de-dupes a repeated contractId within
-        // the clause list to its first-seen rank, matching what this did
-        // by hand before the fusion core was extracted to lib/rrf.
+        // Hybrid: keyword hits (title, counterparty, text) fused with clause
+        // similarity by RRF. fuseRRF de-dupes a repeated contractId within
+        // the clause list to its first-seen rank.
+        const keyword = await searchContracts(orgId, { q, ...filters }, limit * 2)
         const fused = fuseRRF([
-          esHits.map(h => h.id),
+          keyword.hits.map(h => h.id),
           clauseMatches.map(m => m.contractId),
         ])
-        const rrfScores: Record<string, number> = Object.fromEntries(
-          fused.map(f => [f.id, f.score]),
-        )
+        const rrfScores: Record<string, number> = Object.fromEntries(fused.map(f => [f.id, f.score]))
         const sortedIds = fused.slice(0, limit).map(f => f.id)
-
-        const contracts = await prisma.contract.findMany({
-          where: { id: { in: sortedIds }, orgId, deletedAt: null },
-          include: { counterparty: { select: { id: true, name: true } } },
-        })
-        const byId = Object.fromEntries(contracts.map(c => [c.id, c]))
         return reply.send({
-          data: sortedIds.map(id => byId[id]).filter(Boolean),
+          data: await loadContracts(orgId, sortedIds),
           clauseMatches: clauseMatches.filter(m => sortedIds.includes(m.contractId)),
           rrfScores,
           total: sortedIds.length,
@@ -165,19 +110,13 @@ export async function searchRoutes(app: FastifyInstance) {
         })
       }
 
-      // Keyword / structured filter mode (ES)
-      const esResult = await advancedSearch(orgId, { q, ...filters }, limit)
-      const ids = esResult.hits.map(h => h.id!)
-      const contracts = await prisma.contract.findMany({
-        where: { id: { in: ids }, orgId, deletedAt: null },
-        include: { counterparty: { select: { id: true, name: true } } },
-      })
-      const byId = Object.fromEntries(contracts.map(c => [c.id, c]))
+      // Keyword / structured filter mode
+      const { hits, total } = await searchContracts(orgId, { q, ...filters }, limit)
       return reply.send({
-        data: ids.map(id => byId[id]).filter(Boolean),
-        highlights: Object.fromEntries(esResult.hits.map(h => [h.id, h.highlights])),
-        total: esResult.total,
-        source: 'elasticsearch',
+        data: await loadContracts(orgId, hits.map(h => h.id)),
+        highlights: Object.fromEntries(hits.map(h => [h.id, h.highlights ?? {}])),
+        total,
+        source: 'mongo',
       })
     } catch (err) {
       app.log.error({ err }, 'Advanced search failed')
@@ -185,21 +124,10 @@ export async function searchRoutes(app: FastifyInstance) {
     }
   })
 
-  // ── GET /api/v1/search/facets  — aggregations for filter sidebar ──────────
+  // ── GET /api/v1/search/facets  — counts for the filter sidebar ────────────
   app.get('/facets', { preHandler: requirePermission('view', 'contract') }, async (req, reply) => {
     const params = FacetsSchema.parse(req.query)
-    const { orgId } = req.user
-
-    try {
-      const facets = await getContractFacets(orgId, params)
-      return reply.send(facets)
-    } catch (err) {
-      app.log.warn({ err }, 'ES facets unavailable, returning empty')
-      return reply.send({
-        types: [], statuses: [], jurisdictions: [], counterparties: [],
-        riskRanges: [], expiringSoon: [], clauseFlags: {}, total: 0,
-      })
-    }
+    return reply.send(await contractFacets(req.user.orgId, params))
   })
   // /ask and /portfolio-query were removed with the agents they proxied (P2):
   // cited Q&A is the assistant (POST /api/v1/agent/chat) and natural-language

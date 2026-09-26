@@ -12,7 +12,6 @@ import { prisma } from '../lib/prisma.js'
 import { s3, S3_BUCKET } from '../lib/storage.js'
 import { extractDocument } from '../lib/document.js'
 import { legalChunkAndStore } from '../lib/legal-chunker.js'
-import { indexContract } from '../lib/elasticsearch.js'
 import { splitPdf, getPdfPageCount } from '../lib/pdf-splitter.js'
 import { queueDetectBinder, queueParseDocument, queuePlaybookReview } from '../lib/queue.js'
 import type { ParseDocumentJob, ChunkAndIndexJob, SplitBinderJob } from '../lib/queue.js'
@@ -135,48 +134,6 @@ async function handleChunkAndIndex(data: ChunkAndIndexJob): Promise<void> {
     data: { analysisStatus: 'INDEXING' },
   })
 
-  // Wave 3.1 — refresh the CONTRACT_INDEX ('contracts') document with the real
-  // full text now that parsing produced it. Upload/create paths index a stub
-  // with plainText:'' on the promise it would be "re-indexed after parse"; this
-  // is where that promise is kept, so contract_search/portfolio_search BM25 has
-  // an actual document body to match on. Runs BEFORE the clause guard below so a
-  // contract with parsed text but zero detected clauses still gets a full-text
-  // index. indexContract is a full-document overwrite, so this one write both
-  // fills plainText and refreshes the denormalized metadata. Fire-and-forget so
-  // an ES hiccup never flips the job to FAILED (the failed handler does that).
-  const contract = await prisma.contract.findUnique({
-    where: { id: contractId },
-    select: {
-      title: true, type: true, status: true, counterpartyName: true,
-      jurisdiction: true, summary: true, tags: true, riskScore: true,
-      effectiveDate: true, expiryDate: true, keyTerms: true, metadata: true,
-      createdAt: true,
-    },
-  })
-  const version = await prisma.contractVersion.findUnique({
-    where: { id: versionId },
-    select: { plainText: true },
-  })
-  if (contract) {
-    indexContract(contractId, {
-      orgId,
-      title:            contract.title,
-      type:             contract.type,
-      status:           contract.status,
-      counterpartyName: contract.counterpartyName ?? undefined,
-      jurisdiction:     contract.jurisdiction ?? undefined,
-      plainText:        version?.plainText ?? '',
-      summary:          contract.summary ?? undefined,
-      tags:             contract.tags,
-      riskScore:        contract.riskScore ?? undefined,
-      effectiveDate:    contract.effectiveDate?.toISOString(),
-      expiryDate:       contract.expiryDate?.toISOString(),
-      createdAt:        contract.createdAt.toISOString(),
-      keyTerms:         contract.keyTerms as Record<string, unknown>,
-      metadata:         contract.metadata as Record<string, unknown>,
-    }).catch(err => console.warn('[parse-worker] full-text ES re-index failed contractId=%s: %s', contractId, err?.message ?? err))
-  }
-
   // Fetch clause segments written by the agents service
   const clauses = await prisma.contractClause.findMany({
     where: { versionId },
@@ -184,7 +141,7 @@ async function handleChunkAndIndex(data: ChunkAndIndexJob): Promise<void> {
   })
 
   if (clauses.length === 0) {
-    console.warn('[parse-worker] no clauses found for versionId=%s — marking DONE (full-text already indexed above)', versionId)
+    console.warn('[parse-worker] no clauses found for versionId=%s — marking DONE', versionId)
     await prisma.contract.update({
       where: { id: contractId },
       data: { analysisStatus: 'DONE', analysisError: null },
@@ -192,7 +149,7 @@ async function handleChunkAndIndex(data: ChunkAndIndexJob): Promise<void> {
     return
   }
 
-  await legalChunkAndStore(versionId, contractId, orgId, clauses, contract)
+  await legalChunkAndStore(versionId, clauses)
 
   // No embedding step: clause retrieval runs on the intelligence tier's own
   // index of the linked copy (runbook step 6). The old pgvector write could
@@ -288,19 +245,6 @@ async function handleSplitBinder(data: SplitBinderJob): Promise<void> {
       where: { id: child.id },
       data:  { currentVersionId: childVersion.id },
     })
-
-    // Wave 3.2 — index the split child so it's searchable. plainText is empty
-    // until its own parse job runs (queued below), which re-indexes with full
-    // text via handleChunkAndIndex. Fire-and-forget.
-    indexContract(child.id, {
-      orgId,
-      title:          child.title,
-      type:           child.type,
-      status:         child.status,
-      plainText:      '',
-      tags:           child.tags,
-      createdAt:      child.createdAt.toISOString(),
-    }).catch(err => console.warn('[parse-worker] ES index on binder child failed childId=%s: %s', child.id, err?.message ?? err))
 
     queueParseDocument({
       contractId: child.id,

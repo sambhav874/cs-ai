@@ -27,7 +27,6 @@ import { requirePermission } from '../middleware/permissions.js'
 import { createAuditEvent } from '../lib/audit.js'
 import { AuditAction } from '@clm/types'
 import { queueParseDocument } from '../lib/queue.js'
-import { indexContract } from '../lib/elasticsearch.js'
 
 const CreateRoomSchema = z.object({
   name:        z.string().min(1).max(200),
@@ -243,18 +242,6 @@ export async function diligenceRoutes(app: FastifyInstance) {
         s3Key, mimeType: f.mimeType, orgId,
         filename:   f.filename,
       })
-
-      // ES index with sparse data; gets refreshed after parse completes.
-      indexContract(contract.id, {
-        orgId,
-        title:     contract.title,
-        type:      contract.type,
-        status:    contract.status,
-        plainText: '',
-        tags:      contract.tags,
-        createdAt: contract.createdAt.toISOString(),
-        diligenceRoomId: id,
-      } as never).catch(err => app.log.warn({ err }, 'ES initial index failed'))
 
       created.push({
         id:    contract.id,

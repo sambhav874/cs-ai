@@ -17,10 +17,10 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { resolveLlm, NoProviderAvailable, type Tier } from '../lib/aiRouter.js'
 import { prisma } from '../lib/prisma.js'
+import { nameWords, searchContracts } from '../lib/contract-search.js'
 import { resolveApprovers, checkAutoApprove, advanceWorkflow, type WorkflowStepDef } from '../lib/workflow-engine.js'
 import { generateDocument } from '../lib/template-engine.js'
 import { searchClauses } from '../lib/embeddings.js'
-import { advancedSearch, indexContract } from '../lib/elasticsearch.js'
 import { queueClassifyDocument, queueParseDocument, queueNotification, notificationQueue } from '../lib/queue.js'
 import { applyPiiPolicy, applyPiiPolicyBatch } from '../lib/pii-policy.js'
 import { proposeClauseAlternatives } from '../lib/clause-propose.js'
@@ -699,10 +699,7 @@ export async function internalAiRoutes(app: FastifyInstance) {
     if (body.type)             where.type             = body.type
     if (body.counterpartyName) where.counterpartyName = { contains: body.counterpartyName, mode: 'insensitive' }
 
-    // Text query: hit title + counterpartyName. Full-text via Elasticsearch
-    // is out of scope for D.1.4b — the ES integration layer already exists
-    // for /search but the agent-tool path stays on Postgres ILIKE until
-    // D5 when we add contract_rag.
+    // Text query: hit title + counterpartyName.
     //
     // Defensive: some LLMs (notably gpt-4o) pass "*" or "%" thinking it's a
     // SQL/glob wildcard. Treat those + empty string as match-all so the agent
@@ -1403,7 +1400,7 @@ export async function internalAiRoutes(app: FastifyInstance) {
   // ── POST /internal/ai/tools/portfolio_search (P3.2) ────────────────────────
   // Hybrid RAG across the org's contract portfolio.
   //   • Dense — pgvector cosine similarity on clause embeddings
-  //   • Lexical — Elasticsearch BM25 on contract metadata
+  //   • Lexical — keyword search on contract metadata and text
   //   • Merged via Reciprocal Rank Fusion (k=60) so a hit that places
   //     well in either source gets credit.
   //
@@ -1432,20 +1429,20 @@ export async function internalAiRoutes(app: FastifyInstance) {
       app.log.warn({ err }, '[portfolio_search] searchClauses failed, falling back to BM25 only')
     }
 
-    // Lexical — ES advanced search on contract metadata. Result shape
-    // is {hits: [{id, score, highlights}]}. We treat each contract as
-    // a candidate container and later zip with any clause hits from
-    // `dense` belonging to it.
+    // Lexical — keyword search over title, counterparty, summary and the
+    // current version's text (lib/contract-search). Each hit is a contract;
+    // it is zipped below with any clause hits from `dense` belonging to it.
     let bm25: Array<{ id?: string; score?: number | null }> = []
     try {
-      const filters: Record<string, unknown> = { q: body.query }
-      if (body.contractType)     filters.type            = body.contractType
-      if (body.status)           filters.status          = body.status
-      if (body.counterpartyName) filters.counterpartyName = body.counterpartyName
-      const esRes = await advancedSearch(body.orgId, filters as never, body.topK * 2)
-      bm25 = esRes.hits
+      const res = await searchContracts(body.orgId, {
+        q: body.query,
+        type: body.contractType,
+        status: body.status,
+        counterpartyName: body.counterpartyName,
+      }, body.topK * 2)
+      bm25 = res.hits
     } catch (err) {
-      app.log.warn({ err }, '[portfolio_search] ES advancedSearch failed, dense only')
+      app.log.warn({ err }, '[portfolio_search] keyword search failed, dense only')
     }
 
     // RRF fusion. Track dense/bm25 rank separately so the caller can
@@ -1607,7 +1604,7 @@ export async function internalAiRoutes(app: FastifyInstance) {
       sources: {
         // Adaptive-router signal: did we actually get to use both
         // ranking sources, or was one down? The agent can read this
-        // and mention in the answer "Elasticsearch was unavailable;
+        // and mention in the answer "keyword search was unavailable;
         // results are dense-only" if relevant.
         dense: dense.length > 0,
         bm25:  bm25.length > 0,
@@ -3085,20 +3082,6 @@ export async function internalAiRoutes(app: FastifyInstance) {
       return { contract, version }
     })
 
-    // Wave 3.2 — index the new draft in ES so it's findable via
-    // portfolio_search / contract_search immediately (mirrors the AI-draft
-    // sibling below). We have the real plainText here. Fire-and-forget.
-    indexContract(created.contract.id, {
-      orgId:            body.orgId,
-      title:            created.contract.title,
-      type:             created.contract.type,
-      status:           created.contract.status,
-      counterpartyName: created.contract.counterpartyName ?? undefined,
-      plainText,
-      tags:             created.contract.tags,
-      createdAt:        created.contract.createdAt.toISOString(),
-    }).catch(() => { /* swallow */ })
-
     return reply.send({
       ok: true,
       reversible: true,
@@ -4218,12 +4201,4 @@ function htmlToPlainText(html: string): string {
     .trim()
 }
 
-const NAME_STOP_WORDS = new Set([
-  'the', 'a', 'an', 'and', 'of', 'for', 'with', 'to', 'in', 'on', 'our', 'my', 'contract', 'contracts', 'agreement', 'agreements',
-])
 
-/** The words of a contract name worth matching on: no stop words, no punctuation. */
-export function nameWords(query: string): string[] {
-  const words = query.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 1 && !NAME_STOP_WORDS.has(w))
-  return [...new Set(words)].slice(0, 8)
-}

@@ -10,7 +10,6 @@ import { createAuditEvent } from '../lib/audit.js'
 import { ChatMessageSchema, AuditAction } from '@clm/types'
 import { prisma } from '../lib/prisma.js'
 import { queueClassifyDocument } from '../lib/queue.js'
-import { indexContract } from '../lib/elasticsearch.js'
 import { assertCostCapNotExceeded, recordCost, CostCapExceededError, recordUsage } from '../lib/costCap.js'
 import { costForTokens } from '../lib/model-pricing.js'
 import { randomUUID } from 'node:crypto'
@@ -394,18 +393,6 @@ export async function agentRoutes(app: FastifyInstance) {
               resourceId:   contract.id,
               metadata:     { source: 'agent_draft', template: result.usedTemplateName ?? null },
             }).catch(err => app.log.warn({ err }, 'audit on agent draft create failed'))
-            // Wave 3.2 — index so the AI-drafted contract is searchable. We have
-            // the real plainText here, so index it directly (a later classify →
-            // chunk-and-index will refresh it). Fire-and-forget.
-            indexContract(contract.id, {
-              orgId,
-              title:     contract.title,
-              type:      contract.type,
-              status:    contract.status,
-              plainText,
-              tags:      contract.tags,
-              createdAt: contract.createdAt.toISOString(),
-            }).catch(err => app.log.warn({ err }, 'ES index on legacy draft save failed'))
             if (plainText && contract.versions[0]) {
               queueClassifyDocument({ contractId: contract.id, versionId: contract.versions[0].id, orgId })
             }
