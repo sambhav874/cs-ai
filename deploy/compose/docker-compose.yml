@@ -69,8 +69,12 @@ x-api-env: &api-env
   S3_REGION: us-east-1
   S3_ACCESS_KEY: ${S3_ACCESS_KEY:?run ./install.sh first}
   S3_SECRET_KEY: ${S3_SECRET_KEY:?run ./install.sh first}
+  # Email: SendGrid (HTTPS) or SMTP. To try it without a provider, start the
+  # mail catcher (--profile mail-test) and set SMTP_HOST=mailpit SMTP_PORT=1025.
+  SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
   SMTP_HOST: ${SMTP_HOST:-}
   SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
   SMTP_USER: ${SMTP_USER:-}
   SMTP_PASS: ${SMTP_PASS:-}
   SMTP_FROM: ${SMTP_FROM:-noreply@localhost}
@@ -382,6 +386,20 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+
+  # Mail catcher for trying email without a provider: every message the
+  # platform sends lands in its inbox instead of being delivered. Opt-in
+  # (docker compose --profile mail-test up -d mailpit) and bound to localhost
+  # only: the inbox holds signing and portal links, so it must never be public.
+  # Open it through an SSH tunnel: ssh -L 8025:localhost:8025 <host>.
+  mailpit:
+    profiles: [mail-test]
+    image: axllent/mailpit:v1.21
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+    environment:
+      MP_MAX_MESSAGES: 500
 
   redis:
     <<: [*restart, *logging]

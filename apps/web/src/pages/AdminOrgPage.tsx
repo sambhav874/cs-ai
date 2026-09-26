@@ -14,18 +14,21 @@ import {
   Cpu,
   BarChart3,
   Database,
+  Mail,
 } from 'lucide-react'
 import { AiConfigTab } from '@/components/admin/AiConfigTab'
+import { EmailTab } from '@/components/admin/EmailTab'
 import { Card, EmptyState, Eyebrow } from '@/components/ui/primitives'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'general' | 'alerts' | 'ai-config' | 'system' | 'data'
+type Tab = 'general' | 'alerts' | 'ai-config' | 'email' | 'system' | 'data'
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'general', label: 'General', icon: Building2 },
   { id: 'alerts', label: 'Alert Rules', icon: Bell },
   { id: 'ai-config', label: 'AI Config', icon: Cpu },
+  { id: 'email', label: 'Email', icon: Mail },
   { id: 'system', label: 'System Dashboard', icon: BarChart3 },
   { id: 'data', label: 'Data Management', icon: Database },
 ]
@@ -252,6 +255,8 @@ export function AdminOrgPage() {
         {activeTab === 'system' && (
           <PlaceholderTab icon={BarChart3} title="System Dashboard" />
         )}
+        {activeTab === 'email' && <EmailTab />}
+
         {activeTab === 'data' && (
           <PlaceholderTab icon={Database} title="Data Management" />
         )}

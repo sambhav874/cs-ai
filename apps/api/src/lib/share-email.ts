@@ -10,7 +10,10 @@
  * user copied a URL and pasted it into their own mail client.
  */
 
+import { sendEmail } from './mailer.js'
+
 interface SendShareLinkEmailArgs {
+  orgId: string
   to: string
   portalUrl: string
   contractTitle: string
@@ -39,34 +42,20 @@ export function sendShareLinkEmail(args: SendShareLinkEmailArgs): void {
     `  (${args.contractType} "${args.contractTitle}", expires ${args.expiresAt.toISOString().slice(0, 10)})`,
   )
 
-  if (!process.env.SMTP_HOST) return
-
-  const subject = `[${args.orgName}] ${args.canUpload ? 'Review and return' : 'Review'}: ${args.contractTitle}`
-  const text = renderTextBody(args)
-  const html = renderHtmlBody(args)
-
-  import('nodemailer').then((nodemailer) => {
-    const transporter = nodemailer.createTransport({
-      host:   process.env.SMTP_HOST,
-      port:   parseInt(process.env.SMTP_PORT ?? '587', 10),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: process.env.SMTP_USER ? {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      } : undefined,
-    })
-    return transporter.sendMail({
-      from: process.env.SMTP_FROM ?? process.env.EMAIL_FROM ?? `${args.orgName} <noreply@clm.app>`,
-      to:   args.to,
-      ...(args.replyToAddress ? { replyTo: args.replyToAddress } : {}),
-      subject,
-      text,
-      html,
-    })
-  }).catch((err) => {
-    // Non-fatal — the share link is already persisted and copyable.
-    console.warn(`[share] email send failed for ${args.to}: ${(err as Error).message}`)
+  // The unified mailer: SendGrid or SMTP, and an outbox row either way. This
+  // used to open its own SMTP transport, so a SendGrid-only deployment never
+  // sent a share email. Non-fatal — the link is persisted and copyable.
+  sendEmail({
+    orgId:   args.orgId,
+    kind:    'share',
+    to:      args.to,
+    subject: `[${args.orgName}] ${args.canUpload ? 'Review and return' : 'Review'}: ${args.contractTitle}`,
+    text:    renderTextBody(args),
+    html:    renderHtmlBody(args),
+    ...(args.replyToAddress ? { replyTo: args.replyToAddress } : {}),
   })
+    .then((r) => { if (!r.sent) console.warn(`[share] email not sent to ${args.to}: ${r.reason}`) })
+    .catch((err) => console.warn(`[share] email send error for ${args.to}: ${(err as Error).message}`))
 }
 
 function renderTextBody(a: SendShareLinkEmailArgs): string {

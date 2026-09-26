@@ -128,8 +128,12 @@ services:
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in Coolify}
       S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in Coolify}
+      # Email: SendGrid (HTTPS) or SMTP. With neither set nothing is delivered;
+      # Admin → Organization → Email shows the outbox either way.
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-noreply@example.com}
@@ -185,8 +189,12 @@ services:
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in Coolify}
       S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in Coolify}
+      # Email: SendGrid (HTTPS) or SMTP. With neither set nothing is delivered;
+      # Admin → Organization → Email shows the outbox either way.
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-noreply@example.com}

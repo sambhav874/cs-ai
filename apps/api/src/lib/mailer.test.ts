@@ -4,6 +4,10 @@
  * most likely to be subtly wrong), and that failures never throw.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+
+const emailLog = vi.hoisted(() => ({ create: vi.fn(async () => ({})) }))
+vi.mock('./prisma.js', () => ({ prisma: { emailLog } }))
+
 import { sendEmail, isEmailConfigured } from './mailer.js'
 
 const ENV = { ...process.env }

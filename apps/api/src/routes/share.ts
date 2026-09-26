@@ -120,6 +120,7 @@ export async function shareRoutes(app: FastifyInstance) {
     if (inviteEmail) {
       const sender = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } })
       sendShareLinkEmail({
+        orgId,
         to:            inviteEmail,
         portalUrl,
         contractTitle: contract.title,
