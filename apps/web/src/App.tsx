@@ -35,6 +35,7 @@ import { StatusPage } from '@/pages/legal/StatusPage'
 import { AdminUsersPage } from '@/pages/AdminUsersPage'
 import { AdminRolesPage } from '@/pages/AdminRolesPage'
 import { AdminOrgPage } from '@/pages/AdminOrgPage'
+import { AdminAuditPage } from '@/pages/AdminAuditPage'
 import { AdminIntegrationsPage } from '@/pages/AdminIntegrationsPage'
 import { AdminSkillsPage } from '@/pages/AdminSkillsPage'
 import { ReviewQueuePage } from '@/pages/ReviewQueuePage'
@@ -141,6 +142,7 @@ export default function App() {
         <Route path="admin/users" element={<AdminUsersPage />} />
         <Route path="admin/roles" element={<AdminRolesPage />} />
         <Route path="admin/org" element={<AdminOrgPage />} />
+        <Route path="admin/audit" element={<AdminAuditPage />} />
         <Route path="admin/integrations" element={<AdminIntegrationsPage />} />
         <Route path="admin/skills" element={<AdminSkillsPage />} />
         {/* D.4.3 — convenience alias matching docs/30 §4.4 wording */}
