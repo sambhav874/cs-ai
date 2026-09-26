@@ -45,6 +45,7 @@ import { AcceptInvitePage } from '@/pages/AcceptInvitePage'
 import { TeamPage } from '@/pages/TeamPage'
 import { Toaster } from '@/components/common/Toaster'
 import { intelligenceRoutes } from '@/features/intelligence/routes'
+import { ContractRoute } from '@/features/intelligence/ContractLink'
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user)
@@ -120,7 +121,7 @@ export default function App() {
           </ErrorBoundary>
         } />
         <Route path="contracts" element={<ContractsPage />} />
-        <Route path="contracts/:id" element={<ContractDetailPage />} />
+        <Route path="contracts/:id" element={<ContractRoute page={<ContractDetailPage />} />} />
         <Route path="requests" element={<RequestsPage />} />
         <Route path="counterparties" element={<CounterpartiesPage />} />
         {/* P7.4.5 — F-49: Counterparty profile detail page (was missing). */}

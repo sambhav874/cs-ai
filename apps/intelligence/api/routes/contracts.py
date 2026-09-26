@@ -1033,6 +1033,31 @@ def list_documents(
         logger.exception(f"Error fetching documents: {e}")
         raise HTTPException(status_code=500, detail="Error retrieving documents")
 
+@contracts_router.get("/contracts/link/{contract_ref}")
+def get_contract_link(
+    contract_ref: str,
+    current_user: UserInDB = Depends(get_current_active_user),
+):
+    """Both ids of a linked contract, from either one.
+
+    The platform shows a contract at /contracts/<lifecycle id>; this tier's
+    screens (KPIs, the Space contract list) use this tier's ObjectId. Each side
+    resolves the other's id here. 404 until the contract is linked.
+    """
+    projection = {"_id": 1, "ownerType": 1, "ownerId": 1, "projectId": 1, "platformContractId": 1}
+    doc = None
+    if ObjectId.is_valid(contract_ref):
+        doc = collection.find_one({"_id": ObjectId(contract_ref)}, projection)
+    if doc is None:
+        doc = collection.find_one({"platformContractId": contract_ref}, projection)
+    check_contract_access(doc, current_user)
+    return {
+        "contract_id": str(doc["_id"]),
+        "platform_contract_id": doc.get("platformContractId"),
+        "project_id": str(doc["projectId"]) if doc.get("projectId") else None,
+    }
+
+
 @contracts_router.get("/contracts/{contract_id}", response_model=ContractResponse)
 def get_contract(
     contract_id: str,

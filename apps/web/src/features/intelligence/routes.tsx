@@ -9,6 +9,7 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Outlet, Route, useParams } from 'react-router-dom'
 import { IntelligenceProviders } from './IntelligenceProviders'
+import { KpiRoute } from './ContractLink'
 
 const TabularReviewsPage = lazy(() => import('@cs/app/tabular-reviews/page'))
 const TabularReviewPage = lazy(() => import('@cs/app/tabular-reviews/[review_id]/page'))
@@ -16,6 +17,7 @@ const PlaybooksPage = lazy(() => import('@cs/app/playbooks/page'))
 const PlaybookPage = lazy(() => import('@cs/app/playbooks/[playbook_id]/page'))
 const EvaluationsPage = lazy(() => import('@cs/app/evaluations/page'))
 const EvaluationRunPage = lazy(() => import('@cs/app/evaluations/[run_id]/page'))
+const ContractKpisPage = lazy(() => import('@cs/app/contracts/[contract_id]/kpis/page'))
 
 const ProjectContractsScreen = lazy(() =>
   import('@cs/components/projects/ProjectContractsScreen').then((m) => ({ default: m.ProjectContractsScreen })),
@@ -63,5 +65,8 @@ export const intelligenceRoutes = (
     {/* Extraction evaluations: runs, datasets, CSV export (internal). */}
     <Route path="evaluations" element={<EvaluationsPage />} />
     <Route path="evaluations/:run_id" element={<EvaluationRunPage />} />
+    {/* KPI and SLA tracking for one contract: targets, actuals, breaches,
+        data sources. Takes either contract id. */}
+    <Route path="contracts/:contract_id/kpis" element={<KpiRoute page={<ContractKpisPage />} />} />
   </Route>
 )
