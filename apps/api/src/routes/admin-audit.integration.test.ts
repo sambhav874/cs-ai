@@ -4,6 +4,7 @@
  * nothing in the product could show the log the release gate relies on.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { AuditAction } from '@clm/types'
 import { createAuditEvent } from '../lib/audit.js'
 import { getApp, closeApp, makeOrg, makeUser, auth, cleanupAll, type TestApp } from '../test-support/helpers.js'
 
@@ -19,10 +20,10 @@ beforeAll(async () => {
   other = await makeOrg('Audit Other Org')
   alice = await makeUser(org)
   for (let i = 0; i < 5; i++) {
-    await createAuditEvent({ orgId: org, userId: alice, action: 'CONTRACT_UPDATED', resourceType: 'contract', resourceId: `c${i}`, metadata: { i } })
+    await createAuditEvent({ orgId: org, userId: alice, action: AuditAction.CONTRACT_UPDATED, resourceType: 'contract', resourceId: `c${i}`, metadata: { i } })
   }
-  await createAuditEvent({ orgId: org, action: 'CONTRACT_CREATED', resourceType: 'contract', resourceId: 'c9', metadata: { note: '=HYPERLINK("x")' } })
-  await createAuditEvent({ orgId: other, action: 'CONTRACT_CREATED', resourceType: 'contract', resourceId: 'foreign', metadata: {} })
+  await createAuditEvent({ orgId: org, action: AuditAction.CONTRACT_CREATED, resourceType: 'contract', resourceId: 'c9', metadata: { note: '=HYPERLINK("x")' } })
+  await createAuditEvent({ orgId: other, action: AuditAction.CONTRACT_CREATED, resourceType: 'contract', resourceId: 'foreign', metadata: {} })
 })
 
 afterAll(async () => { await cleanupAll(); await closeApp() })
