@@ -27,6 +27,9 @@ import {
   BarChart2,
   FolderOpen,
   Plug,
+  Table2,
+  ClipboardCheck,
+  FlaskConical,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
@@ -120,6 +123,8 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/templates',    icon: Library,  label: 'Templates' },
       { to: '/clauses',      icon: BookOpen, label: 'Clauses' },
       { to: '/playbook',     icon: Shield,   label: 'Playbook' },
+      // Named review playbooks run against contracts (ContractSense).
+      { to: '/playbooks',    icon: ClipboardCheck, label: 'Review playbooks' },
     ],
   },
   {
@@ -129,6 +134,8 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/analytics',    icon: BarChart2,  label: 'Analytics' },
       // Diligence Rooms — bulk M&A contract review (Harvey Vault eq).
       { to: '/diligence',    icon: FolderOpen, label: 'Diligence' },
+      // Questions × documents, one cited answer per cell (ContractSense).
+      { to: '/tabular-reviews', icon: Table2, label: 'Tabular review' },
     ],
   },
 ]
@@ -163,6 +170,8 @@ const ADMIN_SECTION: NavSection = {
     { to: '/admin/org',    icon: Building2,   label: 'Organization' },
     { to: '/admin/integrations', icon: Plug,  label: 'Integrations' },
     { to: '/admin/skills', icon: Sparkles,    label: 'Skills' },
+    // Extraction quality runs and datasets (internal).
+    { to: '/evaluations',  icon: FlaskConical, label: 'Evaluations' },
     { to: '/team',         icon: UsersRound,  label: 'Team' },
   ],
 }

@@ -165,6 +165,11 @@ class ClauseLedger:
             for source_id in source_ids:
                 self._reasons.setdefault(str(source_id), reason)
 
+    def all_rejected(self) -> bool:
+        """Every clause seen was explicitly judged non-operative — a decision, not a failure."""
+        with self._lock:
+            return bool(self._state) and all(state == "rejected" for state in self._state.values())
+
     def finalize(self) -> Dict[str, Any]:
         """Turn everything still pending into `lost` and return the tally."""
         with self._lock:
@@ -2714,7 +2719,14 @@ class ContractKPIManager:
             pack_resolution=pack_resolution,
         )
 
-        if not extracted:
+        if not extracted and ledger.all_rejected():
+            # The model read every clause and decided none is an obligation —
+            # an NDA or a letter can have none. That is a finished extraction
+            # with zero records, not a model failure: seen live on a template
+            # NDA, where all 11 clauses were rejected and the run was still
+            # labelled degraded and regex-extracted.
+            logger.info("Extraction run %s for %s: every clause judged non-operative", run_id, contract_name)
+        elif not extracted:
             # Whole-contract regex extraction is a last resort, not a silent
             # substitute.  Measured on real runs: 12% of them took this branch
             # and reported `completed` with a plausible count, so a contract
