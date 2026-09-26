@@ -5,7 +5,7 @@ Answers the three questions you actually have about a pack: is it valid, would i
 be picked for this contract, and what exactly does the model get shown?
 
     # a pack directory or an uploaded .zip
-    python3 apps/backend/scripts/pack_dryrun.py --pack apps/backend/packs/obligations/logistics_msa
+    python3 apps/backend/scripts/pack_dryrun.py --pack packs/logistics
     python3 apps/backend/scripts/pack_dryrun.py --pack /tmp/widget_msa.zip
 
     # add a contract to see whether it would actually be selected

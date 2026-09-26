@@ -1,0 +1,55 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+- key: mfg-warranty-12mo
+  category: warranties
+  position: preferred
+  text: <p>12-month warranty minimum on defects and conformance. Repair/replace/refund at Buyer's option.</p>
+  notes: Standard for industrial goods.
+  risk_threshold: 0.7
+  contract_types:
+    - Supply
+  sort_order: 5
+- key: mfg-incoterm-fca-accept
+  category: scope-services
+  position: acceptable
+  text: <p>FCA Seller facility (Incoterms 2020) default. Buyer to arrange carriage.</p>
+  notes: Cost-efficient for high-volume.
+  risk_threshold: 0.5
+  contract_types:
+    - Supply
+  sort_order: 5
+- key: mfg-recall-cooperation
+  category: warranties
+  position: preferred
+  text: <p>Mutual recall cooperation. Seller bears costs for defect-attributable recalls. Strict notification obligations.</p>
+  notes: Critical for safety-sensitive goods.
+  risk_threshold: 0.8
+  contract_types:
+    - Supply
+  sort_order: 5
+- key: mfg-tooling-buyer-owned
+  category: ip-ownership
+  position: preferred
+  text: <p>Buyer owns custom tooling it pays for. Seller maintains, exclusive use for Buyer, return on termination.</p>
+  notes: Avoid lock-in.
+  risk_threshold: 0.7
+  contract_types:
+    - Supply
+  sort_order: 5
+- key: mfg-price-adjust-cap
+  category: fees-payment
+  position: acceptable
+  text: <p>Price adjustments allowed only for ≥10% raw-material cost moves with documentation, 60-day notice, and Buyer's right to cancel in lieu.</p>
+  notes: Common compromise.
+  risk_threshold: 0.5
+  contract_types:
+    - Supply
+  sort_order: 5
+- key: mfg-no-recall-cooperation
+  category: warranties
+  position: walkaway
+  text: <p>Seller refuses recall cooperation or any cost-sharing for defect-attributable recalls.</p>
+  notes: Reject for any consumer-facing product.
+  risk_threshold: 0.2
+  contract_types:
+    - Supply
+  sort_order: 30

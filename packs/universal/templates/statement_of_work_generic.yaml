@@ -1,0 +1,69 @@
+name: Statement of Work (Generic)
+description: Generic SOW template referencing an existing MSA. Use for professional services engagements.
+contract_type: SOW
+published: true
+variables:
+  - key: msaReference
+    label: Referenced MSA
+    type: string
+    required: true
+    helpText: e.g., "MSA dated [date]"
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: sowNumber
+    label: SOW Number
+    type: string
+    required: true
+  - key: sowEffectiveDate
+    label: SOW Effective Date
+    type: date
+    required: true
+  - key: projectDescription
+    label: Project Description
+    type: string
+    required: true
+  - key: startDate
+    label: Project Start
+    type: date
+    required: true
+  - key: endDate
+    label: Project End
+    type: date
+    required: false
+  - key: totalFees
+    label: Total Fees
+    type: number
+    required: true
+  - key: currency
+    label: Currency
+    type: string
+    required: true
+    defaultValue: USD
+sections:
+  - title: Reference
+    sort_order: 10
+    text: "<p>This Statement of Work #{{sowNumber}} (\"SOW\") is entered into as of {{sowEffectiveDate}} under and incorporates the terms of the {{msaReference}} between {{customerName}} (\"Customer\") and {{providerName}} (\"Provider\").</p>"
+  - title: Project Description
+    sort_order: 20
+    text: "<p>Provider will perform the following services for Customer: {{projectDescription}}.</p>"
+  - title: Deliverables
+    sort_order: 30
+    text: "<p>The deliverables for this SOW are: [list each Deliverable with description and acceptance criteria].</p>"
+  - title: Schedule
+    sort_order: 40
+    text: <p>Project starts on {{startDate}} and is targeted for completion by {{endDate}}. Specific milestone dates are set forth in the project schedule attached as Exhibit A.</p>
+  - title: Fees
+    sort_order: 50
+    text: <p>Total fees for this SOW are {{totalFees}} {{currency}}, payable per the payment terms in the MSA. [Insert fixed-fee schedule, T&M rates, or milestone-based invoicing as applicable.]</p>
+  - title: Key Personnel
+    sort_order: 60
+    text: "<p>Provider's key personnel for this SOW are: [list with roles]. Substitutions require Customer's prior approval (not unreasonably withheld).</p>"
+  - title: Customer Responsibilities
+    sort_order: 70
+    text: "<p>Customer will: (a) provide timely access to systems, data, and personnel reasonably required; (b) designate a project sponsor; and (c) provide written approval at each Deliverable acceptance milestone.</p>"

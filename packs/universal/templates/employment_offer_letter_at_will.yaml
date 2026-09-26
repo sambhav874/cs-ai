@@ -1,0 +1,70 @@
+name: Employment Offer Letter (At-Will)
+description: Standard US at-will employment offer letter with non-compete-free terms (US state-dependent).
+contract_type: Employment
+published: true
+variables:
+  - key: companyName
+    label: Company Name
+    type: string
+    required: true
+  - key: candidateName
+    label: Candidate Name
+    type: string
+    required: true
+  - key: jobTitle
+    label: Job Title
+    type: string
+    required: true
+  - key: managerName
+    label: Reporting Manager
+    type: string
+    required: true
+  - key: startDate
+    label: Start Date
+    type: date
+    required: true
+  - key: baseSalary
+    label: Annual Base Salary
+    type: number
+    required: true
+  - key: currency
+    label: Currency
+    type: string
+    required: true
+    defaultValue: USD
+  - key: workLocation
+    label: Work Location
+    type: string
+    required: true
+  - key: equityShares
+    label: Equity Grant (RSU/Options)
+    type: string
+    required: false
+sections:
+  - title: Salutation
+    sort_order: 10
+    text: <p>Dear {{candidateName}},</p><p>On behalf of {{companyName}} (the "Company"), I am pleased to offer you the position of {{jobTitle}}, reporting to {{managerName}}, starting on {{startDate}}.</p>
+  - title: Compensation
+    sort_order: 20
+    text: <p>Your annual base salary will be {{baseSalary}} {{currency}}, payable in accordance with the Company's standard payroll schedule, less applicable withholdings.</p>
+  - title: Equity
+    sort_order: 30
+    text: <p>Subject to Board approval, you will be granted {{equityShares}}, on the Company's standard vesting schedule (1-year cliff, 4-year total). Grants are subject to the terms of the Company's equity incentive plan.</p>
+  - title: Benefits
+    sort_order: 40
+    text: <p>You will be eligible to participate in the Company's standard benefits programs (health, dental, vision, 401(k), PTO) on the terms and effective dates set forth in the applicable plan documents.</p>
+  - title: Work Location
+    sort_order: 50
+    text: <p>Your work location will be {{workLocation}}. The Company reserves the right to modify work location and arrangements consistent with applicable law and Company policy.</p>
+  - title: At-Will Employment
+    sort_order: 60
+    text: <p>Your employment with the Company is at-will, which means that you or the Company may terminate the employment relationship at any time, with or without cause, and with or without notice. This offer letter is not a contract of employment for any particular duration.</p>
+  - title: Confidentiality and IP
+    sort_order: 70
+    text: <p>As a condition of employment, you will be required to sign the Company's Confidential Information and Invention Assignment Agreement.</p>
+  - title: Contingencies
+    sort_order: 80
+    text: <p>This offer is contingent on (a) satisfactory completion of standard background and reference checks; (b) verification of your right to work in the United States; and (c) your signing the Company's standard onboarding documents.</p>
+  - title: Acceptance
+    sort_order: 90
+    text: <p>To accept this offer, please sign and return this letter by [date]. We look forward to having you join the team.</p>

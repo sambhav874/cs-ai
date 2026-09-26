@@ -1,0 +1,58 @@
+name: Transportation Services Agreement
+description: Master agreement between a shipper and a motor carrier for over-the-road transportation services.
+contract_type: Transportation
+published: true
+variables:
+  - key: shipperName
+    label: Shipper Name
+    type: string
+    required: true
+  - key: carrierName
+    label: Carrier Name
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: serviceLanes
+    label: Service Lanes
+    type: string
+    required: true
+    helpText: e.g., "Continental US, including Hawaii"
+  - key: currency
+    label: Currency
+    type: string
+    required: true
+    defaultValue: USD
+sections:
+  - title: Services
+    sort_order: 10
+    text: <p>This Transportation Services Agreement is entered into as of {{effectiveDate}} between {{shipperName}} ("Shipper") and {{carrierName}} ("Carrier"). Carrier will provide motor carrier transportation services for Shipper within {{serviceLanes}}.</p>
+  - title: Carrier Authority
+    sort_order: 20
+    text: <p>Carrier represents that it is registered with the FMCSA with active operating authority and a satisfactory (or unrated, if newly registered) safety rating, complies with Hours-of-Service regulations, and maintains ELDs on all commercial motor vehicles.</p>
+  - title: Rates and Surcharges
+    sort_order: 30
+    text: <p>Linehaul rates are set forth in Exhibit A. Fuel surcharge adjusts weekly based on the DOE national average diesel price. Accessorial charges per Exhibit B. All rates in {{currency}}, net 30.</p>
+  - title: Service Levels
+    sort_order: 40
+    text: <p>Carrier will achieve 95% on-time pickup and delivery against the windows confirmed at booking. Shipments delayed &gt; 24 hours from the scheduled delivery time are subject to a 25% rate refund. Carrier will provide tracking visibility via EDI 214 or API.</p>
+  - title: Free Time and Accessorials
+    sort_order: 50
+    text: <p>2 hours free time at each stop. Detention at $75/hour beyond free time. Demurrage at the published per-diem rate. Layover at $300/day if the driver is held overnight not at fault of Carrier.</p>
+  - title: Cargo Liability
+    sort_order: 60
+    text: <p>Carrier's liability for Cargo loss or damage is the actual value at origin, capped at $5.00/lb. per package unless Shipper declares a higher released value. Claims must be filed within 9 months of delivery, with reasonable cooperation in investigation.</p>
+  - title: Insurance
+    sort_order: 70
+    text: <p>Carrier maintains Auto Liability $1M CSL, Motor Truck Cargo $250K (no exclusions for Shipper's commodity), General Liability $1M, Workers' Comp at statutory. Shipper named additional insured on Auto Liability. COIs annually.</p>
+  - title: Subcontracting
+    sort_order: 80
+    text: <p>No subcontracting or brokering without Shipper's written consent. Carrier remains primarily liable for any approved subcontractors.</p>
+  - title: Term and Termination
+    sort_order: 90
+    text: <p>1-year initial term, renewing annually unless either party gives 60 days' non-renewal notice. Termination for material breach with 30-day cure. Either party may terminate for the other's loss of operating authority or insurance.</p>
+  - title: Indemnification
+    sort_order: 100
+    text: <p>Carrier will indemnify Shipper against claims arising from Carrier's negligence, breach, or violation of law in performing the services. Shipper will indemnify Carrier against claims arising from defective packaging or undeclared hazardous materials provided by Shipper.</p>

@@ -1,0 +1,50 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+- key: hc-baa-required
+  category: data-privacy
+  position: preferred
+  text: <p>BAA required and signed before any PHI is shared. BAA includes 60-day breach notification, sub-processor BAAs, return/destroy on termination.</p>
+  notes: Non-negotiable for PHI handling.
+  risk_threshold: 0.9
+  contract_types:
+    - BAA
+  sort_order: 5
+- key: hc-hitrust-preferred
+  category: security
+  position: preferred
+  text: <p>HITRUST CSF certified, OR SOC 2 Type II with HITECH scope. Annual attestation provided.</p>
+  notes: For healthcare data vendors.
+  risk_threshold: 0.8
+  contract_types: []
+  sort_order: 5
+- key: hc-soc2-acceptable
+  category: security
+  position: acceptable
+  text: <p>SOC 2 Type II maintained. Annual security questionnaire. Penetration testing annually.</p>
+  notes: Acceptable if no PHI involved.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 6
+- key: hc-aks-stark-required
+  category: compliance
+  position: preferred
+  text: <p>Express acknowledgment that fees represent fair market value and are not intended to induce referrals. Anti-Kickback and Stark Law compliance commitments.</p>
+  notes: Required if any provider/payer overlap.
+  risk_threshold: 0.8
+  contract_types: []
+  sort_order: 5
+- key: hc-deid-acceptable
+  category: data-privacy
+  position: acceptable
+  text: <p>Vendor may use de-identified data (per Safe Harbor or Expert Determination) for product improvement and aggregate analytics.</p>
+  notes: Standard ask in healthcare SaaS.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 7
+- key: hc-no-baa-walkaway
+  category: data-privacy
+  position: walkaway
+  text: <p>Vendor refuses to sign BAA or insists on terms materially weaker than HHS sample BAA, OR breach notification longer than 60 days.</p>
+  notes: Reject — HIPAA non-compliant.
+  risk_threshold: 0.1
+  contract_types: []
+  sort_order: 30

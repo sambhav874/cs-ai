@@ -1,0 +1,523 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+- key: pb-defs-precedence-preferred
+  category: definitions
+  position: preferred
+  text: "<p>Order of precedence: (a) amendment, (b) main agreement, (c) SOW/Order Form, (d) exhibits. No purchase-order or pre-printed terms apply.</p>"
+  notes: Always push for explicit order-of-precedence; vendor "battle of the forms" attempts are common.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-defs-precedence-fallback
+  category: definitions
+  position: fallback
+  text: "<p>Order of precedence: amendment > main agreement > SOW. Pre-printed PO terms expressly disclaimed.</p>"
+  notes: Acceptable if exhibits are minor.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 20
+- key: pb-defs-precedence-walkaway
+  category: definitions
+  position: walkaway
+  text: <p>Vendor's pre-printed terms control over negotiated agreement, OR PO terms govern.</p>
+  notes: Walk away — this nullifies the negotiation.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 30
+- key: pb-scope-sow-preferred
+  category: scope-services
+  position: preferred
+  text: <p>SOW-based scope with written change orders. Customer acceptance period of 10+ business days with right to reject for material non-conformity.</p>
+  notes: Standard for services agreements.
+  risk_threshold: 0.7
+  contract_types:
+    - MSA
+    - SOW
+  sort_order: 10
+- key: pb-scope-sow-acceptable
+  category: scope-services
+  position: acceptable
+  text: <p>SOW-based scope with 5 business-day acceptance window.</p>
+  notes: Tight but workable.
+  risk_threshold: 0.5
+  contract_types:
+    - MSA
+    - SOW
+  sort_order: 20
+- key: pb-scope-deemed-walkaway
+  category: scope-services
+  position: walkaway
+  text: <p>Deliverables deemed accepted on delivery with no review period.</p>
+  notes: No acceptance window = no leverage on quality. Reject.
+  risk_threshold: 0.2
+  contract_types:
+    - MSA
+    - SOW
+  sort_order: 30
+- key: pb-payment-net60-preferred
+  category: fees-payment
+  position: preferred
+  text: <p>Net 60 payment terms. Right to dispute invoices within 15 days. No late fees on disputed amounts. Annual price escalation capped at 3% or CPI, whichever is lower.</p>
+  notes: Buy-side preferred. Vendor will counter Net 30.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-payment-net30-acceptable
+  category: fees-payment
+  position: acceptable
+  text: <p>Net 30 payment terms. Right to dispute invoices in good faith with no late fees on disputed amounts. Annual escalation capped at 5% or CPI.</p>
+  notes: Market standard.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 20
+- key: pb-payment-net15-fallback
+  category: fees-payment
+  position: fallback
+  text: <p>Net 15 payment terms with dispute right. Annual escalation cap of 7%.</p>
+  notes: Tight cashflow position. Push back if possible.
+  risk_threshold: 0.4
+  contract_types: []
+  sort_order: 30
+- key: pb-payment-prepay-walkaway
+  category: fees-payment
+  position: walkaway
+  text: <p>Full prepayment for multi-year term with no refund on termination for cause, OR uncapped annual price increases.</p>
+  notes: Walk away or escalate to CFO/exec sponsor.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 40
+- key: pb-term-conv-preferred
+  category: term-termination
+  position: preferred
+  text: <p>1-year initial term. 30-day termination for convenience by either party. 90-day non-renewal notice. Pro-rata refund of prepaid fees on termination for cause.</p>
+  notes: Maximum flexibility.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-term-1yr-acceptable
+  category: term-termination
+  position: acceptable
+  text: <p>1-year initial term. Termination for cause with 30-day cure period. No termination for convenience during initial term. Pro-rata refund on termination for material breach.</p>
+  notes: Standard SaaS pattern.
+  risk_threshold: 0.5
+  contract_types:
+    - SaaS
+    - Subscription
+  sort_order: 20
+- key: pb-term-multiyear-fallback
+  category: term-termination
+  position: fallback
+  text: <p>Up to 3-year initial term acceptable IF discount of at least 15% off list and termination-for-convenience right after year 1 with 60-day notice.</p>
+  notes: Multi-year only with commercial offset.
+  risk_threshold: 0.4
+  contract_types: []
+  sort_order: 30
+- key: pb-term-perpetual-walkaway
+  category: term-termination
+  position: walkaway
+  text: <p>Multi-year term with no termination right at all (not even for material breach), or auto-renewals with less than 60-day non-renewal notice.</p>
+  notes: Reject. Insufficient exit flexibility.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 40
+- key: pb-conf-tradesecret-preferred
+  category: confidentiality
+  position: preferred
+  text: <p>5-year confidentiality term, indefinite for trade secrets. Standard exclusions (public, prior knowledge, independent development). Return or destroy on termination with written certification.</p>
+  notes: Buy-side standard.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-conf-5yr-acceptable
+  category: confidentiality
+  position: acceptable
+  text: <p>5-year confidentiality term. Standard exclusions and return/destroy on termination.</p>
+  notes: Market standard.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 20
+- key: pb-conf-3yr-fallback
+  category: confidentiality
+  position: fallback
+  text: <p>3-year confidentiality term, indefinite for trade secrets. Standard exclusions.</p>
+  notes: Shorter than ideal — flag if highly sensitive info involved.
+  risk_threshold: 0.4
+  contract_types: []
+  sort_order: 30
+- key: pb-conf-2yr-walkaway
+  category: confidentiality
+  position: walkaway
+  text: <p>Confidentiality term of 2 years or less with NO indefinite trade-secret carve-out, OR broad use-of-residuals license.</p>
+  notes: Reject — exposes trade secrets.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 40
+- key: pb-ip-workproduct-preferred
+  category: ip-ownership
+  position: preferred
+  text: <p>Customer owns all work product. Provider retains background IP but grants a perpetual, royalty-free license to use such background IP as embedded in deliverables. No feedback license.</p>
+  notes: Buy-side preferred — full ownership of deliverables.
+  risk_threshold: 0.7
+  contract_types:
+    - SOW
+    - Professional Services
+  sort_order: 10
+- key: pb-ip-workproduct-acceptable
+  category: ip-ownership
+  position: acceptable
+  text: <p>Customer owns work product. Provider retains background IP with a non-exclusive license to Customer for use of deliverables. Limited feedback license (improvements only).</p>
+  notes: Standard professional services pattern.
+  risk_threshold: 0.5
+  contract_types:
+    - SOW
+    - Professional Services
+  sort_order: 20
+- key: pb-ip-saas-license-acceptable
+  category: ip-ownership
+  position: acceptable
+  text: <p>Provider owns the Services. Customer receives a worldwide, non-exclusive license for internal business use. Customer owns Customer Data. Provider's feedback license limited and irrevocable.</p>
+  notes: Standard SaaS pattern.
+  risk_threshold: 0.5
+  contract_types:
+    - SaaS
+    - Subscription
+  sort_order: 30
+- key: pb-ip-saas-vendor-walkaway
+  category: ip-ownership
+  position: walkaway
+  text: <p>Provider claims ownership of Customer Data, OR Customer required to grant broad license to all Customer feedback/IP, OR no Customer license to use deliverables post-termination.</p>
+  notes: Reject.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 40
+- key: pb-dpa-preferred
+  category: data-privacy
+  position: preferred
+  text: "<p>Executed DPA with: 72-hour breach notification, SCCs for cross-border, sub-processor consent right with 30-day notice, audit rights once per year + post-incident, return/delete on termination within 30 days.</p>"
+  notes: GDPR/CCPA-ready.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-dpa-acceptable
+  category: data-privacy
+  position: acceptable
+  text: <p>Executed DPA with 72-hour breach notification, SCCs, sub-processor list with notice (no consent required), audit rights via written summary or report (in lieu of on-site).</p>
+  notes: Standard for medium-risk vendors.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 20
+- key: pb-dpa-no-walkaway
+  category: data-privacy
+  position: walkaway
+  text: <p>No DPA, OR breach notification &gt; 72 hours, OR no sub-processor transparency, OR no return/delete obligation.</p>
+  notes: GDPR non-compliant. Reject.
+  risk_threshold: 0.1
+  contract_types: []
+  sort_order: 30
+- key: pb-sec-soc2-preferred
+  category: security
+  position: preferred
+  text: <p>SOC 2 Type II + ISO 27001 maintained throughout term. Annual pen testing with summary shared. MFA enforced for admin access. Customer audit right (once/year + post-incident). Background checks on personnel.</p>
+  notes: Enterprise security baseline.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-sec-soc2-acceptable
+  category: security
+  position: acceptable
+  text: <p>SOC 2 Type II maintained. Annual pen testing. TLS 1.2+ in transit, AES-256 at rest. MFA for admin. Customer right to audit via written report.</p>
+  notes: Market standard.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 20
+- key: pb-sec-no-certs-fallback
+  category: security
+  position: fallback
+  text: <p>Provider commits to industry-standard administrative/technical/physical safeguards. No certification but right to security questionnaire annually.</p>
+  notes: Acceptable only for low-risk data.
+  risk_threshold: 0.4
+  contract_types: []
+  sort_order: 30
+- key: pb-sec-none-walkaway
+  category: security
+  position: walkaway
+  text: <p>No security commitments, no encryption obligation, OR Provider refuses any audit or right to security info.</p>
+  notes: Reject.
+  risk_threshold: 0.1
+  contract_types: []
+  sort_order: 40
+- key: pb-warr-workmanlike-preferred
+  category: warranties
+  position: preferred
+  text: <p>Workmanlike-services warranty + non-infringement warranty + no-malicious-code warranty. 90-day warranty period for services with re-perform remedy.</p>
+  notes: Standard buy-side ask.
+  risk_threshold: 0.7
+  contract_types:
+    - SOW
+    - Professional Services
+  sort_order: 10
+- key: pb-warr-workmanlike-acceptable
+  category: warranties
+  position: acceptable
+  text: <p>Workmanlike-services warranty with 30-day reporting window and re-performance remedy. Standard non-infringement warranty.</p>
+  notes: Market.
+  risk_threshold: 0.5
+  contract_types:
+    - SOW
+    - Professional Services
+  sort_order: 20
+- key: pb-warr-as-is-walkaway
+  category: warranties
+  position: walkaway
+  text: <p>Pure "AS IS" with NO express warranties (not even a non-infringement or no-malicious-code warranty).</p>
+  notes: Reject — leaves customer fully exposed.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 30
+- key: pb-indem-ip-preferred
+  category: indemnification
+  position: preferred
+  text: <p>Uncapped IP indemnification by Provider, with standard remedies (cure, modify, or refund pro-rata). Bodily injury and tangible property damage indemnity mutual.</p>
+  notes: Buy-side preferred.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-indem-ip-acceptable
+  category: indemnification
+  position: acceptable
+  text: <p>IP indemnification capped at super-cap (3x annual fees). Standard exclusions. Bodily injury/property damage mutual.</p>
+  notes: Sensible cap.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 20
+- key: pb-indem-customerdata-fallback
+  category: indemnification
+  position: fallback
+  text: <p>Customer indemnifies Provider for Customer Data and Customer's use violations. Mutual indemnity caps acceptable IF same on both sides.</p>
+  notes: Standard reciprocal pattern.
+  risk_threshold: 0.4
+  contract_types: []
+  sort_order: 30
+- key: pb-indem-none-walkaway
+  category: indemnification
+  position: walkaway
+  text: <p>No IP indemnification at all, OR Provider's indemnification capped at &lt; 1x annual fees.</p>
+  notes: Reject — insufficient risk transfer.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 40
+- key: pb-liab-cap-preferred
+  category: liability
+  position: preferred
+  text: "<p>Liability cap of 2x annual fees. Super-cap of 3x for data breach. Carve-outs: confidentiality, IP indemnification, payment obligations, gross negligence, willful misconduct, indemnification.</p>"
+  notes: Buy-side preferred — wide carve-outs.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-liab-cap-acceptable
+  category: liability
+  position: acceptable
+  text: <p>Liability cap of 12 months fees. Super-cap of 2x for data breach. Standard carve-outs (confidentiality, IP indemnity, payment, GN/WM).</p>
+  notes: Market.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 20
+- key: pb-liab-cap-fallback
+  category: liability
+  position: fallback
+  text: <p>Liability cap of 12 months fees. Limited carve-outs (only confidentiality, IP indemnity, payment).</p>
+  notes: Acceptable for low-risk engagements.
+  risk_threshold: 0.4
+  contract_types: []
+  sort_order: 30
+- key: pb-liab-cap-walkaway
+  category: liability
+  position: walkaway
+  text: <p>Liability cap &lt; 6 months fees, OR no carve-outs at all (gross negligence + willful misconduct capped), OR caps Customer's payment obligations.</p>
+  notes: Reject.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 40
+- key: pb-ins-preferred
+  category: insurance
+  position: preferred
+  text: <p>CGL $2M/$4M, Cyber/Tech E&amp;O $5M, WC at statutory, Employer's Liability $1M. A.M. Best A- or better. Customer as additional insured on CGL. COIs annually.</p>
+  notes: Enterprise baseline.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-ins-acceptable
+  category: insurance
+  position: acceptable
+  text: <p>CGL $1M/$2M, Cyber/Tech E&amp;O $2M, WC statutory, EPL $500K. COIs on request.</p>
+  notes: Mid-market.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 20
+- key: pb-ins-walkaway
+  category: insurance
+  position: walkaway
+  text: <p>No cyber coverage, OR limits below $500K total, OR refusal to provide COIs.</p>
+  notes: Reject for any vendor with access to data.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 30
+- key: pb-comp-preferred
+  category: compliance
+  position: preferred
+  text: "<p>Express commitments to: FCPA/UK Bribery Act, sanctions/OFAC, modern slavery, and general compliance with applicable laws. Right to audit compliance documents on reasonable notice.</p>"
+  notes: Public-company baseline.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-comp-acceptable
+  category: compliance
+  position: acceptable
+  text: <p>Mutual compliance-with-laws warranty. Express anti-bribery and sanctions commitments.</p>
+  notes: Standard.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 20
+- key: pb-comp-walkaway
+  category: compliance
+  position: walkaway
+  text: <p>No anti-bribery commitment AND no sanctions commitment AND no general compliance warranty.</p>
+  notes: Reject — public-company compliance issue.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 30
+- key: pb-dispute-delaware-preferred
+  category: dispute
+  position: preferred
+  text: <p>Delaware or New York governing law. Exclusive jurisdiction in same state. Jury trial waiver. Mandatory executive escalation (15 days) before litigation. Equitable relief preserved.</p>
+  notes: Standard US public-company pattern.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-dispute-arb-acceptable
+  category: dispute
+  position: acceptable
+  text: <p>AAA Commercial arbitration in mutually-agreed seat. Single arbitrator. English language. Equitable relief preserved through courts.</p>
+  notes: Acceptable for cross-border deals.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 20
+- key: pb-dispute-foreign-walkaway
+  category: dispute
+  position: walkaway
+  text: <p>Governing law of vendor's home jurisdiction in a non-rule-of-law country, OR arbitration in such a venue without neutral seat.</p>
+  notes: Reject — enforceability risk.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 30
+- key: pb-assign-consent-preferred
+  category: assignment-change
+  position: preferred
+  text: <p>No assignment without consent (not unreasonably withheld). Customer's right to terminate on Provider's change of control to a competitor. Affiliate assignments OK.</p>
+  notes: Standard buy-side.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-assign-merger-acceptable
+  category: assignment-change
+  position: acceptable
+  text: <p>Assignment to merger successor or majority-asset purchaser permitted without consent, with notice. No competitor-CoC termination right.</p>
+  notes: Common compromise.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 20
+- key: pb-assign-free-walkaway
+  category: assignment-change
+  position: walkaway
+  text: <p>Either party may assign freely with no notice or consent, including to competitors.</p>
+  notes: Reject for sensitive vendors.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 30
+- key: pb-fm-preferred
+  category: force-majeure
+  position: preferred
+  text: <p>Balanced FM clause excluding payment obligations. 30-day prolonged-event termination right with pro-rata refund. Mitigation duty. Pandemic explicitly included.</p>
+  notes: Post-COVID baseline.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-fm-acceptable
+  category: force-majeure
+  position: acceptable
+  text: <p>Standard FM with mitigation duty. 60-day prolonged-event termination right.</p>
+  notes: Market.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 20
+- key: pb-fm-walkaway
+  category: force-majeure
+  position: walkaway
+  text: <p>FM excuses Customer's payment obligations, OR no prolonged-event termination right at any length.</p>
+  notes: Reject — no exit if vendor can't deliver indefinitely.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 30
+- key: pb-misc-preferred
+  category: notices-misc
+  position: preferred
+  text: <p>Standard notices (hand/courier/cert mail). Entire-agreement, severability, waiver, counterparts/e-sign, independent-contractor, publicity-consent clauses all included.</p>
+  notes: No issues.
+  risk_threshold: 0.7
+  contract_types: []
+  sort_order: 10
+- key: pb-misc-acceptable
+  category: notices-misc
+  position: acceptable
+  text: <p>Standard misc clauses with limited publicity right (each party may identify the other in customer/vendor lists).</p>
+  notes: Market.
+  risk_threshold: 0.5
+  contract_types: []
+  sort_order: 20
+- key: pb-misc-walkaway
+  category: notices-misc
+  position: walkaway
+  text: <p>Provider claims right to use Customer name/logo in marketing without Customer consent, OR no entire-agreement clause (PO terms can drift in).</p>
+  notes: Reject.
+  risk_threshold: 0.2
+  contract_types: []
+  sort_order: 30
+- key: pb-sla-uptime-preferred
+  category: service-levels
+  position: preferred
+  text: <p>99.9% monthly uptime. Service credits at 99.0%/95.0%/below-95% (10%/25%/50% of fees). Chronic-failure termination right (3 consecutive months or 4 of 12). Sev 1 response in 1 hour.</p>
+  notes: Enterprise SaaS baseline.
+  risk_threshold: 0.7
+  contract_types:
+    - SaaS
+    - Subscription
+  sort_order: 10
+- key: pb-sla-uptime-acceptable
+  category: service-levels
+  position: acceptable
+  text: <p>99.5% monthly uptime. Service credits at tiered levels. Sev 1 response in 2 hours.</p>
+  notes: Market for SMB SaaS.
+  risk_threshold: 0.5
+  contract_types:
+    - SaaS
+    - Subscription
+  sort_order: 20
+- key: pb-sla-uptime-fallback
+  category: service-levels
+  position: fallback
+  text: <p>99% monthly uptime. Service credits available. Sev 1 response in 4 hours.</p>
+  notes: Low-tier SaaS or non-critical service.
+  risk_threshold: 0.4
+  contract_types:
+    - SaaS
+    - Subscription
+  sort_order: 30
+- key: pb-sla-no-uptime-walkaway
+  category: service-levels
+  position: walkaway
+  text: <p>No uptime commitment at all, OR uptime &lt; 99% with no service credits, OR service-credit cap below 25% of monthly fees.</p>
+  notes: Reject for any production-critical service.
+  risk_threshold: 0.2
+  contract_types:
+    - SaaS
+    - Subscription
+  sort_order: 40

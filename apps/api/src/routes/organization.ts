@@ -6,8 +6,7 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../middleware/auth.js'
 import { requirePermission } from '../middleware/permissions.js'
-import { seedOrgDefaults, INDUSTRY_PACK_INFO } from '../lib/org-seed.js'
-import type { IndustryPackId } from '../lib/org-seed.js'
+import { seedOrgDefaults, packCatalog } from '../lib/org-seed.js'
 
 const UpdateOrgSchema = z.object({
   name: z.string().min(1).optional(),
@@ -16,8 +15,10 @@ const UpdateOrgSchema = z.object({
   settings: z.record(z.unknown()).optional(),
 })
 
+// Any pack under packs/ with a drafting half (lib/packs.ts); checked against
+// the catalog at request time rather than a list compiled into the API.
 const InstallPackSchema = z.object({
-  packId: z.enum(['saas', 'healthcare', 'manufacturing', 'biotech', 'logistics']),
+  packId: z.string().regex(/^[a-z][a-z0-9_]{1,48}$/),
 })
 
 export async function organizationRoutes(app: FastifyInstance) {
@@ -79,11 +80,7 @@ export async function organizationRoutes(app: FastifyInstance) {
 
   // GET /api/v1/organization/industry-packs — list available packs
   app.get('/industry-packs', { preHandler: requireAuth }, async (_req, reply) => {
-    const packs = (Object.keys(INDUSTRY_PACK_INFO) as IndustryPackId[]).map(id => ({
-      id,
-      label:       INDUSTRY_PACK_INFO[id].label,
-      description: INDUSTRY_PACK_INFO[id].description,
-    }))
+    const packs = packCatalog().map(p => ({ id: p.id, label: p.label, description: p.description, version: p.version }))
     return reply.send({ data: packs })
   })
 
@@ -94,6 +91,8 @@ export async function organizationRoutes(app: FastifyInstance) {
     { preHandler: requirePermission('configure', 'integration') },
     async (req, reply) => {
       const body = InstallPackSchema.parse(req.body)
+      const entry = packCatalog().find(p => p.id === body.packId)
+      if (!entry) return reply.status(404).send({ detail: `Unknown industry pack '${body.packId}'` })
       const org = await prisma.organization.findUnique({ where: { id: req.user.orgId } })
       if (!org) return reply.status(404).send({ detail: 'Organization not found' })
 
@@ -116,7 +115,8 @@ export async function organizationRoutes(app: FastifyInstance) {
       return reply.send({
         ok: true,
         packId: body.packId,
-        label: INDUSTRY_PACK_INFO[body.packId].label,
+        label: entry.label,
+        version: entry.version,
       })
     },
   )

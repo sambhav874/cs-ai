@@ -1,0 +1,39 @@
+name: API Access Addendum
+description: Addendum permitting programmatic API access to the SaaS Service with rate-limit and security terms.
+contract_type: Addendum
+published: true
+variables:
+  - key: serviceName
+    label: Service Name
+    type: string
+    required: true
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: rateLimitDescription
+    label: Rate Limit
+    type: string
+    required: true
+    defaultValue: 10,000 requests per minute per token
+sections:
+  - title: Scope
+    sort_order: 10
+    text: <p>This API Access Addendum, effective {{effectiveDate}}, supplements the existing agreement between {{customerName}} and {{providerName}} for {{serviceName}} and authorizes Customer's programmatic API access.</p>
+  - title: Authentication
+    sort_order: 20
+    text: <p>API access requires authentication via OAuth 2.0 or signed API tokens. Customer is responsible for securely managing its tokens and for all activity performed using its tokens.</p>
+  - title: Rate Limits
+    sort_order: 30
+    text: <p>{{rateLimitDescription}}. Provider may modify rate limits with reasonable advance notice.</p>
+  - title: Acceptable Use
+    sort_order: 40
+    text: <p>Customer will not use the API to (a) scrape data of users other than Customer's own end users; (b) bypass security or rate-limit controls; or (c) build a service that competes with the Service.</p>

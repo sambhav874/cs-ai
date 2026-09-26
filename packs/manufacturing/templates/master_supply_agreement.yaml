@@ -1,0 +1,69 @@
+name: Master Supply Agreement
+description: Long-term supply agreement for repetitive purchases of manufactured goods.
+contract_type: Supply
+published: true
+variables:
+  - key: buyerName
+    label: Buyer Name
+    type: string
+    required: true
+  - key: sellerName
+    label: Seller Name
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: goodsCategory
+    label: Category of Goods
+    type: string
+    required: true
+  - key: currency
+    label: Currency
+    type: string
+    required: true
+    defaultValue: USD
+  - key: incoterm
+    label: Default Incoterm
+    type: enum
+    required: true
+    defaultValue: FCA Seller facility (Incoterms 2020)
+    options:
+      - FCA Seller facility (Incoterms 2020)
+      - DAP Buyer facility (Incoterms 2020)
+      - EXW Seller facility (Incoterms 2020)
+sections:
+  - title: Scope
+    sort_order: 10
+    text: <p>This Master Supply Agreement is entered into as of {{effectiveDate}} between {{buyerName}} ("Buyer") and {{sellerName}} ("Seller"). Seller will sell, and Buyer will buy, {{goodsCategory}} (the "Goods") under purchase orders Buyer issues under this Agreement.</p>
+  - title: Purchase Orders
+    sort_order: 20
+    text: <p>Each purchase order will specify the quantity, specifications, price, delivery date, and delivery location. This Agreement governs over any pre-printed terms on a purchase order or order acknowledgment. Seller's failure to object to a PO within 5 business days is deemed acceptance.</p>
+  - title: Pricing and Payment
+    sort_order: 30
+    text: <p>Prices are set forth in the price schedule (Exhibit A) and are in {{currency}}. Net 60 payment terms. Seller may adjust prices on 60 days' notice for material raw-material cost changes (≥ 10%) with documentation; Buyer may cancel affected orders without penalty in lieu.</p>
+  - title: Delivery
+    sort_order: 40
+    text: "<p>Default delivery term: {{incoterm}}. Time is of the essence. Seller is liable for actual, documented additional costs incurred by Buyer due to late delivery, up to the price of the delayed Goods.</p>"
+  - title: Inspection and Acceptance
+    sort_order: 50
+    text: <p>Buyer may inspect Goods within 30 days of delivery and reject non-conforming Goods. Seller will, at Buyer's option, repair, replace, or refund. Goods not rejected within 30 days are accepted.</p>
+  - title: Warranty
+    sort_order: 60
+    text: <p>12-month limited warranty against defects in material and workmanship, with conformance to specifications. Sole remedy is repair, replacement, or refund. ALL OTHER WARRANTIES DISCLAIMED.</p>
+  - title: Recall
+    sort_order: 70
+    text: <p>The parties will cooperate on recalls. Seller bears the cost of recalls attributable to defects.</p>
+  - title: IP and Tooling
+    sort_order: 80
+    text: <p>Buyer owns custom tooling it pays for. Seller retains its proprietary manufacturing processes and IP.</p>
+  - title: Indemnification
+    sort_order: 90
+    text: <p>Seller will indemnify Buyer against product liability and IP infringement claims regarding the Goods. Buyer will indemnify Seller against claims arising from Buyer's specifications or unauthorized modifications.</p>
+  - title: Limitation of Liability
+    sort_order: 100
+    text: <p>Seller's aggregate liability is capped at the greater of 12 months' purchases under this Agreement or $1,000,000. No consequential damages. Standard carve-outs for IP indemnity, confidentiality, and gross negligence/willful misconduct.</p>
+  - title: Term and Termination
+    sort_order: 110
+    text: <p>3-year initial term, renewing for 1-year terms unless either party gives 180 days' non-renewal notice. Termination for material breach with 30-day cure. Buyer may complete all in-flight POs at the time of termination.</p>

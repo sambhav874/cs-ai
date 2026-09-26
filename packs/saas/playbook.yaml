@@ -1,0 +1,61 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+- key: saas-uptime-99.95
+  category: service-levels
+  position: preferred
+  text: <p>99.95% monthly uptime, multi-region HA, RPO 15min / RTO 1hr. Annual DR test.</p>
+  notes: Mission-critical SaaS.
+  risk_threshold: 0.8
+  contract_types:
+    - SaaS
+    - Subscription
+  sort_order: 5
+- key: saas-data-export
+  category: ip-ownership
+  position: preferred
+  text: <p>Customer can export all data at any time, no fee. 90-day post-termination access for export.</p>
+  notes: Avoid vendor lock-in.
+  risk_threshold: 0.7
+  contract_types:
+    - SaaS
+    - Subscription
+  sort_order: 5
+- key: saas-api-rates
+  category: scope-services
+  position: acceptable
+  text: <p>Published rate limits with reasonable headroom for normal usage; ability to purchase additional capacity.</p>
+  notes: Verify limits fit usage.
+  risk_threshold: 0.5
+  contract_types:
+    - SaaS
+    - Subscription
+  sort_order: 5
+- key: saas-tenant-isolation
+  category: security
+  position: preferred
+  text: <p>Logical tenant isolation validated in SOC 2 Type II. No customer access to other tenants under any circumstances.</p>
+  notes: Critical for regulated industries.
+  risk_threshold: 0.8
+  contract_types:
+    - SaaS
+    - Subscription
+  sort_order: 5
+- key: saas-cmek
+  category: data-privacy
+  position: preferred
+  text: <p>Customer-managed encryption keys (CMEK) supported via standard KMS integration. Encryption at rest with key rotation.</p>
+  notes: Required for some regulated industries.
+  risk_threshold: 0.7
+  contract_types:
+    - SaaS
+    - Subscription
+  sort_order: 5
+- key: saas-overage-walkaway
+  category: fees-payment
+  position: walkaway
+  text: <p>Punitive overage rates (&gt; 2x list) with no notice period or grace.</p>
+  notes: Reject — exposes customer to bill-shock.
+  risk_threshold: 0.2
+  contract_types:
+    - SaaS
+    - Subscription
+  sort_order: 5

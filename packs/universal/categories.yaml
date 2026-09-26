@@ -1,0 +1,73 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+- slug: definitions
+  name: Definitions & Interpretation
+  description: Defined terms, rules of construction, document hierarchy.
+  sort_order: 10
+- slug: scope-services
+  name: Scope of Services
+  description: Services, deliverables, statements of work, change control.
+  sort_order: 20
+- slug: fees-payment
+  name: Fees & Payment
+  description: Pricing, invoicing, payment terms, taxes, expenses, late payment, currency.
+  sort_order: 30
+- slug: term-termination
+  name: Term & Termination
+  description: Initial term, renewals, termination for cause, termination for convenience, effects.
+  sort_order: 40
+- slug: confidentiality
+  name: Confidentiality
+  description: Definition of confidential information, obligations, exclusions, residual rights.
+  sort_order: 50
+- slug: ip-ownership
+  name: Intellectual Property
+  description: Background IP, foreground IP, work product, licenses, feedback, trademarks.
+  sort_order: 60
+- slug: data-privacy
+  name: Data Protection & Privacy
+  description: Personal data, GDPR/CCPA, DPA, sub-processors, security incidents, cross-border.
+  sort_order: 70
+- slug: security
+  name: Information Security
+  description: Security standards, audits, penetration testing, certifications, controls.
+  sort_order: 80
+- slug: warranties
+  name: Representations & Warranties
+  description: Mutual reps, service warranties, disclaimers, AS-IS clauses.
+  sort_order: 90
+- slug: indemnification
+  name: Indemnification
+  description: IP indemnity, third-party claims, defense, settlement, exclusions.
+  sort_order: 100
+- slug: liability
+  name: Limitation of Liability
+  description: Liability caps, consequential damages exclusion, carve-outs, super-cap.
+  sort_order: 110
+- slug: insurance
+  name: Insurance
+  description: Required coverages, limits, certificates, additional insured, waivers.
+  sort_order: 120
+- slug: compliance
+  name: Compliance with Laws
+  description: Anti-bribery, sanctions, export controls, modern slavery, anti-money-laundering.
+  sort_order: 130
+- slug: dispute
+  name: Dispute Resolution
+  description: Governing law, venue, arbitration, jury waiver, equitable relief, escalation.
+  sort_order: 140
+- slug: assignment-change
+  name: Assignment & Change of Control
+  description: Assignment rights, novation, change of control consent, successors and assigns.
+  sort_order: 150
+- slug: force-majeure
+  name: Force Majeure & Excused Events
+  description: Excused performance, notice, mitigation, prolonged force majeure, allocation.
+  sort_order: 160
+- slug: notices-misc
+  name: Notices & Miscellaneous
+  description: Notices, severability, entire agreement, amendments, waiver, counterparts.
+  sort_order: 170
+- slug: service-levels
+  name: Service Levels & Performance
+  description: Uptime, response times, service credits, root-cause analysis, reporting.
+  sort_order: 180

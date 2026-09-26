@@ -1,0 +1,71 @@
+name: One-Way Non-Disclosure Agreement (Inbound)
+description: One-way NDA for evaluating an inbound proposal where only the other party will disclose confidential information.
+contract_type: NDA
+published: true
+variables:
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: customerEntity
+    label: Customer Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: customerAddress
+    label: Customer Address
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: providerEntity
+    label: Provider Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: providerAddress
+    label: Provider Address
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: governingLaw
+    label: Governing Law
+    type: enum
+    required: true
+    defaultValue: Delaware
+    options:
+      - Delaware
+      - New York
+      - California
+      - Texas
+      - England and Wales
+  - key: venueLocation
+    label: Venue Location
+    type: string
+    required: true
+    defaultValue: Wilmington, Delaware
+  - key: purpose
+    label: Purpose of Disclosure
+    type: string
+    required: true
+sections:
+  - title: Preamble
+    sort_order: 10
+    text: <p>This One-Way Non-Disclosure Agreement is entered into as of {{effectiveDate}} between {{customerName}} ("Recipient") and {{providerName}} ("Discloser").</p>
+  - title: Confidential Information
+    sort_order: 20
+    text: <p>"Confidential Information" means any non-public information Discloser provides to Recipient in connection with {{purpose}}, whether marked confidential or reasonably understood to be confidential.</p>
+  - title: Obligations
+    sort_order: 30
+    text: <p>Recipient will not disclose Confidential Information to any third party and will use it solely to evaluate {{purpose}}. Standard exclusions apply for publicly-known, prior-known, independently-developed, or third-party-sourced information.</p>
+  - title: Term
+    sort_order: 40
+    text: <p>Obligations continue for three (3) years from disclosure.</p>
+  - title: Governing Law
+    sort_order: 50
+    text: <p>{{governingLaw}} law governs. Exclusive jurisdiction in {{venueLocation}}.</p>

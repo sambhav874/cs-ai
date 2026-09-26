@@ -1,0 +1,119 @@
+name: SaaS Subscription Agreement
+description: Cloud-hosted subscription service agreement with uptime SLA and data protection terms.
+contract_type: SaaS
+published: true
+variables:
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: customerEntity
+    label: Customer Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: customerAddress
+    label: Customer Address
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: providerEntity
+    label: Provider Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: providerAddress
+    label: Provider Address
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: currency
+    label: Currency
+    type: string
+    required: true
+    defaultValue: USD
+  - key: paymentTermsDays
+    label: Payment Terms (days)
+    type: number
+    required: true
+    defaultValue: 30
+  - key: governingLaw
+    label: Governing Law
+    type: enum
+    required: true
+    defaultValue: Delaware
+    options:
+      - Delaware
+      - New York
+      - California
+      - Texas
+      - England and Wales
+  - key: venueLocation
+    label: Venue Location
+    type: string
+    required: true
+    defaultValue: Wilmington, Delaware
+  - key: serviceName
+    label: Service Name
+    type: string
+    required: true
+  - key: subscriptionTerm
+    label: Subscription Term (months)
+    type: number
+    required: true
+    defaultValue: 12
+  - key: authorizedUsers
+    label: Authorized Users (count)
+    type: number
+    required: true
+  - key: uptimePercent
+    label: Uptime SLA (%)
+    type: string
+    required: true
+    defaultValue: 99.9%
+sections:
+  - title: Preamble
+    sort_order: 10
+    text: <p>This SaaS Subscription Agreement is entered into as of {{effectiveDate}} between {{customerName}} ("Customer") and {{providerName}} ("Provider"), under which Provider grants Customer access to {{serviceName}} (the "Services").</p>
+  - title: Subscription and License
+    sort_order: 20
+    text: <p>Subject to payment of fees and compliance with this Agreement, Provider grants Customer a worldwide, non-exclusive, non-transferable license during the Term to access and use the Services for Customer's internal business purposes, for up to {{authorizedUsers}} Authorized Users.</p>
+  - title: Customer Data
+    sort_order: 30
+    text: <p>As between the Parties, Customer owns all Customer Data. Provider has a limited license to access and use Customer Data solely to provide and improve the Services. Provider will return or delete Customer Data within thirty (30) days of termination.</p>
+  - title: Service Levels
+    sort_order: 40
+    text: <p>Provider will use commercially reasonable efforts to make the Services available at least {{uptimePercent}} of the time, measured monthly, excluding Scheduled Maintenance and Force Majeure. Service credits are available per the schedule in Exhibit B. Chronic failure (3 consecutive months below SLA, or 4 of any rolling 12) entitles Customer to terminate for cause and receive a pro-rata refund.</p>
+  - title: Data Protection
+    sort_order: 50
+    text: <p>To the extent Provider processes Personal Data on Customer's behalf, the Parties will execute the Data Processing Addendum (Exhibit C). Provider will notify Customer of any Security Incident within 72 hours of becoming aware.</p>
+  - title: Security
+    sort_order: 60
+    text: <p>Provider will maintain SOC 2 Type II certification and implement industry-standard administrative, technical, and physical safeguards. Encryption in transit (TLS 1.2+) and at rest (AES-256). MFA enforced for administrative access. Annual penetration testing.</p>
+  - title: Fees and Renewals
+    sort_order: 70
+    text: <p>Subscription fees per the Order Form, due on {{paymentTermsDays}}-day terms in {{currency}}. Subscription renews automatically for successive {{subscriptionTerm}}-month periods unless either party gives sixty (60) days' notice of non-renewal. Provider may increase fees at renewal by no more than 5% or CPI, whichever is lower.</p>
+  - title: Term and Termination
+    sort_order: 80
+    text: <p>Initial Subscription Term begins on the Effective Date and continues for {{subscriptionTerm}} months. Either Party may terminate for the other's uncured material breach after thirty (30) days' written notice. On termination for cause by Customer, Customer receives a pro-rata refund of prepaid unused fees.</p>
+  - title: IP Ownership
+    sort_order: 90
+    text: <p>Provider retains all right, title, and interest in the Services. Customer retains all right, title, and interest in Customer Data. Customer's Feedback grants Provider a perpetual royalty-free license to improve the Services.</p>
+  - title: Warranties and Disclaimer
+    sort_order: 100
+    text: <p>Provider warrants that the Services will materially conform to its published Documentation. Customer's sole remedy for breach is service credits or, if uncured for thirty (30) days, termination and refund. EXCEPT AS EXPRESSLY STATED, THE SERVICES ARE PROVIDED "AS IS" AND PROVIDER DISCLAIMS ALL OTHER WARRANTIES.</p>
+  - title: Indemnification
+    sort_order: 110
+    text: <p>Provider will defend Customer against third-party IP infringement claims with standard remedies. Customer will defend Provider against claims arising from Customer Data or Customer's misuse of the Services.</p>
+  - title: Limitation of Liability
+    sort_order: 120
+    text: <p>Each Party's aggregate liability is capped at twelve (12) months' fees. Super-cap of 3x for breach of data protection obligations. Standard carve-outs (confidentiality, IP indemnity, payment, gross negligence/willful misconduct, indemnification). No consequential damages.</p>
+  - title: Governing Law and Miscellaneous
+    sort_order: 130
+    text: <p>{{governingLaw}} law governs. Exclusive jurisdiction in {{venueLocation}}. Jury trial waived. Entire agreement. Severability. Counterparts and e-signatures. Independent contractors. Assignment requires consent except in M&A.</p>

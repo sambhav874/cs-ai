@@ -16,9 +16,9 @@
 export {
   seedOrgDefaults,
   applyIndustryPack,
-  UNIVERSAL_COUNTS,
-  PACK_COUNTS,
-  INDUSTRY_PACK_INFO,
+  packCatalog,
+  universalCounts,
+  type PackCatalogEntry,
   type IndustryPackId,
   type SeedOrgOptions,
   type SeedReport,

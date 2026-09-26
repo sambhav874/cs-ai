@@ -1,0 +1,115 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+- key: delivery_terms_fca_incoterms_2020
+  category: scope-services
+  title: Delivery Terms — FCA (Incoterms 2020)
+  text: <p>Unless otherwise specified in a purchase order, all deliveries are FCA Seller's facility (Incoterms 2020). Title and risk of loss pass to Buyer upon delivery to Buyer's nominated carrier at Seller's facility.</p>
+  tags:
+    - manufacturing
+    - incoterms
+    - fca
+    - delivery
+  risk_rating: neutral
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: inspection_and_acceptance_of_goods
+  category: scope-services
+  title: Inspection and Acceptance of Goods
+  text: <p>Buyer may inspect Goods within 30 days of delivery. Buyer may reject Goods that fail to conform to the specifications in the applicable purchase order by giving written notice describing the non-conformity. Seller will, at Buyer's option, repair, replace, or refund the price of non-conforming Goods. Goods not rejected within 30 days are deemed accepted.</p>
+  tags:
+    - manufacturing
+    - inspection
+    - acceptance
+  risk_rating: standard
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: product_warranty_12_months
+  category: warranties
+  title: Product Warranty — 12 Months
+  text: <p>Seller warrants that the Goods will be free from defects in material and workmanship and will conform to the specifications for a period of twelve (12) months from delivery. Seller's sole obligation under this warranty is to, at its option, repair, replace, or refund the purchase price of non-conforming Goods.</p>
+  tags:
+    - manufacturing
+    - product-warranty
+    - workmanship
+  risk_rating: standard
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: recall_cooperation
+  category: warranties
+  title: Recall Cooperation
+  text: <p>If either party becomes aware of any defect or safety issue that may necessitate a recall, withdrawal, or corrective action with respect to any Goods, that party will notify the other party promptly. The parties will cooperate in good faith to investigate and, if necessary, implement a recall. Seller will bear the cost of any recall attributable to defects in the Goods.</p>
+  tags:
+    - manufacturing
+    - recall
+    - safety
+  risk_rating: favorable
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: supply_chain_force_majeure
+  category: force-majeure
+  title: Supply-Chain Force Majeure
+  text: <p>Force Majeure includes, in addition to other events, the unavailability of components or raw materials from Seller's supply chain due to events beyond Seller's reasonable control, including export controls, tariffs, port closures, and shortages affecting the industry generally. Seller will use commercially reasonable efforts to source alternate supplies and to notify Buyer of allocation impacts.</p>
+  tags:
+    - manufacturing
+    - force-majeure
+    - supply-chain
+  risk_rating: neutral
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: country_of_origin_and_tariff_compliance
+  category: compliance
+  title: Country of Origin and Tariff Compliance
+  text: <p>Seller will, on each shipment, accurately declare the country of origin of the Goods and provide all documentation required for Buyer to claim applicable preferential tariff treatment (including USMCA certifications). Seller is responsible for the accuracy of country-of-origin declarations.</p>
+  tags:
+    - manufacturing
+    - tariffs
+    - country-of-origin
+    - usmca
+  risk_rating: favorable
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: oem_custom_tooling_ownership
+  category: ip-ownership
+  title: OEM / Custom Tooling Ownership
+  text: <p>If Buyer pays for custom tooling, molds, or fixtures, Buyer owns the tooling. Seller will maintain the tooling, use it solely to produce Goods for Buyer, and return or destroy it at Buyer's direction on termination of the supply relationship.</p>
+  tags:
+    - manufacturing
+    - oem
+    - tooling
+  risk_rating: favorable
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: price_adjustment_raw_materials
+  category: fees-payment
+  title: Price Adjustment — Raw Materials
+  text: <p>Seller may adjust prices on 60 days' written notice in response to material changes (greater than 10%) in the cost of key raw materials, supported by reasonable documentation. Buyer may, in lieu of accepting the price adjustment, terminate the affected orders without penalty.</p>
+  tags:
+    - manufacturing
+    - price-adjustment
+    - raw-materials
+  risk_rating: neutral
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US

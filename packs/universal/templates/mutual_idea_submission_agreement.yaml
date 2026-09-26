@@ -1,0 +1,71 @@
+name: Mutual Idea Submission Agreement
+description: Pre-development NDA + IP framework for parties exchanging ideas that may lead to a joint project.
+contract_type: NDA
+published: false
+variables:
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: customerEntity
+    label: Customer Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: customerAddress
+    label: Customer Address
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: providerEntity
+    label: Provider Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: providerAddress
+    label: Provider Address
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: governingLaw
+    label: Governing Law
+    type: enum
+    required: true
+    defaultValue: Delaware
+    options:
+      - Delaware
+      - New York
+      - California
+      - Texas
+      - England and Wales
+  - key: venueLocation
+    label: Venue Location
+    type: string
+    required: true
+    defaultValue: Wilmington, Delaware
+  - key: projectArea
+    label: Project Area
+    type: string
+    required: true
+sections:
+  - title: Background
+    sort_order: 10
+    text: <p>{{customerName}} and {{providerName}} wish to share ideas concerning {{projectArea}} (the "Project Area") to evaluate a possible joint project.</p>
+  - title: Confidentiality
+    sort_order: 20
+    text: <p>Each Party will treat the other's submissions as Confidential Information under standard mutual NDA terms (3-year term; indefinite for trade secrets).</p>
+  - title: IP Ownership of Submissions
+    sort_order: 30
+    text: <p>Each Party retains full ownership of the ideas, concepts, and IP it submits to the other. Neither Party acquires any license, express or implied, to the other's submissions by reason of the disclosure under this Agreement.</p>
+  - title: No Obligation to Proceed
+    sort_order: 40
+    text: <p>Neither Party is obligated to pursue any project or to grant a license to the other's submissions. Any future collaboration requires a separate signed agreement.</p>
+  - title: Governing Law
+    sort_order: 50
+    text: <p>{{governingLaw}} law.</p>

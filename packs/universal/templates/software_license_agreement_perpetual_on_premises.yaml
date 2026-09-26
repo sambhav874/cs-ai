@@ -1,0 +1,98 @@
+name: Software License Agreement (Perpetual, On-Premises)
+description: Perpetual license for on-premises software with annual maintenance/support fees.
+contract_type: License
+published: true
+variables:
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: customerEntity
+    label: Customer Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: customerAddress
+    label: Customer Address
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: providerEntity
+    label: Provider Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: providerAddress
+    label: Provider Address
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: currency
+    label: Currency
+    type: string
+    required: true
+    defaultValue: USD
+  - key: paymentTermsDays
+    label: Payment Terms (days)
+    type: number
+    required: true
+    defaultValue: 30
+  - key: governingLaw
+    label: Governing Law
+    type: enum
+    required: true
+    defaultValue: Delaware
+    options:
+      - Delaware
+      - New York
+      - California
+      - Texas
+      - England and Wales
+  - key: venueLocation
+    label: Venue Location
+    type: string
+    required: true
+    defaultValue: Wilmington, Delaware
+  - key: softwareName
+    label: Software Name
+    type: string
+    required: true
+  - key: licenseFee
+    label: License Fee
+    type: number
+    required: true
+  - key: annualSupport
+    label: Annual Support Fee
+    type: number
+    required: true
+sections:
+  - title: License Grant
+    sort_order: 10
+    text: <p>{{providerName}} ("Licensor") grants {{customerName}} ("Licensee") a perpetual, worldwide, non-exclusive, non-transferable license to use {{softwareName}} (the "Software") for Licensee's internal business purposes.</p>
+  - title: Fees
+    sort_order: 20
+    text: <p>License fee of {{licenseFee}} due on signing. Annual support and maintenance fee of {{annualSupport}} due in advance each year, payable on net-{{paymentTermsDays}} terms.</p>
+  - title: Restrictions
+    sort_order: 30
+    text: <p>Licensee will not (a) sublicense, resell, or transfer the Software; (b) reverse-engineer, decompile, or disassemble the Software; (c) modify or create derivative works; or (d) use the Software to provide services to third parties (other than Affiliates).</p>
+  - title: Support and Updates
+    sort_order: 40
+    text: <p>While Licensee pays the annual support fee, Licensor will provide bug fixes, security updates, and new feature releases. Severity-based response targets per Exhibit A.</p>
+  - title: IP and Audit
+    sort_order: 50
+    text: <p>Licensor retains all IP in the Software. Licensor may audit Licensee's use no more than once per year on 30 days' notice; if material under-licensing is found, Licensee will pay the shortfall plus reasonable audit costs.</p>
+  - title: Warranties
+    sort_order: 60
+    text: <p>Licensor warrants the Software will materially conform to its Documentation for 90 days from delivery. Sole remedy is correction or refund. All other warranties disclaimed.</p>
+  - title: Liability and Indemnity
+    sort_order: 70
+    text: "<p>Licensor's IP infringement indemnity covers the Software when used as licensed. Liability cap: license fee plus 12 months' support fees. No consequential damages.</p>"
+  - title: Governing Law
+    sort_order: 80
+    text: <p>{{governingLaw}} law. Jurisdiction in {{venueLocation}}.</p>

@@ -1,0 +1,11 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+id: biotech
+version: 1.0.0
+display_name: Biotech
+jurisdictions:
+  - US
+contract_types:
+  - MTA
+drafting_extends: universal
+halves:
+  - drafting

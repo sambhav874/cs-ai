@@ -32,7 +32,7 @@ def test_prompt_is_byte_identical_when_no_pack_resolves():
 
 def test_pack_block_lands_between_the_rules_and_the_clauses():
     manager = _manager()
-    block = render_pack_block(load_pack("logistics_msa"))
+    block = render_pack_block(load_pack("logistics"))
 
     prompt = manager._build_kpi_llm_prompt(contract_name="C", records=_records(), pack_block=block)
 
@@ -43,7 +43,7 @@ def test_pack_block_lands_between_the_rules_and_the_clauses():
 def test_the_pack_is_framed_as_reference_not_as_commands():
     """Packs will be user-editable eventually; the boundary is built now."""
     manager = _manager()
-    block = render_pack_block(load_pack("logistics_msa"))
+    block = render_pack_block(load_pack("logistics"))
 
     prompt = manager._build_kpi_llm_prompt(contract_name="C", records=_records(), pack_block=block)
 
@@ -69,7 +69,7 @@ def test_classification_text_is_capped():
     )
 
 
-@pytest.mark.parametrize("family", ["logistics_msa"])
+@pytest.mark.parametrize("family", ["logistics"])
 def test_shipped_pack_costs_less_than_a_tenth_of_a_batch(family):
     """A pack rides on every batch of every run; a fat one is a per-run tax.
 

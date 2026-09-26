@@ -1,0 +1,54 @@
+name: Statement of Work — Time and Materials
+description: SOW for an open-ended T&M engagement with hourly rates and a not-to-exceed cap.
+contract_type: SOW
+published: true
+variables:
+  - key: msaReference
+    label: Referenced MSA
+    type: string
+    required: true
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: sowNumber
+    label: SOW Number
+    type: string
+    required: true
+  - key: projectDescription
+    label: Project Description
+    type: string
+    required: true
+  - key: hourlyRate
+    label: Average Hourly Rate
+    type: string
+    required: true
+  - key: notToExceedCap
+    label: Not-to-Exceed Cap
+    type: number
+    required: true
+  - key: currency
+    label: Currency
+    type: string
+    required: true
+    defaultValue: USD
+sections:
+  - title: Reference
+    sort_order: 10
+    text: "<p>This T&M SOW #{{sowNumber}} is entered into under the {{msaReference}} between {{customerName}} and {{providerName}}.</p>"
+  - title: Scope
+    sort_order: 20
+    text: <p>{{projectDescription}}. Provider will perform the work on a time-and-materials basis.</p>
+  - title: Rates
+    sort_order: 30
+    text: <p>Provider's rates are set out in Exhibit A. The blended average rate is {{hourlyRate}} {{currency}} per hour.</p>
+  - title: Not-to-Exceed Cap
+    sort_order: 40
+    text: <p>Total fees and expenses under this SOW will not exceed {{notToExceedCap}} {{currency}} without Customer's prior written approval. Provider will notify Customer when 80% of the cap has been reached.</p>
+  - title: Invoicing
+    sort_order: 50
+    text: <p>Provider will invoice monthly for hours worked and expenses incurred, with detailed time entries. Payment per MSA terms.</p>

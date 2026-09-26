@@ -1,0 +1,111 @@
+name: Master Services Agreement (Buy-Side)
+description: Customer-favorable master services agreement covering professional services delivered under one or more SOWs.
+contract_type: MSA
+published: true
+variables:
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: customerEntity
+    label: Customer Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: customerAddress
+    label: Customer Address
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: providerEntity
+    label: Provider Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: providerAddress
+    label: Provider Address
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: currency
+    label: Currency
+    type: string
+    required: true
+    defaultValue: USD
+  - key: paymentTermsDays
+    label: Payment Terms (days)
+    type: number
+    required: true
+    defaultValue: 30
+  - key: governingLaw
+    label: Governing Law
+    type: enum
+    required: true
+    defaultValue: Delaware
+    options:
+      - Delaware
+      - New York
+      - California
+      - Texas
+      - England and Wales
+  - key: venueLocation
+    label: Venue Location
+    type: string
+    required: true
+    defaultValue: Wilmington, Delaware
+  - key: initialTerm
+    label: Initial Term (years)
+    type: number
+    required: true
+    defaultValue: 1
+  - key: liabilityCapMultiple
+    label: Liability Cap (months of fees)
+    type: number
+    required: true
+    defaultValue: 12
+sections:
+  - title: Preamble
+    sort_order: 10
+    text: <p>This Master Services Agreement (this "Agreement") is entered into as of {{effectiveDate}} by and between {{customerName}} ("Customer") and {{providerName}} ("Provider").</p>
+  - title: Services and SOWs
+    sort_order: 20
+    text: <p>Provider will perform the professional services ("Services") described in one or more Statements of Work ("SOWs") executed by the Parties under this Agreement. Each SOW will reference this Agreement and specify scope, deliverables, timeline, fees, and any project-specific terms.</p>
+  - title: Change Control
+    sort_order: 30
+    text: <p>Any change to a SOW's scope, deliverables, schedule, or fees requires a written change order signed by an authorized representative of each Party.</p>
+  - title: Acceptance
+    sort_order: 40
+    text: <p>Customer will review each Deliverable within ten (10) business days of delivery and will either accept the Deliverable in writing or provide written notice of material non-conformity. If Customer does not respond within the review period, the Deliverable is deemed accepted.</p>
+  - title: Fees and Payment
+    sort_order: 50
+    text: <p>Customer will pay all undisputed fees within {{paymentTermsDays}} days of receipt of Provider's invoice. All amounts are in {{currency}}. Fees are exclusive of taxes (other than taxes on Provider's income). Customer may dispute amounts in good faith within fifteen (15) days of receipt and the Parties will resolve in good faith within thirty (30) days.</p>
+  - title: Confidentiality
+    sort_order: 60
+    text: <p>Each Party will protect the other's Confidential Information using at least the same degree of care it uses for its own (no less than reasonable care) for five (5) years from disclosure, indefinitely for trade secrets. Standard exclusions apply.</p>
+  - title: Intellectual Property
+    sort_order: 70
+    text: <p>Customer owns all work product specifically created for Customer under SOWs ("Work Product"), excluding Provider's Background IP. Provider grants Customer a perpetual, royalty-free license to use Background IP as embedded in Work Product. No license to use Customer feedback for Provider's general products without prior written consent.</p>
+  - title: Warranties
+    sort_order: 80
+    text: <p>Provider warrants that the Services will be performed in a professional and workmanlike manner consistent with industry standards. Provider further warrants that the Services and any Provider-provided materials will not infringe a third party's intellectual property and will not contain malicious code. Customer must report breach within thirty (30) days; sole remedy is re-performance.</p>
+  - title: Indemnification
+    sort_order: 90
+    text: <p>Provider will defend Customer against third-party claims that the Services infringe IP rights, with standard remedies (cure, modify, refund). Mutual indemnification for bodily injury and tangible property damage caused by gross negligence or willful misconduct.</p>
+  - title: Limitation of Liability
+    sort_order: 100
+    text: <p>Except for Excluded Claims (confidentiality, IP indemnity, payment, gross negligence/willful misconduct), each Party's aggregate liability is capped at the fees paid or payable in the {{liabilityCapMultiple}} months preceding the claim. Neither Party is liable for consequential, indirect, or punitive damages.</p>
+  - title: Term and Termination
+    sort_order: 110
+    text: <p>This Agreement begins on the Effective Date and continues for {{initialTerm}} years, then renews annually unless either Party gives sixty (60) days' notice of non-renewal. Either Party may terminate for the other's uncured material breach after thirty (30) days' written notice. Customer may terminate for convenience on sixty (60) days' notice. Pro-rata refund of prepaid unused fees on termination for cause.</p>
+  - title: Governing Law
+    sort_order: 120
+    text: <p>{{governingLaw}} law governs, without regard to its conflict-of-laws principles. Exclusive jurisdiction and venue in {{venueLocation}}. JURY TRIAL WAIVED. Each Party may seek equitable relief for breach of confidentiality or IP.</p>
+  - title: Miscellaneous
+    sort_order: 130
+    text: <p>Notices in writing by hand, courier, or certified mail. Entire agreement (no PO terms apply). Severability. Counterparts and e-signatures permitted. Independent contractors. Assignment requires consent (not unreasonably withheld), except to a successor in M&A. Customer has right to terminate on Provider's change of control to a competitor.</p>

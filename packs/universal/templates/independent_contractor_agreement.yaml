@@ -1,0 +1,52 @@
+name: Independent Contractor Agreement
+description: Agreement engaging an individual contractor for services; includes IP assignment and contractor-status protections.
+contract_type: Contractor
+published: true
+variables:
+  - key: companyName
+    label: Company Name
+    type: string
+    required: true
+  - key: contractorName
+    label: Contractor Name
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: servicesDescription
+    label: Services Description
+    type: string
+    required: true
+  - key: rate
+    label: Hourly or Project Rate
+    type: string
+    required: true
+  - key: currency
+    label: Currency
+    type: string
+    required: true
+    defaultValue: USD
+sections:
+  - title: Engagement
+    sort_order: 10
+    text: "<p>{{companyName}} (the \"Company\") engages {{contractorName}} (the \"Contractor\") to perform the following services beginning {{effectiveDate}}: {{servicesDescription}}.</p>"
+  - title: Compensation
+    sort_order: 20
+    text: <p>Contractor will be compensated at {{rate}} {{currency}}, invoiced monthly, payable net 30. Contractor is responsible for all taxes on the compensation.</p>
+  - title: Independent Contractor
+    sort_order: 30
+    text: <p>Contractor is an independent contractor, not an employee, agent, partner, or joint venturer of the Company. Contractor controls the manner and means of performance and will not be eligible for any Company employee benefits.</p>
+  - title: IP Assignment
+    sort_order: 40
+    text: <p>All deliverables and work product Contractor creates for the Company are works made for hire under the U.S. Copyright Act and the Company's sole property. To the extent any work product is not a work made for hire, Contractor irrevocably assigns all right, title, and interest to the Company.</p>
+  - title: Confidentiality
+    sort_order: 50
+    text: <p>Contractor will treat all non-public information about the Company as confidential, both during and after the engagement, for a period of five (5) years (indefinitely for trade secrets).</p>
+  - title: Term and Termination
+    sort_order: 60
+    text: <p>Either party may terminate this Agreement at any time on 14 days' written notice, or immediately for material breach. On termination, Contractor will deliver to the Company all work product and Company materials in Contractor's possession.</p>
+  - title: Indemnity
+    sort_order: 70
+    text: <p>Contractor will indemnify the Company against third-party claims arising from Contractor's negligence, breach of this Agreement, or violation of applicable law in performing the services.</p>

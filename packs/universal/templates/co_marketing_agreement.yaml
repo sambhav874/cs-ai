@@ -1,0 +1,83 @@
+name: Co-Marketing Agreement
+description: Agreement between two companies to jointly promote each other's products through co-branded marketing activities.
+contract_type: Marketing
+published: true
+variables:
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: customerEntity
+    label: Customer Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: customerAddress
+    label: Customer Address
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: providerEntity
+    label: Provider Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: providerAddress
+    label: Provider Address
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: governingLaw
+    label: Governing Law
+    type: enum
+    required: true
+    defaultValue: Delaware
+    options:
+      - Delaware
+      - New York
+      - California
+      - Texas
+      - England and Wales
+  - key: venueLocation
+    label: Venue Location
+    type: string
+    required: true
+    defaultValue: Wilmington, Delaware
+  - key: marketingActivities
+    label: Marketing Activities
+    type: string
+    required: true
+    helpText: e.g., joint webinar, co-authored whitepaper
+  - key: termMonths
+    label: Term (months)
+    type: number
+    required: true
+    defaultValue: 12
+sections:
+  - title: Purpose
+    sort_order: 10
+    text: "<p>{{customerName}} and {{providerName}} will collaborate on the following co-marketing activities: {{marketingActivities}}.</p>"
+  - title: Trademark License
+    sort_order: 20
+    text: <p>Each Party grants the other a limited, non-exclusive, royalty-free license to use its name and logo solely for the co-marketing activities. Each Party retains approval rights over specific marketing materials.</p>
+  - title: Costs
+    sort_order: 30
+    text: <p>Each Party bears its own costs unless otherwise agreed in writing. No payment or fee is owed by either Party except as expressly agreed.</p>
+  - title: IP Ownership
+    sort_order: 40
+    text: <p>Each Party retains ownership of its own marks, content, and pre-existing IP. Jointly-created marketing materials are jointly owned; each Party may use them for its own marketing without accounting.</p>
+  - title: Term and Termination
+    sort_order: 50
+    text: <p>This Agreement runs for {{termMonths}} months from the Effective Date and may be terminated by either Party on 30 days' notice. Trademark licenses terminate automatically.</p>
+  - title: Disclaimer
+    sort_order: 60
+    text: <p>Neither Party is liable to the other for any indirect or consequential damages. Each Party's liability is capped at $10,000.</p>
+  - title: Governing Law
+    sort_order: 70
+    text: <p>{{governingLaw}} law. Jurisdiction in {{venueLocation}}.</p>

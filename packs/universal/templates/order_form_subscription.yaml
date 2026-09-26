@@ -1,0 +1,67 @@
+name: Order Form (Subscription)
+description: Order form for SaaS subscription. Use under an executed master subscription agreement.
+contract_type: Order Form
+published: true
+variables:
+  - key: agreementReference
+    label: Master Agreement Reference
+    type: string
+    required: true
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: orderEffectiveDate
+    label: Order Effective Date
+    type: date
+    required: true
+  - key: subscriptionStart
+    label: Subscription Start
+    type: date
+    required: true
+  - key: subscriptionEnd
+    label: Subscription End
+    type: date
+    required: true
+  - key: serviceTier
+    label: Service Tier
+    type: string
+    required: true
+  - key: seatCount
+    label: Seat Count
+    type: number
+    required: true
+  - key: annualFee
+    label: Annual Fee
+    type: number
+    required: true
+  - key: currency
+    label: Currency
+    type: string
+    required: true
+    defaultValue: USD
+  - key: paymentTermsDays
+    label: Payment Terms (days)
+    type: number
+    required: true
+    defaultValue: 30
+sections:
+  - title: Reference and Effective Date
+    sort_order: 10
+    text: <p>This Order Form, effective {{orderEffectiveDate}}, is entered into under and subject to the terms of the {{agreementReference}} between {{customerName}} ("Customer") and {{providerName}} ("Provider"). Capitalized terms have the meanings given in the master agreement.</p>
+  - title: Order Details
+    sort_order: 20
+    text: <p><strong>Service Tier:</strong> {{serviceTier}}<br><strong>Authorized Seats:</strong> {{seatCount}}<br><strong>Subscription Term:</strong> {{subscriptionStart}} through {{subscriptionEnd}}</p>
+  - title: Fees and Payment
+    sort_order: 30
+    text: "<p>Annual subscription fee: {{annualFee}} {{currency}}, payable in advance on receipt of invoice on net-{{paymentTermsDays}} terms. Pricing is firm for the initial subscription term.</p>"
+  - title: Renewal
+    sort_order: 40
+    text: <p>This Order Form renews automatically for successive 12-month periods unless either Party gives 60 days' written notice of non-renewal before the end of the then-current term. Renewal pricing may increase by no more than 5% or CPI, whichever is lower.</p>
+  - title: Signature
+    sort_order: 50
+    text: <p>The Parties execute this Order Form by signature below. This Order Form may be signed in counterparts and by electronic signature.</p>

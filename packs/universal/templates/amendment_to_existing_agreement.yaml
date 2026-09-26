@@ -1,0 +1,46 @@
+name: Amendment to Existing Agreement
+description: General-purpose amendment to modify, add to, or replace specific terms of an existing agreement.
+contract_type: Amendment
+published: true
+variables:
+  - key: partyAName
+    label: Party A Name
+    type: string
+    required: true
+  - key: partyBName
+    label: Party B Name
+    type: string
+    required: true
+  - key: agreementName
+    label: Agreement Being Amended
+    type: string
+    required: true
+  - key: originalDate
+    label: Original Agreement Date
+    type: date
+    required: true
+  - key: amendmentNumber
+    label: Amendment Number
+    type: string
+    required: true
+    defaultValue: "1"
+  - key: effectiveDate
+    label: Amendment Effective Date
+    type: date
+    required: true
+sections:
+  - title: Preamble
+    sort_order: 10
+    text: <p>This Amendment No. {{amendmentNumber}} (this "Amendment") to the {{agreementName}} dated {{originalDate}} (the "Agreement") is entered into as of {{effectiveDate}} between {{partyAName}} and {{partyBName}}. Capitalized terms used but not defined have the meanings given in the Agreement.</p>
+  - title: Amendments
+    sort_order: 20
+    text: "<p>The Agreement is amended as follows: [List each amendment using \"Section X is amended to read in its entirety: ...\", \"Section Y is deleted in its entirety\", or \"The following Section Z is added: ...\"]</p>"
+  - title: Ratification
+    sort_order: 30
+    text: <p>Except as amended by this Amendment, the Agreement remains in full force and effect.</p>
+  - title: Conflicts
+    sort_order: 40
+    text: <p>In the event of a conflict between this Amendment and the Agreement, this Amendment controls.</p>
+  - title: Counterparts
+    sort_order: 50
+    text: <p>This Amendment may be executed in counterparts (including by electronic signature), each of which is deemed an original.</p>

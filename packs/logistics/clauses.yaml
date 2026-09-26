@@ -1,0 +1,113 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+- key: carrier_cargo_liability_carmack_released_value
+  category: liability
+  title: Carrier Cargo Liability — Carmack / Released Value
+  text: <p>For shipments subject to the Carmack Amendment (49 USC § 14706), Carrier's liability for loss or damage to Cargo is the actual value of the Cargo at the point of origin, subject to a maximum of $5.00 per pound per package unless Shipper declares a higher released value in writing and pays the applicable surcharge. International shipments are subject to the Montreal or Warsaw Convention or Hague-Visby Rules, as applicable.</p>
+  tags:
+    - logistics
+    - carrier-liability
+    - carmack
+  risk_rating: standard
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: fuel_surcharge
+  category: fees-payment
+  title: Fuel Surcharge
+  text: <p>Rates are subject to a fuel surcharge, calculated weekly based on the U.S. Department of Energy's national average diesel price published each Monday. The fuel surcharge applies as set forth in Exhibit A and may be adjusted up or down as fuel prices change.</p>
+  tags:
+    - logistics
+    - fuel-surcharge
+    - doe
+  risk_rating: neutral
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: demurrage_and_detention
+  category: fees-payment
+  title: Demurrage and Detention
+  text: <p>Free time for loading and unloading is two (2) hours per stop. Detention beyond free time is charged at $75 per hour or fraction thereof. Demurrage charges apply to containers held at port or rail beyond the carrier's free time at the applicable per diem rate.</p>
+  tags:
+    - logistics
+    - demurrage
+    - detention
+  risk_rating: neutral
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: delivery_service_levels
+  category: scope-services
+  title: Delivery Service Levels
+  text: <p>Carrier will achieve on-time pickup and on-time delivery performance of at least 95% measured monthly. "On-time" means within the 2-hour delivery window confirmed at booking. Shipments delayed by more than 24 hours from the scheduled delivery time are subject to a 25% rate refund.</p>
+  tags:
+    - logistics
+    - otp
+    - service-level
+  risk_rating: favorable
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: auto_liability_and_cargo_insurance
+  category: insurance
+  title: Auto Liability and Cargo Insurance
+  text: <p>Carrier will maintain (a) Commercial Auto Liability insurance of not less than $1,000,000 combined single limit; (b) Motor Truck Cargo insurance of not less than $250,000 per shipment with no exclusions for shipper's commodity; and (c) General Liability of not less than $1,000,000. Carrier will name Shipper as additional insured on the Auto Liability policy.</p>
+  tags:
+    - logistics
+    - insurance
+    - cargo
+  risk_rating: favorable
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: dot_fmcsa_compliance
+  category: compliance
+  title: DOT / FMCSA Compliance
+  text: <p>Carrier represents that it (a) is registered with the Federal Motor Carrier Safety Administration with active operating authority; (b) maintains a satisfactory safety rating (or no rating if newly registered); (c) complies with Hours-of-Service regulations (49 CFR Part 395); and (d) maintains valid Electronic Logging Devices on all commercial motor vehicles as required by 49 CFR Part 395.</p>
+  tags:
+    - logistics
+    - fmcsa
+    - dot
+    - hos
+  risk_rating: standard
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: hazardous_materials
+  category: compliance
+  title: Hazardous Materials
+  text: <p>Carrier will not transport hazardous materials, hazardous substances, or hazardous wastes (as those terms are defined under 49 CFR Parts 171–180) unless (a) Shipper provides accurate shipping papers and labeling and (b) Carrier holds the necessary hazmat endorsement and permits.</p>
+  tags:
+    - logistics
+    - hazmat
+  risk_rating: standard
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: subcontracting_brokering
+  category: scope-services
+  title: Subcontracting / Brokering
+  text: <p>Carrier may not subcontract or broker any Shipment without Shipper's prior written consent. If Shipper consents, Carrier remains primarily liable to Shipper for the performance of any subcontracted carrier and ensures all subcontractors meet the insurance and compliance requirements of this Agreement.</p>
+  tags:
+    - logistics
+    - brokering
+    - subcontract
+  risk_rating: favorable
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US

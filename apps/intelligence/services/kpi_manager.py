@@ -7346,7 +7346,7 @@ class ContractKPIManager:
     #     in isolation and never reached this code.
     #
     # All three are family knowledge, and family knowledge is now data: see
-    # `apps/backend/packs/obligations/`. Currency and party come from the
+    # `packs/`. Currency and party come from the
     # document; unresolved ownership stays null and reviewable.
 
     def _determine_obligation_type(self, party: Optional[str], quote: str) -> Optional[str]:

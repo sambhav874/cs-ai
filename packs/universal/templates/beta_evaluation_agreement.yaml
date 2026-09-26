@@ -1,0 +1,63 @@
+name: Beta Evaluation Agreement
+description: Short-term agreement allowing a customer to evaluate a beta or pre-release product at no charge.
+contract_type: Beta
+published: true
+variables:
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: customerEntity
+    label: Customer Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: customerAddress
+    label: Customer Address
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: providerEntity
+    label: Provider Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: providerAddress
+    label: Provider Address
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: betaProduct
+    label: Beta Product
+    type: string
+    required: true
+  - key: evaluationPeriodDays
+    label: Evaluation Period (days)
+    type: number
+    required: true
+    defaultValue: 90
+sections:
+  - title: Beta License
+    sort_order: 10
+    text: <p>{{providerName}} ("Provider") grants {{customerName}} ("Customer") a limited, non-exclusive, non-transferable, revocable license to access and use {{betaProduct}} (the "Beta Product") for the sole purpose of internal evaluation during the Evaluation Period.</p>
+  - title: Evaluation Period
+    sort_order: 20
+    text: <p>The evaluation period runs for {{evaluationPeriodDays}} days from the Effective Date. Either Party may terminate this Agreement and the evaluation at any time on written notice.</p>
+  - title: "\"AS IS\""
+    sort_order: 30
+    text: <p>THE BETA PRODUCT IS PROVIDED "AS IS" WITHOUT ANY WARRANTY OF ANY KIND. CUSTOMER ASSUMES ALL RISK OF EVALUATION. The Beta Product may contain defects, may not function as documented, and is not intended for use in production environments.</p>
+  - title: Feedback
+    sort_order: 40
+    text: <p>Customer will provide reasonable feedback about its experience. Customer grants Provider a perpetual, royalty-free, worldwide license to use the Feedback for any purpose without compensation or attribution.</p>
+  - title: Confidentiality
+    sort_order: 50
+    text: <p>The Beta Product and any related materials are Provider's Confidential Information. Customer will not disclose them, run benchmarks, or publish reviews without Provider's prior written consent.</p>
+  - title: No Liability
+    sort_order: 60
+    text: <p>PROVIDER'S TOTAL LIABILITY UNDER THIS AGREEMENT IS LIMITED TO $100. NO CONSEQUENTIAL OR INDIRECT DAMAGES.</p>

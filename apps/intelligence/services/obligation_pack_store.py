@@ -1,6 +1,6 @@
 """Storage for customer-uploaded obligation packs.
 
-Packs ship two ways: built-in families under ``packs/obligations/`` (reviewed in
+Packs ship two ways: built-in families under ``packs/`` (reviewed in
 the repo) and packs a workspace uploads for its own contract types. Both are
 validated by the same code in ``obligation_packs``; only their provenance
 differs, and that difference is stamped on every record so a recall movement can

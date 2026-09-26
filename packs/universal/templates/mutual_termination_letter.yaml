@@ -1,0 +1,38 @@
+name: Mutual Termination Letter
+description: Letter agreement memorializing the mutual termination of an existing contract.
+contract_type: Termination
+published: true
+variables:
+  - key: partyAName
+    label: Party A Name
+    type: string
+    required: true
+  - key: partyBName
+    label: Party B Name
+    type: string
+    required: true
+  - key: agreementName
+    label: Agreement Being Terminated
+    type: string
+    required: true
+  - key: agreementDate
+    label: Original Agreement Date
+    type: date
+    required: true
+  - key: effectiveDate
+    label: Termination Effective Date
+    type: date
+    required: true
+sections:
+  - title: Termination
+    sort_order: 10
+    text: <p>{{partyAName}} and {{partyBName}} hereby mutually terminate the {{agreementName}} dated {{agreementDate}} (the "Agreement"), effective {{effectiveDate}} (the "Termination Date").</p>
+  - title: Wind-Down
+    sort_order: 20
+    text: <p>Each party will perform any remaining obligations through the Termination Date. No new orders, SOWs, or work will be initiated after the Termination Date.</p>
+  - title: Final Settlement
+    sort_order: 30
+    text: <p>The parties confirm that, except for amounts owed for services performed through the Termination Date and obligations that by their nature survive termination (including confidentiality, IP, indemnification, and limitation of liability), neither party has any further obligation to the other under the Agreement.</p>
+  - title: Releases
+    sort_order: 40
+    text: <p>Each party releases the other from all claims arising under or related to the Agreement through the Termination Date, except for claims of fraud, willful misconduct, or breach of obligations that survive termination.</p>

@@ -1,211 +1,20 @@
 /**
- * Org-defaults seeder — idempotent.
+ * Org defaults — the universal library at signup, an industry pack on request.
  *
- * Strategy: there are no unique compound indexes on the Prisma library tables
- * (Template / ClauseCategory / ClauseLibraryItem / PlaybookPosition), so we
- * can't use `upsert` by natural key. Instead, for each library we (a) load
- * the org's existing rows once into an in-memory set keyed by natural ID
- * (name / title / playbook `key`), then (b) `createMany` only the rows
- * missing from that set. Re-running the seed never duplicates.
- *
- * Each library is wrapped in its own `prisma.$transaction` for atomicity
- * (categories all-or-nothing, etc.). The five steps run sequentially because
- * clauses + playbook positions depend on category IDs.
+ * Both now come from the repository's packs/ directory through lib/packs.ts
+ * (merge step 8). This used to copy draftLegal's TypeScript seed arrays into
+ * org rows and skip any row already present, so a corrected clause never
+ * reached an org that had installed it. An org now subscribes to a pack
+ * version; see lib/packs.ts for install, upgrade and overrides.
  */
+import { installablePacks, loadCategories, loadPack, syncPack, type PackDiff } from '../packs.js'
 
-import { prisma } from '../prisma.js'
-import { UNIVERSAL_CATEGORIES }       from './universal/categories.js'
-import { UNIVERSAL_CLAUSES }          from './universal/clauses.js'
-import { UNIVERSAL_TEMPLATES }        from './universal/templates.js'
-import { UNIVERSAL_PLAYBOOK }         from './universal/playbook.js'
-import type { SeedClause }            from './universal/clauses.js'
-import type { SeedTemplate }          from './universal/templates.js'
-import type { SeedPlaybookPosition }  from './universal/playbook.js'
-import { SAAS_CLAUSES,         SAAS_TEMPLATES,         SAAS_PLAYBOOK }         from './packs/saas.js'
-import { HEALTHCARE_CLAUSES,   HEALTHCARE_TEMPLATES,   HEALTHCARE_PLAYBOOK }   from './packs/healthcare.js'
-import { MANUFACTURING_CLAUSES, MANUFACTURING_TEMPLATES, MANUFACTURING_PLAYBOOK } from './packs/manufacturing.js'
-import { BIOTECH_CLAUSES,      BIOTECH_TEMPLATES,      BIOTECH_PLAYBOOK }      from './packs/biotech.js'
-import { LOGISTICS_CLAUSES,    LOGISTICS_TEMPLATES,    LOGISTICS_PLAYBOOK }    from './packs/logistics.js'
-
-export type IndustryPackId = 'saas' | 'healthcare' | 'manufacturing' | 'biotech' | 'logistics'
+/** A pack an org can install: any directory under packs/ with a drafting half. */
+export type IndustryPackId = string
 
 export interface SeedOrgOptions {
   industryPack?: IndustryPackId
 }
-
-const PACK_REGISTRY: Record<IndustryPackId, { clauses: SeedClause[]; templates: SeedTemplate[]; playbook: SeedPlaybookPosition[] }> = {
-  saas:          { clauses: SAAS_CLAUSES,          templates: SAAS_TEMPLATES,          playbook: SAAS_PLAYBOOK },
-  healthcare:    { clauses: HEALTHCARE_CLAUSES,    templates: HEALTHCARE_TEMPLATES,    playbook: HEALTHCARE_PLAYBOOK },
-  manufacturing: { clauses: MANUFACTURING_CLAUSES, templates: MANUFACTURING_TEMPLATES, playbook: MANUFACTURING_PLAYBOOK },
-  biotech:       { clauses: BIOTECH_CLAUSES,       templates: BIOTECH_TEMPLATES,       playbook: BIOTECH_PLAYBOOK },
-  logistics:     { clauses: LOGISTICS_CLAUSES,     templates: LOGISTICS_TEMPLATES,     playbook: LOGISTICS_PLAYBOOK },
-}
-
-// ─── 1. Categories ─────────────────────────────────────────────────────────
-// Returns a map of slug → ClauseCategory.id for the org. Existing rows
-// (matched by name) are reused; missing ones are created.
-
-async function seedCategories(orgId: string): Promise<Map<string, string>> {
-  const existing = await prisma.clauseCategory.findMany({
-    where: { orgId },
-    select: { id: true, name: true },
-  })
-  const idByName = new Map(existing.map(c => [c.name, c.id]))
-
-  const toCreate = UNIVERSAL_CATEGORIES.filter(c => !idByName.has(c.name))
-  if (toCreate.length > 0) {
-    await prisma.$transaction(
-      toCreate.map(c =>
-        prisma.clauseCategory.create({
-          data: { orgId, name: c.name, description: c.description, sortOrder: c.sortOrder },
-        }),
-      ),
-    )
-    // Reload to capture the newly-created IDs.
-    const refreshed = await prisma.clauseCategory.findMany({
-      where: { orgId, name: { in: UNIVERSAL_CATEGORIES.map(c => c.name) } },
-      select: { id: true, name: true },
-    })
-    for (const c of refreshed) idByName.set(c.name, c.id)
-  }
-
-  // Build slug → id map by joining the seed list (which knows slugs) with
-  // the DB list (which knows IDs) on `name`.
-  const idBySlug = new Map<string, string>()
-  for (const c of UNIVERSAL_CATEGORIES) {
-    const id = idByName.get(c.name)
-    if (id) idBySlug.set(c.slug, id)
-  }
-  return idBySlug
-}
-
-// ─── 2. Clauses ────────────────────────────────────────────────────────────
-async function seedClauses(orgId: string, adminId: string, categoryIdBySlug: Map<string, string>, clauses: SeedClause[]): Promise<number> {
-  const existing = await prisma.clauseLibraryItem.findMany({
-    where: { orgId },
-    select: { title: true },
-  })
-  const existingTitles = new Set(existing.map(c => c.title))
-
-  const toCreate = clauses
-    .filter(c => !existingTitles.has(c.title))
-    .map(c => {
-      const categoryId = categoryIdBySlug.get(c.categorySlug)
-      if (!categoryId) return null
-      return {
-        orgId,
-        categoryId,
-        title: c.title,
-        content: c.content,
-        tags: c.tags,
-        riskRating: c.riskRating,
-        isApproved: c.isApproved,
-        createdById: adminId,
-      }
-    })
-    .filter((c): c is NonNullable<typeof c> => c !== null)
-
-  if (toCreate.length === 0) return 0
-  const result = await prisma.clauseLibraryItem.createMany({ data: toCreate })
-  return result.count
-}
-
-// ─── 3. Templates (+ sections) ─────────────────────────────────────────────
-async function seedTemplates(orgId: string, adminId: string, templates: SeedTemplate[]): Promise<number> {
-  const existing = await prisma.template.findMany({
-    where: { orgId },
-    select: { name: true },
-  })
-  const existingNames = new Set(existing.map(t => t.name))
-
-  const toCreate = templates.filter(t => !existingNames.has(t.name))
-  if (toCreate.length === 0) return 0
-
-  // Templates have nested sections — we can't use createMany because
-  // sections need the template ID. Create sequentially in a single tx.
-  await prisma.$transaction(
-    toCreate.map(t =>
-      prisma.template.create({
-        data: {
-          orgId,
-          name: t.name,
-          description: t.description,
-          contractType: t.contractType,
-          variables: t.variables as never,
-          isPublished: t.isPublished,
-          createdById: adminId,
-          sections: {
-            create: t.sections.map(s => ({
-              title: s.title,
-              sortOrder: s.sortOrder,
-              content: s.content,
-              clauseRefs: [] as never,
-            })),
-          },
-        },
-      }),
-    ),
-  )
-  return toCreate.length
-}
-
-// ─── 4. Playbook positions ─────────────────────────────────────────────────
-// Idempotency key for playbook positions: `seedKey` holds the seed row's key
-// and rows already carrying one are skipped. Older seeds embedded the key as
-// a "[seed-key:…]" prefix on `notes`, where every reviewer read it; those rows
-// are moved to `seedKey` and their notes cleaned the next time the seed runs.
-
-const LEGACY_MARKER = /^\[seed-key:([^\]]+)\]\s*/
-
-/** The seed key and clean notes from a legacy-marked note, or null. */
-export function splitLegacyMarker(notes: string | null): { key: string; notes: string } | null {
-  const m = (notes ?? '').match(LEGACY_MARKER)
-  return m ? { key: m[1], notes: (notes ?? '').slice(m[0].length) } : null
-}
-
-async function seedPlaybook(orgId: string, adminId: string, categoryIdBySlug: Map<string, string>, positions: SeedPlaybookPosition[]): Promise<number> {
-  const existing = await prisma.playbookPosition.findMany({
-    where: { orgId },
-    select: { id: true, notes: true, seedKey: true },
-  })
-  const existingKeys = new Set<string>()
-  for (const p of existing) {
-    if (p.seedKey) { existingKeys.add(p.seedKey); continue }
-    const legacy = splitLegacyMarker(p.notes)
-    if (!legacy) continue
-    existingKeys.add(legacy.key)
-    await prisma.playbookPosition.update({
-      where: { id: p.id },
-      data:  { seedKey: legacy.key, notes: legacy.notes || null },
-    })
-  }
-
-  const toCreate = positions
-    .filter(p => !existingKeys.has(p.key))
-    .map(p => {
-      const categoryId = categoryIdBySlug.get(p.categorySlug)
-      if (!categoryId) return null
-      return {
-        orgId,
-        clauseCategoryId: categoryId,
-        positionType: p.positionType,
-        content: p.content,
-        notes: p.notes,
-        seedKey: p.key,
-        riskThreshold: p.riskThreshold,
-        contractTypes: p.contractTypes,
-        sortOrder: p.sortOrder,
-        createdById: adminId,
-      }
-    })
-    .filter((p): p is NonNullable<typeof p> => p !== null)
-
-  if (toCreate.length === 0) return 0
-  const result = await prisma.playbookPosition.createMany({ data: toCreate })
-  return result.count
-}
-
-// ─── Public API ────────────────────────────────────────────────────────────
 
 export interface SeedReport {
   categoriesCreated: number
@@ -215,42 +24,38 @@ export interface SeedReport {
   packApplied?: IndustryPackId
 }
 
+// ─── Legacy playbook seed marker ────────────────────────────────────────────
+// Older seeds embedded a position's key as a "[seed-key:…]" prefix on notes,
+// where every reviewer read it. routes/playbook.ts still cleans those rows.
+
+const LEGACY_MARKER = /^\[seed-key:([^\]]+)\]\s*/
+
+/** The seed key and clean notes from a legacy-marked note, or null. */
+export function splitLegacyMarker(notes: string | null): { key: string; notes: string } | null {
+  const m = (notes ?? '').match(LEGACY_MARKER)
+  return m ? { key: m[1], notes: (notes ?? '').slice(m[0].length) } : null
+}
+
+function countsOf(diff: PackDiff) {
+  const n = (kind: string) => diff.added.filter(k => k.startsWith(`${kind}:`)).length
+  return { clausesCreated: n('clause'), templatesCreated: n('template'), playbookPositionsCreated: n('position') }
+}
+
 export async function seedOrgDefaults(
   orgId: string,
   _orgSlug: string,
   adminId: string,
   options: SeedOrgOptions = {},
 ): Promise<SeedReport> {
-  // 1. Categories (the foundation everything else references)
-  const beforeCats = await prisma.clauseCategory.count({ where: { orgId } })
-  const categoryIdBySlug = await seedCategories(orgId)
-  const afterCats = await prisma.clauseCategory.count({ where: { orgId } })
-
-  // 2. Universal clauses
-  const clausesCreated = await seedClauses(orgId, adminId, categoryIdBySlug, UNIVERSAL_CLAUSES)
-
-  // 3. Universal templates
-  const templatesCreated = await seedTemplates(orgId, adminId, UNIVERSAL_TEMPLATES)
-
-  // 4. Universal playbook positions
-  const playbookCreated = await seedPlaybook(orgId, adminId, categoryIdBySlug, UNIVERSAL_PLAYBOOK)
-
-  const report: SeedReport = {
-    categoriesCreated: afterCats - beforeCats,
-    clausesCreated,
-    templatesCreated,
-    playbookPositionsCreated: playbookCreated,
-  }
-
-  // 5. Optional industry pack on top
+  const universal = countsOf(await syncPack(orgId, adminId, 'universal'))
+  const report: SeedReport = { categoriesCreated: 0, ...universal }
   if (options.industryPack) {
-    const packReport = await applyIndustryPack(orgId, adminId, options.industryPack, categoryIdBySlug)
+    const pack = countsOf(await syncPack(orgId, adminId, options.industryPack))
     report.packApplied = options.industryPack
-    report.clausesCreated += packReport.clausesCreated
-    report.templatesCreated += packReport.templatesCreated
-    report.playbookPositionsCreated += packReport.playbookPositionsCreated
+    report.clausesCreated += pack.clausesCreated
+    report.templatesCreated += pack.templatesCreated
+    report.playbookPositionsCreated += pack.playbookPositionsCreated
   }
-
   return report
 }
 
@@ -258,39 +63,40 @@ export async function applyIndustryPack(
   orgId: string,
   adminId: string,
   packId: IndustryPackId,
-  categoryIdBySlug?: Map<string, string>,
 ): Promise<{ clausesCreated: number; templatesCreated: number; playbookPositionsCreated: number }> {
-  const pack = PACK_REGISTRY[packId]
-  // If we weren't passed a category map, ensure categories exist and load it.
-  const idBySlug = categoryIdBySlug ?? (await seedCategories(orgId))
-
-  const clausesCreated = await seedClauses(orgId, adminId, idBySlug, pack.clauses)
-  const templatesCreated = await seedTemplates(orgId, adminId, pack.templates)
-  const playbookPositionsCreated = await seedPlaybook(orgId, adminId, idBySlug, pack.playbook)
-  return { clausesCreated, templatesCreated, playbookPositionsCreated }
+  return countsOf(await syncPack(orgId, adminId, packId))
 }
 
-// ─── Counts (informational; updated to reflect real seed sizes) ────────────
+// ─── What the packs hold ────────────────────────────────────────────────────
 
-export const UNIVERSAL_COUNTS = {
-  categories: UNIVERSAL_CATEGORIES.length,
-  clauses: UNIVERSAL_CLAUSES.length,
-  playbookPositions: UNIVERSAL_PLAYBOOK.length,
-  templates: UNIVERSAL_TEMPLATES.length,
-} as const
-
-export const PACK_COUNTS: Record<IndustryPackId, { clauses: number; templates: number; playbookPositions: number }> = {
-  saas:          { clauses: SAAS_CLAUSES.length,          templates: SAAS_TEMPLATES.length,          playbookPositions: SAAS_PLAYBOOK.length },
-  healthcare:    { clauses: HEALTHCARE_CLAUSES.length,    templates: HEALTHCARE_TEMPLATES.length,    playbookPositions: HEALTHCARE_PLAYBOOK.length },
-  manufacturing: { clauses: MANUFACTURING_CLAUSES.length, templates: MANUFACTURING_TEMPLATES.length, playbookPositions: MANUFACTURING_PLAYBOOK.length },
-  biotech:       { clauses: BIOTECH_CLAUSES.length,       templates: BIOTECH_TEMPLATES.length,       playbookPositions: BIOTECH_PLAYBOOK.length },
-  logistics:     { clauses: LOGISTICS_CLAUSES.length,     templates: LOGISTICS_TEMPLATES.length,     playbookPositions: LOGISTICS_PLAYBOOK.length },
+export interface PackCatalogEntry {
+  id: IndustryPackId
+  label: string
+  description: string
+  version: string
+  counts: { clauses: number; templates: number; playbookPositions: number }
+  /** Both halves: installing it also gives extraction this family's obligation classes. */
+  extraction: boolean
 }
 
-export const INDUSTRY_PACK_INFO: Record<IndustryPackId, { label: string; description: string }> = {
-  saas:          { label: 'SaaS',          description: `Cloud subscription terms — multi-tenant security, SLA / DR, data export, API rate limits, CMEK. Adds ${PACK_COUNTS.saas.clauses} clauses, ${PACK_COUNTS.saas.templates} template, ${PACK_COUNTS.saas.playbookPositions} playbook positions.` },
-  healthcare:    { label: 'Healthcare',    description: `HIPAA-aware terms — BAA template, PHI protections, 60-day breach notification, GLP/GMP / HITRUST, anti-kickback. Adds ${PACK_COUNTS.healthcare.clauses} clauses, ${PACK_COUNTS.healthcare.templates} template, ${PACK_COUNTS.healthcare.playbookPositions} playbook positions.` },
-  manufacturing: { label: 'Manufacturing', description: `Supply-chain terms — Incoterms, inspection/acceptance, recall cooperation, tooling ownership, country-of-origin. Adds ${PACK_COUNTS.manufacturing.clauses} clauses, ${PACK_COUNTS.manufacturing.templates} template, ${PACK_COUNTS.manufacturing.playbookPositions} playbook positions.` },
-  biotech:       { label: 'Biotech',       description: `Research collaboration terms — MTA template, joint IP, clinical data ownership, GLP/GMP, IRB/IACUC. Adds ${PACK_COUNTS.biotech.clauses} clauses, ${PACK_COUNTS.biotech.templates} template, ${PACK_COUNTS.biotech.playbookPositions} playbook positions.` },
-  logistics:     { label: 'Logistics',     description: `Transportation terms — Carmack liability, fuel surcharge, demurrage/detention, FMCSA, cargo insurance. Adds ${PACK_COUNTS.logistics.clauses} clauses, ${PACK_COUNTS.logistics.templates} template, ${PACK_COUNTS.logistics.playbookPositions} playbook positions.` },
+/** The packs an org can install, read from packs/. */
+export function packCatalog(): PackCatalogEntry[] {
+  return installablePacks().map(p => {
+    const counts = { clauses: p.clauses.length, templates: p.templates.length, playbookPositions: p.playbook.length }
+    const extraction = (p.manifest.halves ?? []).includes('extraction')
+    return {
+      id: p.manifest.id,
+      label: p.manifest.display_name ?? p.manifest.id,
+      version: p.version,
+      counts,
+      extraction,
+      description: `Adds ${counts.clauses} clauses, ${counts.templates} template${counts.templates === 1 ? '' : 's'} and `
+        + `${counts.playbookPositions} playbook positions${extraction ? ', plus family-aware obligation extraction' : ''}. Version ${p.version}.`,
+    }
+  })
+}
+
+export function universalCounts() {
+  const u = loadPack('universal')
+  return { categories: loadCategories().length, clauses: u.clauses.length, playbookPositions: u.playbook.length, templates: u.templates.length }
 }

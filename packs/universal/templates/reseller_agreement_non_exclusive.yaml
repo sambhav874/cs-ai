@@ -1,0 +1,102 @@
+name: Reseller Agreement (Non-Exclusive)
+description: Non-exclusive reseller agreement permitting a partner to resell the Company's product, with revenue-share and approved-territory terms.
+contract_type: Reseller
+published: true
+variables:
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: customerEntity
+    label: Customer Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: customerAddress
+    label: Customer Address
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: providerEntity
+    label: Provider Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: providerAddress
+    label: Provider Address
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: governingLaw
+    label: Governing Law
+    type: enum
+    required: true
+    defaultValue: Delaware
+    options:
+      - Delaware
+      - New York
+      - California
+      - Texas
+      - England and Wales
+  - key: venueLocation
+    label: Venue Location
+    type: string
+    required: true
+    defaultValue: Wilmington, Delaware
+  - key: companyProduct
+    label: Product/Service Name
+    type: string
+    required: true
+  - key: resellerName
+    label: Reseller Name
+    type: string
+    required: true
+  - key: territory
+    label: Approved Territory
+    type: string
+    required: true
+    defaultValue: United States
+  - key: discount
+    label: Reseller Discount (%)
+    type: number
+    required: true
+    defaultValue: 20
+  - key: initialTerm
+    label: Initial Term (years)
+    type: number
+    required: true
+    defaultValue: 1
+sections:
+  - title: Appointment
+    sort_order: 10
+    text: <p>{{providerName}} (the "Company") appoints {{resellerName}} ("Reseller") as a non-exclusive reseller of {{companyProduct}} (the "Product") in {{territory}} (the "Territory"). Reseller may market and resell the Product to end customers in the Territory subject to this Agreement.</p>
+  - title: Reseller Obligations
+    sort_order: 20
+    text: <p>Reseller will (a) market the Product accurately and consistently with Company materials; (b) ensure end-customer agreements meet or exceed the Company's then-current minimum end-user terms; (c) provide first-line support; and (d) not modify, decompile, or reverse-engineer the Product.</p>
+  - title: Pricing and Payment
+    sort_order: 30
+    text: <p>Reseller pays the Company the Company's list price for the Product less {{discount}}% per Order Form. Net 30 from invoice. Reseller is free to set its end-customer pricing.</p>
+  - title: Trademark License
+    sort_order: 40
+    text: <p>The Company grants Reseller a limited, non-exclusive, non-transferable license to use the Company's trademarks solely for marketing and reselling the Product, subject to the Company's brand guidelines and a right of approval over specific marketing collateral.</p>
+  - title: IP and Ownership
+    sort_order: 50
+    text: <p>The Company retains all right, title, and interest in the Product, including all updates, modifications, and derivatives. Nothing in this Agreement grants Reseller any ownership rights.</p>
+  - title: End-User Agreements
+    sort_order: 60
+    text: <p>Reseller will require each end customer to sign the Company's standard end-user license or service terms (or equivalent) before receiving access to the Product. Reseller will not modify the end-user terms without the Company's written consent.</p>
+  - title: Term and Termination
+    sort_order: 70
+    text: "<p>This Agreement begins on the Effective Date and continues for {{initialTerm}} years, renewing for 1-year terms unless either party gives 60 days' non-renewal notice. Either party may terminate for material breach after 30 days' cure notice. Effects: Reseller will cease marketing the Product and may continue to support existing end customers for the remainder of their then-current terms.</p>"
+  - title: Indemnification and Liability
+    sort_order: 80
+    text: <p>The Company will indemnify Reseller against third-party IP infringement claims regarding the Product. Reseller will indemnify the Company against third-party claims arising from Reseller's marketing statements, breach, or unauthorized modifications. Each party's liability is capped at the fees paid in the prior 12 months, with standard carve-outs.</p>
+  - title: Governing Law
+    sort_order: 90
+    text: <p>{{governingLaw}} law governs. Exclusive jurisdiction in {{venueLocation}}.</p>

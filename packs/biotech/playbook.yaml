@@ -1,0 +1,60 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+- key: bio-bg-ip-retained
+  category: ip-ownership
+  position: preferred
+  text: <p>Each party retains all rights in pre-existing materials and IP. No implied licenses.</p>
+  notes: Standard for research collaborations.
+  risk_threshold: 0.7
+  contract_types:
+    - MTA
+    - Research
+  sort_order: 5
+- key: bio-joint-ip-acceptable
+  category: ip-ownership
+  position: acceptable
+  text: <p>Joint ownership for inventions made jointly. Each party may exploit in its own field without accounting.</p>
+  notes: Often the easiest compromise.
+  risk_threshold: 0.5
+  contract_types:
+    - Research
+    - Collaboration
+  sort_order: 5
+- key: bio-clinical-data-sponsor
+  category: ip-ownership
+  position: preferred
+  text: <p>Sponsor owns clinical data. Investigator publication right with sponsor pre-review (60-day window, +60-day for IP).</p>
+  notes: Standard for sponsored clinical trials.
+  risk_threshold: 0.7
+  contract_types:
+    - Clinical
+    - CRO
+  sort_order: 5
+- key: bio-glp-gmp-required
+  category: compliance
+  position: preferred
+  text: <p>GLP for preclinical safety studies. cGMP for clinical/commercial manufacturing. FDA-submission-ready documentation.</p>
+  notes: Required for any FDA filing.
+  risk_threshold: 0.9
+  contract_types:
+    - CMO
+    - Preclinical
+  sort_order: 5
+- key: bio-ruo-warranty
+  category: warranties
+  position: acceptable
+  text: <p>"Research use only" labeling for transferred materials. Express disclaimer of safety, efficacy, and fitness for human/diagnostic use.</p>
+  notes: Required for academic MTAs.
+  risk_threshold: 0.6
+  contract_types:
+    - MTA
+  sort_order: 5
+- key: bio-publication-block
+  category: ip-ownership
+  position: walkaway
+  text: <p>Sponsor demands unlimited publication suppression right OR &gt;120-day review window without good cause.</p>
+  notes: Reject — kills academic credibility.
+  risk_threshold: 0.2
+  contract_types:
+    - Clinical
+    - Research
+  sort_order: 30

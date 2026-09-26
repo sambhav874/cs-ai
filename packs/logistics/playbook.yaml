@@ -1,0 +1,59 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+- key: log-liability-actual
+  category: liability
+  position: preferred
+  text: <p>Carrier liability at actual value (Carmack default), no per-pound cap below $5/lb. Released value option for higher-value freight.</p>
+  notes: Default Carmack position.
+  risk_threshold: 0.7
+  contract_types:
+    - Transportation
+  sort_order: 5
+- key: log-otp-95
+  category: service-levels
+  position: preferred
+  text: <p>95%+ on-time pickup and delivery against confirmed windows. Late-delivery refunds (≥25%) for &gt;24-hour delays.</p>
+  notes: Enterprise standard.
+  risk_threshold: 0.7
+  contract_types:
+    - Transportation
+  sort_order: 5
+  obligation_class: service_level_target
+- key: log-cargo-ins-250k
+  category: insurance
+  position: preferred
+  text: <p>Motor Truck Cargo $250K minimum with no commodity exclusions. Auto Liability $1M+. Shipper as additional insured on Auto.</p>
+  notes: Minimum for general freight.
+  risk_threshold: 0.7
+  contract_types:
+    - Transportation
+  sort_order: 5
+  obligation_class: insurance_floor
+- key: log-no-broker-consent
+  category: scope-services
+  position: preferred
+  text: <p>No brokering or subcontracting without Shipper's written consent. Carrier primarily liable for approved subcontractors.</p>
+  notes: Avoid loss of visibility/control.
+  risk_threshold: 0.7
+  contract_types:
+    - Transportation
+  sort_order: 5
+  obligation_class: carrier_or_subcontractor_control
+- key: log-fuel-doe-weekly
+  category: fees-payment
+  position: acceptable
+  text: <p>Fuel surcharge tied to weekly DOE national average diesel index, transparent calculation in Exhibit A.</p>
+  notes: Industry-standard pattern.
+  risk_threshold: 0.5
+  contract_types:
+    - Transportation
+  sort_order: 5
+- key: log-cargo-ins-walkaway
+  category: insurance
+  position: walkaway
+  text: <p>Carrier refuses to name Shipper as additional insured, OR maintains cargo coverage &lt; $100K, OR has exclusions for Shipper's primary commodity.</p>
+  notes: Reject — insufficient coverage.
+  risk_threshold: 0.1
+  contract_types:
+    - Transportation
+  sort_order: 30
+  obligation_class: insurance_floor

@@ -1,0 +1,11 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+id: manufacturing
+version: 1.0.0
+display_name: Manufacturing
+jurisdictions:
+  - US
+contract_types:
+  - Supply
+drafting_extends: universal
+halves:
+  - drafting

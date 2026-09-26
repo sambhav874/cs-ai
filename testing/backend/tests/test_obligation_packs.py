@@ -329,7 +329,7 @@ def test_every_shipped_pack_loads_lints_and_fits_its_budget():
 
 def test_logistics_pack_is_shipped_and_covers_the_zero_number_classes():
     """The classes span coverage cannot see are the ones the pack exists to name."""
-    pack = load_pack("logistics_msa")
+    pack = load_pack("logistics")
     taxonomy = pack.sections["taxonomy"].lower()
 
     for obligation_class in ("billing_precondition", "recovery_cap", "reporting_cadence"):
@@ -337,7 +337,7 @@ def test_logistics_pack_is_shipped_and_covers_the_zero_number_classes():
 
 
 def test_logistics_pack_carries_scored_floors():
-    coverage = load_pack("logistics_msa").coverage
+    coverage = load_pack("logistics").coverage
 
     assert coverage["grounding_floor"] >= 0.9
     assert coverage["anchor_recall_floor"] == 1.0

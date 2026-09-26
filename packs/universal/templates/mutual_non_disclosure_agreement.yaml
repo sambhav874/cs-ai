@@ -1,0 +1,86 @@
+name: Mutual Non-Disclosure Agreement
+description: Two-way NDA for use during pre-contract diligence, partnership exploration, or any reciprocal exchange of confidential information.
+contract_type: NDA
+published: true
+variables:
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: customerEntity
+    label: Customer Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: customerAddress
+    label: Customer Address
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: providerEntity
+    label: Provider Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: providerAddress
+    label: Provider Address
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: governingLaw
+    label: Governing Law
+    type: enum
+    required: true
+    defaultValue: Delaware
+    options:
+      - Delaware
+      - New York
+      - California
+      - Texas
+      - England and Wales
+  - key: venueLocation
+    label: Venue Location
+    type: string
+    required: true
+    defaultValue: Wilmington, Delaware
+  - key: purpose
+    label: Purpose of Disclosure
+    type: string
+    required: true
+    helpText: e.g., "evaluating a potential commercial partnership"
+  - key: confidentialityYears
+    label: Confidentiality Term (years)
+    type: number
+    required: true
+    defaultValue: 3
+sections:
+  - title: Preamble
+    sort_order: 10
+    text: <p>This Mutual Non-Disclosure Agreement (this "Agreement") is entered into as of {{effectiveDate}} (the "Effective Date") by and between {{customerName}}, {{customerEntity}}, with an address at {{customerAddress}}, and {{providerName}}, {{providerEntity}}, with an address at {{providerAddress}} (each a "Party" and collectively, the "Parties").</p>
+  - title: Purpose
+    sort_order: 20
+    text: <p>The Parties wish to share certain confidential information in connection with {{purpose}} (the "Purpose").</p>
+  - title: Definition
+    sort_order: 30
+    text: <p>"Confidential Information" means any non-public information disclosed by one Party (the "Discloser") to the other Party (the "Recipient"), in any form, that is identified as confidential or that a reasonable person would understand to be confidential given the nature of the information and the circumstances of disclosure.</p>
+  - title: Obligations
+    sort_order: 40
+    text: <p>The Recipient will (a) use the Confidential Information solely for the Purpose; (b) protect the Confidential Information using at least the same degree of care it uses for its own confidential information of similar importance, but no less than a reasonable degree of care; and (c) limit access to those of its representatives who have a need to know and who are bound by obligations of confidentiality no less protective than this Agreement.</p>
+  - title: Exclusions
+    sort_order: 50
+    text: <p>This Agreement does not apply to information that the Recipient can demonstrate (a) was already in its lawful possession without confidentiality obligations before disclosure; (b) is or becomes publicly available through no fault of the Recipient; (c) is rightfully received from a third party without confidentiality obligations; or (d) is independently developed without use of the Discloser's Confidential Information.</p>
+  - title: Term
+    sort_order: 60
+    text: <p>The obligations of confidentiality continue for {{confidentialityYears}} years from the date of disclosure, or, with respect to trade secrets, for so long as the information remains a trade secret under applicable law.</p>
+  - title: Governing Law
+    sort_order: 70
+    text: <p>This Agreement is governed by the laws of {{governingLaw}}, without giving effect to its conflict-of-laws principles. The Parties consent to the exclusive jurisdiction and venue of the state and federal courts located in {{venueLocation}}.</p>
+  - title: Miscellaneous
+    sort_order: 80
+    text: <p>This Agreement is the entire agreement between the Parties on this subject, may be amended only in a signed writing, may be executed in counterparts (including by electronic signature), and is binding on permitted successors and assigns. No license to any intellectual property is granted, express or implied, except as expressly set forth in this Agreement.</p>

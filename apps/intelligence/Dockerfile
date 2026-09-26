@@ -57,6 +57,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 curl t
 WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 COPY apps/intelligence/ ./
+# Industry packs (merge step 8): the extraction half of each family, shared
+# with the lifecycle API. services/obligation_packs.py reads /app/packs.
+COPY packs/ ./packs/
 
 RUN chmod +x entrypoint.sh celery_entrypoint.sh \
     && useradd --create-home --shell /bin/bash appuser \

@@ -50,7 +50,7 @@ def test_the_logistics_fixture_resolves_and_the_other_seven_do_not():
     resolved = {path.name: _resolve(path) for path in KPI_FIXTURES}
 
     logistics = next(r for name, r in resolved.items() if name.startswith("01_"))
-    assert logistics.pack.id == "logistics_msa"
+    assert logistics.pack.id == "logistics"
 
     for name, resolution in resolved.items():
         if not name.startswith("01_"):

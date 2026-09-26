@@ -10,9 +10,10 @@
 export {
   seedOrgDefaults,
   applyIndustryPack,
-  UNIVERSAL_COUNTS,
-  PACK_COUNTS,
-  INDUSTRY_PACK_INFO,
+  packCatalog,
+  universalCounts,
+  splitLegacyMarker,
+  type PackCatalogEntry,
   type IndustryPackId,
   type SeedOrgOptions,
   type SeedReport,

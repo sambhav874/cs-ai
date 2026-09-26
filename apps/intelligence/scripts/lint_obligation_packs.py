@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate every shipped obligation pack. Read-only, no network, no database.
 
-Run in CI on any change to `packs/obligations/`, the extraction prompt, or
+Run in CI on any change to `packs/`, the extraction prompt, or
 `kpi_manager.py`. A pack that instructs, declares a currency, or overruns its
 context budget fails the build here rather than reaching every clause of every
 contract in its family.
@@ -32,6 +32,14 @@ REQUIRED_COVERAGE_KEYS = ("span_coverage_floor", "anchor_recall_floor", "groundi
 
 def main() -> int:
     failures: list[str] = []
+
+    # Both halves of every pack: review status, the playbook↔taxonomy link,
+    # floors and fixtures (services/pack_lint.py).
+    from services.pack_lint import lint_packs, unvalidated_packs
+
+    failures.extend(lint_packs())
+    for family in unvalidated_packs():
+        print(f"warning: {family} declares itself unvalidated (no fixture); it is not gated")
 
     try:
         base = load_pack(BASE_PACK_ID)

@@ -1,0 +1,44 @@
+name: Termination Notice (Unilateral)
+description: Formal written notice to terminate an existing agreement (for cause or for convenience as applicable).
+contract_type: Termination
+published: true
+variables:
+  - key: senderName
+    label: Sender Name
+    type: string
+    required: true
+  - key: recipientName
+    label: Recipient Name
+    type: string
+    required: true
+  - key: agreementName
+    label: Agreement Name
+    type: string
+    required: true
+  - key: agreementDate
+    label: Agreement Date
+    type: date
+    required: true
+  - key: terminationBasis
+    label: Basis for Termination
+    type: enum
+    required: true
+    options:
+      - material breach (cure period applies)
+      - convenience (per agreement notice provisions)
+      - insolvency
+    defaultValue: convenience (per agreement notice provisions)
+  - key: effectiveDate
+    label: Termination Effective Date
+    type: date
+    required: true
+sections:
+  - title: Notice of Termination
+    sort_order: 10
+    text: <p>Dear {{recipientName}},</p><p>This letter serves as formal written notice that {{senderName}} hereby terminates the {{agreementName}} dated {{agreementDate}} (the "Agreement") on the basis of {{terminationBasis}}, effective {{effectiveDate}}.</p>
+  - title: Basis
+    sort_order: 20
+    text: <p>The specific facts giving rise to this termination are set forth below. [Describe the breach or cite the notice provision being invoked.]</p>
+  - title: Effects of Termination
+    sort_order: 30
+    text: <p>From and after the Termination Effective Date, the parties' respective rights and obligations will be governed by the survival and post-termination provisions of the Agreement. {{senderName}} reserves all rights and remedies available to it under the Agreement and at law.</p>

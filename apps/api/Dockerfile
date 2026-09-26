@@ -62,6 +62,9 @@ COPY --from=build /repo/apps/api/src ./apps/api/src
 COPY --from=build /repo/apps/api/prisma ./apps/api/prisma
 COPY --from=build /repo/apps/api/package.json ./apps/api/package.json
 COPY --from=build /repo/apps/api/tsconfig.json ./apps/api/tsconfig.json
+# Industry packs (merge step 8): the drafting half of each family — clause
+# language, templates, playbook positions — installed into orgs by lib/packs.ts.
+COPY packs/ ./packs/
 COPY --from=build /repo/package.json ./package.json
 COPY --from=build /repo/pnpm-workspace.yaml ./pnpm-workspace.yaml
 

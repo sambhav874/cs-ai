@@ -1,0 +1,91 @@
+name: Master Services Agreement (Sell-Side)
+description: Provider-favorable MSA — use when you (the Provider) are the seller. Standard caps, no termination for convenience by Customer during initial term.
+contract_type: MSA
+published: true
+variables:
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: customerEntity
+    label: Customer Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: customerAddress
+    label: Customer Address
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: providerEntity
+    label: Provider Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: providerAddress
+    label: Provider Address
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: currency
+    label: Currency
+    type: string
+    required: true
+    defaultValue: USD
+  - key: paymentTermsDays
+    label: Payment Terms (days)
+    type: number
+    required: true
+    defaultValue: 30
+  - key: governingLaw
+    label: Governing Law
+    type: enum
+    required: true
+    defaultValue: Delaware
+    options:
+      - Delaware
+      - New York
+      - California
+      - Texas
+      - England and Wales
+  - key: venueLocation
+    label: Venue Location
+    type: string
+    required: true
+    defaultValue: Wilmington, Delaware
+  - key: initialTerm
+    label: Initial Term (years)
+    type: number
+    required: true
+    defaultValue: 1
+sections:
+  - title: Preamble
+    sort_order: 10
+    text: <p>This Master Services Agreement is entered into as of {{effectiveDate}} between {{customerName}} ("Customer") and {{providerName}} ("Provider").</p>
+  - title: Services
+    sort_order: 20
+    text: <p>Provider will perform Services described in SOWs executed by the Parties.</p>
+  - title: Fees and Payment
+    sort_order: 30
+    text: <p>Customer will pay all fees within {{paymentTermsDays}} days of invoice, in {{currency}}. Late fees of 1% per month or the max permitted by law on overdue amounts. Annual price escalation up to 5%.</p>
+  - title: Term and Termination
+    sort_order: 40
+    text: <p>Initial term of {{initialTerm}} years, renewing annually unless either Party gives 60 days' non-renewal notice. Termination for material breach with 30-day cure period. NO TERMINATION FOR CONVENIENCE during the Initial Term.</p>
+  - title: IP
+    sort_order: 50
+    text: <p>Provider retains ownership of all pre-existing IP and Provider tools/methodologies. Customer-specific work product assigned to Customer on payment in full. Provider may use anonymized data and learnings for product improvement.</p>
+  - title: Warranties
+    sort_order: 60
+    text: <p>Provider warrants Services will be performed in a workmanlike manner. SOLE REMEDY for breach is re-performance. ALL OTHER WARRANTIES DISCLAIMED.</p>
+  - title: Limitation of Liability
+    sort_order: 70
+    text: <p>Provider's liability is capped at 12 months' fees, with limited carve-outs only for confidentiality, IP indemnity, and payment. NO CONSEQUENTIAL DAMAGES.</p>
+  - title: Governing Law
+    sort_order: 80
+    text: <p>{{governingLaw}} law governs. Exclusive jurisdiction in {{venueLocation}}. Jury trial waived.</p>

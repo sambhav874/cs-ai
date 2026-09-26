@@ -18,7 +18,12 @@ import type { ClauseLibraryItem, ClauseCategory } from '@clm/types'
 import { cn } from '@/lib/utils'
 
 /** A clause row carries its category when the list isn't already filtered to one. */
-type ClauseRowItem = ClauseLibraryItem & { category?: { id: string; name: string } | null }
+type ClauseRowItem = ClauseLibraryItem & {
+  category?: { id: string; name: string } | null
+  /** Pack-installed language's legal review status (packs/README.md): sample | reviewed | approved. */
+  packId?: string | null
+  packReviewStatus?: 'sample' | 'reviewed' | 'approved' | null
+}
 
 // ─── Category Tree ────────────────────────────────────────────────────────────
 
@@ -147,6 +152,15 @@ function ClauseRow({
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {!clause.isApproved && (
               <StatusPill meaning="inflight">Not approved</StatusPill>
+            )}
+            {/* Pack language no lawyer has reviewed yet: usable, but says so. */}
+            {clause.packId && clause.packReviewStatus === 'sample' && (
+              <span
+                className="text-[11px] px-1.5 py-0.5 rounded-chip border border-attention-200 bg-attention-50 text-attention-700"
+                title="Sample language from an industry pack. It has not been reviewed by a lawyer — check it before relying on it."
+              >
+                Sample · not legally reviewed
+              </span>
             )}
             {unfavorable && <StatusPill meaning="risk">Unfavourable</StatusPill>}
             {clause.riskRating && !unfavorable && (

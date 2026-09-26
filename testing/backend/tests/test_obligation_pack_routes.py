@@ -176,7 +176,7 @@ def test_upload_stores_and_lists_the_pack(client):
 
     assert [pack["family_id"] for pack in listed["uploaded"]] == ["widget_msa"]
     assert listed["uploaded"][0]["version"] == 1
-    assert "logistics_msa" in [pack["family_id"] for pack in listed["builtin"]]
+    assert "logistics" in [pack["family_id"] for pack in listed["builtin"]]
 
 
 def test_re_upload_bumps_the_version(client):
@@ -206,12 +206,12 @@ def test_a_builtin_family_id_cannot_be_shadowed(client):
         "/obligation-packs",
         _zip(
             {
-                "pack.yaml": VALID_MANIFEST.replace("widget_msa", "logistics_msa"),
+                "pack.yaml": VALID_MANIFEST.replace("widget_msa", "logistics"),
                 "taxonomy.md": "# t\n- a class.",
                 "conventions.md": "# c\n- a convention.",
             }
         ),
-        family_id="logistics_msa",
+        family_id="logistics",
     )
 
     assert response.status_code == 400
@@ -290,7 +290,7 @@ def test_resolve_shows_the_near_misses_too(client):
     ).json()
 
     families = [candidate["family_id"] for candidate in body["candidates"]]
-    assert "logistics_msa" in families and "iata_ground_handling" in families
+    assert "logistics" in families and "iata_ground_handling" in families
     assert body["candidates"] == sorted(body["candidates"], key=lambda c: -c["confidence"])
 
 
@@ -382,25 +382,25 @@ def test_a_builtin_pack_can_be_switched_off_and_back_on(client):
     from services.obligation_pack_store import packs_for_owner
 
     scope = [{"ownerType": "team", "ownerId": ObjectId(FakeUser.ownedAccountId)}]
-    assert "logistics_msa" in {p.id for p in packs_for_owner(scope)}
+    assert "logistics" in {p.id for p in packs_for_owner(scope)}
 
-    off = client.patch("/obligation-packs/logistics_msa?enabled=false")
+    off = client.patch("/obligation-packs/logistics?enabled=false")
     assert off.status_code == 200
     assert off.json()["enabled"] is False
-    assert "logistics_msa" not in {p.id for p in packs_for_owner(scope)}
+    assert "logistics" not in {p.id for p in packs_for_owner(scope)}
 
     listed = {p["family_id"]: p for p in client.get("/obligation-packs").json()["builtin"]}
-    assert listed["logistics_msa"]["enabled"] is False
+    assert listed["logistics"]["enabled"] is False
     assert listed["iata_ground_handling"]["enabled"] is True, "only the named pack is affected"
 
-    client.patch("/obligation-packs/logistics_msa?enabled=true")
-    assert "logistics_msa" in {p.id for p in packs_for_owner(scope)}
+    client.patch("/obligation-packs/logistics?enabled=true")
+    assert "logistics" in {p.id for p in packs_for_owner(scope)}
 
 
 def test_switching_a_builtin_off_does_not_create_an_editable_copy(client):
     """The marker is a marker. Turning the pack back on must restore the
     reviewed version, not a fork that has drifted from it."""
-    client.patch("/obligation-packs/logistics_msa?enabled=false")
+    client.patch("/obligation-packs/logistics?enabled=false")
 
     assert client.get("/obligation-packs").json()["uploaded"] == []
     assert client.collection.documents[0].get("disabled_builtin") is True

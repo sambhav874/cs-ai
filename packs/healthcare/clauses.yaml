@@ -1,0 +1,117 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+- key: hipaa_business_associate_status
+  category: data-privacy
+  title: HIPAA — Business Associate Status
+  text: <p>The parties acknowledge that, to the extent Provider creates, receives, maintains, or transmits Protected Health Information ("PHI") on behalf of Customer in connection with the Services, Provider is a "Business Associate" and Customer is a "Covered Entity" or "Business Associate" (as applicable) under the HIPAA Privacy Rule and Security Rule. The Business Associate Agreement attached as Exhibit {{baaExhibit}} governs the handling of PHI.</p>
+  tags:
+    - healthcare
+    - hipaa
+    - baa
+    - phi
+  risk_rating: standard
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: hipaa_minimum_necessary
+  category: data-privacy
+  title: HIPAA — Minimum Necessary
+  text: <p>Provider will request, use, and disclose only the minimum amount of PHI reasonably necessary to perform the Services, in accordance with the Minimum Necessary standard under HIPAA.</p>
+  tags:
+    - healthcare
+    - hipaa
+    - minimum-necessary
+  risk_rating: standard
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: hipaa_breach_notification_60_days
+  category: data-privacy
+  title: HIPAA Breach Notification — 60 Days
+  text: <p>Provider will notify Customer of any actual or reasonably suspected Breach of Unsecured PHI without unreasonable delay and in no event later than 60 calendar days after discovery, with the information required by 45 CFR § 164.410.</p>
+  tags:
+    - healthcare
+    - hipaa
+    - breach-notification
+    - 60-day
+  risk_rating: standard
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: hipaa_security_rule_safeguards
+  category: security
+  title: HIPAA Security Rule Safeguards
+  text: <p>Provider will implement administrative, physical, and technical safeguards required by the HIPAA Security Rule (45 CFR Part 164, Subpart C), including access controls, audit controls, integrity controls, transmission security, and workforce training. Provider's safeguards are aligned with the NIST Cybersecurity Framework and SP 800-53.</p>
+  tags:
+    - healthcare
+    - hipaa
+    - security-rule
+    - nist
+  risk_rating: favorable
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: hitrust_or_soc_2_hitech_certification
+  category: security
+  title: HITRUST or SOC 2 + HITECH Certification
+  text: <p>Provider will maintain HITRUST CSF certification (or, alternatively, SOC 2 Type II reports that include a HITECH/HIPAA examination scope) during the Term and will furnish reports to Customer annually upon request.</p>
+  tags:
+    - healthcare
+    - hitrust
+    - soc2
+    - hitech
+  risk_rating: favorable
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: anti_kickback_statute_and_stark_law_compliance
+  category: compliance
+  title: Anti-Kickback Statute and Stark Law Compliance
+  text: <p>The parties agree that the fees and other terms of this Agreement have been negotiated at arm's length, represent fair market value for the Services, and are not intended to induce or reward referrals of patients or business in violation of the federal Anti-Kickback Statute (42 USC § 1320a-7b(b)) or the Stark Law (42 USC § 1395nn).</p>
+  tags:
+    - healthcare
+    - anti-kickback
+    - stark
+  risk_rating: standard
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: de_identification
+  category: data-privacy
+  title: De-Identification
+  text: <p>Provider may use PHI to create de-identified data (under the Safe Harbor or Expert Determination methods of 45 CFR § 164.514(b)) and to use such de-identified data for purposes of improving the Services and producing aggregate analytics. De-identified data is not PHI and is not subject to HIPAA restrictions.</p>
+  tags:
+    - healthcare
+    - hipaa
+    - de-identification
+  risk_rating: neutral
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: patient_access_to_phi
+  category: data-privacy
+  title: Patient Access to PHI
+  text: <p>Provider will, within 15 days of Customer's request, make available to Customer (for forwarding to a patient) any PHI in a designated record set held by Provider, to enable Customer to comply with its obligations under 45 CFR § 164.524.</p>
+  tags:
+    - healthcare
+    - hipaa
+    - patient-access
+  risk_rating: standard
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US

@@ -1,0 +1,74 @@
+name: Data Processing Addendum (GDPR/CCPA)
+description: Cross-jurisdiction DPA covering GDPR controller-processor obligations and CCPA service provider obligations.
+contract_type: DPA
+published: true
+variables:
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: customerEntity
+    label: Customer Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: customerAddress
+    label: Customer Address
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: providerEntity
+    label: Provider Entity Type
+    type: string
+    required: true
+    defaultValue: a Delaware corporation
+  - key: providerAddress
+    label: Provider Address
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+  - key: underlyingAgreement
+    label: Underlying Agreement
+    type: string
+    required: true
+    helpText: Name of the master agreement this DPA supplements
+sections:
+  - title: Scope
+    sort_order: 10
+    text: <p>This Data Processing Addendum ("DPA") supplements the {{underlyingAgreement}} between {{customerName}} ("Controller" / "Business") and {{providerName}} ("Processor" / "Service Provider") and applies to all processing of Personal Data by Processor on behalf of Controller.</p>
+  - title: Definitions
+    sort_order: 20
+    text: <p>"Personal Data", "Processing", "Controller", "Processor", "Business", "Service Provider", and "Data Subject" have the meanings given in applicable Data Protection Laws (including GDPR and CCPA/CPRA).</p>
+  - title: Roles and Instructions
+    sort_order: 30
+    text: <p>Controller is the Controller (Business) and Processor is the Processor (Service Provider). Processor will Process Personal Data only on Controller's documented instructions, including with regard to international transfers, unless required to do otherwise by applicable law.</p>
+  - title: Security Measures
+    sort_order: 40
+    text: <p>Processor will implement appropriate technical and organizational measures, including encryption in transit and at rest, access controls with MFA for admin, regular security testing, and incident response. Processor maintains SOC 2 Type II.</p>
+  - title: Sub-Processors
+    sort_order: 50
+    text: <p>Controller authorizes Processor to engage Sub-Processors listed at the URL provided in the master agreement. Processor will notify Controller of new Sub-Processors at least 30 days in advance and Controller may object on reasonable data-protection grounds. Processor remains liable for its Sub-Processors.</p>
+  - title: Cross-Border Transfers
+    sort_order: 60
+    text: <p>For transfers of EU/EEA Personal Data to countries without an adequacy decision, the Standard Contractual Clauses (Module 2, Controller-to-Processor) are incorporated and govern such transfers. Processor will implement supplementary measures as required.</p>
+  - title: Data Subject Rights
+    sort_order: 70
+    text: <p>Processor will, taking into account the nature of Processing, reasonably assist Controller in responding to Data Subject requests at no additional charge during the Term.</p>
+  - title: Security Incidents
+    sort_order: 80
+    text: <p>Processor will notify Controller of any Security Incident affecting Personal Data without undue delay and in any event within 72 hours of becoming aware, with the information reasonably required for Controller's own notifications.</p>
+  - title: Audits
+    sort_order: 90
+    text: <p>Processor will make available to Controller all information reasonably necessary to demonstrate compliance with this DPA, and allow audits (including inspections) by Controller or its designated auditor no more than once per year and following a Security Incident, on 30 days' notice, during normal business hours. The Parties may agree to substitute Processor's most recent SOC 2 or ISO 27001 report.</p>
+  - title: Return or Deletion
+    sort_order: 100
+    text: <p>Upon termination, Processor will, at Controller's choice, return all Personal Data or delete it (including copies) within 30 days, unless retention is required by applicable law, and confirm in writing upon request.</p>
+  - title: Liability
+    sort_order: 110
+    text: <p>The liability provisions of the underlying agreement apply to claims under this DPA, except that the parties' aggregate liability for breach of this DPA is the super-cap (3x annual fees) where the underlying agreement provides one.</p>

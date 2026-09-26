@@ -1,0 +1,52 @@
+name: Business Associate Agreement (BAA)
+description: HIPAA-compliant Business Associate Agreement for vendors handling PHI on behalf of a Covered Entity or upstream Business Associate.
+contract_type: BAA
+published: true
+variables:
+  - key: coveredEntityName
+    label: Covered Entity Name
+    type: string
+    required: true
+  - key: businessAssociateName
+    label: Business Associate Name
+    type: string
+    required: true
+  - key: underlyingAgreement
+    label: Underlying Services Agreement
+    type: string
+    required: true
+  - key: effectiveDate
+    label: Effective Date
+    type: date
+    required: true
+sections:
+  - title: Preamble
+    sort_order: 10
+    text: <p>This Business Associate Agreement ("BAA") is entered into as of {{effectiveDate}} between {{coveredEntityName}} ("Covered Entity") and {{businessAssociateName}} ("Business Associate") and supplements the {{underlyingAgreement}} (the "Underlying Agreement").</p>
+  - title: Definitions
+    sort_order: 20
+    text: <p>Capitalized terms have the meanings given in the HIPAA Rules (45 CFR Parts 160 and 164), including "PHI," "Breach," "Designated Record Set," "Health Care Operations," and "Security Incident."</p>
+  - title: Permitted Uses and Disclosures
+    sort_order: 30
+    text: <p>Business Associate may use and disclose PHI only to (a) perform functions specified in the Underlying Agreement; (b) provide data aggregation services to Covered Entity; (c) carry out Business Associate's proper management and administration; and (d) comply with legal obligations. Business Associate will limit use and disclosure to the Minimum Necessary.</p>
+  - title: Safeguards
+    sort_order: 40
+    text: <p>Business Associate will implement administrative, physical, and technical safeguards in accordance with the HIPAA Security Rule (45 CFR §§ 164.308, 164.310, 164.312, 164.316) to protect Electronic PHI from unauthorized access, use, or disclosure.</p>
+  - title: Subcontractors
+    sort_order: 50
+    text: <p>Business Associate will obtain written assurances from any Subcontractor that creates, receives, maintains, or transmits PHI on its behalf, in the form of a BAA imposing obligations no less protective than this BAA.</p>
+  - title: Breach Notification
+    sort_order: 60
+    text: <p>Business Associate will notify Covered Entity of any Breach of Unsecured PHI without unreasonable delay and in any event within 60 calendar days of discovery, with the information required by 45 CFR § 164.410.</p>
+  - title: Access, Amendment, and Accounting
+    sort_order: 70
+    text: <p>Business Associate will, within 15 days of Covered Entity's request, (a) provide access to PHI in a Designated Record Set; (b) make amendments to PHI; and (c) provide an accounting of disclosures, in each case to enable Covered Entity to meet its obligations under 45 CFR §§ 164.524–164.528.</p>
+  - title: Termination
+    sort_order: 80
+    text: <p>This BAA terminates with the Underlying Agreement. On termination, Business Associate will return or destroy all PHI in its possession, or, if return or destruction is not feasible, extend the protections of this BAA to such PHI and limit further use and disclosure.</p>
+  - title: Obligations of Covered Entity
+    sort_order: 90
+    text: <p>Covered Entity will (a) provide Business Associate with its Notice of Privacy Practices; (b) notify Business Associate of any restrictions on uses or disclosures of PHI agreed to by Covered Entity; and (c) not request Business Associate to use or disclose PHI in a manner that would violate HIPAA if done by Covered Entity directly.</p>
+  - title: Miscellaneous
+    sort_order: 100
+    text: <p>This BAA will be interpreted to give effect to the parties' intent that Business Associate complies with HIPAA. In the event of conflict between this BAA and the Underlying Agreement, this BAA controls with respect to PHI. This BAA may be amended in writing as needed to comply with changes to HIPAA.</p>

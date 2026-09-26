@@ -1,0 +1,50 @@
+name: Statement of Work — Fixed Fee
+description: SOW for a defined-scope, fixed-fee engagement with milestone-based payments.
+contract_type: SOW
+published: true
+variables:
+  - key: msaReference
+    label: Referenced MSA
+    type: string
+    required: true
+  - key: customerName
+    label: Customer Name
+    type: string
+    required: true
+  - key: providerName
+    label: Provider Name
+    type: string
+    required: true
+  - key: sowNumber
+    label: SOW Number
+    type: string
+    required: true
+  - key: projectDescription
+    label: Project Description
+    type: string
+    required: true
+  - key: fixedFee
+    label: Total Fixed Fee
+    type: number
+    required: true
+  - key: currency
+    label: Currency
+    type: string
+    required: true
+    defaultValue: USD
+sections:
+  - title: Reference
+    sort_order: 10
+    text: "<p>This Fixed-Fee SOW #{{sowNumber}} is entered into under the {{msaReference}} between {{customerName}} and {{providerName}}.</p>"
+  - title: Scope
+    sort_order: 20
+    text: <p>{{projectDescription}}</p>
+  - title: Fixed Fee
+    sort_order: 30
+    text: <p>The total fixed fee for this SOW is {{fixedFee}} {{currency}}, regardless of actual hours expended.</p>
+  - title: Payment Milestones
+    sort_order: 40
+    text: "<p>The fixed fee is invoiced as follows: (a) 25% on SOW signing; (b) 50% on acceptance of the interim Deliverable; (c) 25% on acceptance of the final Deliverable. Payment per the MSA payment terms.</p>"
+  - title: Change Orders
+    sort_order: 50
+    text: <p>Any change to the scope or schedule requires a written change order. Out-of-scope work will be billed on a time-and-materials basis at Provider's then-current rates.</p>

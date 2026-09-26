@@ -1,0 +1,115 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+- key: multi_region_high_availability
+  category: service-levels
+  title: Multi-Region High Availability
+  text: <p>Provider operates the Services across at least two geographically-separated regions in an active-active configuration designed to maintain availability in the event of a regional outage. Customer Data is replicated synchronously within a region and asynchronously across regions.</p>
+  tags:
+    - saas
+    - sla
+    - ha
+    - multi-region
+  risk_rating: favorable
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: disaster_recovery_rpo_rto_commitment
+  category: service-levels
+  title: Disaster Recovery — RPO/RTO Commitment
+  text: <p>Provider will maintain a Recovery Point Objective (RPO) of no more than 1 hour and a Recovery Time Objective (RTO) of no more than 4 hours. Provider will test its DR procedures at least annually and provide a summary of test results to Customer upon request.</p>
+  tags:
+    - saas
+    - dr
+    - rpo
+    - rto
+  risk_rating: favorable
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: customer_data_export
+  category: ip-ownership
+  title: Customer Data Export
+  text: <p>At any time during the Term and for up to 90 days after termination, Customer may export its Customer Data in a structured, commonly-used, machine-readable format (such as JSON or CSV) at no additional cost. Provider will provide reasonable assistance with the export process.</p>
+  tags:
+    - saas
+    - data-export
+    - portability
+  risk_rating: favorable
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: api_rate_limits
+  category: scope-services
+  title: API Rate Limits
+  text: <p>Provider may apply commercially reasonable rate limits to API access to maintain service quality for all customers. Provider will publish current rate limits in its Documentation. Customer may purchase additional rate-limit capacity at then-current rates.</p>
+  tags:
+    - saas
+    - api
+    - rate-limits
+  risk_rating: neutral
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: tenant_isolation
+  category: security
+  title: Tenant Isolation
+  text: <p>Provider will maintain logical isolation between tenant environments such that no tenant can access another tenant's Customer Data, including in shared infrastructure. Provider's tenant-isolation controls are validated annually as part of Provider's SOC 2 Type II audit.</p>
+  tags:
+    - saas
+    - security
+    - multi-tenant
+  risk_rating: favorable
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: scheduled_maintenance_window
+  category: service-levels
+  title: Scheduled Maintenance Window
+  text: <p>Provider will perform Scheduled Maintenance during a designated maintenance window of no more than 4 hours per month, scheduled outside of Customer's primary business hours where reasonably practicable. Scheduled Maintenance does not count against the uptime commitment provided that Provider gives at least 72 hours' advance notice.</p>
+  tags:
+    - saas
+    - maintenance
+  risk_rating: standard
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: true_up_overage_billing
+  category: fees-payment
+  title: True-Up / Overage Billing
+  text: <p>If Customer's actual usage exceeds the licensed limits (e.g., authorized users, API calls, or storage), Customer will pay overage fees at the then-current published rates, billed monthly in arrears. Provider will provide Customer with usage reports and a 30-day window to reduce usage before overage charges apply.</p>
+  tags:
+    - saas
+    - overage
+    - true-up
+  risk_rating: neutral
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US
+- key: customer_managed_encryption_keys_cmek
+  category: data-privacy
+  title: Customer-Managed Encryption Keys (CMEK)
+  text: <p>If Customer elects to use Customer-managed encryption keys for Customer Data at rest, Provider will support standard integrations with major key management services (AWS KMS, Google Cloud KMS, Azure Key Vault). Customer is responsible for key lifecycle management and any availability impact resulting from key access issues.</p>
+  tags:
+    - saas
+    - cmek
+    - byok-key
+    - encryption
+  risk_rating: favorable
+  review:
+    status: sample
+    reviewer: null
+    reviewed_on: null
+    jurisdiction: US

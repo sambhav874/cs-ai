@@ -2,7 +2,7 @@
 """Build pack .zip files for trying the upload flow.
 
     python3 apps/backend/scripts/make_sample_pack.py --out /tmp
-    python3 apps/backend/scripts/make_sample_pack.py --out /tmp --from apps/backend/packs/obligations/logistics_msa
+    python3 apps/backend/scripts/make_sample_pack.py --out /tmp --from packs/logistics
 
 Writes three archives: one that passes validation, one that fails it in every
 interesting way, and (with --from) a zip of an existing pack directory.

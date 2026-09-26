@@ -388,11 +388,20 @@ model Template {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
+  // Merge step 8 — which pack version this row was installed from, and a hash
+  // of the pack's content at that time. A row whose content no longer hashes
+  // to packHash has been edited by the org: that edit is its override, kept
+  // across upgrades (lib/packs.ts).
+  packId       String?
+  packKey      String?
+  packVersion  String?
+  packHash     String?
 
   org      Organization      @relation(fields: [orgId], references: [id])
   sections TemplateSection[]
 
   @@index([orgId, contractType])
+  @@index([orgId, packId, packKey])
   @@index([orgId, isPublished])
   @@map("templates")
 }
@@ -452,13 +461,41 @@ model ClauseLibraryItem {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
+  // Merge step 8 — which pack version this row was installed from, and a hash
+  // of the pack's content at that time. A row whose content no longer hashes
+  // to packHash has been edited by the org: that edit is its override, kept
+  // across upgrades (lib/packs.ts).
+  packId       String?
+  packKey      String?
+  packVersion  String?
+  packHash     String?
+  // The pack's legal review status for this language: sample | reviewed |
+  // approved. Only "approved" sets isApproved (packs/README.md).
+  packReviewStatus String?
 
   org      Organization   @relation(fields: [orgId], references: [id])
   category ClauseCategory @relation(fields: [categoryId], references: [id])
 
   @@index([orgId, categoryId])
+  @@index([orgId, packId, packKey])
   @@index([orgId, isApproved])
   @@map("clause_library_items")
+}
+
+/// Merge step 8 — an org's subscription to a versioned pack (packs/). The pack
+/// content lives in the repo; the org's rows are installed from it and carry
+/// packId / packKey / packHash, so an upgrade can tell pack content from the
+/// org's own edits.
+model OrgPackSubscription {
+  id          String   @id @default(cuid()) @map("_id")
+  orgId       String
+  packId      String
+  version     String
+  installedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([orgId, packId])
+  @@map("org_pack_subscriptions")
 }
 
 model PlaybookPosition {
@@ -471,6 +508,14 @@ model PlaybookPosition {
   // Which org-seed row this came from, so re-seeding skips it. Was a
   // "[seed-key:…]" prefix on notes, which every reviewer then read.
   seedKey          String?
+  // Merge step 8 — which pack version this row was installed from, and a hash
+  // of the pack's content at that time. A row whose content no longer hashes
+  // to packHash has been edited by the org: that edit is its override, kept
+  // across upgrades (lib/packs.ts).
+  packId           String?
+  packKey          String?
+  packVersion      String?
+  packHash         String?
   riskThreshold    Float    @default(0.5) // 0-1, score below which we escalate
   contractTypes    String[] @default([]) // [] = applies to all; otherwise filter by type
   sortOrder        Int      @default(0)

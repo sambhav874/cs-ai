@@ -1,0 +1,11 @@
+# Converted from draftLegal apps/api/src/lib/org-seed (AGPL-3.0). TODO(licence).
+id: saas
+version: 1.0.0
+display_name: SaaS
+jurisdictions:
+  - US
+contract_types:
+  - Addendum
+drafting_extends: universal
+halves:
+  - drafting

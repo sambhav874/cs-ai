@@ -43,9 +43,29 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-PACK_ROOT = Path(__file__).resolve().parents[1] / "packs" / "obligations"
+def _pack_root() -> Path:
+    """Where the packs live: the repository's `packs/` (merge step 8), which
+    both halves of each family share with the lifecycle API. PACKS_ROOT
+    overrides it; in the image the directory is copied to /app/packs."""
+    import os
+
+    configured = os.getenv("PACKS_ROOT")
+    if configured:
+        return Path(configured)
+    here = Path(__file__).resolve()
+    for candidate in (here.parents[1] / "packs", here.parents[3] / "packs"):
+        if (candidate / BASE_PACK_ID).is_dir():
+            return candidate
+    return here.parents[3] / "packs"
+
 
 BASE_PACK_ID = "_base"
+
+PACK_ROOT = _pack_root()
+
+#: Family ids a pack was known by before the merge. Records and project
+#: overrides written then still name them.
+FAMILY_ALIASES: Dict[str, str] = {"logistics_msa": "logistics"}
 
 #: Sections in render order.  The tail of this tuple is what truncation eats,
 #: last element first.
@@ -105,8 +125,20 @@ _BODY_HALF_SATURATION = 3.0
 
 _FAMILY_ID_RE = re.compile(r"^[a-z][a-z0-9_]{2,48}$")
 
+SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+def _version(raw: Any) -> Any:
+    """A semantic version stays a string; anything else is the integer it was."""
+    if isinstance(raw, str) and SEMVER_RE.match(raw):
+        return raw
+    return int(raw or 1)
+
 _ALLOWED_MANIFEST_KEYS = frozenset(
-    {"id", "version", "display_name", "extends", "fixture", "match", "budget", "notes", "classes"}
+    {"id", "version", "display_name", "extends", "fixture", "match", "budget", "notes", "classes",
+     # The merged pack's platform keys (packs/README.md): read by the lifecycle
+     # API and the pack lint, carried here untouched.
+     "jurisdictions", "contract_types", "drafting_extends", "halves"}
 )
 
 #: A family's obligation classes, as data rather than prose.
@@ -212,7 +244,7 @@ class ObligationPack:
     """One validated family pack, with `_base` already merged in."""
 
     id: str
-    version: int
+    version: Any   # a semantic version string ("1.0.0"), or an integer for uploaded packs
     display_name: str
     sections: Dict[str, str]
     match: Dict[str, List[str]] = field(default_factory=dict)
@@ -417,12 +449,15 @@ def validate_pack_content(family_id: str, content: PackContent) -> List[str]:
                 f"pack.yaml declares id '{declared}'; it must match the pack id '{family_id}'"
             )
 
-    try:
-        version = int(manifest.get("version") or 1)
-        if version < 1:
-            problems.append("pack.yaml version must be a positive integer")
-    except (TypeError, ValueError):
-        problems.append("pack.yaml version must be an integer")
+    raw_version = manifest.get("version") or 1
+    if isinstance(raw_version, str) and SEMVER_RE.match(raw_version):
+        pass
+    else:
+        try:
+            if int(raw_version) < 1:
+                problems.append("pack.yaml version must be a positive integer or a semantic version")
+        except (TypeError, ValueError):
+            problems.append("pack.yaml version must be a positive integer or a semantic version (1.2.0)")
 
     budget = manifest.get("budget") or {}
     if isinstance(budget, dict) and budget.get("max_context_tokens") is not None:
@@ -557,7 +592,7 @@ def build_pack(
 
     return ObligationPack(
         id=family_id,
-        version=int(manifest.get("version") or 1),
+        version=_version(manifest.get("version")),
         display_name=str(manifest.get("display_name") or family_id),
         sections=sections,
         match=match,
@@ -605,6 +640,7 @@ def load_base_sections(*, root: Optional[Path] = None) -> Dict[str, str]:
 def load_pack(family_id: str, *, root: Optional[Path] = None) -> ObligationPack:
     """Load one built-in family pack from disk, with `_base` merged in."""
     root = root or PACK_ROOT
+    family_id = FAMILY_ALIASES.get(family_id, family_id)
     key = (str(root), family_id)
     with _CACHE_LOCK:
         cached = _CACHE.get(key)
@@ -651,6 +687,9 @@ def available_families(*, root: Optional[Path] = None) -> List[str]:
         child.name
         for child in root.iterdir()
         if child.is_dir() and child.name != BASE_PACK_ID and (child / "pack.yaml").is_file()
+        # A family's extraction half: a drafting-only pack (clauses and
+        # templates, no taxonomy) is the lifecycle API's, not the extractor's.
+        and (child / "taxonomy.md").is_file()
     )
 
 
@@ -870,6 +909,7 @@ def resolve_family(
         candidates.append(pack)
 
     if override:
+        override = FAMILY_ALIASES.get(override, override)
         chosen = by_id.get(override)
         if chosen is None:
             try:
