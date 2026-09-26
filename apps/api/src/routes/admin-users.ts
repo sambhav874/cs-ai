@@ -8,6 +8,7 @@ import { prisma } from '../lib/prisma.js'
 import { requirePermission } from '../middleware/permissions.js'
 import { requireAuth } from '../middleware/auth.js'
 import { createAuditEvent } from '../lib/audit.js'
+import { sendInviteEmail } from '../lib/invite-email.js'
 import { invalidatePermissionCache, DEFAULT_ROLE_PERMISSIONS, DEFAULT_ROLE_DESCRIPTIONS } from '../lib/permissions.js'
 import { InviteUserSchema, AssignRoleSchema, BulkImportUserSchema, AuditAction } from '@clm/types'
 
@@ -77,6 +78,15 @@ export async function adminUserRoutes(app: FastifyInstance) {
       resourceId: user.id,
       metadata: { email: body.email, roles: body.roles },
       ipAddress: req.ip,
+    })
+
+    const [org, inviter] = await Promise.all([
+      prisma.organization.findUnique({ where: { id: orgId }, select: { name: true } }),
+      prisma.user.findUnique({ where: { id: req.user.sub }, select: { name: true } }),
+    ])
+    sendInviteEmail({
+      orgId, to: user.email, inviteeName: user.name, inviterName: inviter?.name ?? null,
+      orgName: org?.name ?? 'your workspace', token: inviteToken, expiresAt: inviteExpiresAt,
     })
 
     return reply.status(201).send({
@@ -237,6 +247,10 @@ export async function adminUserRoutes(app: FastifyInstance) {
   app.post('/bulk-import', { preHandler: adminGuard }, async (req, reply) => {
     const users = BulkImportUserSchema.parse(req.body)
     const { orgId } = req.user
+    const [org, inviter] = await Promise.all([
+      prisma.organization.findUnique({ where: { id: orgId }, select: { name: true } }),
+      prisma.user.findUnique({ where: { id: req.user.sub }, select: { name: true } }),
+    ])
 
     const results: { created: string[]; skipped: string[]; errors: Array<{ email: string; reason: string }> } = {
       created: [],
@@ -285,6 +299,10 @@ export async function adminUserRoutes(app: FastifyInstance) {
             create: u.roles.map(r => ({ roleId: rolesByName.get(r)!, grantedBy: req.user.sub })),
           },
         },
+      })
+      sendInviteEmail({
+        orgId, to: u.email, inviteeName: u.name, inviterName: inviter?.name ?? null,
+        orgName: org?.name ?? 'your workspace', token: inviteToken, expiresAt: inviteExpiresAt,
       })
 
       results.created.push(u.email)

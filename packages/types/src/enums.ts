@@ -185,6 +185,7 @@ export enum AuditAction {
   AI_KEY_UPDATED = 'AI_KEY_UPDATED',
   AI_KEY_DELETED = 'AI_KEY_DELETED',
   AI_KEY_TESTED = 'AI_KEY_TESTED',
+  EMAIL_TEST_SENT = 'EMAIL_TEST_SENT',
   // Agent tool invocations (D.3.6) — every write the agent does, every undo.
   // Captured on top of the ToolCall row so org admins can see "the agent
   // wrote X comments + undid Y" in the same audit log as user-initiated

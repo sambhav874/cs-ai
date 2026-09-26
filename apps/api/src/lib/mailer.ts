@@ -16,6 +16,8 @@
  * outcome (and surface SendGrid's rejection reason, e.g. an unverified sender).
  */
 
+import { prisma } from './prisma.js'
+
 const PLACEHOLDER = new Set(['', 'REPLACE', 'placeholder', 'TODO', 'unset'])
 
 function sendgridKey(): string | null {
@@ -28,6 +30,8 @@ export function isEmailConfigured(): boolean {
   return sendgridKey() !== null || Boolean(process.env.SMTP_HOST)
 }
 
+export type EmailKind = 'signing' | 'share' | 'notification' | 'invite' | 'test' | 'other'
+
 export interface SendEmailArgs {
   to: string
   subject: string
@@ -35,6 +39,10 @@ export interface SendEmailArgs {
   html?: string
   /** Overrides SMTP_FROM / EMAIL_FROM. Must be a verified SendGrid sender. */
   from?: string
+  replyTo?: string
+  /** For the outbox (Admin → Email): whose email this was, and what kind. */
+  orgId?: string | null
+  kind?: EmailKind
 }
 
 export type EmailResult =
@@ -45,7 +53,44 @@ function resolveFrom(explicit?: string): string {
   return explicit || process.env.SMTP_FROM || process.env.EMAIL_FROM || 'noreply@clm.app'
 }
 
+/** Human-readable sender for the admin status panel. */
+export function emailSender(): string {
+  return resolveFrom()
+}
+
+/** Which provider sends, without any credential. */
+export function emailProvider(): { via: 'sendgrid' | 'smtp' | null; host: string | null; port: number | null } {
+  if (sendgridKey()) return { via: 'sendgrid', host: 'api.sendgrid.com', port: 443 }
+  if (process.env.SMTP_HOST) return { via: 'smtp', host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT ?? '587', 10) }
+  return { via: null, host: null, port: null }
+}
+
+/**
+ * Write one outbox row. Never throws: the outbox is for reading what happened,
+ * and a failure to record must not fail or delay the send it describes.
+ */
+export async function recordEmail(args: Pick<SendEmailArgs, 'to' | 'subject' | 'orgId' | 'kind'>, result: EmailResult): Promise<void> {
+  const notConfigured = !result.sent && !isEmailConfigured()
+  await prisma.emailLog.create({
+    data: {
+      orgId:   args.orgId ?? null,
+      kind:    args.kind ?? 'other',
+      to:      args.to,
+      subject: args.subject.slice(0, 300),
+      status:  result.sent ? 'sent' : notConfigured ? 'not_configured' : 'failed',
+      via:     result.sent ? result.via : null,
+      error:   result.sent ? null : result.reason.slice(0, 500),
+    },
+  }).catch(() => {})
+}
+
 export async function sendEmail(args: SendEmailArgs): Promise<EmailResult> {
+  const result = await deliver(args)
+  await recordEmail(args, result)
+  return result
+}
+
+async function deliver(args: SendEmailArgs): Promise<EmailResult> {
   const from = resolveFrom(args.from)
 
   // 1. SendGrid HTTPS API — the Cloud-Run-safe path.
@@ -60,6 +105,7 @@ export async function sendEmail(args: SendEmailArgs): Promise<EmailResult> {
         body: JSON.stringify({
           personalizations: [{ to: [{ email: args.to }] }],
           from: { email: from },
+          ...(args.replyTo ? { reply_to: { email: args.replyTo } } : {}),
           subject: args.subject,
           content,
         }),
@@ -84,7 +130,10 @@ export async function sendEmail(args: SendEmailArgs): Promise<EmailResult> {
         secure: process.env.SMTP_SECURE === 'true',
         auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
       })
-      await transporter.sendMail({ from, to: args.to, subject: args.subject, text: args.text, html: args.html })
+      await transporter.sendMail({
+        from, to: args.to, subject: args.subject, text: args.text, html: args.html,
+        ...(args.replyTo ? { replyTo: args.replyTo } : {}),
+      })
       return { sent: true, via: 'smtp' }
     } catch (err) {
       return { sent: false, via: 'none', reason: `smtp send failed: ${(err as Error).message}` }

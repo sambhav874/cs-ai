@@ -45,6 +45,7 @@ import { internalObligationRoutes } from './routes/internal-obligations.js'
 import { internalAnalysisRoutes } from './routes/internal-analysis.js'
 import { internalUsageRoutes } from './routes/internal-usage.js'
 import { adminAiRoutes } from './routes/admin-ai.js'
+import { adminEmailRoutes } from './routes/admin-email.js'
 import { adminPackRoutes } from './routes/admin-packs.js'
 import { agentThreadRoutes } from './routes/agent-threads.js'
 import { skillsRoutes } from './routes/skills.js'
@@ -256,6 +257,7 @@ export async function buildApp() {
   await app.register(internalAnalysisRoutes,   { prefix: '/api/internal/contracts' })
   await app.register(internalUsageRoutes,      { prefix: '/api/internal/usage' })
   await app.register(adminAiRoutes,        { prefix: '/api/v1/admin/ai' })
+  await app.register(adminEmailRoutes,     { prefix: '/api/v1/admin/email' })
   await app.register(adminPackRoutes,      { prefix: '/api/v1/admin/packs' })
   await app.register(agentThreadRoutes,    { prefix: '/api/v1/agent/threads' })
   await app.register(skillsRoutes,         { prefix: '/api/v1/skills' })

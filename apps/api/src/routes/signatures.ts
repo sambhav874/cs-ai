@@ -208,6 +208,7 @@ export async function signatureRoutes(app: FastifyInstance) {
           const shouldEmail = body.signOrder === 'ANY' || s.signOrder === minSignOrder
           if (!shouldEmail) continue
           sendSigningEmailForSigner({
+            orgId,
             signer: s,
             baseUrl,
             senderName: sender?.name ?? null,
@@ -580,6 +581,7 @@ export async function signatureRoutes(app: FastifyInstance) {
             const baseUrl = process.env.WEB_BASE_URL ?? 'http://localhost:5173'
             for (const s of nextBucket) {
               sendSigningEmailForSigner({
+                orgId: sr.orgId,
                 signer: s,
                 baseUrl,
                 senderName: sender?.name ?? null,

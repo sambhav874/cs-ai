@@ -1023,6 +1023,25 @@ model ApprovalStep {
   @@map("approval_steps")
 }
 
+// Every outbound email attempt: signing requests, share links, notifications,
+// invites, admin test sends. The outbox an admin reads to see what went out,
+// what failed and why, including when no provider is configured. No bodies:
+// they carry signing and portal links.
+model EmailLog {
+  id        String   @id @default(cuid())
+  orgId     String?
+  kind      String // signing | share | notification | invite | test | other
+  to        String
+  subject   String
+  status    String // sent | failed | not_configured
+  via       String? // sendgrid | smtp
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([orgId, createdAt])
+  @@map("email_logs")
+}
+
 // In-app notifications — written by notification worker, read by frontend bell
 model Notification {
   id           String    @id @default(cuid())

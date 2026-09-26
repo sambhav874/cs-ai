@@ -16,7 +16,7 @@
  * it. An outcome nothing can observe is an outcome nothing can test.
  */
 import { prisma } from './prisma.js'
-import { sendEmail, isEmailConfigured } from './mailer.js'
+import { sendEmail, isEmailConfigured, recordEmail } from './mailer.js'
 import { shouldEmail } from './notification-prefs.js'
 import type { NotificationJob } from './queue.js'
 
@@ -60,12 +60,17 @@ export async function deliverNotification(data: NotificationJob): Promise<Delive
 
   if (!isEmailConfigured()) {
     console.info('[notify] no email provider configured — notification written to DB for userId=%s type=%s', data.userId, data.type)
+    // Still in the outbox, so an admin can see the reminder that would have gone.
+    await recordEmail(
+      { orgId: data.orgId, kind: 'notification', to: data.email, subject: data.title },
+      { sent: false, via: 'none', reason: 'no email provider configured' },
+    )
     return { notified: true, emailed: false, reason: 'no email provider configured' }
   }
 
   // Fire-and-forget: a mail failure must not fail the job, because the DB
   // notification is authoritative.
-  sendEmail({ to: data.email, subject: data.title, text: data.body })
+  sendEmail({ orgId: data.orgId, kind: 'notification', to: data.email, subject: data.title, text: data.body })
     .then((r) => {
       if (!r.sent) console.warn('[notify] email failed for userId=%s: %s', data.userId, r.reason)
     })

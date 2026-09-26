@@ -18,6 +18,7 @@ import type { Signer } from '@prisma/client'
 import { sendEmail } from './mailer.js'
 
 interface SendSigningEmailArgs {
+  orgId?: string
   to: string
   signerName: string
   senderName: string | null
@@ -48,6 +49,8 @@ export function sendSigningEmail(args: SendSigningEmailArgs): void {
   // unverified sender).
   const subject = `[${args.orgName}] Signature requested: ${args.contractTitle}`
   sendEmail({
+    orgId: args.orgId,
+    kind: 'signing',
     to: args.to,
     subject,
     text: renderTextBody(args),
@@ -123,6 +126,7 @@ function renderHtmlBody(a: SendSigningEmailArgs): string {
 
 /** Helper for callers that have a Signer row + contract context — keeps the call site small. */
 export function sendSigningEmailForSigner({
+  orgId,
   signer,
   baseUrl,
   senderName,
@@ -132,6 +136,7 @@ export function sendSigningEmailForSigner({
   message,
   expiresAt,
 }: {
+  orgId?: string
   signer: Pick<Signer, 'email' | 'name' | 'token'>
   baseUrl: string
   senderName: string | null
@@ -143,6 +148,7 @@ export function sendSigningEmailForSigner({
 }): void {
   const trimmedBase = baseUrl.replace(/\/$/, '')
   sendSigningEmail({
+    orgId,
     to: signer.email,
     signerName: signer.name,
     senderName,

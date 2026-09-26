@@ -172,6 +172,7 @@ async function handleSigningReminder(data: SigningReminderJob): Promise<void> {
     : pending
   for (const s of nudge) {
     sendSigningEmailForSigner({
+      orgId: sr.orgId,
       signer: s,
       baseUrl,
       senderName: sender?.name ?? null,
