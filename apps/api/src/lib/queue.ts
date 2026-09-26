@@ -135,7 +135,7 @@ export function queueExtractAi(payload: ExtractAiJob): void {
   }).catch(err => console.warn('[queue] failed to enqueue extract-ai:', err.message))
 }
 
-/** Service 3 — SOTA legal chunking + pgvector + Elasticsearch index. */
+/** Service 3 — legal clause chunking. */
 export function queueChunkAndIndex(payload: ChunkAndIndexJob): void {
   documentQueue.add('chunk-and-index', payload, {
     attempts: 3,

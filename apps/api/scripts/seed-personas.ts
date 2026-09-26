@@ -21,7 +21,6 @@ import { PrismaClient, Prisma } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { seedOrgDefaults } from '../src/lib/org-seed.js'
 import { DEFAULT_ROLE_PERMISSIONS, DEFAULT_ROLE_DESCRIPTIONS } from '../src/lib/permissions.js'
-import { indexContract } from '../src/lib/elasticsearch.js'
 
 const prisma = new PrismaClient()
 
@@ -976,27 +975,6 @@ async function seedPersona(persona: Persona): Promise<SeedSummary> {
         },
       },
     })
-    // Persona-test fix #2: also index in Elasticsearch so portfolio_search
-    // and contract_search can find these contracts. Without this, the agent's
-    // search tools only see whatever was previously indexed (the original
-    // demo seed of ~10) and falls back to "no results" for everything else.
-    // Fire-and-forget — a single failure shouldn't abort the seed loop.
-    indexContract(created.id, {
-      orgId: org.id,
-      title: c.title,
-      type: c.type,
-      status: c.status,
-      counterpartyName: c.counterparty,
-      jurisdiction: c.jurisdiction,
-      plainText: c.plainText,
-      summary: c.summary,
-      tags: c.tags,
-      riskScore: c.riskScore,
-      effectiveDate: c.effectiveDate?.toISOString(),
-      expiryDate: c.expiryDate?.toISOString(),
-      createdAt: created.createdAt.toISOString(),
-      keyTerms: c.keyTerms,
-    }).catch(err => console.warn(`    ⚠ ES index failed for "${c.title}": ${(err as Error).message.slice(0, 80)}`))
     generatedByTitle.set(c.title, c)
     createdCount++
     byType[c.type] = (byType[c.type] ?? 0) + 1

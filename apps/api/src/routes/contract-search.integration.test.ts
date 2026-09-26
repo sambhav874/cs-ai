@@ -17,7 +17,7 @@ vi.mock('../lib/embeddings.js', async orig => ({
 
 import { prisma } from '../lib/prisma.js'
 import { getApp, closeApp, makeOrg, makeUser, makeContract, cleanupAll, type TestApp } from '../test-support/helpers.js'
-import { nameWords } from './internal-ai.js'
+import { nameWords } from '../lib/contract-search.js'
 
 let app: TestApp
 let org: string, acmeCorp: string, acmeRetail: string

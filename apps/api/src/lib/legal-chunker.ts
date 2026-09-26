@@ -1,22 +1,18 @@
 /**
- * Legal Chunker — SOTA clause-level chunking + Elasticsearch indexing.
+ * Legal Chunker — clause-level chunking.
  *
  * Algorithm:
  *  1. Use AI-extracted clauseSegments as primary chunk boundaries (already typed)
  *  2. For clauses with content.length > MAX_CLAUSE_LEN: sliding-window sub-chunks
  *  3. snapToSentence(): snap cut points to nearest `. ` within ±SNAP_WINDOW chars
  *  4. Upsert ContractClause rows (with isSubChunk, windowIndex, charStart, charEnd)
- *  5. Bulk index into ES `clauses` index with denormalized contract metadata
  */
 import { prisma } from './prisma.js'
-import { es, esEnabled } from './elasticsearch.js'
 
 const MAX_CLAUSE_LEN  = 2_000   // chars — clauses over this get sliding-window sub-chunks
 const SUB_CHUNK_LEN   = 1_800   // max chars per sub-chunk
 const SUB_CHUNK_OVERLAP = 360   // chars — ~10% overlap to prevent boundary loss
 const SNAP_WINDOW     = 100     // chars to search left/right for a sentence boundary
-
-export const CLAUSES_INDEX = 'clauses'
 
 // ─── Sentence boundary snapping ──────────────────────────────────────────────
 
@@ -90,53 +86,6 @@ function slidingWindowChunks(text: string, baseOffset = 0): SubChunk[] {
   return chunks
 }
 
-// ─── ES clauses index ────────────────────────────────────────────────────────
-
-export async function ensureClausesIndex() {
-  // @opensearch-project/opensearch wraps every response in { body, ... }
-  const exists = await es.indices.exists({ index: CLAUSES_INDEX })
-  if (exists.body === true) return
-
-  await es.indices.create({
-    index: CLAUSES_INDEX,
-    body: {
-      settings: {
-        analysis: {
-          analyzer: {
-            legal_english: {
-              type:      'custom',
-              tokenizer: 'standard',
-              filter:    ['lowercase', 'english_stop', 'english_stemmer'],
-            },
-          },
-          filter: {
-            english_stop:    { type: 'stop',    stopwords: '_english_' },
-            english_stemmer: { type: 'stemmer', language: 'english'   },
-          },
-        },
-      },
-      mappings: {
-        properties: {
-          contractId:    { type: 'keyword' },
-          versionId:     { type: 'keyword' },
-          orgId:         { type: 'keyword' },
-          clauseType:    { type: 'keyword' },
-          content:       { type: 'text', analyzer: 'legal_english' },
-          sortOrder:     { type: 'integer' },
-          isSubChunk:    { type: 'boolean' },
-          windowIndex:   { type: 'integer' },
-          charStart:     { type: 'integer' },
-          charEnd:       { type: 'integer' },
-          // Denormalized scalar contract fields for filtering
-          contractTitle: { type: 'text', fields: { keyword: { type: 'keyword' } } },
-          contractType:  { type: 'keyword' },
-          jurisdiction:  { type: 'keyword' },
-        },
-      },
-    },
-  })
-}
-
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 interface RawClause {
@@ -146,26 +95,15 @@ interface RawClause {
   sortOrder:  number
 }
 
-interface ContractMeta {
-  title:        string | null
-  type:         string | null
-  jurisdiction: string | null
-}
-
 export async function legalChunkAndStore(
   versionId:   string,
-  contractId:  string,
-  orgId:       string,
   rawClauses:  RawClause[],
-  contractMeta: ContractMeta | null,
 ): Promise<void> {
   if (rawClauses.length === 0) return
 
-  if (esEnabled()) await ensureClausesIndex()
-
   // Build all final chunks (primary clauses + sub-chunks for long ones)
   type FinalChunk = {
-    dbId:        string   // cuid from DB — becomes ES doc id too
+    dbId:        string   // cuid from DB
     clauseType:  string
     content:     string
     sortOrder:   number
@@ -216,8 +154,7 @@ export async function legalChunkAndStore(
       // replaced by the window: the primary row is the clause every consumer
       // reads (playbook review, redline, clause apply — all filter
       // isSubChunk: false), and cutting it to the first 1,800 characters
-      // silently truncated every long clause. The window text goes to the
-      // search index only.
+      // silently truncated every long clause.
       await prisma.contractClause.update({
         where: { id: chunk.dbId },
         data: {
@@ -242,43 +179,6 @@ export async function legalChunkAndStore(
         },
       })
       chunk.dbId = created.id
-    }
-  }
-
-  // Bulk index into ES clauses index
-  const body: object[] = []
-  const meta = contractMeta ?? { title: null, type: null, jurisdiction: null }
-
-  for (const chunk of finalChunks) {
-    body.push({ index: { _index: CLAUSES_INDEX, _id: chunk.dbId } })
-    body.push({
-      contractId,
-      versionId,
-      orgId,
-      clauseType:    chunk.clauseType,
-      content:       chunk.content,
-      sortOrder:     chunk.sortOrder,
-      isSubChunk:    chunk.isSubChunk,
-      windowIndex:   chunk.windowIndex,
-      charStart:     chunk.charStart,
-      charEnd:       chunk.charEnd,
-      // Denormalized contract fields (scalar only — keyTerms is not indexed at clause level)
-      contractTitle: meta.title,
-      contractType:  meta.type,
-      jurisdiction:  meta.jurisdiction,
-    })
-  }
-
-  if (body.length > 0 && esEnabled()) {
-    // @opensearch-project/opensearch wraps every response in { body, statusCode, … }
-    const raw = await es.bulk({ body, refresh: false })
-    const result = raw.body
-    const errors = (result?.items ?? []).filter((i: any) => i.index?.error)
-    if (errors.length > 0) {
-      console.error('[legal-chunker] ES bulk errors=%d sample=%j', errors.length, errors[0])
-      throw new Error(`ES bulk index failed: ${errors.length} error(s) — sample: ${JSON.stringify(errors[0]?.index?.error)}`)
-    } else {
-      console.info('[legal-chunker] ES bulk indexed clauses=%d contractId=%s', body.length / 2, contractId)
     }
   }
 }

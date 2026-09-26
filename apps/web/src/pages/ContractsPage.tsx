@@ -34,10 +34,10 @@ const TYPE_DOT = 'bg-surface-300'
 
 // One screenful of rows per request. The plain /contracts route pages by cursor,
 // so "Load more" appends; the advanced-search route takes a size but has no
-// cursor or offset, which is why the Elasticsearch path asks for the server
+// cursor or offset, which is why the search path asks for the server
 // maximum in one go and then says so rather than pretending to be complete.
 const PAGE_SIZE = 50
-const ES_MAX = 100
+const SEARCH_MAX = 100
 
 const GRID_COLS = 'grid-cols-[minmax(0,2fr)_120px_160px_100px_80px_36px]'
 
@@ -230,7 +230,7 @@ export function ContractsPage() {
   })
 
   const buildQuery = () => {
-    const q: Record<string, any> = { limit: ES_MAX, mode: 'keyword' }
+    const q: Record<string, any> = { limit: SEARCH_MAX, mode: 'keyword' }
     if (debouncedSearch) q.q = debouncedSearch
     if (filters.type) q.type = filters.type
     if (filters.status) q.status = filters.status
@@ -260,22 +260,10 @@ export function ContractsPage() {
   const hasFilters = activeFilterCount > 0 || !!debouncedSearch
 
   // B.6.9 — Route choice.
-  // Plain /contracts hits Postgres directly and is always correct for
-  // structural filters; /search/advanced routes to Elasticsearch for
-  // full-text + risk + clause-flag + jurisdiction queries. Use the
-  // plain route whenever no ES-only filter is active — that way deep
-  // links from Counterparties (counterpartyId) and Dashboard
-  // (expiryDateTo, status) don't miss rows because of ES staleness.
-  //
-  // riskBand is deliberately NOT in this list, though it used to be. Risk is a
-  // plain numeric column in Postgres, so routing it through the index bought
-  // nothing and cost correctness: the index holds a subset of contracts, so
-  // "high risk AND expiring within 90 days" returned zero rows — rendered as a
-  // calm "no contracts match your filters" — while 60 contracts were expiring.
-  // On a renewal screen a false all-clear is worse than no filter at all: it
-  // converts an unanswered question into a wrong answer someone acts on. Same
-  // reasoning the comment above already applies to counterparty and expiry.
-  const needsEs =
+  // Plain /contracts pages by cursor and handles the structural filters;
+  // /search/advanced adds keyword search, clause flags and jurisdiction but
+  // answers in one page. Use the plain route whenever it can answer.
+  const needsSearch =
     !!debouncedSearch ||
     !!filters.clauseFlags ||
     !!filters.jurisdiction
@@ -287,16 +275,14 @@ export function ContractsPage() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['contracts', debouncedSearch, filters, needsEs],
+    queryKey: ['contracts', debouncedSearch, filters, needsSearch],
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) => {
-      if (needsEs) {
+      if (needsSearch) {
         return api.post('/search/advanced', buildQuery()).then(r => r.data)
       }
       // Plain route — pass structural filters as GET params.
-      // Risk MUST be in this list. It was moved off the Elasticsearch path
-      // because that index holds a subset of contracts and made "high risk AND
-      // expiring" answer zero; if the bounds are then omitted here, the filter
+      // Risk MUST be in this list: if the bounds are omitted here, the filter
       // is silently ignored and the list returns EVERYTHING while the chip
       // still says "High risk" — a wrong answer that looks like a right one,
       // which is worse than the empty result it replaced.
@@ -346,24 +332,24 @@ export function ContractsPage() {
   // unreachable, and nothing on the page admitted it.
   const total = pages[0]?.total ?? 0
   const facets = facetsData ?? {}
-  // U3 — when ES returns highlights per row, surface "matched in
+  // U3 — when search returns highlights per row, surface "matched in
   // counterparty / summary / clause body" so a partial-match search
   // ("Iowa" → "Iora Health") feels confirmed instead of confusing.
   const highlights: Record<string, Record<string, string[]>> = Object.assign(
     {},
     ...pages.map((p) => p?.highlights ?? {}),
   )
-  // The search route caps at ES_MAX and cannot page past it. Say so rather than
+  // The search route caps at SEARCH_MAX and cannot page past it. Say so rather than
   // letting the last row imply the list ended.
   //
-  // Gated on needsEs because the message names search as the cause. The
+  // Gated on needsSearch because the message names search as the cause. The
   // Postgres route pages to completion, so any shortfall there is a bug in
   // paging, not a cap the user can narrow their way out of — and telling
   // someone to "narrow the filters" when they have no search active sends them
   // after a problem that isn't theirs. Seen live: a cursor that lost a row to a
   // createdAt tie printed "Search shows the first 374 matches" on an unfiltered
   // repository.
-  const truncated = needsEs && !hasNextPage && total > contracts.length
+  const truncated = needsSearch && !hasNextPage && total > contracts.length
 
   return (
     <div className="h-full flex flex-col bg-surface-50">
@@ -508,21 +494,9 @@ export function ContractsPage() {
                 ))}
               </FacetGroup>
             )}
-            {/* No counts on the risk bands. Every other facet here is both
-                counted AND filtered by Elasticsearch, so its badge matches
-                what clicking it returns. Risk is the exception: the filter
-                was deliberately moved to Postgres (see buildQuery) because
-                the index holds a subset, but these doc_counts are still
-                aggregated over that same partial index — so the badges read
-                "Low 12 / Medium 6 / High 1" while the filters actually
-                return 176 / 61 / 28. A count that disagrees with its own
-                filter by an order of magnitude is the "wrong answer wearing
-                the costume of a right one" this page was fixed to stop
-                telling. Until the counts come from the same source as the
-                rows, the band label alone is the honest control. */}
             <FacetGroup title="Risk">
               {(facets.riskRanges ?? []).map((b: any) => (
-                <FacetItem key={b.key} label={b.key.charAt(0).toUpperCase() + b.key.slice(1)}
+                <FacetItem key={b.key} label={b.key.charAt(0).toUpperCase() + b.key.slice(1)} count={b.doc_count}
                   active={filters.riskBand === b.key}
                   onClick={() => setFilters(f => ({ ...f, riskBand: f.riskBand === b.key ? undefined : b.key as any }))} />
               ))}
@@ -710,7 +684,7 @@ export function ContractsPage() {
                           {c.type.replace(/_/g, ' ')} ·{' '}
                           <span title={new Date(c.createdAt).toLocaleString()}>{formatRelativeTime(c.createdAt)}</span>
                         </p>
-                        {/* U3 — search-match field hint. When ES matched a
+                        {/* U3 — search-match field hint. When search matched a
                             field other than the title (counterparty,
                             summary, clause body), tell the user — without
                             this, "Iowa" → "Iora Health" looks like a wrong
@@ -727,7 +701,7 @@ export function ContractsPage() {
                             : null
                           const fragment = (h.counterpartyName ?? h.summary ?? h.plainText ?? [])[0]
                           if (!matchedField || !fragment) return null
-                          // The ES highlighter wraps matches in <em>; strip them
+                          // The search excerpt wraps matches in <em>; strip them
                           // for a plain-text excerpt rendering (no need to dangerously
                           // setInnerHTML for a small chip).
                           const plain = String(fragment).replace(/<\/?em>/g, '')
@@ -857,7 +831,7 @@ function FacetGroup({ title, children }: { title: string; children: React.ReactN
 function FacetItem({ label, count, active, onClick }: {
   label: string
   // U12 — count is optional now: SLA facets don't yet have aggregated
-  // counts plumbed (the ES facet aggregator covers type/status/risk).
+  // counts plumbed (the facets endpoint covers type/status/risk).
   // Render the row without a numeric badge when count is undefined.
   count?: number
   active: boolean

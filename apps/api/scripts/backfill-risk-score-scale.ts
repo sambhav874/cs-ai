@@ -25,9 +25,6 @@
  * Soft-deleted contracts are included: restoring one should not resurrect a
  * mis-scaled score.
  *
- * Elasticsearch holds its own copy of riskScore, so after applying this run
- * `npx tsx --env-file=../../.env scripts/backfill-es-index.ts` to resync.
- *
  * Usage:
  *   # report only, changes nothing (default)
  *   cd apps/api && npx tsx --env-file=../../.env scripts/backfill-risk-score-scale.ts
@@ -128,7 +125,6 @@ async function main() {
 
   console.log(`\n✓ Updated ${applied} riskScore value(s)${failed ? `, ${failed} failed` : ''}.`)
   console.log(`  Remaining 0-1 fractions: ${remaining} (a re-run is a no-op).`)
-  console.log('  Next: npx tsx --env-file=../../.env scripts/backfill-es-index.ts to resync Elasticsearch.')
 
   await prisma.$disconnect()
   process.exit(failed > 0 ? 1 : 0)

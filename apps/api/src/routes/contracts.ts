@@ -18,7 +18,6 @@ import { buildCsv, parseCsv } from '../lib/csv.js'
 import { fireWebhook } from '../lib/webhook-events.js'
 import { applyPiiPolicy } from '../lib/pii-policy.js'
 import { assertCostCapNotExceeded, recordCost, estimateCostUsd, CostCapExceededError, recordUsage } from '../lib/costCap.js'
-import { indexContract, deleteContractFromIndex } from '../lib/elasticsearch.js'
 import { proposeClauseAlternatives } from '../lib/clause-propose.js'
 import { applyClauseProposal } from '../lib/clause-apply.js'
 import { storeClauseSegments, searchClauses } from '../lib/embeddings.js'
@@ -235,20 +234,6 @@ export async function contractRoutes(app: FastifyInstance) {
           },
           select: { id: true, createdAt: true, tags: true },
         })
-        // P81 audit (2026-05-02). Index in ES so portfolio_search can
-        // find bulk-imported rows. CSV path was previously invisible
-        // to ES — a customer who migrated 5000 NDAs this way couldn't
-        // find any of them via the agent.
-        indexContract(created.id, {
-          orgId, title, type, status,
-          counterpartyName: cp ?? undefined,
-          jurisdiction:     jur ?? undefined,
-          plainText:        '',
-          tags:             created.tags,
-          createdAt:        created.createdAt.toISOString(),
-          effectiveDate:    safeDate(eff)?.toISOString(),
-          expiryDate:       safeDate(exp)?.toISOString(),
-        }).catch(err => req.log.warn({ err }, 'ES index on bulk-import failed'))
         results.push({ row: rowNo, ok: true, id: created.id, title })
       } catch (err) {
         results.push({ row: rowNo, ok: false, error: (err as Error).message.slice(0, 200), title })
@@ -347,29 +332,6 @@ export async function contractRoutes(app: FastifyInstance) {
     const contract = await prisma.contract.create({
       data: { ...body, orgId, ownerId, analysisStatus: 'DONE' } as Prisma.ContractUncheckedCreateInput,
     })
-
-    // P81 audit (2026-05-02). Index every fresh contract into ES so
-    // the agent's portfolio_search hybrid retrieval can find it.
-    // Previously only the /upload + PATCH paths indexed; blank-create
-    // / bulk-import / amendments / template-create all skipped ES,
-    // leaving ~40% of contracts invisible to portfolio_search.
-    indexContract(contract.id, {
-      orgId,
-      title:            contract.title,
-      type:             contract.type,
-      status:           contract.status,
-      counterpartyName: contract.counterpartyName ?? undefined,
-      jurisdiction:     contract.jurisdiction ?? undefined,
-      plainText:        '',
-      summary:          contract.summary ?? undefined,
-      tags:             contract.tags,
-      riskScore:        normalizeRiskScore(contract.riskScore) ?? undefined,
-      effectiveDate:    contract.effectiveDate?.toISOString(),
-      expiryDate:       contract.expiryDate?.toISOString(),
-      createdAt:        contract.createdAt.toISOString(),
-      keyTerms:         contract.keyTerms as Record<string, unknown>,
-      metadata:         contract.metadata as Record<string, unknown>,
-    }).catch(err => app.log.warn({ err }, 'ES index on blank-create failed'))
 
     await createAuditEvent({
       orgId,
@@ -525,18 +487,6 @@ export async function contractRoutes(app: FastifyInstance) {
 
     // One analysis copy in the intelligence tier, keyed by this contract.
     queueLinkIntelligence({ contractId: contract.id, orgId, userId, s3Key, mimeType, filename })
-
-    // Lightweight ES index with what we have now (will be re-indexed after parse with full text)
-    indexContract(contract.id, {
-      orgId,
-      title: contract.title,
-      type: contract.type,
-      status: contract.status,
-      counterpartyName: contract.counterpartyName ?? undefined,
-      plainText: '',
-      tags: contract.tags,
-      createdAt: contract.createdAt.toISOString(),
-    }).catch(err => app.log.warn({ err }, 'ES initial index failed'))
 
     await createAuditEvent({
       orgId,
@@ -1112,36 +1062,6 @@ export async function contractRoutes(app: FastifyInstance) {
 
     const updated = await prisma.contract.update({ where: { id }, data: body as Prisma.ContractUncheckedUpdateInput })
 
-    // Re-index if searchable fields changed. indexContract is a full-document
-    // overwrite (elasticsearch.ts), so we must carry the existing full text and
-    // the other searchable fields through — otherwise a metadata-only PATCH
-    // (e.g. a title edit) would wipe plainText and blank the BM25 body. (Wave 3.1)
-    if (body.title || body.status || body.counterpartyName || body.tags) {
-      const currentVersion = existing.currentVersionId
-        ? await prisma.contractVersion.findUnique({
-            where: { id: existing.currentVersionId },
-            select: { plainText: true },
-          })
-        : null
-      indexContract(id, {
-        orgId: effectiveOrgId,
-        title: updated.title,
-        type: updated.type,
-        status: updated.status,
-        counterpartyName: updated.counterpartyName ?? undefined,
-        jurisdiction: updated.jurisdiction ?? undefined,
-        plainText: currentVersion?.plainText ?? '',
-        summary: updated.summary ?? undefined,
-        tags: updated.tags,
-        riskScore: normalizeRiskScore(updated.riskScore) ?? undefined,
-        effectiveDate: updated.effectiveDate?.toISOString(),
-        expiryDate: updated.expiryDate?.toISOString(),
-        createdAt: updated.createdAt.toISOString(),
-        keyTerms: updated.keyTerms as Record<string, unknown>,
-        metadata: updated.metadata as Record<string, unknown>,
-      }).catch(() => {})
-    }
-
     await createAuditEvent({
       orgId: effectiveOrgId,
       userId: userId === 'system' ? undefined : userId,
@@ -1434,7 +1354,6 @@ export async function contractRoutes(app: FastifyInstance) {
     if (!existing) return reply.status(404).send({ detail: 'Contract not found' })
 
     await prisma.contract.update({ where: { id }, data: { deletedAt: new Date() } })
-    deleteContractFromIndex(id).catch(() => {})
 
     await createAuditEvent({
       orgId, userId,
@@ -1611,23 +1530,6 @@ export async function contractRoutes(app: FastifyInstance) {
         data:  { currentVersionId: created.versions[0].id },
       })
     }
-
-    // P81 audit (2026-05-02). Index amendments in ES so they
-    // surface in portfolio_search when users ask about the changed
-    // contract family. Was previously skipped — every "find me the
-    // amendment that adjusted SLAs" query missed.
-    indexContract(created.id, {
-      orgId,
-      title:            created.title,
-      type:             created.type,
-      status:           created.status,
-      counterpartyName: created.counterpartyName ?? undefined,
-      plainText:        body.description ?? '',
-      tags:             [],
-      createdAt:        created.createdAt.toISOString(),
-      effectiveDate:    created.effectiveDate?.toISOString(),
-      expiryDate:       created.expiryDate?.toISOString(),
-    }).catch(err => app.log.warn({ err }, 'ES index on amendment failed'))
 
     await createAuditEvent({
       orgId, userId,

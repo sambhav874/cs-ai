@@ -3,8 +3,8 @@ portfolio_search tool (P3.2 / docs/30 D.5.7)
 
 Hybrid RAG across the org's contract portfolio. Reciprocal-Rank
 Fusion (RRF) of:
-  • pgvector cosine similarity on clause embeddings (semantic)
-  • Elasticsearch BM25 on contract metadata (lexical)
+  • vector similarity on clause embeddings (semantic)
+  • keyword search on contract metadata and text (lexical)
 
 Returns clause-granularity hits so the agent can cite specific
 clauses like "Acme MSA §9.2 caps at $500k" rather than just naming

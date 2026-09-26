@@ -907,8 +907,8 @@ function DashboardContent() {
     fetchUserCredits();
     void fetchProjectPortfolio();
     
-    // Elasticsearch might take a moment to index the new document.
-    // Fetch again after 2.5 seconds to ensure it appears in the table.
+    // Ingestion registers the document asynchronously; fetch again after
+    // 2.5 seconds so it appears in the table.
     setTimeout(() => {
       fetchDocuments(1);
     }, 2500);
