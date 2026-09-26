@@ -35,6 +35,7 @@ import { StatusPage } from '@/pages/legal/StatusPage'
 import { AdminUsersPage } from '@/pages/AdminUsersPage'
 import { AdminRolesPage } from '@/pages/AdminRolesPage'
 import { AdminOrgPage } from '@/pages/AdminOrgPage'
+import { AdminAuditPage } from '@/pages/AdminAuditPage'
 import { AdminIntegrationsPage } from '@/pages/AdminIntegrationsPage'
 import { AdminSkillsPage } from '@/pages/AdminSkillsPage'
 import { ReviewQueuePage } from '@/pages/ReviewQueuePage'
@@ -45,6 +46,7 @@ import { AcceptInvitePage } from '@/pages/AcceptInvitePage'
 import { TeamPage } from '@/pages/TeamPage'
 import { Toaster } from '@/components/common/Toaster'
 import { intelligenceRoutes } from '@/features/intelligence/routes'
+import { ContractRoute } from '@/features/intelligence/ContractLink'
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user)
@@ -120,7 +122,7 @@ export default function App() {
           </ErrorBoundary>
         } />
         <Route path="contracts" element={<ContractsPage />} />
-        <Route path="contracts/:id" element={<ContractDetailPage />} />
+        <Route path="contracts/:id" element={<ContractRoute page={<ContractDetailPage />} />} />
         <Route path="requests" element={<RequestsPage />} />
         <Route path="counterparties" element={<CounterpartiesPage />} />
         {/* P7.4.5 — F-49: Counterparty profile detail page (was missing). */}
@@ -140,6 +142,7 @@ export default function App() {
         <Route path="admin/users" element={<AdminUsersPage />} />
         <Route path="admin/roles" element={<AdminRolesPage />} />
         <Route path="admin/org" element={<AdminOrgPage />} />
+        <Route path="admin/audit" element={<AdminAuditPage />} />
         <Route path="admin/integrations" element={<AdminIntegrationsPage />} />
         <Route path="admin/skills" element={<AdminSkillsPage />} />
         {/* D.4.3 — convenience alias matching docs/30 §4.4 wording */}

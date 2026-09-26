@@ -28,6 +28,7 @@ import {
   X, Loader2,
 } from 'lucide-react'
 import { StatusPill } from '@/components/ui/status-pill'
+import { ModelBehaviourSection } from '@/components/admin/ModelBehaviourSection'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -270,6 +271,9 @@ export function AiConfigTab() {
           </Button>
         </div>
       </section>
+
+      {/* ─── Section: Model behaviour (parser, temperature, effort) ─────── */}
+      <ModelBehaviourSection />
 
       {/* ─── Section: API keys (BYOK) — D.0.8b ────────────────────────── */}
       <ApiKeysSection />

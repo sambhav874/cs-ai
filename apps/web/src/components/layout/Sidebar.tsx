@@ -32,6 +32,7 @@ import {
   FlaskConical,
   PanelLeftClose,
   PanelLeftOpen,
+  History,
 } from 'lucide-react'
 import { usePermission } from '@/lib/permissions'
 import { CountBadge } from '@/components/ui/primitives'
@@ -168,6 +169,7 @@ const ADMIN_SECTION: NavSection = {
     { to: '/admin/users',  icon: Users,       label: 'Users' },
     { to: '/admin/roles',  icon: ShieldCheck, label: 'Roles' },
     { to: '/admin/org',    icon: Building2,   label: 'Organization' },
+    { to: '/admin/audit',  icon: History,     label: 'Audit log' },
     { to: '/admin/integrations', icon: Plug,  label: 'Integrations' },
     { to: '/admin/skills', icon: Sparkles,    label: 'Skills' },
     // Extraction quality runs and datasets (internal).

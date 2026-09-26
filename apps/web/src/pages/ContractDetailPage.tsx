@@ -32,6 +32,7 @@ import { CommentsPanel } from '@/components/contracts/CommentsPanel'
 import { ShareLinkDialog } from '@/components/contracts/ShareLinkDialog'
 import { ContractSpacePicker } from '@/components/contracts/ContractSpacePicker'
 import { ObligationsRailSection } from '@/components/contracts/ObligationsRailSection'
+import { KpiRailLink } from '@/features/intelligence/ContractLink'
 import { ComplianceRailSection } from '@/components/contracts/ComplianceRailSection'
 import { PlaybookRedlineRailSection } from '@/components/contracts/PlaybookRedlineRailSection'
 import { PlaybookReviewRailSection } from '@/components/contracts/PlaybookReviewRailSection'
@@ -3474,6 +3475,8 @@ export function ContractDetailPage() {
             qc.invalidateQueries({ queryKey: ['contract', id] })
           }}
         />
+
+        {id && <KpiRailLink contractId={id} />}
 
         {/* Phase 3 — whole-document playbook redline. Stages a first-pass
             markup the reviewer accepts change by change; nothing reaches the
