@@ -177,3 +177,18 @@ def test_duplicate_row_still_counts_its_clause_as_extracted():
 
     assert result["lost"] == 0
     assert result["extracted"] == 2
+
+
+def test_a_contract_with_no_obligations_is_a_decision_not_a_failure():
+    """Seen live: a template NDA's 11 clauses were all judged non-operative and
+    the run was labelled degraded and regex-extracted. all_rejected() is what
+    tells the extractor the model decided, rather than failed."""
+    decided = ClauseLedger()
+    decided.reject(["src_1", "src_2"])
+    assert decided.all_rejected()
+
+    silent = ClauseLedger()
+    silent.reject(["src_1"])
+    silent.accept(["src_2"])               # accepted, then nothing came back
+    assert not silent.all_rejected()
+    assert not ClauseLedger().all_rejected()   # saw nothing: not a decision

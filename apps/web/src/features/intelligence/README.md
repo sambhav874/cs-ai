@@ -42,6 +42,12 @@ Identity is `apps/intelligence/core/platform_identity.py`.
 
 - Projects (`/projects`) and a project (`/projects/:projectId`), with its
   contracts, timeline and **project memory** panel.
+- Tabular review (`/tabular-reviews`, `/tabular-reviews/:review_id`).
+- Review playbooks (`/playbooks`, `/playbooks/:playbook_id`) — named playbooks
+  run against contracts. The lifecycle's per-clause negotiation positions stay
+  at `/playbook`; merging the two models is still to do.
+- Evaluations (`/evaluations`, `/evaluations/:run_id`), open to admins of the
+  orgs in `EVALUATION_ORG_IDS` (apps/intelligence/api/routes/evaluations.py).
 
 Unused code carried over from ContractSense lints as a warning here, not an
 error (`eslint.config.mjs`); clean it as each screen is touched.

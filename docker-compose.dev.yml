@@ -244,6 +244,8 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # Platform orgs whose admins may use Evaluations (comma-separated org ids).
+      EVALUATION_ORG_IDS: ${EVALUATION_ORG_IDS:-}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
       VOYAGEAI_API_KEY: ${VOYAGE_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}

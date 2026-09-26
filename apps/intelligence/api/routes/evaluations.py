@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -9,7 +10,44 @@ from utils.eval_parser import EvaluationParser
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/evaluations", tags=["evaluations"])
+#: ContractSense's evaluation workspace. Runs, reports and datasets are filed
+#: under it; they are the platform's own quality data, not a tenant's.
+EVAL_CONTEXT_ID = "600c00000000000000000001"
+
+
+def evaluation_org_ids() -> set:
+    """Platform orgs whose admins may use evaluations (EVALUATION_ORG_IDS, comma-separated)."""
+    return {v.strip() for v in os.getenv("EVALUATION_ORG_IDS", "").split(",") if v.strip()}
+
+
+def is_evaluator(user: UserInDB) -> bool:
+    """An admin of an evaluation org, or a member of ContractSense's own
+    evaluation team (standalone ContractSense)."""
+    org = getattr(user, "platformOrgId", None)
+    if org:
+        is_admin = bool(user.ownedAccountId) and str(user.ownedAccountId) in [str(t) for t in user.teamIds]
+        return is_admin and org in evaluation_org_ids()
+    return EVAL_CONTEXT_ID in [str(t) for t in user.teamIds]
+
+
+async def require_evaluator(current_user: UserInDB = Depends(get_current_active_user)) -> UserInDB:
+    """Every evaluation route. Only the list and the run trigger used to check
+    anything, and they checked a context id the client chose, so any signed-in
+    user could read run reports, CSVs and datasets. In the merged platform no
+    user is in ContractSense's evaluation team, so the platform names its own
+    evaluator orgs instead."""
+    if not is_evaluator(current_user):
+        raise HTTPException(status_code=403, detail="Evaluations are restricted to the platform's evaluation admins.")
+    return current_user
+
+
+router = APIRouter(prefix="/evaluations", tags=["evaluations"], dependencies=[Depends(require_evaluator)])
+
+
+@router.get("/access", response_model=Dict[str, Any])
+async def evaluation_access(current_user: UserInDB = Depends(require_evaluator)) -> Dict[str, Any]:
+    """Reached only by an evaluator (the router's guard refuses anyone else): the page's gate."""
+    return {"allowed": True, "context_id": EVAL_CONTEXT_ID}
 
 
 class EvaluationRunRequest(BaseModel):
@@ -36,10 +74,8 @@ async def list_evaluations(
     current_user: UserInDB = Depends(get_current_active_user)
 ) -> List[Dict[str, Any]]:
     """List all historical evaluation runs scanned from the reports directory."""
-    if context_id != "600c00000000000000000001":
-        raise HTTPException(status_code=403, detail="Evaluations are restricted to the dedicated Evaluation Team account context.")
     try:
-        return EvaluationParser.list_runs(context_id=context_id)
+        return EvaluationParser.list_runs(context_id=EVAL_CONTEXT_ID)
     except Exception as e:
         logger.error(f"Failed to list evaluation runs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -81,8 +117,7 @@ async def trigger_evaluation_run(
     current_user: UserInDB = Depends(get_current_active_user)
 ) -> Dict[str, Any]:
     """Trigger a new evaluation run in the background via Celery."""
-    if payload.context_id != "600c00000000000000000001":
-        raise HTTPException(status_code=403, detail="Evaluations are restricted to the dedicated Evaluation Team account context.")
+    payload.context_id = EVAL_CONTEXT_ID
     try:
         from worker.tasks import run_evaluation_suite_task
         from core.security import create_access_token
