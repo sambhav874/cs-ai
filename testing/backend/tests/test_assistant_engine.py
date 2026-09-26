@@ -490,3 +490,34 @@ def test_old_listings_are_shortened_but_contract_text_is_kept():
     assert len(msgs[1].content) < STALE_LISTING_CHARS + 200 and "omitted" in msgs[1].content
     assert msgs[2].content == big            # contract text: the answer may quote it
     assert msgs[4].content == big            # the latest round is untouched
+
+
+# ── ids and names in prose (found live on cs2) ────────────────────────────────
+
+def test_raw_contract_ids_leave_the_answer():
+    from services.assistant.frames import scrub_contract_ids
+
+    titles = {"cmudr27wo001310y73lze6iak": "Globex — NDA"}
+    assert scrub_contract_ids("I've prepared the tag for the Globex NDA (ID cmudr27wo001310y73lze6iak). Click Apply.", titles) \
+        == "I've prepared the tag for the Globex NDA. Click Apply."
+    assert scrub_contract_ids("Tagged cmudr27wo001310y73lze6iak.", titles) == "Tagged “Globex — NDA”."
+    assert scrub_contract_ids("Tagged cmuhg4hhv0013aqkv4e9dba4o.", {}) == "Tagged this contract."
+    link = "[open](/contracts/cmudr27wo001310y73lze6iak?page=3)"
+    assert scrub_contract_ids(link, titles) == link              # links keep their ids
+
+
+def test_a_turn_answer_names_the_contract_not_its_id():
+    answer = "Found cmabc0000000000000000000 for you."
+    frames, last, _ = turn([call("contract_search", {"query": "Acme"}, "s1"), AIMessage(content=answer)],
+                           results={"contract_search": {"total": 1, "results": [
+                               {"id": "cmabc0000000000000000000", "title": "Acme MSA"}]}})
+    final = [f for f in frames if f.get("type") == "final"]
+    assert final and final[-1]["answer"] == "Found “Acme MSA” for you."
+
+
+def test_titles_are_collected_from_nested_results():
+    from services.assistant.lifecycle import contract_titles
+
+    text = json.dumps({"hits": [{"contractId": "cmx0000000000000000000001", "contractTitle": "X MSA"}],
+                       "results": [{"id": "cmy0000000000000000000002", "title": "Y NDA"}], "id": "nope", "title": "t"})
+    assert contract_titles(text) == {"cmx0000000000000000000001": "X MSA", "cmy0000000000000000000002": "Y NDA"}

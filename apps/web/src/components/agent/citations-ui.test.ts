@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { citationHref, type AnswerCitation } from './CitationPills'
 import { linkCitationMarkers } from './MarkdownProse'
-import { parseActionChips } from './action-chips'
+import { asUserRequest, parseActionChips } from './action-chips'
 import { locateInItems, normalizeQuote } from '../contract/PdfQuoteViewer'
 
 const cite = (over: Partial<AnswerCitation> = {}): AnswerCitation => ({
@@ -54,5 +54,17 @@ describe('finding a quote in a PDF page', () => {
   it('matches a table row quoted with the extracted text\'s cell pipes (seen on cs2)', () => {
     const row = [item('On-Demand GPU Bursting Rate'), item('Per GPU Hour'), item('$3.85'), item('Billed monthly in arrears')]
     expect(locateInItems(row, 'On-Demand GPU Bursting Rate | Per GPU Hour | $3.85 | Billed monthly in arrears')?.end[0]).toBe(3)
+  })
+})
+
+describe('chips read as the user asking', () => {
+  it('turn a question to the user into the request it offers (seen on cs2)', () => {
+    expect(asUserRequest('Would you like a side-by-side comparison of this agreement with any other AI cloud contracts you have?'))
+      .toBe('Show a side-by-side comparison of this agreement with any other AI cloud contracts we have')
+    expect(asUserRequest('Do you want to see the contract details before applying?')).toBe('See the contract details before applying')
+    expect(asUserRequest('Want to see the organization’s standard playbook position on liability limits for reference?'))
+      .toBe('See the organization’s standard playbook position on liability limits for reference')
+    expect(asUserRequest('Need a summary of the key performance indicators?')).toBe('Show a summary of the key performance indicators')
+    expect(asUserRequest('Show the full pricing schedule')).toBe('Show the full pricing schedule')
   })
 })

@@ -36,6 +36,12 @@ export default defineConfig({
         target: process.env.API_PROXY_TARGET ?? 'http://localhost:3001',
         changeOrigin: true,
       },
+      // Hocuspocus, beside the API on its own port (as nginx does in prod).
+      '/collab': {
+        target: process.env.COLLAB_PROXY_TARGET ?? 'ws://localhost:3030',
+        ws: true,
+        changeOrigin: true,
+      },
       // The intelligence service (apps/intelligence, FastAPI). Both APIs
       // live under /api/v1, so this one is mounted at /intel and the prefix
       // is stripped on the way through.

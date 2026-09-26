@@ -58,6 +58,16 @@ describe('contract_search', () => {
     expect(body.totalMatching).toBeNull()
   })
 
+  it('flags contracts that share a name so the assistant says which it used', async () => {
+    const owner = await makeUser(org)
+    await makeContract(org, owner, { title: 'Neural Scale — AI Cloud Master Agreement', type: 'MSA' })
+    await makeContract(org, owner, { title: 'Neural Scale — AI Cloud Master Agreement (v2 test)', type: 'MSA' })
+    const body = (await search({ query: 'Neural Scale' })).json()
+    expect(body.duplicateNames).toHaveLength(1)
+    expect(body.duplicateNames[0].contracts).toHaveLength(2)
+    expect(body.duplicateNote).toMatch(/share a name/)
+  })
+
   it('matches on the words that carry the name', () => {
     expect(nameWords('the Acme Corporation Master Services Agreement')).toEqual(['acme', 'corporation', 'master', 'services'])
     expect(nameWords('Globex — NDA')).toEqual(['globex', 'nda'])

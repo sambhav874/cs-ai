@@ -36,7 +36,7 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
-from services.assistant.frames import FrameTranslator, citation_frame
+from services.assistant.frames import FrameTranslator, citation_frame, scrub_contract_ids
 from services.assistant.lifecycle import LifecycleTurn, lifecycle_tools
 from services.assistant.prompt import assistant_prompt
 from services.contract_agent.graph.state import AgentContext, AgentRunState, AgentSurface
@@ -425,6 +425,10 @@ def run_assistant(
         })
         card = True
     card = card or bool(turn.proposals)
+
+    # The answer as the user keeps it: raw contract ids replaced by titles.
+    # The streamed text is replaced by it (the `final` frame below).
+    response.answer = scrub_contract_ids(response.answer, turn.titles)
 
     if not translator.streamed.strip() and response.answer.strip():
         # Answers the runtime did not stream: an approval pause, a refusal,

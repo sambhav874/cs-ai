@@ -821,6 +821,19 @@ export async function internalAiRoutes(app: FastifyInstance) {
     }
     const finalResults = usedFallback ? fallbackResults : contracts
 
+    // Contracts that share a title: the assistant picked one of two identical
+    // names on cs2 and said nothing. Flag them so it says which it used.
+    const byName = new Map<string, typeof finalResults>()
+    for (const c of finalResults) {
+      // "Acme MSA" and "Acme MSA (v2)" are the same name to a reader.
+      const key = c.title.toLowerCase().replace(/\s*\([^)]*\)\s*$/, '').replace(/[^a-z0-9]+/g, ' ').trim()
+      byName.set(key, [...(byName.get(key) ?? []), c])
+    }
+    const duplicateNames = [...byName.values()].filter(group => group.length > 1).map(group => ({
+      title: group[0].title,
+      contracts: group.map(c => ({ id: c.id, status: c.status, effectiveDate: c.effectiveDate, updatedAt: c.updatedAt })),
+    }))
+
     return reply.send({
       // P63 — keep `total` as the page size for back-compat, but
       // surface `totalMatching` (real DB count satisfying `where`) and
@@ -845,6 +858,10 @@ export async function internalAiRoutes(app: FastifyInstance) {
       })),
       // Surface the fallback to the agent so it can mention "I broadened the
       // search" in its prose synthesis if it wants to be transparent.
+      ...(duplicateNames.length ? {
+        duplicateNames,
+        duplicateNote: 'Several contracts share a name. Say which one you answer from (status, dates) or ask which the user means.',
+      } : {}),
       ...(usedFallback ? {
         searchMode: 'semantic-fallback',
         note: 'NO contract matched this name. These contracts only mention related words in their text; none is the contract '

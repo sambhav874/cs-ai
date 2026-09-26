@@ -172,3 +172,25 @@ def citation_frame(annotations: list, *, platform_ids: Dict[str, str]) -> Option
             "verified": ann.get("verified") is True,
         })
     return {"type": "citations", "citations": out} if out else None
+
+
+# A platform contract id as it appears in prose: "cm" + ~23 lowercase
+# alphanumerics, not part of a path or a longer token.
+_ID = r"cm[a-z0-9]{20,30}"
+_ID_PAREN = re.compile(rf"\s*\((?:(?:contract\s+)?id\s*[:#]?\s*|contract\s+)?{_ID}\)", re.IGNORECASE)
+_ID_BARE = re.compile(rf"(?<![/\w=#-]){_ID}(?![\w-])")
+
+
+def scrub_contract_ids(text: str, titles: Dict[str, str]) -> str:
+    """Take raw contract ids out of an answer.
+
+    The model is told to keep identifiers private but still wrote "the Globex
+    NDA (ID cmudr27wo001310y73lze6iak)". A parenthetical id goes; a bare one
+    becomes the contract's title when a tool returned it, else "this
+    contract". Ids inside links and paths are left alone, and the citations
+    block (stripped before this) keeps its doc_ids.
+    """
+    if not text or "cm" not in text:
+        return text
+    out = _ID_PAREN.sub("", text)
+    return _ID_BARE.sub(lambda m: f"“{titles[m.group(0)]}”" if m.group(0) in titles else "this contract", out)

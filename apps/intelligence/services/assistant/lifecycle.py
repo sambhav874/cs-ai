@@ -71,6 +71,9 @@ class LifecycleTurn:
     # fires just before the tool runs; the tool reports under the same id.
     current_call_id: Optional[str] = None
     proposals: List[Dict[str, Any]] = field(default_factory=list)
+    # Platform contract id → title, from every result that named one: lets
+    # the answer say "the Acme MSA" where the model wrote the raw id.
+    titles: Dict[str, str] = field(default_factory=dict)
 
 
 def lifecycle_evidence(name: str, text: str) -> List[Dict[str, Any]]:
@@ -119,6 +122,31 @@ def lifecycle_evidence(name: str, text: str) -> List[Dict[str, Any]]:
     return out
 
 
+def contract_titles(text: str) -> Dict[str, str]:
+    """Every (contract id, title) pair a lifecycle result carries."""
+    try:
+        data = json.loads(text)
+    except (TypeError, ValueError):
+        return {}
+    out: Dict[str, str] = {}
+
+    def visit(node: Any) -> None:
+        if isinstance(node, list):
+            for item in node:
+                visit(item)
+        elif isinstance(node, dict):
+            cid = node.get("id") or node.get("contractId")
+            title = node.get("title") or node.get("contractTitle")
+            if isinstance(cid, str) and cid.startswith("cm") and isinstance(title, str) and title.strip():
+                out.setdefault(cid, title.strip())
+            for value in node.values():
+                if isinstance(value, (list, dict)):
+                    visit(value)
+
+    visit(data)
+    return out
+
+
 def _budget_message(name: str, used: int, cap: int) -> str:
     return (
         f"BUDGET_EXCEEDED: {name} called {used} times this turn (cap = {cap}). Stop invoking {name}; "
@@ -162,6 +190,9 @@ def wrap_lifecycle_tool(tool: BaseTool, *, turn: LifecycleTurn, state: AgentRunS
             # Contract text the tool returned is evidence a citation can be
             # checked against (citations.check_citations); nothing else is.
             evidence = lifecycle_evidence(name, summary) if status == "done" else []
+            if status == "done":
+                for cid, title in contract_titles(summary).items():
+                    turn.titles.setdefault(cid, title)
             record.observation = {"summary": summary[:1500], "model_content": content, "lifecycle": True,
                                   **({"matches": evidence} if evidence else {}), **extra}
             state.react_scratchpad.append({

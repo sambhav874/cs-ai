@@ -30,6 +30,24 @@ const CHIP_LINE = /^\s*(?:[-*•]\s*)?(?:\*\*|__|\*|_)?\[chip\]:?(?:\*\*|__|\*|_
 
 const MAX_CHIPS = 5
 
+/**
+ * A chip is sent as the user's own message when tapped, so it must read as
+ * the user asking. The model still sometimes writes a question to the user
+ * ("Would you like a side-by-side comparison…?"), which, sent back, reads as
+ * the user asking themselves. Turn those into the request they offer.
+ */
+export function asUserRequest(label: string): string {
+  const m = label.trim().match(
+    /^(?:would you like|do you want|would you want|want|need|shall i|should i|can i|may i|i can|i could)(?:\s+me)?(?:\s+to)?\s+(.+?)\??$/i,
+  )
+  if (!m) return label.trim()
+  let rest = m[1].trim().replace(/\?+$/, '')
+  // "a summary of…" / "the playbook position…" → "Show a summary of…"
+  if (/^(a|an|the|any|more|some|details?|summary|list)\b/i.test(rest)) rest = `show ${rest}`
+  rest = rest.replace(/\byour\b/gi, 'our').replace(/\byou have\b/gi, 'we have').replace(/\byou\b/gi, 'us')
+  return rest.charAt(0).toUpperCase() + rest.slice(1)
+}
+
 export function parseActionChips(content: string): ParsedChips {
   if (!content || !content.toLowerCase().includes('[chip]')) {
     return { cleanProse: content, chips: [] }
@@ -47,7 +65,7 @@ export function parseActionChips(content: string): ParsedChips {
         const opens = (stripped.match(/\[/g) ?? []).length
         const closes = (stripped.match(/\]/g) ?? []).length
         const label = (closes > opens ? stripped.replace(/\]+\s*$/, '') : stripped).trim()
-        if (label) chips.push({ id: `chip_${chips.length}`, label })
+        if (label) chips.push({ id: `chip_${chips.length}`, label: asUserRequest(label) })
       }
       continue // drop the marker line from prose either way
     }
